@@ -1,8 +1,8 @@
 ---
-title: Enable High Availability features
+title: Enable high availability
 headerTitle: Enable high availability
 linkTitle: Enable high availability
-description: Enable YugabyteDB Anywhere's high-availability features
+description: Enable YugabyteDB Anywhere's high availabilit
 menu:
   preview:
     identifier: platform-high-availability
@@ -12,11 +12,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte’s distributed architecture enables your database clusters (also referred to as universes) to have extremely high availability.
+Yugabyte’s distributed architecture enables database clusters (also referred to as universes) to have extremely high availability.
 
 YugabyteDB Anywhere's high availability is an active standby model for multiple instances in a cluster with asynchronous replication. Your YugabyteDB Anywhere data is replicated across multiple virtual machines (VMs), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
-
-## Overview
 
 Each high-availability cluster includes a single active YugabyteDB Anywhere instance and at least one standby YugabyteDB Anywhere instance, configured as follows:
 
@@ -28,16 +26,16 @@ Backups from the active instance are periodically taken and pushed to followers 
 
 When you promote a standby instance to active, YugabyteDB Anywhere restores your selected backup, and automatically demotes the previous active instance to standby mode.
 
-## Setting up high-availability cluster
+## Prerequisites
 
-Before setting up the high-availability cluster, ensure that you have the following:
+Before configuring the high-availability cluster, ensure that you have the following:
 
-* YugabyteDB Anywhere v2.5.3.1 or later.
+* YugabyteDB Anywhere versioin 2.5.3.1 or later.
 * [Multiple YugabyteDB Anywhere instances](../../install-yugabyte-platform/) to be used in the high-availability cluster.
 * YugabyteDB Anywhere VMs can connect to each other over the port that YugabyteDB Anywhere is typically reachable (port 80 and 443, for example).
-* All YugabyteDB Anywhere instances are running the same version of YugabyteDB Anywhere software (it is good practice to upgrade all YugabyteDB Anywhere instances in the high-availability cluster at close to the same time).
+* All YugabyteDB Anywhere instances are running the same version of YugabyteDB Anywhere software. Note that it is generally recommended to upgrade all YugabyteDB Anywhere instances in the high-availability cluster at approximately the same time.
 
-### Configure the active instance
+## Configure the active instance
 
 You can configure the active instance as follows:
 
@@ -69,13 +67,13 @@ You can configure the active instance as follows:
 
 Your active instance is now configured.
 
-### Configure standby instances
+## Configure standby instances
 
 Once the active instance has been configured, you can configure one or more standby instances by repeating the following steps for each standby instance you wish to add to the high-availability cluster:
 
-1. Navigate to **Admin > High Availability > Replication Configuration** and select **Standby**, as per the following illustration:
+1. Navigate to **Admin > High Availability > Replication Configuration** and select **Standby**, as per the following illustration:<br><br>
 
-    ![Standby instance type](/images/yp/high-availability/standby-configuration.png)
+    ![Standby instance type](/images/yp/high-availability/standby-configuration.png)<br><br>
 
 1. Enter the instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
 
@@ -87,7 +85,7 @@ Once the active instance has been configured, you can configure one or more stan
 
 Your standby instances are now configured.
 
-### Promote a standby instance to active
+## Promote a standby instance to active
 
 You can make a standby instance active as follows:
 
@@ -104,7 +102,7 @@ You can make a standby instance active as follows:
 
 You should be able to see that all of the data has been restored into the instance, including universes, users, metrics, alerts, task history, cloud providers, and so on.
 
-### Remove a standby instance
+## Remove a standby instance
 
 To remove a standby instance from a high-availability cluster, you need to remove it from the active instance's list, and then delete the configuration from the instance to be removed, as follows:
 

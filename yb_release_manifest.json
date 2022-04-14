@@ -1,5 +1,5 @@
 {
-  "all": {
+  "yugabyte": {
     "%symlinks%": {
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },
@@ -47,7 +47,7 @@
     ],
     "www": ["www/*"]
   },
-  "cli": {
+  "yugabyte-client": {
     "%symlinks%": {
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },

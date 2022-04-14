@@ -44,7 +44,7 @@ The `WHERE` clause in the syntax specifies which rows need to be added to the in
 
 ## Example
 
-This example uses the `customers` table from the [Northwind sample database](/preview/sample-data/northwind/). Follow the steps to create a local [cluster](/preview/quick-start/) or in [Yugabyte Cloud](/preview/yugabyte-cloud/cloud-connect/), and [install](/preview/sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
+This example uses the `customers` table from the [Northwind sample database](/preview/sample-data/northwind/). Follow the steps to create a local [cluster](/preview/quick-start/) or in [YugabyteDB Managed](/preview/yugabyte-cloud/cloud-connect/), and [install](/preview/sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
 
 - View the contents of the `customers` table.
 

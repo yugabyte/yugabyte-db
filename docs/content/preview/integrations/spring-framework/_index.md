@@ -30,6 +30,18 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="sd-jpa/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/ecosystem/spring.png" aria-hidden="true"/>
+        <div class="title">Spring Data JPA</div>
+      </div>
+      <div class="body">
+          Use Spring Data JPA with YSQL APIs to build cloud-native applications.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="spring-cassandra/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/ecosystem/spring.png" aria-hidden="true"/>

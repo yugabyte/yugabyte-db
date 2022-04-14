@@ -100,7 +100,7 @@
         name: policycoreutils-python
         state: present
       when: >
-        'policycoreutils-python' not in ansible_facts.packages and
+        'policycoreutils-python' not in ansible_facts.packages and custom_ssh_port != '22' and
         ((ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7') or
         (ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '7'))
       tags: yb-prebuilt-ami
@@ -112,7 +112,8 @@
     - name: clean dnf
       shell:
         cmd: sudo dnf clean all
-      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'
+      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8' and
+            custom_ssh_port != '22'
       tags: yb-prebuilt-ami
     - name: install latest version of selinux-policy
       shell:
@@ -120,5 +121,6 @@
       register: result
       until: result.rc == 0
       retries: 10
-      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'
+      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8' and
+            custom_ssh_port != '22'
       tags: yb-prebuilt-ami

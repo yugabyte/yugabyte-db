@@ -171,6 +171,16 @@ void Update(BufferingSettings* buffering_settings) {
   buffering_settings->max_in_flight_operations = static_cast<uint64_t>(ysql_max_in_flight_ops);
 }
 
+RowMarkType GetRowMarkType(const PgsqlOp& op) {
+  return op.is_read()
+      ? GetRowMarkTypeFromPB(down_cast<const PgsqlReadOp&>(op).read_request())
+      : RowMarkType::ROW_MARK_ABSENT;
+}
+
+bool IsReadOnly(const PgsqlOp& op) {
+  return op.is_read() && !IsValidRowMarkType(GetRowMarkType(op));
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -232,10 +242,9 @@ class PgSession::RunHelper {
     if (pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
       txn_priority_requirement = kHighestPriority;
     } else if (op->is_read()) {
-      const auto& read_req = down_cast<PgsqlReadOp&>(*op).read_request();
-      auto row_mark_type = GetRowMarkTypeFromPB(read_req);
+      const auto row_mark_type = GetRowMarkType(*op);
       read_only = read_only && !IsValidRowMarkType(row_mark_type);
-      if (RowMarkNeedsHigherPriority((RowMarkType) row_mark_type)) {
+      if (RowMarkNeedsHigherPriority(row_mark_type)) {
         txn_priority_requirement = kHigherPriorityRange;
       }
     }
@@ -696,6 +705,14 @@ Status PgSession::RollbackSubTransaction(SubTransactionId id) {
   return pg_client_.RollbackSubTransaction(id);
 }
 
+void PgSession::ResetHasWriteOperationsInDdlMode() {
+  has_write_ops_in_ddl_mode_ = false;
+}
+
+bool PgSession::HasWriteOperationsInDdlMode() const {
+  return has_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
+}
+
 void PgSession::UpdateInTxnLimit(uint64_t* read_time) {
   if (!read_time) {
     return;
@@ -743,6 +760,7 @@ Result<PerformFuture> PgSession::RunAsync(
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
       *pg_txn_manager_, *table, **op));
   RunHelper runner(this, group_session_type);
+  const auto ddl_mode = pg_txn_manager_->IsDdlMode();
   for (; table_op.operation; table_op = generator()) {
     table = table_op.table;
     op = table_op.operation;
@@ -752,6 +770,7 @@ Result<PerformFuture> PgSession::RunAsync(
               group_session_type,
               IllegalState,
               "Operations on different sessions can't be mixed");
+    has_write_ops_in_ddl_mode_ = has_write_ops_in_ddl_mode_ || (ddl_mode && !IsReadOnly(**op));
     RETURN_NOT_OK(runner.Apply(*table, *op, read_time, force_non_bufferable));
   }
   return runner.Flush();

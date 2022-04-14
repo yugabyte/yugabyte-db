@@ -221,7 +221,7 @@ you need the root certificate (`ca.crt`) of the YugabyteDB Cluster.
 To generate these certificates and install them while launching the cluster, follow the instructions in
 [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
-For a Yugabyte Cloud cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related
 environment variables as below at the client side.
 
 ```sh

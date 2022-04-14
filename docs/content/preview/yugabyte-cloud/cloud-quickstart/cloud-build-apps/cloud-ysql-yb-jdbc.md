@@ -2,7 +2,7 @@
 title: Build a Java application that uses YSQL
 headerTitle: Build a Java application
 linkTitle: Java
-description: Build a simple Java application using the YugabyteDB JDBC Driver and using the YSQL API to connect to and interact with a Yugabyte Cloud cluster.
+description: Build a simple Java application using the YugabyteDB JDBC Driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 menu:
   preview:
     parent: cloud-build-apps
@@ -14,15 +14,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](../../../../integrations/jdbc-driver/) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in Java.
+The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](../../../../integrations/jdbc-driver/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Java.
 
 ## Prerequisites
 
 This tutorial requires the following.
 
-### Yugabyte Cloud
+### YugabyteDB Managed
 
-- You have a cluster deployed in Yugabyte Cloud. To get started, use the [Quick start](../../).
+- You have a cluster deployed in YugabyteDB Managed. To get started, use the [Quick start](../../).
 - You downloaded the cluster CA certificate. Refer to [Download your cluster certificate](../../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 - You have added your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../../cloud-secure-clusters/add-connections/).
 
@@ -47,11 +47,11 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 2. Set the following configuration parameters:
 
-    - **host** - the host name of your YugabyteDB cluster. To obtain a Yugabyte Cloud cluster host name, sign in to Yugabyte Cloud, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
+    - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
     - **port** - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).
-    - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in Yugabyte Cloud, these can be found in the credentials file you downloaded.
-    - **sslMode** - the SSL mode to use. Yugabyte Cloud [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
-    - **sslRootCert** - the full path to the Yugabyte Cloud cluster CA certificate.
+    - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
+    - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
+    - **sslRootCert** - the full path to the YugabyteDB Managed cluster CA certificate.
 
 3. Save the file.
 
@@ -86,7 +86,7 @@ name = Jessica, age = 28, country = USA, balance = 9200
 name = John, age = 28, country = Canada, balance = 9800
 ```
 
-You have successfully executed a basic Java application that works with Yugabyte Cloud.
+You have successfully executed a basic Java application that works with YugabyteDB Managed.
 
 ## Explore the application logic
 
@@ -179,6 +179,6 @@ try {
 
 [Sample Java application demonstrating load balancing](../../../../quick-start/build-apps/java/ysql-yb-jdbc/)
 
-[Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
+[Deploy clusters in YugabyteDB Managed](../../../cloud-basics)
 
-[Connect to applications in Yugabyte Cloud](../../../cloud-connect/connect-applications/)
+[Connect to applications in YugabyteDB Managed](../../../cloud-connect/connect-applications/)

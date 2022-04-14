@@ -119,4 +119,4 @@ for _, employee := range employees {
 ## Next steps
 
 - Explore [Scaling Go Applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Go applications with Yugabyte Cloud](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).
+- Learn how to [develop Go applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).

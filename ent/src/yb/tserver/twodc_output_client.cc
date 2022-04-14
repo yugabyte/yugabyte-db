@@ -301,6 +301,10 @@ Status TwoDCOutputClient::ProcessRecordForTabletRange(
   RETURN_NOT_OK(filtered_tablets_result);
 
   auto filtered_tablets = *filtered_tablets_result;
+  if (filtered_tablets.empty()) {
+    table_->MarkPartitionsAsStale();
+    return STATUS(TryAgain, "No tablets found for key range, refreshing partitions to try again.");
+  }
   auto tablet_ids = std::vector<std::string>(filtered_tablets.size());
   std::transform(filtered_tablets.begin(), filtered_tablets.end(), tablet_ids.begin(),
                  [&](const auto& tablet_ptr) {
