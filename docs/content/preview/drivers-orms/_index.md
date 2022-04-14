@@ -2,8 +2,8 @@
 title: Drivers and ORMs for YugabyteDB
 headerTitle: Drivers and ORMs
 linkTitle: Drivers and ORMs
-description: Connect your applications from one of Supported Drivers and ORMs
-headcontent: Connect applications to YugabyteDB using your favorite language.
+description: Connect your applications with supported drivers and ORMs
+headcontent: Drivers and ORMs for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /drivers-orms/
@@ -16,10 +16,10 @@ menu:
 
 Connect applications to YugabyteDB databases using Yugabyte-supported drivers, ORMs, and application development frameworks.
 
-YugabyteDB <b>smart language drivers</b> enable client applications to connect to YugabyteDB clusters without the need for external load balancers. YugabyteDB smart drivers have the following features:
+YugabyteDB **smart language drivers** enable client applications to connect to YugabyteDB clusters without the need for external load balancers. YugabyteDB smart drivers have the following features:
 
-- <b>Cluster-aware</b>. Drivers know about all the data nodes in a YugabyteDB cluster, which eliminates the need for an external load balancer.
-- [Topology](/preview/deploy/multi-dc/)-aware. For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
+- **Cluster-aware**. Drivers know about all the data nodes in a YugabyteDB cluster, eliminating the need for an external load balancer.
+- [Topology-aware](/preview/deploy/multi-dc/). For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
 
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 
@@ -31,32 +31,32 @@ The following libraries are officially supported by YugabyteDB.
 
 ### [Java](java/)
 
-| Name (* Recommended) | Type | Support | Example |
-| :--------- | :--- |:------------- | :----------- |
-| [YugabyteDB JDBC Smart Driver*](java/yugabyte-jdbc) | Smart Driver | Full | [CRUD](java/yugabyte-jdbc) |
-| [PostgreSQL JDBC Driver](java/postgres-jdbc) | Driver | Full | [CRUD](java/postgres-jdbc)  |
-| [Hibernate](java/hibernate) | ORM | Full | [CRUD](java/hibernate/#step-1-add-the-hibernate-orm-dependency) |
-| [Spring Data YugabyteDB](/preview/integrations/spring-framework/sdyb/) | Framework | Full | [CRUD](/preview/integrations/spring-framework/sdyb/#examples) |
-| Spring Data JPA | Framework | Full | [CRUD](/preview/quick-start/build-apps/java/ysql-spring-data/)|
+| Driver/ORM  (* Recommended) | Support Level | Example apps |
+| :-------------------------- | :------------ | :----------- |
+| [YugabyteDB JDBC Smart Driver*](java/yugabyte-jdbc) [Recommended] | Full | [CRUD Example](java/yugabyte-jdbc/) |
+| [Postgres JDBC Driver](java/postgres-jdbc/) | Full | [CRUD Example](java/postgres-jdbc/) |
+| [Hibernate](java/hibernate/) | Full | [CRUD Example](java/hibernate/#step-1-add-the-hibernate-orm-dependency) |
+| [Spring Data YugabyteDB](/preview/integrations/spring-framework/sdyb/) | Full | [CRUD Example](/preview/integrations/spring-framework/sdyb/#examples) |
+| Spring Data JPA | Full | [CRUD Example](/preview/quick-start/build-apps/java/ysql-spring-data/) |
 <!-- | Micronaut | Beta |  | -->
 <!-- | Quarkus | Beta |  | -->
 <!-- | MyBatis | Full |  | -->
 
 ### [Go](go/)
 
-| Name (* Recommended) | Type | Support | Example |
-| :--- | :--- | :------------ | :----------- |
-| [PGX*](go/pgx/) | Driver | Full | [CRUD](go/pgx) |
-| [PQ](go/pq) | Driver | Full | [CRUD](go/pq)|
-| [GORM](go/gorm/) | ORM | Full | [CRUD](go/gorm)|
-| [PG](go/pg) | ORM| Full | [CRUD](go/pg) |
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [PGX](go/pgx/) [Recommended] | Full | [CRUD Example](go/pgx/) |
+| [PQ](go/pq/) | Full | [CRUD Example](go/pq/) |
+| [GORM](go/gorm/) | Full | [CRUD Example](go/gorm/) |
+| [PG](go/pg/) | Full | [CRUD Example](go/pg/) |
 
 ### [Node.js](nodejs/)
 
-| Name | Type | Support | Example |
-| :--- | :--- | :------------ | :----------- |
-| [node-postgres](nodejs/postgres-node-driver) | Driver | Full |  [CRUD](nodejs/postgres-node-driver) |
-| [Sequelize](nodejs/sequelize) | ORM | Full |  [CRUD](nodejs/sequelize)|
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [PostgreSQL](nodejs/postgres-node-driver/) | Full | [CRUD Example](nodejs/postgres-node-driver/) |
+| [Sequelize](nodejs/sequelize/) | Full | [CRUD Example](nodejs/sequelize/) |
 <!-- | TypeORM | Full |   | -->
 
 <!-- ### App Framework Support
@@ -69,19 +69,25 @@ The following libraries are officially supported by YugabyteDB.
 ### [C#](csharp/)
 
 | Name | Type | Support | Example |
-| :--- | :--- | :------------ | :----------- |
-| [Npgsql](csharp/postgres-npgsql) | Driver | Full | [CRUD](csharp/postgres-npgsql) |
-| [EntityFramework](csharp/entityframework) | ORM | Full | [CRUD](csharp/entityframework) |
+| :--- | :--- | :-------| :------ |
+| [Npgsql](csharp/postgres-npgsql/) | Driver | Full | [CRUD Example](csharp/postgres-npgsql/) |
+| [EntityFramework](csharp/entityframework/) | ORM | Full | [CRUD Example](csharp/entityframework/) |
 
 ### [Python](python/)
 
-| Name (* Recommended) | Type | Support | Example |
-| :--- | :--- | :------------ | :----------- |
-| [Yugabyte Psycopg2*](python/yugabyte-psycopg2) | Smart Driver | Full | [CRUD](python/yugabyte-psycopg2)|
-| [PostgreSQL Psycopg2](python/postgres-psycopg2/) | Driver | Full | [CRUD](python/postgres-psycopg2/) |
-| aiopg | Driver | Full | [Quick Start](/preview/quick-start/build-apps/python/ysql-aiopg) |
-| [Django](python/django) | ORM | Full | [CRUD](python/django) |
-| [SQLAlchemy](python/sqlalchemy) | ORM | Full | [CRUD](python/sqlalchemy) |
+| Driver/ORM (* Recommended) | Support Level | Example apps |
+| :------------------------- | :------------ | :----------- |
+| [Yugabyte Psycopg2*](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD Example](python/yugabyte-psycopg2/) |
+| [Postgres Psycopg2](python/postgres-psycopg2/) | Full | [CRUD Example](python/postgres-psycopg2/) |
+| aiopg | Full | [Quick Start](/preview/quick-start/build-apps/python/ysql-aiopg/) |
+| [Django](python/django/) | Full | [CRUD Example](python/django/) |
+| [SQLAlchemy](python/sqlalchemy/) | Full | [CRUD Example](python/sqlalchemy/) |
+
+## [Rust](rust/)
+
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [Diesel](rust/diesel/) | Full | [Diesel](rust/diesel/) |
 
 <!--
 ## [Ruby](ruby/)
@@ -104,10 +110,6 @@ The following libraries are officially supported by YugabyteDB.
 | Driver/ORM | Support | Example |
 | :--------- | :------------ | :----------- |
 
-## [RUST](rust/)
-
-| Driver/ORM | Support | Example |
-| :--------- | :------------ | :----------- |
 -->
 
 <!--
@@ -251,6 +253,7 @@ The following libraries are officially supported by YugabyteDB.
       Build applications using Scala.
     </div>
   </a>
-</div> -->
+</div>
 
 </div>
+-->
