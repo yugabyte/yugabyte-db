@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The first step in setting up a VPC network in Yugabyte Cloud is to create a VPC to host your clusters. The VPC reserves a range of IP addresses with the cloud provider you select. You must set up a dedicated VPC before deploying your cluster. A VPC must be created before you can configure a peering connection.
+The first step in setting up a VPC network in YugabyteDB Managed is to create a VPC to host your clusters. The VPC reserves a range of IP addresses with the cloud provider you select. You must set up a dedicated VPC before deploying your cluster. A VPC must be created before you can configure a peering connection.
 
 **VPCs** on the **VPC Network** tab displays a list of VPCs configured for your cloud that includes the VPC name, provider, region, CIDR, number of peerings, number of clusters deployed in the VPC, and status.
 
@@ -24,7 +24,7 @@ To terminate a VPC, click the **Delete** icon for the VPC in the list you want t
 
 ## Create a VPC
 
-To create a VPC in Yugabyte Cloud, you need to specify the following:
+To create a VPC in YugabyteDB Managed, you need to specify the following:
 
 - Cloud provider (AWS or GCP).
 - Region in which to deploy the VPC (AWS and GPC custom). For GPC automated, the VPC is deployed in all regions.
@@ -42,12 +42,12 @@ To create a VPC, do the following:
 1. Enter a name for the VPC.
 1. Choose the provider (AWS or GCP).
 1. If you selected **GCP**, choose one of the following options:
-    - **Automated** - VPCs are created globally and assigned to all regions supported by Yugabyte Cloud.
+    - **Automated** - VPCs are created globally and assigned to all regions supported by YugabyteDB Managed.
     - **Custom** - Select a region and [specify the CIDR address](../cloud-vpc-intro/#setting-the-cidr-and-sizing-your-vpc). Click **Add Region** to add additional regions. CIDR addresses in different regions cannot overlap.
 1. If you selected **AWS**, select the region and specify the CIDR address.
 1. Click **Save**.
 
-Yugabyte Cloud adds the VPC to the VPCs list with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.
+YugabyteDB Managed adds the VPC to the VPCs list with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.
 
 The VPC's network name and project ID are automatically assigned. You'll need these details when configuring the peering in GCP.
 
@@ -56,7 +56,7 @@ The VPC's network name and project ID are automatically assigned. You'll need th
 You can [deploy your cluster](../../create-clusters/) in a VPC any time after it has been created.
 
 1. On the **Clusters** page, click **Add Cluster**.
-1. Choose **Yugabyte Cloud** and click **Next**.
+1. Choose **YugabyteDB Managed** and click **Next**.
 1. Choose the provider you used for your VPC.
 1. Enter a name for the cluster.
 1. Select the **Region**. For AWS or GCP custom, select the region where the VPC is deployed.

@@ -198,4 +198,4 @@ YugabyteDB YSQL is compatible with Sequelize ORM's PostgreSQL dialect. Currently
 ## Next steps
 
 - Explore [Scaling Node.js Applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Node applications with Yugabyte Cloud](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/).
+- Learn how to [develop Node applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/).

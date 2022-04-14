@@ -45,5 +45,5 @@ C# development for YugabyteDB has the following prerequisites:
     ```
 
 - **YugabyteDB cluster**
-  - Create a free cluster on [Yugabyte Cloud](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that Yugabyte Cloud requires SSL.
+  - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that YugabyteDB Managed requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).

@@ -1,7 +1,7 @@
 ---
-title: Audit cloud activity
-linkTitle: Audit cloud activity
-description: Monitor activity on your Yugabyte Cloud.
+title: Audit account activity
+linkTitle: Audit account activity
+description: Monitor activity in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -13,11 +13,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Audit your cloud activity using the **Activity** tab on the **Admin** page, which lists the source, activity, user, and time of the activity.
+Audit your account activity using the **Activity** tab on the **Admin** page, which lists the source, activity, user, and time of the activity.
 
 Cluster activity is also displayed on the cluster [**Activity** tab](../../cloud-monitor/monitor-activity).
 
-![Cloud Activity tab](/images/yb-cloud/cloud-admin-activity.png)
+![Activity tab](/images/yb-cloud/cloud-admin-activity.png)
 
 To view activity details and associated messages, click the right arrow in the list to display the **Activity Details** sheet.
 
@@ -25,7 +25,7 @@ To filter the activity list, enter a search term. You can also filter the list b
 
 ## Logged activity
 
-The following table lists the cloud activity that is logged.
+The following table lists the activity that is logged.
 
 | Source | Activity |
 | --- | --- |

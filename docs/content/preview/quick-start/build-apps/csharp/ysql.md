@@ -36,9 +36,9 @@ showAsideToc: true
 
 </ul>
 
-{{< tip title="Yugabyte Cloud requires SSL" >}}
+{{< tip title="YugabyteDB Managed requires SSL" >}}
 
-Are you using Yugabyte Cloud? Install the [prerequisites](#prerequisites), then go to the [Use C# with SSL](#use-c-with-ssl) section.
+Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites), then go to the [Use C# with SSL](#use-c-with-ssl) section.
 
 {{</ tip >}}
 
