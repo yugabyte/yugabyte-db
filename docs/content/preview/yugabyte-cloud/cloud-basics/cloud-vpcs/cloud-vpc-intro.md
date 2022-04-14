@@ -14,7 +14,7 @@ showAsideToc: true
 
 A virtual private cloud (VPC) is a virtual network that you can define in a cloud provider. After you create a VPC on a cloud provider, you can then connect it with other VPCs on the same provider. This is called peering. A VPC peering connection is a networking connection between two VPCs on the same cloud provider that enables you to route traffic between them privately, without traversing the public internet. VPC networks provide more secure connections between resources because the network is inaccessible from the public internet and other VPC networks.
 
-In the context of Yugabyte Cloud, when a Yugabyte cluster is deployed in a VPC, it can connect to an application running on a peered VPC as though it was located on the same network; all traffic stays in the cloud provider's network. The VPCs can be in different regions.
+In the context of YugabyteDB Managed, when a Yugabyte cluster is deployed in a VPC, it can connect to an application running on a peered VPC as though it was located on the same network; all traffic stays in the cloud provider's network. The VPCs can be in different regions.
 
 ![Peered VPCs](/images/yb-cloud/cloud-vpc-diagram.png)
 
@@ -34,7 +34,7 @@ There's no additional charge for using a VPC. In most cases, using a VPC will re
 
 To avoid cross-region data transfer costs, deploy your VPC and cluster in the same region as the application VPC you are peering with.
 
-For GCP, you have the choice of selecting all regions automatically, or defining a custom set of regions. If you use automated region selection, the VPC is created globally and assigned to all regions supported by Yugabyte Cloud. If you use custom region selection, you can choose one or more regions, and specify unique CIDR ranges for each; you can also add regions at a later date.
+For GCP, you have the choice of selecting all regions automatically, or defining a custom set of regions. If you use automated region selection, the VPC is created globally and assigned to all regions supported by YugabyteDB Managed. If you use custom region selection, you can choose one or more regions, and specify unique CIDR ranges for each; you can also add regions at a later date.
 
 For AWS, you can only define a single region per VPC.
 
@@ -42,7 +42,7 @@ For AWS, you can only define a single region per VPC.
 
 A VPC is defined by a block of IP addresses, entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
 
-When entering the range for your VPC in Yugabyte Cloud, the size of the network is determined by the prefix length (the number after the `/`). Yugabyte Cloud supports network sizes from `/26` to `/16` as shown in the following table. For typical applications, `/26` is more than sufficient.
+When entering the range for your VPC in YugabyteDB Managed, the size of the network is determined by the prefix length (the number after the `/`). YugabyteDB Managed supports network sizes from `/26` to `/16` as shown in the following table. For typical applications, `/26` is more than sufficient.
 
 | Provider | Network Size (prefix length) | Number of Usable IP Addresses | Notes |
 | --- | --- | --- | --- | --- |
@@ -58,10 +58,10 @@ You can use the IP addresses in the following ranges (per [RFC 1918](https://dat
 
 Addresses have the following restrictions:
 
-- Addresses can overlap with other VPCs, but not if they are peered to the same application VPC. Yugabyte Cloud warns you when you enter an overlapping range.
+- Addresses can overlap with other VPCs, but not if they are peered to the same application VPC. YugabyteDB Managed warns you when you enter an overlapping range.
 - Addresses can't overlap with the CIDR of the application VPC you intend to peer with.
 
-- Yugabyte Cloud reserves the following ranges for internal operations.
+- YugabyteDB Managed reserves the following ranges for internal operations.
 
   | Provider | Range |
   | --- | --- |

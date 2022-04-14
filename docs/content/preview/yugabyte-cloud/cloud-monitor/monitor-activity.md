@@ -6,7 +6,7 @@ headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview:
-    identifier: queries-slow
+    identifier: monitor-activity
     parent: cloud-monitor
     weight: 600
 isTocNested: true
@@ -17,7 +17,7 @@ Review activity on your cluster using the **Activity** tab. The tab lists cluste
 
 To review activity for your entire cloud, use the [**Activity** tab](../../cloud-secure-clusters/cloud-activity/) on the **Admin** page.
 
-![Cloud Cluster Activity tab](/images/yb-cloud/cloud-clusters-activity.png)
+![Cluster Activity tab](/images/yb-cloud/cloud-clusters-activity.png)
 
 ## Logged activity
 

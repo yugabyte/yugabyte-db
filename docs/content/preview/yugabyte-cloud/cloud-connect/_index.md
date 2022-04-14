@@ -1,10 +1,10 @@
 ---
-title: Connect to clusters in Yugabyte Cloud
+title: Connect to clusters in YugabyteDB Managed
 linkTitle: Connect to clusters
-description: Connect to clusters in Yugabyte Cloud.
+description: Connect to clusters in YugabyteDB Managed.
 headcontent: Connect to your cluster using Cloud Shell, a client shell, and from applications.
 image: /images/section_icons/index/quick_start.png
-section: YUGABYTE CLOUD
+section: YUGABYTEDB MANAGED
 aliases:
   - /preview/deploy/yugabyte-cloud/connect-to-clusters/
   - /preview/yugabyte-cloud/connect-to-clusters/
@@ -17,12 +17,12 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Connect to clusters in Yugabyte Cloud in the following ways:
+Connect to clusters in YugabyteDB Managed in the following ways:
 
 | From | How |
 | :--- | :--- |
 | **Browser** | Use Cloud Shell to connect to your database using any modern browser.<br>No need to set up an IP allow list, all you need is your database password.<br>Includes a built-in YSQL quick start guide. |
-| **Desktop** | Install the ysqlsh or ycqlsh client shells to connect to your database from your desktop.<br>Yugabyte Cloud also supports psql and third-party tools such as pgAdmin.<br>Requires your computer to be added to the cluster IP allow list and an SSL connection. |
+| **Desktop** | Install the ysqlsh or ycqlsh client shells to connect to your database from your desktop.<br>YugabyteDB Managed also supports psql and third-party tools such as pgAdmin.<br>Requires your computer to be added to the cluster IP allow list and an SSL connection. |
 | **Applications** | Obtain the parameters needed to connect your application driver to your cluster database. |
 
 <div class="row">
@@ -58,7 +58,7 @@ Connect to clusters in Yugabyte Cloud in the following ways:
         <div class="title">Applications</div>
       </div>
       <div class="body">
-        Connect applications to your Yugabyte Cloud clusters.
+        Connect applications to your YugabyteDB Managed clusters.
       </div>
     </a>
   </div>

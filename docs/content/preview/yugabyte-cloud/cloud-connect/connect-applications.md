@@ -1,7 +1,7 @@
 ---
 title: Connect applications
 linkTitle: Connect applications
-description: Connect applications to Yugabyte Cloud clusters
+description: Connect applications to YugabyteDB Managed clusters
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -15,15 +15,15 @@ showAsideToc: true
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver.
 
-Yugabyte Cloud clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
+YugabyteDB Managed clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
 
-For examples of applications that connect to Yugabyte Cloud using common drivers, refer to [Build an application](../../cloud-quickstart/cloud-build-apps/).
+For examples of applications that connect to YugabyteDB Managed using common drivers, refer to [Build an application](../../cloud-quickstart/cloud-build-apps/).
 
-For examples of connecting applications to Yugabyte Cloud, refer to [Example applications](../../cloud-examples/).
+For examples of connecting applications to YugabyteDB Managed, refer to [Example applications](../../cloud-examples/).
 
 {{< note title="Note" >}}
 
-Before you can connect, your application has to be able to reach your Yugabyte Cloud cluster. To add inbound network access from your application environment to a cluster, you need to add the public IP addresses to the [cluster IP access list](../../cloud-secure-clusters/add-connections). If you are using [VPC peering](../../cloud-basics/cloud-vpcs/), you need to add the public IP addresses of the peered application VPC to the cluster IP allow list.
+Before you can connect, your application has to be able to reach your YugabyteDB Managed cluster. To add inbound network access from your application environment to a cluster, you need to add the public IP addresses to the [cluster IP access list](../../cloud-secure-clusters/add-connections). If you are using [VPC peering](../../cloud-basics/cloud-vpcs/), you need to add the public IP addresses of the peered application VPC to the cluster IP allow list.
 
 {{< /note >}}
 
@@ -68,7 +68,7 @@ sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 
 The connection string includes parameters for TLS settings (`ssl`, `sslmode` and `sslrootcert`). The generated `ysqlsh` connection string uses the `verify-full` SSL mode by default.
 
-If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to Yugabyte Cloud, refer to [Connect Hasura Cloud to Yugabyte Cloud](../../cloud-examples/hasura-cloud/).
+If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to YugabyteDB Managed, refer to [Connect Hasura Cloud to YugabyteDB Managed](../../cloud-examples/hasura-cloud/).
 
 For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
@@ -86,12 +86,12 @@ To connect your application, do the following:
 - Add the YCQL java driver to your dependencies.
 - Initialize SSLContext using the downloaded root certificate.
 
-For an example of building a Java application connected to Yugabyte Cloud using the Yugabyte Java Driver for YCQL v4.6, refer to [Connect a YCQL Java application](../../cloud-examples/connect-ycql-application/).
+For an example of building a Java application connected to YugabyteDB Managed using the Yugabyte Java Driver for YCQL v4.6, refer to [Connect a YCQL Java application](../../cloud-examples/connect-ycql-application/).
 
 <!--
 ## Run the sample application
 
-Yugabyte Cloud comes configured with a sample application that you can use to test your cluster.
+YugabyteDB Managed comes configured with a sample application that you can use to test your cluster.
 
 Before you can connect from your computer, you must add the IP address of the computer to an IP allow list, and the IP allow list must be assigned to the cluster. Refer to [Assign IP Allow Lists](../add-connections/).
 

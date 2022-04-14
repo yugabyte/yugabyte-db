@@ -1,7 +1,7 @@
 ---
 title: Connect via client shells
 linkTitle: Client shell
-description: Connect to Yugabyte Cloud clusters from your desktop using a client shell
+description: Connect to YugabyteDB Managed clusters from your desktop using a client shell
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -76,7 +76,7 @@ For information on using other SSL modes, refer to [SSL modes in YSQL](../../clo
 
 ## Connect using third party clients
 
-Because YugabyteDB is PostgreSQL-compatible, you can use third-party PostgreSQL clients to connect to your YugabyteDB clusters in Yugabyte Cloud.
+Because YugabyteDB is PostgreSQL-compatible, you can use third-party PostgreSQL clients to connect to your YugabyteDB clusters in YugabyteDB Managed.
 
 To connect, follow the client's configuration steps for PostgreSQL, and use the following values:
 

@@ -58,25 +58,25 @@ showAsideToc: true
   </li>
 </ul>
 
-The following tutorial creates a simple Go application that connects to a YugabyteDB cluster using the [pq driver](https://godoc.org/github.com/lib/pq), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
+The following tutorial creates a Go application that connects to a YugabyteDB cluster using the [pq driver](https://godoc.org/github.com/lib/pq), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
 
 ## Prerequisites
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use [Yugabyte Cloud](http://cloud.yugabyte.com/register) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
+- YugabyteDB is up and running. If you are new to YugabyteDB, download, install, and start YugabyteDB by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use [YugabyteDB Managed](http://cloud.yugabyte.com/register) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
 
 - [Go version 1.8](https://golang.org/dl/), or later, is installed.
 
 ### SSL/TLS configuration
 
-You can choose to enable or disable SSL for your local YugabyteDB cluster. Refer [here](../../../../secure/tls-encryption/client-to-server/) to learn about configuring SSL/TLS for your YugabyteDB cluster. Yugabyte Cloud requires SSL connections, and SSL/TLS is enabled by default for client-side authentication.
+You can choose to enable or disable SSL for your local YugabyteDB cluster. Refer [here](../../../../secure/tls-encryption/client-to-server/) to learn about configuring SSL/TLS for your YugabyteDB cluster. YugabyteDB Managed requires SSL connections, and SSL/TLS is enabled by default for client-side authentication.
 
 #### CA certificate
 
 Use the  [CA certficate](../../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file) generated above as part of the SSL/TLS configuration of your cluster.
 
-In case of a Yugabyte Cloud cluster, to download the CA certificate for your cluster in Yugabyte Cloud, do the following:
+In case of a YugabyteDB Managed cluster, to download the CA certificate for your cluster in YugabyteDB Managed, do the following:
 
 1. On the **Clusters** tab, select a cluster.
 
@@ -86,7 +86,7 @@ In case of a Yugabyte Cloud cluster, to download the CA certificate for your clu
 
 #### OpenSSL
 
-Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. Yugabyte Cloud clusters are always SSL/TLS enabled.
+Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. YugabyteDB Managed clusters are always SSL/TLS enabled.
 
 The following table summarizes the SSL modes and their support in the driver:
 
@@ -99,7 +99,7 @@ The following table summarizes the SSL modes and their support in the driver:
 | verify-ca | Supported |
 | verify-full | Supported |
 
-Yugabyte Cloud requires SSL/TLS, and connections using SSL mode `disable` will fail.
+YugabyteDB Managed requires SSL/TLS, and connections using SSL mode `disable` will fail.
 
 ### Go PostgreSQL driver
 
@@ -197,10 +197,10 @@ func main() {
 }
 ```
 
-The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using Yugabyte Cloud, replace the **const** values in the file as follows:
+The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using YugabyteDB Managed, replace the **const** values in the file as follows:
 
 - **host** - The host address of your cluster. The host address is displayed on the cluster Settings tab.
-- **user** - Your Yugabyte database username. In Yugabyte Cloud, the default user is **admin**.
+- **user** - Your Yugabyte database username. In YugabyteDB Managed, the default user is **admin**.
 - **password** - Your Yugabyte database password.
 - **dbname** - The name of the Yugabyte database. The default Yugabyte database name is **yugabyte**.
 
@@ -208,7 +208,7 @@ The **const** values are set to the defaults for a local installation of Yugabyt
 
 ## Set SSL/TLS related variables
 
-For a Yugabyte Cloud cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
+For a YugabyteDB Managed cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
 
    ```sh
     $ export PGSSLMODE=verify-ca

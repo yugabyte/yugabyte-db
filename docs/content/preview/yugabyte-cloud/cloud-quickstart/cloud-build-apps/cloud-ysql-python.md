@@ -2,7 +2,7 @@
 title: Build a Python application that uses YSQL
 headerTitle: Build a Python application
 linkTitle: Python
-description: Build a simple Python application using the Python psycopg2 driver and using the YSQL API to connect to and interact with a Yugabyte Cloud cluster.
+description: Build a simple Python application using the Python psycopg2 driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 menu:
   preview:
     parent: cloud-build-apps
@@ -14,15 +14,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following tutorial shows a small [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) that connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](../../../../reference/drivers/ysql-client-drivers/#psycopg2) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in Python.
+The following tutorial shows a small [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) that connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](../../../../reference/drivers/ysql-client-drivers/#psycopg2) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Python.
 
 ## Prerequisites
 
 - Python 3.6 or later (Python 3.9.7 or later if running macOS on Apple silicon).
 
-### Yugabyte Cloud
+### YugabyteDB Managed
 
-- You have a cluster deployed in Yugabyte Cloud. To get started, use the [Quick start](../../).
+- You have a cluster deployed in YugabyteDB Managed. To get started, use the [Quick start](../../).
 - You downloaded the cluster CA certificate. Refer to [Download your cluster certificate](../../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 - You have added your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../../cloud-secure-clusters/add-connections/).
 
@@ -42,12 +42,12 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 2. Set the following configuration parameter constants:
 
-    - **host** - the host name of your YugabyteDB cluster. To obtain a Yugabyte Cloud cluster host name, sign in to Yugabyte Cloud, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
+    - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
     - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
     - **dbName** - the name of the database you are connecting to (the default database is named `yugabyte`).
-    - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in Yugabyte Cloud, these can be found in the credentials file you downloaded.
-    - **sslMode** - the SSL mode to use. Yugabyte Cloud [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
-    - **sslRootCert** - the full path to the Yugabyte Cloud cluster CA certificate.
+    - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
+    - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
+    - **sslRootCert** - the full path to the YugabyteDB Managed cluster CA certificate.
 
 3. Save the file.
 
@@ -79,7 +79,7 @@ name = Jessica, age = 28, country = USA, balance = 9200
 name = John, age = 28, country = Canada, balance = 9800
 ```
 
-You have successfully executed a basic Python application that works with Yugabyte Cloud.
+You have successfully executed a basic Python application that works with YugabyteDB Managed.
 
 ## Explore the application logic
 
@@ -184,6 +184,6 @@ except (Exception, psycopg2.DatabaseError) as e:
 
 [Explore more applications](../../../cloud-examples/)
 
-[Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
+[Deploy clusters in YugabyteDB Managed](../../../cloud-basics)
 
-[Connect to applications in Yugabyte Cloud](../../../cloud-connect/connect-applications/)
+[Connect to applications in YugabyteDB Managed](../../../cloud-connect/connect-applications/)

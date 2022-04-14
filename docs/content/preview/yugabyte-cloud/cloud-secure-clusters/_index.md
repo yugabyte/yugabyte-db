@@ -1,25 +1,25 @@
 ---
 title: Secure clusters
-headerTitle: Secure clusters in Yugabyte Cloud
+headerTitle: Secure clusters in YugabyteDB Managed
 linkTitle: Secure clusters
-description: Secure clusters in Yugabyte Cloud.
+description: Secure clusters in YugabyteDB Managed.
 image: /images/section_icons/index/secure.png
-headcontent: Configure the security features of your Yugabyte Cloud clusters.
-section: YUGABYTE CLOUD
+headcontent: Configure the security features of your YugabyteDB Managed clusters.
+section: YUGABYTEDB MANAGED
 menu:
   preview:
     identifier: cloud-secure-clusters
 weight: 30
 ---
 
-Yugabyte Cloud clusters include the following security features:
+YugabyteDB Managed clusters include the following security features:
 
 | Feature | Description |
 | :--- | :--- |
-| **Network authorization** | Access to Yugabyte Cloud clusters is limited to IP addresses that you explicitly allow using [IP allow lists](add-connections/).<br>You can further enhance security and lower network latencies by deploying clusters in a [virtual private cloud (VPC) network](../cloud-basics/cloud-vpcs/). |
+| **Network authorization** | Access to YugabyteDB Managed clusters is limited to IP addresses that you explicitly allow using [IP allow lists](add-connections/).<br>You can further enhance security and lower network latencies by deploying clusters in a [virtual private cloud (VPC) network](../cloud-basics/cloud-vpcs/). |
 | **Database authorization** | YugabyteDB uses [role-based access control](cloud-users/) for database authorization. Using the default admin user that is created when a cluster is deployed, you can [add additional roles and users](add-users/) to provide custom access to database resources to other team members and database clients. |
-| **Encryption in transit** | Yugabyte Cloud uses [encryption-in-transit](cloud-authentication/) for client-server and intra-node connectivity. |
-| **Auditing** | Yugabyte Cloud provides detailed [tracking of activity](cloud-activity/) on your cloud, including cluster creation, changes to clusters, changes to IP allow lists, backup activity, and billing. |
+| **Encryption in transit** | YugabyteDB Managed uses [encryption-in-transit](cloud-authentication/) for client-server and intra-node connectivity. |
+| **Auditing** | YugabyteDB Managed provides detailed [tracking of activity](cloud-activity/) on your cloud, including cluster creation, changes to clusters, changes to IP allow lists, backup activity, and billing. |
 
 <div class="row">
 
@@ -42,7 +42,7 @@ Yugabyte Cloud clusters include the following security features:
         <div class="title">Database authorization</div>
       </div>
       <div class="body">
-        Role-based access control in Yugabyte Cloud databases.
+        Role-based access control in YugabyteDB Managed databases.
       </div>
     </a>
   </div>
@@ -66,7 +66,7 @@ Yugabyte Cloud clusters include the following security features:
         <div class="title">Encryption in transit</div>
       </div>
       <div class="body">
-        Yugabyte Cloud clusters use TLS and digital certificates to secure data in transit.
+        YugabyteDB Managed clusters use TLS and digital certificates to secure data in transit.
       </div>
     </a>
   </div>
@@ -75,10 +75,10 @@ Yugabyte Cloud clusters include the following security features:
     <a class="section-link icon-offset" href="cloud-activity/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Audit cloud activity</div>
+        <div class="title">Audit account activity</div>
       </div>
       <div class="body">
-        Audit cloud activity, including changes to clusters, billing, allow lists, and more.
+        Audit account activity, including changes to clusters, billing, allow lists, and more.
       </div>
     </a>
   </div>

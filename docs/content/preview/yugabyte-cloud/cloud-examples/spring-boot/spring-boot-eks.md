@@ -1,7 +1,7 @@
 <!--
 title: Deploy a Spring application on Amazon EKS
 linkTitle: Deploy on Amazon EKS
-description: Deploy a Spring application connected to Yugabyte Cloud on Amazon Elastic Kubernetes Service (EKS).
+description: Deploy a Spring application connected to YugabyteDB Managed on Amazon Elastic Kubernetes Service (EKS).
 menu:
   preview:
     parent: spring-boot
@@ -12,9 +12,9 @@ isTocNested: true
 showAsideToc: true
 -->
 
-Deploy a Spring application connected to Yugabyte Cloud on Amazon Elastic Kubernetes Service (EKS) by following the steps below.
+Deploy a Spring application connected to YugabyteDB Managed on Amazon Elastic Kubernetes Service (EKS) by following the steps below.
 
-This example uses the PetClinic application, connected to Yugabyte Cloud and containerized using Docker; refer to [Connect a Spring Boot application](../../../cloud-basics/connect-application/).
+This example uses the PetClinic application, connected to YugabyteDB Managed and containerized using Docker; refer to [Connect a Spring Boot application](../../../cloud-basics/connect-application/).
 
 ## Prerequisites
 
@@ -207,7 +207,7 @@ After your cluster has been created, do the following:
 
     Replace `[aws_acct_id]` with your AWS account ID, and `[aws_region]` with the region you selected in AWS.
     \
-    Replace `[host]` and `[port]` with the host and port number of your Yugabyte Cloud cluster. To obtain your cluster connection parameters, sign in to Yugabyte Cloud, select your cluster and navigate to [Settings](../../../cloud-clusters/configure-clusters).
+    Replace `[host]` and `[port]` with the host and port number of your YugabyteDB Managed cluster. To obtain your cluster connection parameters, sign in to YugabyteDB Managed, select your cluster and navigate to [Settings](../../../cloud-clusters/configure-clusters).
 
 1. Create the Service and Deployment on your EKS cluster.
 
@@ -234,4 +234,4 @@ After your cluster has been created, do the following:
 
 Go to the External IP address listed in the output to view the application.
 
-The PetClinic application is now connected to your Yugabyte Cloud cluster and running on Kubernetes on EKS.
+The PetClinic application is now connected to your YugabyteDB Managed cluster and running on Kubernetes on EKS.

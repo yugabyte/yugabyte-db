@@ -153,4 +153,4 @@ Deleting the blog
 ## Next steps
 
 - Explore [scaling C# applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop C# applications with Yugabyte Cloud](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/).
+- Learn how to [develop C# applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/).

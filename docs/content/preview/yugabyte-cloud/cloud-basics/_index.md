@@ -1,10 +1,10 @@
 ---
-title: Deploy clusters in Yugabyte Cloud
+title: Deploy clusters in YugabyteDB Managed
 linkTitle: Deploy clusters
-description: Deploy clusters in Yugabyte Cloud.
+description: Deploy clusters in YugabyteDB Managed.
 headcontent: Deploy production-ready clusters.
 image: /images/section_icons/index/quick_start.png
-section: YUGABYTE CLOUD
+section: YUGABYTEDB MANAGED
 menu:
   preview:
     identifier: cloud-basics
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Using Yugabyte Cloud, you can create single region clusters that can be deployed across multiple and single availability zones.
+Using YugabyteDB Managed, you can create single region clusters that can be deployed across multiple and single availability zones.
 
 <div class="row">
 
@@ -36,7 +36,7 @@ Using Yugabyte Cloud, you can create single region clusters that can be deployed
         <div class="title">VPC networks</div>
       </div>
       <div class="body">
-        VPC networking in Yugabyte Cloud.
+        VPC networking in YugabyteDB Managed.
       </div>
     </a>
   </div>
@@ -48,7 +48,7 @@ Using Yugabyte Cloud, you can create single region clusters that can be deployed
         <div class="title">Create a free cluster</div>
       </div>
       <div class="body">
-        Create a free cluster in Yugabyte Cloud.
+        Create a free cluster in YugabyteDB Managed.
       </div>
     </a>
   </div>
@@ -60,7 +60,7 @@ Using Yugabyte Cloud, you can create single region clusters that can be deployed
         <div class="title">Create a standard cluster</div>
       </div>
       <div class="body">
-        Create a new standard cluster in Yugabyte Cloud.
+        Create a new standard cluster in YugabyteDB Managed.
       </div>
     </a>
   </div>

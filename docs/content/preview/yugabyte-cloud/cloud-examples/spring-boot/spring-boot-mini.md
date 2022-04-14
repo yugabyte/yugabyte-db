@@ -2,7 +2,7 @@
 title: Deploy a Spring application using minikube
 headerTitle: Deploy a Spring application using minikube
 linkTitle: Deploy on minikube
-description: Deploy a Spring application connected to Yugabyte Cloud on Kubernetes locally using minikube.
+description: Deploy a Spring application connected to YugabyteDB Managed on Kubernetes locally using minikube.
 menu:
   preview:
     parent: spring-boot
@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 -->
 
-Deploy a Spring application connected to Yugabyte Cloud on Kubernetes locally using minikube by following the steps below.
+Deploy a Spring application connected to YugabyteDB Managed on Kubernetes locally using minikube by following the steps below.
 
-This example uses the PetClinic application, connected to Yugabyte Cloud and containerized using Docker; refer to [Connect a Spring Boot application](../../../cloud-basics/connect-application/).
+This example uses the PetClinic application, connected to YugabyteDB Managed and containerized using Docker; refer to [Connect a Spring Boot application](../../../cloud-basics/connect-application/).
 
 ## Prerequisites
 
@@ -169,7 +169,7 @@ To deploy the application, you first point your shell to minikube’s Docker dae
               -Dspring.datasource.initialization-mode=never"
     ```
 
-    Replace `[host]` and `[port]` with the host and port number of your Yugabyte Cloud cluster. To obtain your cluster connection parameters, sign in to Yugabyte Cloud, select you cluster and navigate to [Settings](../../../cloud-clusters/configure-clusters).
+    Replace `[host]` and `[port]` with the host and port number of your YugabyteDB Managed cluster. To obtain your cluster connection parameters, sign in to YugabyteDB Managed, select you cluster and navigate to [Settings](../../../cloud-clusters/configure-clusters).
 
 1. Create the service and deployment in minikube using the manifest file.
 
@@ -196,7 +196,7 @@ To deploy the application, you first point your shell to minikube’s Docker dae
 
 1. Go to the local IP and Port you configured in your manifest file (<http://127.0.0.1:8080>).
 
-The PetClinic sample application is now connected to your Yugabyte Cloud cluster and running on Kubernetes locally on minikube.
+The PetClinic sample application is now connected to your YugabyteDB Managed cluster and running on Kubernetes locally on minikube.
 
 {{< tip title="Tip" >}}
 

@@ -1,7 +1,7 @@
 ---
 title: Cluster costs
 linkTitle: Cluster costs
-description: Yugabyte Cloud cluster configuration costs.
+description: YugabyteDB Managed cluster configuration costs.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -13,11 +13,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-There are no set-up charges or commitments to begin using Yugabyte Cloud. At the end of the month, you are automatically charged for that month's usage. You can view your charges for the current billing period at any time by selecting **Invoices** on the **Billing** tab of the **Admin** page. Refer to [Manage your billing profile and payment method](../cloud-billing-profile/).
+There are no set-up charges or commitments to begin using YugabyteDB Managed. At the end of the month, you are automatically charged for that month's usage. You can view your charges for the current billing period at any time by selecting **Invoices** on the **Billing** tab of the **Admin** page. Refer to [Manage your billing profile and payment method](../cloud-billing-profile/).
 
-Only the cloud account Admin user (the user who created the Yugabyte Cloud account) can access the billing and payment details.
+Only an Admin user (the user who created the YugabyteDB Managed account) can access the billing and payment details.
 
-Your bill is calculated based on your usage of the following cloud dimensions:
+Your bill is calculated based on your usage of the following dimensions:
 
 - Instance vCPU capacity
 - Disk storage
@@ -29,7 +29,7 @@ Instance vCPU capacity makes up the majority of your bill, and is the easiest to
 | Dimension | Allowance/vCPU per month |
 |---|---|
 | Disk storage | 50 GB |
-| Cloud backup storage | 100 GB |
+| Backup storage | 100 GB |
 | Data transfer – Same Region | 1000 GB |
 | Data transfer – Cross Region (APAC) | 10 GB |
 | Data transfer – Cross Region (Other regions) | 10 GB |
@@ -37,11 +37,11 @@ Instance vCPU capacity makes up the majority of your bill, and is the easiest to
 
 You can see the approximate cost for your vCPUs when [creating](../../cloud-basics/create-clusters/) and [scaling](../../cloud-clusters/configure-clusters/) clusters, as shown in the following illustration. **+ Usage** in this context refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer.
 
-![Cloud Cluster Settings Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
+![Cluster Settings Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 
 ## Instance vCPU capacity costs
 
-Instance vCPU capacity cost is the cost for the use of the total number of vCPUs in your cloud account.
+Instance vCPU capacity cost is the cost for the use of the total number of vCPUs in your account.
 
 {{< tip title="Rate card" >}}
 
@@ -234,7 +234,7 @@ The free allowance for data out transfers is 10GB per month for every 1 vCPU per
   - Re-read data that already exists on the client.
   - Re-write existing data to your database deployment.
 
-- If possible, configure your client driver to use wire protocol compression to communicate with the YugabyteDB cluster. Yugabyte Cloud always compresses intra-cluster communication.
+- If possible, configure your client driver to use wire protocol compression to communicate with the YugabyteDB cluster. YugabyteDB Managed always compresses intra-cluster communication.
 
 ## Paused cluster costs
 

@@ -1,7 +1,7 @@
 ---
 title: Build a Node.js application that uses YSQL
 headerTitle: Build a Node.js application
-description: Build a simple Node.js application using the driver and using the YSQL API to connect to and interact with a Yugabyte Cloud cluster.
+description: Build a simple Node.js application using the driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 menu:
   preview:
     parent: cloud-build-apps
@@ -13,15 +13,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following tutorial shows a small [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres module](../../../../reference/drivers/ysql-client-drivers/#node-postgres) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in Node.js.
+The following tutorial shows a small [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres module](../../../../reference/drivers/ysql-client-drivers/#node-postgres) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Node.js.
 
 ## Prerequisites
 
 In addition to the latest version of [Node.js](https://nodejs.org/en/download/), this tutorial requires the following.
 
-### Yugabyte Cloud
+### YugabyteDB Managed
 
-- You have a cluster deployed in Yugabyte Cloud. To get started, use the [Quick start](../../).
+- You have a cluster deployed in YugabyteDB Managed. To get started, use the [Quick start](../../).
 - You downloaded the cluster CA certificate. Refer to [Download your cluster certificate](../../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 - You have added your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../../cloud-secure-clusters/add-connections/).
 
@@ -41,11 +41,11 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 2. Set the following configuration parameter constants:
 
-    - **host** - the host name of your YugabyteDB cluster. To obtain a Yugabyte Cloud cluster host name, sign in to Yugabyte Cloud, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
+    - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
     - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
     - **database** - the name of the database you are connecting to (the default database is named `yugabyte`).
-    - **user** and **password** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in Yugabyte Cloud, these can be found in the credentials file you downloaded.
-    - **ssl** - Yugabyte Cloud [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql). To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the Yugabyte Cloud cluster CA certificate.
+    - **user** and **password** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
+    - **ssl** - YugabyteDB Managed [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql). To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the YugabyteDB Managed cluster CA certificate.
 
 3. Save the file.
 
@@ -83,7 +83,7 @@ name = Jessica, age = 28, country = USA, balance = 9200
 name = John, age = 28, country = Canada, balance = 9800
 ```
 
-You have successfully executed a basic Node.js application that works with Yugabyte Cloud.
+You have successfully executed a basic Node.js application that works with YugabyteDB Managed.
 
 ## Explore the application logic
 
@@ -188,6 +188,6 @@ try {
 
 [Explore more applications](../../../cloud-examples/)
 
-[Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
+[Deploy clusters in YugabyteDB Managed](../../../cloud-basics)
 
-[Connect to applications in Yugabyte Cloud](../../../cloud-connect/connect-applications/)
+[Connect to applications in YugabyteDB Managed](../../../cloud-connect/connect-applications/)

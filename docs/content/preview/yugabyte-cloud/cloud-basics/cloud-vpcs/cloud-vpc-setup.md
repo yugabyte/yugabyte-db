@@ -2,7 +2,7 @@
 title: Set up a VPC network
 headerTitle:
 linkTitle: Set up a VPC network
-description: How to set up and VPC network in Yugabyte Cloud.
+description: How to set up and VPC network in YugabyteDB Managed.
 menu:
   preview:
     identifier: cloud-vpc-setup
@@ -56,4 +56,4 @@ To create a VPC network, you need to complete the following tasks:
 
     - To communicate with a cluster, networks must be added to the cluster IP allow list.
 
-With the exception of 3, these tasks are performed in Yugabyte Cloud.
+With the exception of 3, these tasks are performed in YugabyteDB Managed.

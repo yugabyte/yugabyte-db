@@ -1,7 +1,7 @@
 ---
 title: Maintenance windows
 linkTitle: Maintenance windows
-description: Manage maintenance windows for clusters in Yugabyte Cloud.
+description: Manage maintenance windows for clusters in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/manage/backup.png
 menu:
@@ -25,7 +25,7 @@ You can manage when maintenance is done on standard clusters (these features are
 
 You set the cluster maintenance window, exclusion periods, and review upcoming maintenance events using the cluster **Maintenance** tab.
 
-![Cloud Cluster Maintenance page](/images/yb-cloud/cloud-clusters-maintenance.png)
+![Cluster Maintenance page](/images/yb-cloud/cloud-clusters-maintenance.png)
 
 To view details of upcoming scheduled maintenance, click the **Upcoming Maintenance** badge, or select the maintenance in the **Scheduled Maintenance** list to display the **Maintenance Details**.
 
