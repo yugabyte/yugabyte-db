@@ -253,6 +253,7 @@ The following libraries are officially supported by YugabyteDB.
       Build applications using Scala.
     </div>
   </a>
-</div> -->
+</div>
 
 </div>
+-->

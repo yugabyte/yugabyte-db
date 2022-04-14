@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[Diesel](https://diesel.rs/) is a safe, extensible object-relational mapping (ORM) tool and query builder for [Rust](https://www.rust-lang.org/). Diesel lets you create safe and composable abstractions over queries, and eliminates the possibility of incorrect database interactions at compile time. It's designed to be abstracted over, and enables you to write reusable code and think in terms of your problem domain.
+[Diesel](https://diesel.rs/) is a safe, extensible object-relational mapping (ORM) tool and query builder for [Rust](https://www.rust-lang.org/). Diesel lets you create safe and composable abstractions over queries, and eliminates the possibility of incorrect database interactions at compile time. It's designed to be abstracted over, enabling you to write reusable code and think in terms of your problem domain.
 
-YugabyteDB YSQL API has full compatibility with Diesel ORM for Data persistence in Rust applications. This page provides details for getting started with Diesel ORM for connecting to YugabyteDB.
+YugabyteDB's YSQL API is fully compatible with Diesel ORM for data persistence in Rust applications. This page provides details for getting started with Diesel ORM for connecting to YugabyteDB.
 
 ## Create a new Rust-Diesel project
 
@@ -27,20 +27,20 @@ Ensure you have a recent version of Rust and Cargo installed. Then, do the follo
    $ cargo new --lib diesel_demo && cd diesel_demo
    ```
 
-1. Add the following dependency to the project's `Cargo.toml` file, in the `[dependencies]` section:
+1. Add the following to the project's `Cargo.toml` file, in the `[dependencies]` section:
 
    ```toml
    diesel = { version = "1.4.4", features = ["postgres"] }
    dotenv = "0.15.0"
    ```
 
-1. Install the Diesel command-line interface for PostgreSQl:
+1. Install the Diesel command-line interface for PostgreSQL:
 
    ```shell
    $ cargo install diesel_cli --no-default-features --features postgres
    ```
 
-1. Next, you need to tell Diesel where to find your database. In the project's main directory, create a file called `.env` with the following content:
+1. Next, tell Diesel where to find your database. In the project's main directory, create a file called `.env` with the following content:
 
    ```env
    DATABASE_URL=postgres://yugabyte:yugabyte@localhost:5433/ysql_diesel
@@ -55,7 +55,7 @@ Ensure you have a recent version of Rust and Cargo installed. Then, do the follo
    \
    This creates an empty migrations directory that you can use to manage your schema. It also creates the `ysql_diesel` database.
 
-## Build the REST API using Diesel ORM with YugabyteDB
+## Build the REST API
 
 Migrations allow you to evolve the database schema over time. Each migration can be applied (via `up.sql`) or reverted (via `down.sql`).
 
@@ -86,6 +86,7 @@ Migrations allow you to evolve the database schema over time. Each migration can
    ```
 
    {{<note title="Note">}}
+
 When you ran `diesel setup`, it created a file called `diesel.toml`. This file tells Diesel to create and maintain a file tracking your schema. After running the migrations, `src/schema.rs` gets populated with employee table information by the Diesel ORM as follows:
 
 ```rust
@@ -220,7 +221,7 @@ table! {
    ```
 
    \
-   This first establishes the database connection, asks for details of the employee to be inserted, then inserts them into the employee table.
+   This establishes the database connection, asks for details of the employee to be inserted, and inserts them into the employee table.
 
 1. Create `show_employees.rs` and add the following code:
 
@@ -275,7 +276,7 @@ table! {
    ```
 
    \
-   This first prompts the user to enter the number of employees to display employees information according to the order of employee IDs.
+   This prompts the user to enter the number of employees to display employees information according to the order of employee IDs.
 
 ## Run the APIs
 
