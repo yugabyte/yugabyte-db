@@ -78,6 +78,8 @@ CLOUD_CFG_FILE_NAME = 'cloud_cfg'
 CLOUD_CMD_MAX_RETRIES = 10
 LOCAL_FILE_MAX_RETRIES = 3
 RESTORE_DOWNLOAD_LOOP_MAX_RETRIES = 20
+REPLICAS_SEARCHING_LOOP_MAX_RETRIES = 30
+SLEEP_IN_REPLICAS_SEARCHING_ROUND_SEC = 20  # 30*20 sec = 10 minutes
 
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
@@ -894,7 +896,7 @@ class YBBackup:
         self.k8s_namespace_to_cfg = {}
         self.timer = BackupTimer()
         self.tserver_ip_to_web_port = {}
-        self.ts_secondary_to_primary_ip_map = {}
+        self.secondary_to_primary_ip_map = {}
         self.region_to_location = {}
         self.database_version = YBVersion("unknown")
         self.manifest = YBManifest(self)
@@ -990,6 +992,8 @@ class YBBackup:
             '--ts_web_hosts_ports', help="Custom TS HTTP hosts and ports. "
                                          "In form: <IP>:<Port>,<IP>:<Port>")
         parser.add_argument(
+            # Keeping the "ts_" prefix in the name for backward compatibility only.
+            # In fact this is IP mapping for TServers and Masters.
             '--ts_secondary_ip_map', default=None,
             help="Map of secondary IPs to primary for ensuring ssh connectivity")
         parser.add_argument(
@@ -1166,20 +1170,7 @@ class YBBackup:
             logging.info('Checking whether NFS backup storage path mounted on TServers or not')
             with terminating(ThreadPool(self.args.parallelism)) as pool:
                 self.pools.append(pool)
-                tablets_by_leader_ip = []
-
-                output = self.run_yb_admin(['list_all_tablet_servers'])
-                for line in output.splitlines():
-                    if LEADING_UUID_RE.match(line):
-                        fields = split_by_space(line)
-                        ip_port = fields[1]
-                        state = fields[3]
-                        (ip, port) = ip_port.split(':')
-                        if state == 'ALIVE':
-                            if self.ts_secondary_to_primary_ip_map:
-                                ip = self.ts_secondary_to_primary_ip_map[ip]
-                            tablets_by_leader_ip.append(ip)
-                tserver_ips = list(tablets_by_leader_ip)
+                tserver_ips = self.get_live_tservers()
                 SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
 
         self.args.backup_location = self.args.backup_location or self.args.s3bucket
@@ -1247,7 +1238,7 @@ class YBBackup:
         self.storage = BACKUP_STORAGE_ABSTRACTIONS[self.args.storage_type](options)
 
         if self.args.ts_secondary_ip_map is not None:
-            self.ts_secondary_to_primary_ip_map = json.loads(self.args.ts_secondary_ip_map)
+            self.secondary_to_primary_ip_map = json.loads(self.args.ts_secondary_ip_map)
 
         if self.is_k8s():
             self.k8s_namespace_to_cfg = json.loads(self.args.k8s_config)
@@ -1344,11 +1335,12 @@ class YBBackup:
             output = self.run_yb_admin(['list_all_masters'])
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
-                    (uuid, ip_port, state, role) = split_by_tab(line)
-                    (ip, port) = ip_port.split(':')
-                    if self.ts_secondary_to_primary_ip_map:
-                        ip = self.ts_secondary_to_primary_ip_map[ip]
+                    fields = split_by_tab(line)
+                    (ip_port, state, role) = (fields[1], fields[2], fields[3])
                     if state == 'ALIVE':
+                        (ip, port) = ip_port.split(':')
+                        if self.secondary_to_primary_ip_map:
+                            ip = self.secondary_to_primary_ip_map[ip]
                         alive_master_ip = ip
                     if role == 'LEADER':
                         break
@@ -1356,23 +1348,49 @@ class YBBackup:
 
         return self.leader_master_ip
 
+    def get_live_tservers(self):
+        tserver_ips = []
+        output = self.run_yb_admin(['list_all_tablet_servers'])
+        for line in output.splitlines():
+            if LEADING_UUID_RE.match(line):
+                fields = split_by_space(line)
+                (ip_port, state) = (fields[1], fields[3])
+                if state == 'ALIVE':
+                    (ip, port) = ip_port.split(':')
+                    if self.secondary_to_primary_ip_map:
+                        ip = self.secondary_to_primary_ip_map[ip]
+                    tserver_ips.append(ip)
+        return tserver_ips
+
     def get_live_tserver_ip(self):
         if not self.live_tserver_ip:
-            output = self.run_yb_admin(['list_all_tablet_servers'])
-            for line in output.splitlines():
-                if LEADING_UUID_RE.match(line):
-                    fields = split_by_space(line)
-                    ip_port = fields[1]
-                    state = fields[3]
-                    (ip, port) = ip_port.split(':')
-                    if self.ts_secondary_to_primary_ip_map:
-                        ip = self.ts_secondary_to_primary_ip_map[ip]
-                    if state == 'ALIVE':
-                        self.live_tserver_ip = ip
-                        break
+            alive_ts_ips = self.get_live_tservers()
+            if alive_ts_ips:
+                leader_master = self.get_leader_master_ip()
+                master_hosts = {hp.split(':')[0] for hp in self.args.masters.split(",")}
+                # Exclude the Master Leader because the host has maximum network pressure.
+                # Let's try to use a follower Master node instead.
+                master_hosts.discard(leader_master)
+                selected_ts_ips = master_hosts.intersection(alive_ts_ips)
+                if not selected_ts_ips:
+                    # Try the Master Leader if all Master followers are excluded.
+                    selected_ts_ips = {leader_master}.intersection(alive_ts_ips)
+
+                # For rebalancing the user usually adds/removes a TS node. That's why we prefer
+                # to use a Master node to prevent selecting of a just ADDED OR a just REMOVED TS.
+                # Return the first alive TS if the IP is in the list of Master IPs.
+                # Else return just the first alive TS.
+                self.live_tserver_ip =\
+                    selected_ts_ips.pop() if selected_ts_ips else alive_ts_ips[0]
+
+                if self.args.verbose:
+                    logging.info("Selecting alive TS {} from {}".format(
+                        self.live_tserver_ip, alive_ts_ips))
+            else:
+                raise BackupException("Cannot get alive TS: {}".format(alive_ts_ips))
 
         if not self.live_tserver_ip:
-            raise BackupException("Cannot get alive TS:\n{}".format(output))
+            raise BackupException("No alive TS: {}".format(self.live_tserver_ip))
 
         return self.live_tserver_ip
 
@@ -1429,7 +1447,7 @@ class YBBackup:
     def get_master_addresses_for_servers(self):
 
         def get_key(val):
-            for key, value in self.ts_secondary_to_primary_ip_map.items():
+            for key, value in self.secondary_to_primary_ip_map.items():
                 if val == value:
                     return key
 
@@ -1438,7 +1456,7 @@ class YBBackup:
             # We are using the local yb-admin, so we should use the management addresses
             return master_addresses
 
-        if self.ts_secondary_to_primary_ip_map:
+        if self.secondary_to_primary_ip_map:
             master_list_for_servers = list()
             master_address_list = master_addresses.split(',')
             for master in master_address_list:
@@ -1718,11 +1736,10 @@ class YBBackup:
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
                     fields = split_by_tab(line)
-                    tablet_id = fields[0]
-                    tablet_leader_host_port = fields[2]
+                    (tablet_id, tablet_leader_host_port) = (fields[0], fields[2])
                     (ts_host, ts_port) = tablet_leader_host_port.split(":")
-                    if self.ts_secondary_to_primary_ip_map:
-                        ts_host = self.ts_secondary_to_primary_ip_map[ts_host]
+                    if self.secondary_to_primary_ip_map:
+                        ts_host = self.secondary_to_primary_ip_map[ts_host]
 
                     if ts_host not in region_by_ts:
                         region = self.region_for_ts(ts_host)
@@ -3012,32 +3029,65 @@ class YBBackup:
         parallelism = min(16, (self.args.parallelism + 1) // 2)
         pool = ThreadPool(parallelism)
         self.pools.append(pool)
-        tablets_by_tserver_ip = {}
         parallel_find_tservers = MultiArgParallelCmd(self.run_yb_admin)
 
         # First construct all the yb-admin commands to send.
-        for new_id in snapshot_metadata['tablet']:
-            parallel_find_tservers.add_args(('list_tablet_servers', new_id))
+        for new_tablet_id in snapshot_metadata['tablet']:
+            parallel_find_tservers.add_args(('list_tablet_servers', new_tablet_id))
 
-        # Run all the list_tablet_servers in parallel.
-        output = parallel_find_tservers.run(pool)
+        num_loops = 0
+        # Continue searching for TServers until all tablet peers are either LEADER or FOLLOWER
+        # or READ_REPLICA. This is done to avoid errors later in the restore_snapshot phase.
+        while num_loops < REPLICAS_SEARCHING_LOOP_MAX_RETRIES:
+            logging.info('[app] Start searching for tablet replicas (try {})'.format(num_loops))
+            num_loops += 1
+            found_bad_ts = False
+            tablets_by_tserver_ip = {}
 
-        # Process the output.
-        for cmd in output:
-            # Pull the new_id value out from the command string.
-            matches = LIST_TABLET_SERVERS_RE.match(str(cmd))
-            new_id = matches.group(1)
+            # Run all the list_tablet_servers in parallel.
+            output = parallel_find_tservers.run(pool)
 
-            # For each output line, get the tablet servers ips for this tablet id.
-            for line in output[cmd].splitlines():
-                if LEADING_UUID_RE.match(line):
-                    (ts_uuid, ts_ip_port, role) = split_by_tab(line)
-                    (ts_ip, ts_port) = ts_ip_port.split(':')
-                    if self.ts_secondary_to_primary_ip_map:
-                        ts_ip = self.ts_secondary_to_primary_ip_map[ts_ip]
-                    tablets_by_tserver_ip.setdefault(ts_ip, set()).add(new_id)
+            # Process the output.
+            for cmd in output:
+                # Pull the new_id value out from the command string.
+                matches = LIST_TABLET_SERVERS_RE.match(str(cmd))
+                tablet_id = matches.group(1)
+                num_ts = 0
 
-        return tablets_by_tserver_ip
+                # For each output line, get the tablet servers ips for this tablet id.
+                for line in output[cmd].splitlines():
+                    if LEADING_UUID_RE.match(line):
+                        fields = split_by_tab(line)
+                        (ts_ip_port, role) = (fields[1], fields[2])
+                        (ts_ip, ts_port) = ts_ip_port.split(':')
+                        if role == 'LEADER' or role == 'FOLLOWER' or role == 'READ_REPLICA':
+                            if self.secondary_to_primary_ip_map:
+                                ts_ip = self.secondary_to_primary_ip_map[ts_ip]
+                            tablets_by_tserver_ip.setdefault(ts_ip, set()).add(tablet_id)
+                            num_ts += 1
+                        else:
+                            # Bad/temporary roles: LEARNER, NON_PARTICIPANT, UNKNOWN_ROLE.
+                            found_bad_ts = True
+                            logging.warning("Found TS {} with bad role: {} for tablet {}. "
+                                            "Retry searching.".format(ts_ip, role, tablet_id))
+                            break
+
+                if found_bad_ts:
+                    break
+                if num_ts == 0:
+                    raise BackupException(
+                        "No alive TS found for tablet {}:\n{}".format(tablet_id, output))
+
+            if not found_bad_ts:
+                return tablets_by_tserver_ip
+
+            logging.info("Sleep for {} seconds before the next tablet replicas searching round.".
+                         format(SLEEP_IN_REPLICAS_SEARCHING_ROUND_SEC))
+            time.sleep(SLEEP_IN_REPLICAS_SEARCHING_ROUND_SEC)
+
+        raise BackupException(
+            "Exceeded max number of retries for the tablet replicas searching loop ({})!".
+            format(REPLICAS_SEARCHING_LOOP_MAX_RETRIES))
 
     def identify_new_tablet_replicas(self, tablets_by_tserver_ip_old, tablets_by_tserver_ip_new):
         """
