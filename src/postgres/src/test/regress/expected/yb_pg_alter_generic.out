@@ -547,7 +547,7 @@ ALTER FUNCTION func_renamed2(int) SET SCHEMA alt_nsp1;
 RESET SESSION AUTHORIZATION;
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA alt_nsp1 CASCADE;
-NOTICE:  drop cascades to 25 other objects
+NOTICE:  drop cascades to 24 other objects
 DROP SCHEMA alt_nsp2 CASCADE;
 NOTICE:  drop cascades to 5 other objects
 DROP USER regress_alter_generic_user1;
