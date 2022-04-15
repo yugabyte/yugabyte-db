@@ -27,7 +27,6 @@
 #include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/util/metrics.h"
 
 namespace rocksdb {
 class Cache;
@@ -41,7 +40,6 @@ namespace yb {
 class Env;
 class MemTracker;
 class MetricRegistry;
-class MetricEntity;
 
 namespace tablet {
 
@@ -53,7 +51,6 @@ struct TabletOptions {
   yb::Env* env = Env::Default();
   rocksdb::Env* rocksdb_env = rocksdb::Env::Default();
   std::shared_ptr<rocksdb::RateLimiter> rate_limiter;
-  scoped_refptr<MetricEntity> ServerMetricEntity;
 };
 
 struct TabletInitData {
