@@ -12,21 +12,21 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Platform can check universes for issues that may affect deployment. Should problems arise, Yugabyte Platform can automatically issue alert notifications
+YugabyteDB Anywhere can check universes for issues that may affect deployment. Should problems arise, YugabyteDB Anywhere can automatically issue alert notifications
 
 For additional information, see the following:
 
 - [Alerts](../../alerts-monitoring/alert/)
 - [Metrics](../../troubleshoot/universe-issues/#use-metrics/)
-- [Alerts and Notifications in Yugabyte Platform](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/)
+- [Alerts and Notifications in YugabyteDB Anywhere](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/)
 
-You can use preconfigured alerts provided by Yugabyte Platform, or create and configure your own alerts based on the metrics' conditions.
+You can use preconfigured alerts provided by YugabyteDB Anywhere, or create and configure your own alerts based on the metrics' conditions.
 
-You can access Yugabyte Platform health monitor and configure alerts by navigating to **Admin > Alert Configurations**, as per the following illustration:
+You can access YugabyteDB Anywhere health monitor and configure alerts by navigating to **Admin > Alert Configurations**, as per the following illustration:
 
 ![Configure alerts](/images/yp/config-alerts1.png)
 
-The **Alert Configurations** view allows you to perform the following for specific universes or for your instance of Yugabyte Platform:
+The **Alert Configurations** view allows you to perform the following for specific universes or for your instance of YugabyteDB Anywhere:
 
 - Create new alert configurations.
 - Modify, delete, activate, or deactivate existing alerts, as well as send test alerts via **Actions**.
@@ -39,7 +39,7 @@ Regardless of the alert level, you create an alert as follows:
 
 - Navigate to **Alert Configurations > Alert Policies**.
 
-- Click either **Create Alert Config > Universe Alert** or **Create Alert Config > Platform Alert**, depending on the scope of the alert.
+- Click either **Create Alert Config > Universe Alert** or **Create Alert Config > Platform Alert**, depending on the scope of the alert. Note that the scope of **Platform Alert** is YugabyteDB Anywhere.
 
 - Select a template to use, and then configure settings by completing the fields whose default values depend on the template, as per the following illustration: <br><br>
 
@@ -47,7 +47,7 @@ Regardless of the alert level, you create an alert as follows:
 
   <br><br>
 
-  Templates are available for alerts related to Yugabyte Platform operations, YugabyteDB operations, as well as YSQL and YCQL performance.<br>
+  Templates are available for alerts related to YugabyteDB Anywhere operations, YugabyteDB operations, as well as YSQL and YCQL performance.<br>
 
   Most of the template fields are self-explanatory. The following fields are of note:
 
@@ -61,7 +61,7 @@ Regardless of the alert level, you create an alert as follows:
 
 ## Define notification channels
 
-In Yugabyte Platform, a notification channel defines how an alert is issued (via an email, a Slack message, a webhook message, or a PagerDuty message) and who should receive it.<br>You can create a new channel, as well as modify or delete an existing one as follows:
+In YugabyteDB Anywhere, a notification channel defines how an alert is issued (via an email, a Slack message, a webhook message, or a PagerDuty message) and who should receive it.<br>You can create a new channel, as well as modify or delete an existing one as follows:
 
 - Navigate to **Alert Configurations > Notification Channels**, as per the following illustration:
 
@@ -69,9 +69,9 @@ In Yugabyte Platform, a notification channel defines how an alert is issued (via
 
   ![Notification channel](/images/yp/config-alerts7.png)
 
-  <br><br>
+  <br>
 
-- To create a new channel, click **Add Channel** and then complete the **Create new alert channel** dialog shown in the following illustration:<br>
+- To create a new channel, click **Add Channel** and then complete the **Create new alert channel** dialog shown in the following illustration:<br><br>
 
   ![New channel](/images/yp/config-alerts6.png)
 
@@ -112,12 +112,12 @@ When an alert is triggered, alert data is sent to a specific alert destination t
 
 - Navigate to **Alert Configurations > Alert Destinations**, as per the following illustration: <br><br>
 
-  ![Destinations](/images/yp/config-alerts3.png)<br><br>
+  ![Destinations](/images/yp/config-alerts3.png)<br>
 - To add a new alert destination, click **Add Destination** and then complete the form shown in the following illustration:<br><br>
 
   ![Add destination](/images/yp/config-alerts4.png)
 
-  <br><br>The preceding form allows you to either select an existing notification channel or create a new one by clicking **Add Channel** and completing the **Create new alert channel** dialog, as described in [Define notification channels](#define-notification-channels).
+  <br>The preceding form allows you to either select an existing notification channel or create a new one by clicking **Add Channel** and completing the **Create new alert channel** dialog, as described in [Define notification channels](#define-notification-channels).
 
 - Click **Save**.
 
@@ -125,11 +125,11 @@ When an alert is triggered, alert data is sent to a specific alert destination t
 
 ## Configure heath check
 
-You can define parameters and fine-tune health check that Yugabyte Platform performs on its universes, as follows:
+You can define parameters and fine-tune health check that YugabyteDB Anywhere performs on its universes, as follows:
 
 - Navigate to **Alert Configurations > Health** to open the **Alerting controls** view shown in the following illustration:<br><br>
 
-  ![Health](/images/yp/config-alerts5.png)<br><br>
+  ![Health](/images/yp/config-alerts5.png)<br>
 
 - Use the **Alert emails** field to define a comma-separated list of email addresses to which alerts are to be sent.
 
@@ -158,4 +158,3 @@ The preceding view allows you to do the following:
 - Add a new maintenance period for all or only specific universes by clicking **Add Maintenance Window** and completing the fields shown in the following illustration:<br><br>
 
   ![Maintenance](/images/yp/config-alerts10.png)<br><br>
-

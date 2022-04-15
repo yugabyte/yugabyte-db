@@ -2,8 +2,8 @@
 title: Deploy a Spring application on Kubernetes
 headerTitle: Deploy a Spring application on Kubernetes
 linkTitle: Deploy Spring on K8s
-description: Deploy a Spring application connected to Yugabyte Cloud on Kubernetes
-headcontent: Deploy a Spring application connected to Yugabyte Cloud on Kubernetes
+description: Deploy a Spring application connected to YugabyteDB Managed on Kubernetes
+headcontent: Deploy a Spring application connected to YugabyteDB Managed on Kubernetes
 image: /images/section_icons/deploy/kubernetes.png
 menu:
   preview:
@@ -12,9 +12,9 @@ menu:
     weight: 621
 -->
 
-[Spring Boot](https://spring.io/projects/spring-boot) is a popular framework for building cloud native applications. Each Spring Boot application is stand-alone and self-contained, which makes them easy to deploy in a distributed fashion – whether to containers or on Kubernetes.
+[Spring Boot](https://spring.io/projects/spring-boot) is a popular framework for building cloud-native applications. Each Spring Boot application is stand-alone and self-contained, which makes them easy to deploy in a distributed fashion – whether to containers or on Kubernetes.
 
-The following examples show how you can connect a Spring application to Yugabyte Cloud and containerize it, then deploy the containerized application to Kubernetes.
+The following examples show how you can connect a Spring application to YugabyteDB Managed and containerize it, then deploy the containerized application to Kubernetes.
 
 <div class="row">
 
@@ -25,7 +25,7 @@ The following examples show how you can connect a Spring application to Yugabyte
         <div class="title">Connect and containerize a Spring application</div>
       </div>
       <div class="body">
-        Connect a Spring application to Yugabyte Cloud and containerize it using Docker.
+        Connect a Spring application to YugabyteDB Managed and containerize it using Docker.
       </div>
     </a>
   </div>

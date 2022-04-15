@@ -52,9 +52,9 @@ The following common ports are required for firewall rules:
 | Service     | Port
 | ------- | ------------------------- |
 | SSH    | 22 |
-| HTTP for Platform  | 80 |
-| HTTP for Platform (alternate) | 8080 |
-| HTTPS for Platform  | 443 |
+| HTTP for YugabyteDB Anywhere  | 80 |
+| HTTP for YugabyteDB Anywhere (alternate) | 8080 |
+| HTTPS for YugabyteDB Anywhere  | 443 |
 | HTTP for Replicated | 8800 |
 | SSH  **   | 54422 |
 
@@ -68,7 +68,7 @@ YugabyteDB servers expose time-series performance metrics in the [Prometheus exp
 <target>/prometheus-metrics
 ```
 
-You can access the Prometheus server on port `9090` of the Platform node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `9300` for node level metrics.
+You can access the Prometheus server on port `9090` of the YugabyteDB Anywhere node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `9300` for node level metrics.
 
 ### Servers
 

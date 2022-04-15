@@ -16,7 +16,9 @@ select ::= [ WITH [ RECURSIVE ] { common_table_expression [ , ... ] } ]
             [ ORDER BY { order_expr [ , ... ] } ]  
            [ LIMIT { integer | ALL } ]  
            [ OFFSET integer [ ROW | ROWS ] ]  
-           [ FETCH { FIRST | NEXT } integer { ROW | ROWS } ONLY ]
+           [ FETCH { FIRST | NEXT } integer { ROW | ROWS } ONLY ]  
+           [ FOR { UPDATE | NO KEY UPDATE | SHARE | KEY SHARE } 
+             [ OF table_name [ , ... ] ] [ SKIP LOCKED ] [ ... ] ]
 
 common_table_expression ::= name [ ( name [ , ... ] ) ] AS ( 
                             { select

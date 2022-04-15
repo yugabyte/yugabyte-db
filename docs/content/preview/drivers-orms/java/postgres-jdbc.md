@@ -1,12 +1,12 @@
 ---
-title: JDBC Drivers
-linkTitle: JDBC Drivers
-description: JDBC Drivers for YSQL
-headcontent: JDBC Drivers for YSQL
+title: JDBC drivers
+linkTitle: JDBC drivers
+description: JDBC drivers for YSQL
+headcontent: JDBC drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: JDBC Drivers
+    name: JDBC drivers
     identifier: postgres-jdbc-driver
     parent: java-drivers
     weight: 500
@@ -102,7 +102,7 @@ Connection conn = DriverManager.getConnection(yburl);
 | sslmode | SSL mode  | require
 | sslrootcert | path to the root certificate on your computer | ~/.postgresql/
 
-If you created a cluster on [Yugabyte Cloud](https://www.yugabyte.com/cloud/), [follow the steps](/preview/yugabyte-cloud/cloud-connect/connect-applications/) to download the database credentials and SSL Root certificate.
+If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](/preview/yugabyte-cloud/cloud-connect/connect-applications/) to download the database credentials and SSL Root certificate.
 
 ## Step 3 -  Query the YugabyteDB cluster from your application
 

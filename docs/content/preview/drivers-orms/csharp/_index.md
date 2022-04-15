@@ -1,6 +1,7 @@
 ---
-title: C#
+title: C# drivers and ORMs
 headerTitle: C#
+headcontent: Build applications for YugabyteDB in C#.
 linkTitle: C#
 description: C# Drivers and ORMs support for YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -14,45 +15,35 @@ showAsideToc: true
 ---
 The following projects are recommended for implementing C# applications using the YugabyteDB YSQL API.
 
-| Project | Type | Support Level |
-| :------ | :--- | :------------ |
-| [Postgres Npgsql](postgres-npgsql) | C# Driver | Full |
-| [EntityFramework](entityframework) | ORM |  Full |
+| Project | Type | Support | Examples |
+| :------ | :--- | :-------| :------- |
+| [PostgreSQL Npgsql](postgres-npgsql) | C# Driver | Full | [Hello World](/preview/quick-start/build-apps/csharp/ysql)<br />[CRUD](postgres-npgsql) |
+| [EntityFramework](entityframework) | ORM |  Full | [Hello World](/preview/quick-start/build-apps/csharp/ysql-entity-framework/)<br />[CRUD](entityframework) |
 
-## Build a Hello World App
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
-Learn how to establish a connection to a YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/csharp/ysql) in the Quick Start section.
+For fully-runnable code snippets and explanations of common operations, see the project page **CRUD** example. Before running CRUD examples, make sure you have installed the prerequisites.
 
-## Pre-requisites for building a C# application
+For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/csharp/postgres-npgsql-reference/) pages.
 
-### Install .NET SDK
+### Prerequisites
 
-Make sure that your system has .NET SDK 3.1 or later installed. To download it for your supported OS visit the [.NET Website](https://dotnet.microsoft.com/en-us/download).
+C# development for YugabyteDB has the following prerequisites:
 
-### Install Visual Studio (Optional)
+- **.NET SDK**\
+  Install .NET SDK 3.1 or later. To download it for your supported OS, visit [Download .NET](https://dotnet.microsoft.com/en-us/download).
 
-For an easier development of your project, we recommend using an integrated development environment (IDE) such as Visual Studio for your specific OS. To download and install visit [Visual Studio's Downloads page](https://visualstudio.microsoft.com/downloads/)
+- **Visual Studio (optional)**\
+  For ease-of-use, use an integrated development environment (IDE) such as Visual Studio. To download and install Visual Studio, visit the [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/) page.
 
-### Create a C# Project
+- **Create a C# project**
+  - To create a C# project in Visual Studio, select **Console Application** as template when creating a new project.
+  - If you are not using an IDE, use the dotnet command:
 
-C# projects can be created in the Visual Studio IDE. To do this, select the Console Application as template when creating a new project.
-If you are not using an IDE, use the dotnet command:
+    ```csharp
+    dotnet new console -o new_project_name
+    ```
 
-```csharp
-dotnet new console -o new_project_name
-```
-
-### Create a YugabyteDB Cluster
-
-Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/).
-
-Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
-
-## Usage Examples
-
-For fully runnable code snippets and explanations for common operations, see the specific C# driver and ORM section. The following table provides links to driver-specific documentation and examples.
-
-| Project | Type | Usage Examples |
-| :------ | :--- | :------------- |
-| [Postgres Npgsql Driver](postgres-npgsql) | C# Driver | [Hello World](/preview/quick-start/build-apps/csharp/ysql) <br />[CRUD App](postgres-npgsql)
-| [EntityFramework](entityframework) | ORM |  [Hello World](/preview/quick-start/build-apps/csharp/ysql-entity-framework/) <br />[CRUD App](entityframework) |
+- **YugabyteDB cluster**
+  - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that YugabyteDB Managed requires SSL.
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).

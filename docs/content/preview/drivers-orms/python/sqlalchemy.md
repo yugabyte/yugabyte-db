@@ -1,6 +1,6 @@
 ---
-title: SQLAlchemy ORM
-linkTitle: SQLAlchemy ORM
+title: Python ORMs
+linkTitle: Python ORM
 description: SQLAlchemy ORM support for YugabyteDB
 headcontent: SQLAlchemy ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -34,7 +34,13 @@ showAsideToc: true
 
 [SQLAlchemy](https://www.sqlalchemy.org/) is a popular ORM provider for Python applications, and is widely used by Python developers for database access. YugabyteDB provides full support for SQLAlchemy ORM.
 
-### Add the SQLAlchemy ORM Dependency
+## CRUD operations with SQLAlchemy ORM
+
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/quick-start/build-apps/python/ysql-sqlalchemy/) page under the Quick start section.
+
+The following sections demonstrate how to perform common tasks required for Python application development using the SQLAlchemy ORM.
+
+### Add the SQLAlchemy ORM dependency
 
 To download and install SQLAlchemy to your project, use the following command.
 
@@ -42,15 +48,15 @@ To download and install SQLAlchemy to your project, use the following command.
   pip3 install sqlalchemy
   ```
 
-  You can verify the installation as follows:
+You can verify the installation as follows:
 
-  - Open the Python prompt by executing the following command:
+1. Open the Python prompt by executing the following command:
 
     ```shell
     python3
     ```
 
-  - From the Python prompt, execute the following commands to check the SQLAlchemy version:
+1. From the Python prompt, execute the following commands to check the SQLAlchemy version:
 
     ```python prompt
     import sqlalchemy
@@ -60,7 +66,7 @@ To download and install SQLAlchemy to your project, use the following command.
     sqlalchemy.__version__
     ```
 
-### Implementing ORM mapping for YugabyteDB
+### Implement ORM mapping for YugabyteDB
 
 To start with SQLAlchemy, in your project directory, create 4 Python files - `config.py`,`base.py`,`model.py`, and `main.py`
 
@@ -83,7 +89,7 @@ from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
 ```
 
-Now that you have a “base”, you can define any number of mapped classes in terms of it. Start with a single table called `employees`, to store records for the end-users using your application. A new class called `Employee` maps to this table. In the class, you define details about the table to which you're mapping, primarily the table name, and names and datatypes of the columns.
+Now that you have a "base", you can define any number of mapped classes in terms of it. Start with a single table called `employees`, to store records for the end-users using your application. A new class called `Employee` maps to this table. In the class, you define details about the table to which you're mapping; primarily the table name, and names and datatypes of the columns.
 
 Add the following to the `model.py` file:
 
@@ -102,7 +108,7 @@ class Employee(Base):
    language = Column(String(255))
 ```
 
-Once the setup is done, you can connect to the database and create a new session. In the `main.py` file, add the following.
+After the setup is done, you can connect to the database and create a new session. In the `main.py` file, add the following.
 
 ```python
 import config as cfg
@@ -149,7 +155,7 @@ Name: John Age: 35 Language: Java
 Name: Ivy Age: 27 Language: C++
 ```
 
-## Next Steps
+## Next steps
 
 - Explore [Scaling Python Applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Python applications with Yugabyte Cloud](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/).
+- Learn how to [develop Python applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/).

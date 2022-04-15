@@ -1984,7 +1984,7 @@ void YBClient::LookupTabletById(const std::string& tablet_id,
       tablet_id, table, include_inactive, deadline, std::move(callback), use_cache);
 }
 
-void YBClient::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+void YBClient::LookupAllTablets(const std::shared_ptr<YBTable>& table,
                                 CoarseTimePoint deadline,
                                 LookupTabletRangeCallback callback) {
   data_->meta_cache_->LookupAllTablets(table, deadline, std::move(callback));
@@ -1998,7 +1998,7 @@ std::future<Result<internal::RemoteTabletPtr>> YBClient::LookupTabletByKeyFuture
 }
 
 std::future<Result<std::vector<internal::RemoteTabletPtr>>> YBClient::LookupAllTabletsFuture(
-    const std::shared_ptr<const YBTable>& table,
+    const std::shared_ptr<YBTable>& table,
     CoarseTimePoint deadline) {
   return MakeFuture<Result<std::vector<internal::RemoteTabletPtr>>>([&](auto callback) {
     this->LookupAllTablets(table, deadline, std::move(callback));

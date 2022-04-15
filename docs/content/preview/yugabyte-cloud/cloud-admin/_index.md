@@ -1,18 +1,18 @@
 ---
-title: Administer Yugabyte Cloud
-headerTitle: Administer Yugabyte Cloud
-linkTitle: Administer Yugabyte Cloud
-description: Administer Yugabyte Cloud.
+title: Administration and billing
+headerTitle: Administration and billing
+linkTitle: Administration and billing
+description: Administration and billing.
 image: /images/section_icons/explore/administer.png
-headcontent: Manage your cloud users and billing and payment methods.
-section: YUGABYTE CLOUD
+headcontent: Manage users and billing and payment methods.
+section: YUGABYTEDB MANAGED
 menu:
   preview:
     identifier: cloud-admin
     weight: 600
 ---
 
-Before you can add standard clusters, you need to create a billing profile and add a payment method. You manage your billing profile and payment methods from the **Admin** page. You can also audit cloud activity, view your monthly invoices, and invite team members to your cloud so that they can create, manage, authorize network access, and connect to clusters.
+Before you can add standard clusters, you need to create a billing profile and add a payment method. You manage your billing profile and payment methods from the **Admin** page. You can also audit activity, view your monthly invoices, and invite team members so that they can create, manage, authorize network access, and connect to clusters.
 
 {{< note title="Note" >}}
 
@@ -26,10 +26,10 @@ You must be signed in as an Admin user to perform Admin tasks. Developer users c
     <a class="section-link icon-offset" href="manage-access/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/create-roles.png" aria-hidden="true" />
-        <div class="title">Manage users</div>
+        <div class="title">Manage account access</div>
       </div>
       <div class="body">
-        Invite other users to your cloud so that they can manage and connect to clusters.
+        Invite other users to your account so that they can manage and connect to clusters.
       </div>
     </a>
   </div>

@@ -1,21 +1,19 @@
 ---
-title: Yugabyte Cloud quick start
+title: YugabyteDB Managed quick start
 headerTitle: Quick start
 linkTitle: Quick start
-description: Get started using Yugabyte Cloud in less than five minutes.
+description: Get started using YugabyteDB Managed in less than five minutes.
 image: /images/section_icons/index/quick_start.png
-headcontent: Test YugabyteDB's APIs and core features by creating a free cluster on Yugabyte Cloud.
+headcontent: Test YugabyteDB's APIs and core features by creating a free cluster on YugabyteDB Managed.
 type: page
-section: YUGABYTE CLOUD
+section: YUGABYTEDB MANAGED
 menu:
   preview:
     identifier: cloud-quickstart
     weight: 15
 ---
 
-The quickest way to get started with YugabyteDB is to [sign up for Yugabyte Cloud](http://cloud.yugabyte.com) and create a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.
-
-YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The free cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../cloud-build-apps/). To evaluate Yugabyte Cloud for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
+The quickest way to get started with YugabyteDB is to [sign up for YugabyteDB Managed](http://cloud.yugabyte.com) and create a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.
 
 ## Get started
 
@@ -27,7 +25,7 @@ YugabyteDB is a distributed database optimized for deployment across a cluster o
         <div class="title">Create a free cluster</div>
       </div>
       <div class="body">
-        Create a free cluster on Yugabyte Cloud.
+        Create a free cluster on YugabyteDB Managed.
       </div>
     </a>
   </div>

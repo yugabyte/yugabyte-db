@@ -2,7 +2,7 @@
 title: Troubleshoot install and upgrade issues
 headerTitle:
 linkTitle: Install and upgrade issues
-description: Troubleshoot issues encountered when installing or upgrading Yugabyte Platform.
+description: Troubleshoot issues encountered when installing or upgrading YugabyteDB Anywhere.
 menu:
   preview:
     identifier: install-upgrade-yp-issues
@@ -12,11 +12,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here are some common issues encountered during installing or upgrading Yugabyte Platform. If you don't find an answer, contact [Yugabyte Support](https://support.yugabyte.com).
+You might encounter issues during installation and upgrade of YugabyteDB Anywhere.
 
-## Firewall turned on the Yugabyte Platform host
+If you experience difficulties while troubleshooting, contact [Yugabyte Support](https://support.yugabyte.com).
 
-If your host has firewall managed by firewalld turned on, then Docker Engine might not be able to connect with the host. To open the ports using firewall exceptions, run the following command.
+## Firewall enabled the YugabyteDB Anywhere host
+
+If your host has firewall managed by firewalld enabled, then Docker Engine might not be able to connect to the host. To open the ports using firewall exceptions, execute the following command:
 
 ```sh
 sudo firewall-cmd --zone=trusted --add-interface=docker0
@@ -35,18 +37,21 @@ sudo firewall-cmd --zone=public --add-port=9874-9879/tcp
 
 ## Create mount paths on the nodes
 
-Create mount paths on the nodes with private IP addresses: `10.1.13.150`, `10.1.13.151`, `10.1.13.152`.
+You can create mount paths on the nodes with private IP addresses `10.1.13.150`, `10.1.13.151`, and`10.1.13.152` by executing the following command:
 
 ```sh
-for IP in 10.1.12.103 10.1.12.104 10.1.12.105; do ssh $IP mkdir -p /mnt/data0; done
+for IP in 10.1.12.103 10.1.12.104 10.1.12.105; 
+do 
+  ssh $IP mkdir -p /mnt/data0; 
+done
 ```
 
-## Firewall turned on for nodes
+## Firewall enabled for nodes
 
-Add firewall exceptions on the nodes with private IP addresses: `10.1.13.150`, `10.1.13.151`, `10.1.13.152`.
+You can add firewall exceptions on the nodes with private IP addresses `10.1.13.150`, `10.1.13.151`, and `10.1.13.152` by executing the following command:
 
 ```sh
-for IP in 10.1.12.103 10.1.12.104 10.1.12.105
+for IP in 10.1.12.103 10.1.12.104 10.1.12.105;
 do
   ssh $IP firewall-cmd --zone=public --add-port=7000/tcp;
   ssh $IP firewall-cmd --zone=public --add-port=7100/tcp;

@@ -49,3 +49,22 @@ DROP SCHEMA test_ns_schema_renamed CASCADE;
 -- verify that the objects were dropped
 SELECT COUNT(*) FROM pg_class WHERE relnamespace =
     (SELECT oid FROM pg_namespace WHERE nspname = 'test_ns_schema_renamed');
+
+-- verify yb_db_admin role can manage schemas like a superuser
+CREATE SCHEMA test_ns_schema_other;
+CREATE ROLE test_regress_user1;
+SET SESSION AUTHORIZATION yb_db_admin;
+ALTER SCHEMA test_ns_schema_other RENAME TO test_ns_schema_other_new;
+ALTER SCHEMA test_ns_schema_other_new OWNER TO test_regress_user1;
+DROP SCHEMA test_ns_schema_other_new;
+-- verify that the objects were dropped
+SELECT COUNT(*) FROM pg_class WHERE relnamespace =
+    (SELECT oid FROM pg_namespace WHERE nspname = 'test_ns_schema_other_new');
+CREATE SCHEMA test_ns_schema_yb_db_admin;
+ALTER SCHEMA test_ns_schema_yb_db_admin RENAME TO test_ns_schema_yb_db_admin_new;
+ALTER SCHEMA test_ns_schema_yb_db_admin_new OWNER TO test_regress_user1;
+DROP SCHEMA test_ns_schema_yb_db_admin_new;
+-- verify that the objects were dropped
+SELECT COUNT(*) FROM pg_class WHERE relnamespace =
+    (SELECT oid FROM pg_namespace WHERE nspname = 'test_ns_schema_yb_db_admin_new');
+

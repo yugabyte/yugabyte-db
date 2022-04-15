@@ -157,10 +157,10 @@ Status SstFileWriter::Open(const std::string& file_path) {
     r->data_file_writer.reset(
         new WritableFileWriter(std::move(data_sst_file), r->env_options));
   }
-  r->builder.reset(r->ioptions.table_factory->NewTableBuilder(
+  r->builder = r->ioptions.table_factory->NewTableBuilder(
       table_builder_options,
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-      r->base_file_writer.get(), r->data_file_writer.get()));
+      r->base_file_writer.get(), r->data_file_writer.get());
 
   r->file_info.file_path = file_path;
   r->file_info.file_size = 0;

@@ -7,7 +7,7 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     name: Go Drivers
-    identifier: ref-postgres-jdbc-driver
+    identifier: ref-pq-go-driver
     parent: drivers
     weight: 600
 isTocNested: true
@@ -187,7 +187,7 @@ you need the root certificate (`ca.crt`) of the YugabyteDB Cluster.
 To generate these certificates and install them while launching the cluster, follow the instructions in
 [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
-For a Yugabyte Cloud cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related
 environment variables as below at the client side.
 
 ```sh
@@ -223,23 +223,23 @@ Another function `conn.BeginEx()` can create a transaction with a specified isol
 ```go
 tx, err := db.Begin()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 
 ...
 
 _, err = stmt.Exec()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 
 err = stmt.Close()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 
 err = txn.Commit()
 if err != nil {
-	log.Fatal(err)
+  log.Fatal(err)
 }
 ```

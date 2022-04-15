@@ -24,17 +24,15 @@ showAsideToc: true
 
 </ul>
 
-Object Relational Mapping (ORM) tools are used by developers to handle database access. They allow developers to map object-oriented domain classes into the database tables. ORMs simplify CRUD operations on your domain objects and easily allow the evolution of domain objects to be applied to the Database tables.
-
 [EntityFramework](https://docs.microsoft.com/en-us/ef/) is a popular ORM provider for C# applications, and is widely used by C# Developers for database access. YugabyteDB provides full support for the EntityFramework ORM.
 
 ## CRUD operations with EntityFramework
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/csharp/ysql-entity-framework/) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/csharp/ysql-entity-framework/) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for C# application development using EntityFramework.
 
-### Step 1: Add the ORM Dependency
+### Step 1: Add the ORM dependency
 
 If you are using Visual Studio IDE, follow these steps:
 
@@ -88,7 +86,7 @@ namespace ConsoleApp.PostgreSQL
 }
 ```
 
-After creating the model, use EF migrations to create and set up the database. Run the following commands:
+After creating the model, use EntityFramework migrations to create and set up the database. Run the following commands:
 
 ```csharp
 dotnet tool install --global dotnet-ef
@@ -97,7 +95,7 @@ dotnet ef migrations add InitialCreate
 dotnet ef database update
 ```
 
-This installs dotnet EF and the design package, which is required to run the command on a project. The migrations command scaffolds a migration to create the initial set of tables for the model. The database update command creates the database and applies the new migration to it.
+This installs dotnet EntityFramework and the design package, which is required to run the command on a project. The migrations command scaffolds a migration to create the initial set of tables for the model. The database update command creates the database and applies the new migration to it.
 
 Finally, connect to the database, insert a row, query it, and delete it. Copy the following sample code to your `Program.cs` file.
 
@@ -152,7 +150,7 @@ URL:http://blogs.abc.com/adonet
 Deleting the blog
 ```
 
-## Next Steps
+## Next steps
 
 - Explore [scaling C# applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop C# applications with Yugabyte Cloud](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/).
+- Learn how to [develop C# applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/).

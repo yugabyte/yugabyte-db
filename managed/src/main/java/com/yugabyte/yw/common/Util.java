@@ -86,8 +86,7 @@ public class Util {
   public static final String BLACKLIST_LEADER_WAIT_TIME_MS =
       "yb.upgrade.blacklist_leader_wait_time_ms";
 
-  public static final String AVAILABLE_MEMORY_CHECK = "MemAvailable";
-  public static final Long AVAILABLE_MEMORY_LIMIT_KB = 716800L;
+  public static final String AVAILABLE_MEMORY = "MemAvailable";
 
   public static final String UNIVERSE_NAME_REGEX = "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$";
 
@@ -604,20 +603,6 @@ public class Util {
     SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
     formatter.setTimeZone(tz);
     return formatter.format(new Date(unixTimestampMs));
-  }
-
-  // Update the Universe's 'backupInProgress' flag to new state in synchronized manner to avoid
-  // race condition.
-  public static synchronized void lockedUpdateBackupState(
-      UUID universeUUID, UniverseTaskBase backupTask, boolean newState) {
-    if (Universe.getOrBadRequest(universeUUID).getUniverseDetails().backupInProgress == newState) {
-      if (newState) {
-        throw new RuntimeException("A backup for this universe is already in progress.");
-      } else {
-        return;
-      }
-    }
-    backupTask.updateBackupState(newState);
   }
 
   public static String getHostname() {

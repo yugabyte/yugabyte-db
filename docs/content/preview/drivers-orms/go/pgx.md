@@ -1,12 +1,12 @@
 ---
-title: Go Drivers
-linkTitle: Go Drivers
-description: Go Drivers for YSQL
-headcontent: Go Drivers for YSQL
+title: Go drivers
+linkTitle: Go drivers
+description: Go drivers for YSQL
+headcontent: Go drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Go Drivers
+    name: Go drivers
     identifier: pgx-driver
     parent: go-drivers
     weight: 400
@@ -34,17 +34,11 @@ For Go applications, most drivers provide database connectivity through the stan
 
 </ul>
 
-The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained
-drivers for PostgreSQL.
-
-This driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using
-the PGX APIs. It also supports the standard `database/sql` package.
+The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained drivers for PostgreSQL. Use the driver to connect to YugabyteDB database to execute DMLs and DDLs using the PGX APIs. It also supports the standard `database/sql` package.
 
 ## CRUD operations with PGX driver
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pgx) page under the
-Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pgx) page under the Quick Start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PGX driver.
 
@@ -60,11 +54,9 @@ import (
 
 ### Step 2: Connect to YugabyteDB database
 
-Go applications can connect to the YugabyteDB database using the `pgx.Connect()` function.
-The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
+Go applications can connect to the YugabyteDB database using the `pgx.Connect()` function. The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
 
-Use the `pgx.Connect()` method to create a connection object for the YugabyteDB database. This can
-be used for performing DDLs and DMLs against the database.
+Use the `pgx.Connect()` method to create a connection object for the YugabyteDB database. This can be used to perform DDLs and DMLs against the database.
 
 The PGX connection URL is in the following format:
 
@@ -88,7 +80,9 @@ conn, err := pgx.Connect(context.Background(), url)
 | port |  Listen port for YSQL | 5433
 | dbname | database name | yugabyte
 
-For a Yugabyte Cloud cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side.
+#### Use SSL
+
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side.
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -100,10 +94,9 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 | PGSSLMODE |  SSL mode used for the connection |
 | PGSSLROOTCERT | Server CA Certificate |
 
-### Step 3: Create table
+### Step 3: Create tables
 
-Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `conn`
-instance.
+Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `conn` instance.
 
 The CREATE DDL statement:
 
@@ -122,8 +115,7 @@ if err != nil {
 }
 ```
 
-The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled
-in your code.
+The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled in your code.
 
 Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
@@ -131,7 +123,7 @@ Read more on designing [Database schemas and tables](../../../explore/ysql-langu
 
 #### Insert data
 
-To write data into YugabyteDB, execute the `INSERT` statement using the same `conn.Exec()` function.
+To write data to YugabyteDB, execute the `INSERT` statement using the same `conn.Exec()` function.
 
 The INSERT DML statement:
 
@@ -154,10 +146,7 @@ The pgx driver automatically prepares and caches statements by default, so you d
 
 #### Query data
 
-In order to query data from YugabyteDB tables, execute the `SELECT` statement using the function
-`conn.Query()`.
-Query results are returned in `pgx.Rows` which can be iterated using `pgx.Rows.next()` method.
-Then read the data using `pgx.rows.Scan()`.
+To query data from YugabyteDB tables, execute the `SELECT` statement using the function `conn.Query()`. Query results are returned in `pgx.Rows` which can be iterated using `pgx.Rows.next()` method. Then read the data using `pgx.rows.Scan()`.
 
 The SELECT DML statement:
 
@@ -193,7 +182,7 @@ if err != nil {
 }
 ```
 
-## Next Steps
+## Next steps
 
-- Learn how to build Go Application using [GORM](../gorm).
+- Learn how to build Go applications using [GORM](../gorm).
 - Learn more about [fundamentals](../../../reference/drivers/go/pgx-reference/) of the PGX Driver.

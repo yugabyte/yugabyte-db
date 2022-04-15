@@ -2,21 +2,21 @@
 title: Security architecture
 headerTitle: Security architecture
 linkTitle: Security architecture
-description: Security architecture of Yugabyte Cloud.
+description: Security architecture of YugabyteDB Managed.
 image: /images/section_icons/index/secure.png
-headcontent: Review Yugabyte Cloud's security architecture and shared responsibility model.
-section: YUGABYTE CLOUD
+headcontent: Review the YugabyteDB Managed security architecture and shared responsibility model.
+section: YUGABYTEDB MANAGED
 menu:
   preview:
     identifier: cloud-security
 weight: 800
 ---
 
-Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS).
+YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS).
 
-Yugabyte Cloud uses a shared responsibility model, where security and compliance is a shared responsibility between public cloud providers, Yugabyte, and Yugabyte Cloud customers.
+YugabyteDB Managed uses a shared responsibility model, where security and compliance is a shared responsibility between public cloud providers, Yugabyte, and YugabyteDB Managed customers.
 
-The Yugabyte Cloud architecture is secure by default, and uses the following features to protect clusters and communication between clients and databases:
+The YugabyteDB Managed architecture is secure by default, and uses the following features to protect clusters and communication between clients and databases:
 
 - encryption in transit
 - encryption at rest
@@ -24,7 +24,7 @@ The Yugabyte Cloud architecture is secure by default, and uses the following fea
 - authentication
 - role-based access control for authorization
 
-For information on how to configure the security features of clusters in Yugabyte Cloud, refer to [Secure clusters in Yugabyte Cloud](../cloud-secure-clusters/).
+For information on how to configure the security features of clusters in YugabyteDB Managed, refer to [Secure clusters in YugabyteDB Managed](../cloud-secure-clusters/).
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -34,7 +34,7 @@ For information on how to configure the security features of clusters in Yugabyt
         <div class="title">Security architecture</div>
       </div>
       <div class="body">
-        Learn about Yugabyte Cloud's security architecture.
+        Learn about the YugabyteDB Managed security architecture.
       </div>
     </a>
   </div>
@@ -46,7 +46,7 @@ For information on how to configure the security features of clusters in Yugabyt
         <div class="title">Shared responsibility model</div>
       </div>
       <div class="body">
-        The Yugabyte Cloud shared responsibility model for security.
+        The YugabyteDB Managed shared responsibility model for security.
       </div>
     </a>
   </div>

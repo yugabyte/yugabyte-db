@@ -339,6 +339,11 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       // Add universe replication info to the universe replication map.
       catalog_manager_->universe_replication_map_[ri->id()] = ri;
 
+      // Add any failed universes to be cleared
+      if (l->pb.state() == SysUniverseReplicationEntryPB::FAILED) {
+        catalog_manager_->universes_to_clear_.push_back(ri->id());
+      }
+
       l.Commit();
     }
 
@@ -3958,17 +3963,41 @@ Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
     std::shared_ptr<client::YBSession> session = ybclient->NewSession();
 
     for (const auto& stream : streams) {
+      // First fetch the parent opid.
+      string parent_op_id = OpId(0, 0).ToString();
+
+      const auto read_op = cdc_table.NewReadOp();
+      auto* const read_req = read_op->mutable_request();
+      QLAddStringHashValue(read_req, split_tablet_ids.source);
+
+      auto cond = read_req->mutable_where_expr()->mutable_condition();
+      cond->set_op(QLOperator::QL_OP_AND);
+      QLAddStringCondition(
+          cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream->id());
+      read_req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
+      read_req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
+      cdc_table.AddColumns({master::kCdcCheckpoint}, read_req);
+
+      RETURN_NOT_OK(session->ReadSync(read_op));
+      auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
+      if (row_block->row_count() == 1) {
+        parent_op_id = row_block->row(0).column(0).string_value();
+      } else {
+        LOG(WARNING) << "Unable to find op_id in cdc_state table for tablet: "
+            << split_tablet_ids.source << ", stream: " << stream->id();
+      }
+
       for (const auto& child_tablet_id :
            {split_tablet_ids.children.first, split_tablet_ids.children.second}) {
         const auto insert_op = cdc_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
         auto* insert_req = insert_op->mutable_request();
+        auto* const condition = insert_req->mutable_if_expr()->mutable_condition();
+        condition->set_op(QL_OP_NOT_EXISTS);
         QLAddStringHashValue(insert_req, child_tablet_id);
         QLAddStringRangeValue(insert_req, stream->id());
-        // TODO(JHE) set the checkpoint to a different value? OpId of the SPLIT_OP itself perhaps?
-        cdc_table.AddStringColumnValue(insert_req, master::kCdcCheckpoint, OpId().ToString());
-        // TODO(JHE) what to set the time to?
-        // cdc_table.AddTimestampColumnValue(
-        //     insert_req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
+        cdc_table.AddStringColumnValue(insert_req, master::kCdcCheckpoint, parent_op_id);
+        cdc_table.AddTimestampColumnValue(
+            insert_req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
         session->Apply(insert_op);
       }
     }
@@ -4741,6 +4770,13 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
       LOG(WARNING) << "Did not find setup universe replication error status.";
       StatusToPB(STATUS(InternalError, "unknown error"), resp->mutable_replication_error());
     }
+
+    // Add universe to universes_to_clear_
+    {
+      SharedLock lock(mutex_);
+      universes_to_clear_.push_back(universe->id());
+    }
+
     return Status::OK();
   }
 
@@ -4915,6 +4951,38 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
   auto uuid = VERIFY_RESULT(placement_uuid());
   master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, uuid, blacklist);
   return ts_descs.size();
+}
+
+Status CatalogManager::ClearFailedUniverse() {
+  // Delete a single failed universe from universes_to_clear_.
+  std::string universe_id;
+  {
+    SharedLock lock(mutex_);
+
+    if (universes_to_clear_.empty()) {
+      return Status::OK();
+    }
+    // Get the first universe.  Only try once to avoid failure loops.
+    universe_id = universes_to_clear_.front();
+    universes_to_clear_.pop_front();
+  }
+
+  GetUniverseReplicationRequestPB universe_req;
+  GetUniverseReplicationResponsePB universe_resp;
+  universe_req.set_producer_id(universe_id);
+
+  RETURN_NOT_OK(GetUniverseReplication(&universe_req, &universe_resp, /* RpcContext */ nullptr));
+  if (universe_resp.entry().state() != SysUniverseReplicationEntryPB::FAILED) {
+    return STATUS(IllegalState, "Universe is not Failed, and cannot be cleared.");
+  }
+
+  DeleteUniverseReplicationRequestPB req;
+  DeleteUniverseReplicationResponsePB resp;
+  req.set_producer_id(universe_id);
+
+  RETURN_NOT_OK(DeleteUniverseReplication(&req, &resp, /* RpcContext */ nullptr));
+
+  return Status::OK();
 }
 
 }  // namespace enterprise

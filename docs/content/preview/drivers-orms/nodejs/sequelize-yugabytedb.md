@@ -1,6 +1,6 @@
 ---
-title: Sequelize ORM
-linkTitle: Sequelize ORM
+title: NodeJS ORMs
+linkTitle: NodeJS ORMs
 description: Sequelize ORM support for YugabyteDB
 headcontent: Sequelize ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -31,42 +31,58 @@ showAsideToc: true
 
 </ul>
 
-[Sequelize ORM](https://sequelize.org/v6/) is an Object/Relational Mapping (ORM) framework for Node.js applications. It is a promise-based ORM for Node.js that enables JavaScript developers to work with relational databases more easily and supports features like solid transaction support, relations, read replication and more.
+[Sequelize ORM](https://sequelize.org/v6/) is an Object/Relational Mapping (ORM) framework for Node.js applications. It is a promise-based ORM for Node.js that enables JavaScript developers to work with relational databases, with support for features such as solid transaction support, relations, read replication, and more.
 
 Sequelize ORM supports PostgreSQL as a backend database. As YugabyteDB YSQL is a PostgreSQL-compatible API, Sequelize can be used for querying YugabyteDB. Currently, YugabyteDB doesn't support Sequelize ORM's `findorCreate()` API, and some other features, which may prevent you from successfully implementing Node.js applications.
 
 There is [ongoing work](https://github.com/yugabyte/yugabyte-db/issues/11683) to add support for YugabyteDB to the Sequelize ORM core package. In the meantime, use [sequelize-yugabytedb](https://github.com/yugabyte/sequelize-yugabytedb) to build Node.js applications. This page describes how to get started with Sequelize ORM for connecting to YugabyteDB using the `sequelize-yugabytedb` package.
 
-## Working with Domain Objects
+## Working with domain objects
 
 This section describes how to use Node.js models (domain objects) to store and retrieve data from a YugabyteDB cluster.
 
+### Create a Node.js project and install Sequelize ORM core package
 
+Before proceeding with the next steps, you need to have Node.js installed on your machine. Refer to [Downloading and installing Node.js and npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm).
 
-### Creating a Node.js project and installing Sequelize ORM core package
+To create a basic Node.js project and install the `sequelize-yugabytedb` package, do the following:
 
-Before proceeding with the next steps, you need to have Node.js installed on your machine. To install it, refer to [Downloading and installing Node.js and npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm).
+1. Create a new directory.
 
-To create a simple Node.js project and install the `sequelize-yugabytedb` package, do the following:
+    ```sh
+    `mkdir nodejs-quickstart-example && cd nodejs-quickstart-example`
+    ```
 
-1. Create a new directory: 
-`mkdir nodejs-quickstart-example && cd nodejs-quickstart-example`
+1. Create a package.json file:
 
-2. Create a package.json file: 
-`echo {} > package.json`
+    ```sh
+    `echo {} > package.json`
+    ```
 
-3. Install sequelize-yugabytedb package: 
-`npm install sequelize-yugabytedb`
+1. Install sequelize-yugabytedb package:
 
-4. Create a empty demo.js file: 
-`touch example.js`
+    ```sh
+    `npm install sequelize-yugabytedb`
+    ```
 
-### Creating a Node.js example using Sequelize ORM
+1. Create an empty demo.js file:
 
-Add the following code in the `example.js` file. This code creates an Employees model to store and retrieve employee information. First it creates a connection by passing the basic connection parameters. Next, it defines the Employee model using the `define()` API, which specifies the type of information to store for an employee. The actual table is created by calling the `Employee.sync()` API in the `createTableAndInsert()` function. This also inserts the data for three employees into the table using the `Employee.create()` API. Finally, you can retrieve the information of all employees using `Employee.findAll()`.
+    ```sh
+    `touch example.js`
+    ```
+
+### Create a Node.js example using Sequelize ORM
+
+The following code creates an Employees model to store and retrieve employee information:
+
+- First it creates a connection by passing the basic connection parameters.
+- Next, it defines the Employee model using the `define()` API, which specifies the type of information to store for an employee.
+- The actual table is created by calling the `Employee.sync()` API in the `createTableAndInsert()` function. This also inserts the data for three employees into the table using the `Employee.create()` API.
+- Finally, you can retrieve the information of all employees using `Employee.findAll()`.
+
+Add the code in the `example.js` file.
 
 ```js
-
 const { Sequelize, DataTypes } = require('sequelize-yugabytedb')
 
 console.log("Creating the connection with YugabyteDB using postgres dialect.")
@@ -76,7 +92,7 @@ const sequelize = new Sequelize('yugabyte', 'yugabyte', 'yugabyte', {
    dialect: 'postgres'
 })
 
-//Defining a model ‘employee’
+//Defining a model 'employee'
 const Employee = sequelize.define('employees', {
     emp_id : {
         type: DataTypes.INTEGER,
@@ -89,12 +105,12 @@ const Employee = sequelize.define('employees', {
         type: DataTypes.INTEGER,
      },
     emp_email:{
-        type: DataTypes.STRING,	
+        type: DataTypes.STRING,
       },
    }
 )
 async function createTableAndInsert() {
-   //creating a table “employees”
+   //creating a table "employees"
    await Employee.sync({force: true});
    console.log("Created the employees Table.")
 
@@ -121,9 +137,9 @@ createTableAndInsert()
 
 ```
 
-When you run example.js using `node example.js`, you should get output similar to the following:
+When you run `example.js` using `node example.js`, you should get output similar to the following:
 
-```text
+```output.json
 Creating the connection with YugabyteDB using postgres dialect.
 Executing (default): DROP TABLE IF EXISTS "employees" CASCADE;
 Executing (default): CREATE TABLE IF NOT EXISTS "employees" ("emp_id" INTEGER , "emp_name" VARCHAR(255), "emp_age" INTEGER, "emp_email" VARCHAR(255), "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL, "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL, PRIMARY KEY ("emp_id"));
@@ -164,7 +180,7 @@ Employees Details:
 ]
 ```
 
-## Next Steps
+## Next steps
 
 - Explore [Scaling Node Applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Node applications with Yugabyte Cloud](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/).
+- Learn how to [develop Node applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/).
