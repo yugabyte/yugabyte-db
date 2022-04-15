@@ -1914,13 +1914,23 @@ Status CatalogManager::RestoreSysCatalog(
   docdb::DocWriteBatch write_batch(
       tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
 
+  // Restore the pg_catalog tables.
   if (FLAGS_enable_ysql) {
-    // Restore the pg_catalog tables.
+    // We also need to increment the catalog version by 1 so that
+    // postgres and tservers can refresh their catalog cache.
     const auto* meta = tablet->metadata();
-    const auto& pg_yb_catalog_version_schema =
-        VERIFY_RESULT(meta->GetTableInfo(kPgYbCatalogVersionTableId))->schema();
+    auto pg_yb_catalog_meta_result = meta->GetTableInfo(kPgYbCatalogVersionTableId);
+    std::shared_ptr<yb::tablet::TableInfo> pg_yb_catalog_meta = nullptr;
+    // If the catalog version table is not found then this is a cluster upgraded from < 2.4, so
+    // we need to use the SysYSQLCatalogConfigEntryPB. All other errors are fatal.
+    if (!pg_yb_catalog_meta_result.ok() && !pg_yb_catalog_meta_result.status().IsNotFound()) {
+      return pg_yb_catalog_meta_result.status();
+    } else if (pg_yb_catalog_meta_result.ok()) {
+      pg_yb_catalog_meta = *pg_yb_catalog_meta_result;
+    }
+    // Pass an empty schema to indicate that this is older version cluster.
     auto status = state.ProcessPgCatalogRestores(
-        pg_yb_catalog_version_schema, doc_db, tablet->doc_db(), &write_batch);
+        pg_yb_catalog_meta.get(), doc_db, tablet->doc_db(), &write_batch, doc_read_context());
 
     // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
     // status in case of validation failures so that it gets propagated back to the client before

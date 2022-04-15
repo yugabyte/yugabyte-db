@@ -16,6 +16,8 @@
 
 #include "yb/common/json_util.h"
 
+#include "yb/gutil/logging-inl.h"
+
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_balancer_test_util.h"
@@ -56,6 +58,8 @@ constexpr auto kInterval = 6s;
 constexpr auto kRetention = 10min;
 constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
+const std::string old_sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
+const std::string old_sys_catalog_snapshot_name = "initial_sys_catalog_snapshot_2.0.9.0";
 
 } // namespace
 
@@ -1365,6 +1369,48 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlTestTruncate
   LOG(INFO) << "Enable flag to allow truncate and validate that truncate succeeds";
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_truncate_on_pitr_table", "true"));
   ASSERT_OK(conn.Execute("TRUNCATE TABLE test_table"));
+}
+
+class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotScheduleTestWithYsql {
+  std::vector<std::string> ExtraMasterFlags() override {
+    // To speed up tests.
+    std::string build_type;
+    if (DEBUG_MODE) {
+      build_type = "debug";
+    } else {
+      build_type = "release";
+    }
+    std::string old_sys_catalog_snapshot_full_path =
+        old_sys_catalog_snapshot_path + old_sys_catalog_snapshot_name + "_" + build_type;
+    return { "--snapshot_coordinator_cleanup_delay_ms=1000",
+             "--snapshot_coordinator_poll_interval_ms=500",
+             "--enable_automatic_tablet_splitting=true",
+             "--enable_transactional_ddl_gc=false",
+             "--allow_consecutive_restore=true",
+             "--initial_sys_catalog_snapshot_path="+old_sys_catalog_snapshot_full_path };
+  }
+};
+
+TEST_F(YbAdminSnapshotScheduleUpgradeTestWithYsql,
+       YB_DISABLE_TEST_IN_TSAN(PgsqlTestOldSysCatalogSnapshot)) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  ASSERT_OK(conn.Execute("DROP TABLE test_table"));
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_OK(restore_status);
+
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>(
+      "SELECT value FROM test_table WHERE key = 1"));
+  ASSERT_EQ(res, "before");
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'after'"));
+  res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table WHERE key = 1"));
+  ASSERT_EQ(res, "after");
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
