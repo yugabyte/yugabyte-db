@@ -25,8 +25,6 @@ v_control               text;
 v_control_parent_type   text;
 v_control_sub_type      text;
 v_last_partition        text;
-v_new_search_path       text := '@extschema@,pg_temp';
-v_old_search_path       text;
 v_parent_epoch          text;
 v_parent_interval       text;
 v_parent_relkind        char;
@@ -93,9 +91,6 @@ IF p_upsert <> '' THEN
 END IF;
 
 SELECT general_type INTO v_control_parent_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
-
-SELECT current_setting('search_path') INTO v_old_search_path;
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 -- Add the given parameters to the part_config_sub table first in case create_partition_* functions are called below 
 -- All sub-partition parents must use the same template table for native partitioning, so ensure the one from the given parent is obtained and used.
@@ -171,18 +166,15 @@ LOOP
         END CASE;
 
         IF v_child_interval >= v_parent_interval::interval THEN
-            EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
             RAISE EXCEPTION 'Sub-partition interval cannot be greater than or equal to the given parent interval';
         END IF;
         IF (v_child_interval = '1 week' AND v_parent_interval::interval > '1 week'::interval)
             OR (p_date_trunc_interval = 'week') THEN
-            EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
             RAISE EXCEPTION 'Due to conflicting data boundaries between ISO weeks and any larger interval of time, pg_partman cannot support a sub-partition interval of weekly time periods';
         END IF;
 
     ELSIF v_control_parent_type = 'id' AND v_control_sub_type = 'id' AND v_parent_epoch = 'none' AND p_epoch = 'none' THEN
         IF p_interval::bigint >= v_parent_interval::bigint THEN
-            EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
             RAISE EXCEPTION 'Sub-partition interval cannot be greater than or equal to the given parent interval';
         END IF;
     END IF;
@@ -267,8 +259,6 @@ LOOP
 END LOOP;
 
 v_success := true;
-
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 RETURN v_success;
 

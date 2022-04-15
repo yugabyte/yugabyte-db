@@ -1,11 +1,9 @@
-CREATE OR REPLACE FUNCTION @extschema@.create_trigger(p_parent_table text) RETURNS void
+CREATE FUNCTION @extschema@.create_trigger(p_parent_table text) RETURNS void
     LANGUAGE plpgsql
     AS $$
 DECLARE
 
 v_function_name         text;
-v_new_search_path       text := '@extschema@,pg_temp';
-v_old_search_path       text;
 v_parent_schema         text;
 v_parent_tablename      text;
 v_relkind               char;
@@ -16,9 +14,6 @@ BEGIN
 /*
  * Function to create partitioning trigger on parent table
  */
-
-SELECT current_setting('search_path') INTO v_old_search_path;
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 SELECT n.nspname, c.relname, c.relkind INTO v_parent_schema, v_parent_tablename, v_relkind
 FROM pg_catalog.pg_class c
@@ -43,8 +38,6 @@ v_trig_sql := format('CREATE TRIGGER %I BEFORE INSERT ON %I.%I FOR EACH ROW EXEC
     , v_function_name);
 
 EXECUTE v_trig_sql;
-
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 END
 $$;

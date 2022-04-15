@@ -1,3 +1,21 @@
+4.6.1
+NEW FEATURES
+============
+-- Add support for nanosecond epoch partitioning
+
+BUG FIXES
+=========
+-- Allow custom search paths to work better with pg_partman. Per discussion in Github Issue #350 related to custom data types.
+
+-- Fix default partition not being added to logical replication publication when using template table for PostgreSQL versions before 14. It is recommended to use the built in publication inheritance for PG14+.
+
+-- Fix updating pg_partman in some recent versions (4.4.0 -> current) when granting privileges to pg_partman objects using a role name that has special characters in the name. If older update scripts need to be fixed, please create an issue on Github.
+
+-- Fixed drop_cascade_fk option not being honored when dropping time-based child tables during retention (only applies to non-native partitioning). Thanks to @lorenzo on github for the fix (Github Issue #442).
+
+-- Fixed retention intervals for time-based partitioning causing unexpected results depending on the interval given. Thanks to @sfrost for the fix after reviewing Github Issue #446.
+
+
 4.6.0
 NEW FEATURES
 ============

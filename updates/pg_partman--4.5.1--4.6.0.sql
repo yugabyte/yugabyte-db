@@ -22,34 +22,39 @@ ALTER TABLE @extschema@.part_config_sub ADD COLUMN sub_date_trunc_interval TEXT;
 CREATE TEMP TABLE partman_preserve_privs_temp (statement text);
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.check_subpart_sameconfig(text)  TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.check_subpart_sameconfig(text)  TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'check_subpart_sameconfig'; 
+AND routine_name = 'check_subpart_sameconfig'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_parent(text, text, text, text, text[], int, text, text, boolean, text, text, text[], boolean, text, boolean, text) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_parent(text, text, text, text, text[], int, text, text, boolean, text, text, text[], boolean, text, boolean, text) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'create_parent'; 
+AND routine_name = 'create_parent'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_sub_parent(text, text, text, text, text, text[], int, text, boolean, text, text,  boolean, boolean , text) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_sub_parent(text, text, text, text, text, text[], int, text, boolean, text, text,  boolean, boolean , text) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'create_sub_parent'; 
+AND routine_name = 'create_sub_parent'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.undo_partition(text, int, text, boolean, numeric, text, text[], boolean) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.undo_partition(text, int, text, boolean, numeric, text, text[], boolean) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'undo_partition'; 
+AND routine_name = 'undo_partition'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.drop_partition_time(text, interval, boolean, boolean, text, timestamptz) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.drop_partition_time(text, interval, boolean, boolean, text, timestamptz) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'drop_partition_time'; 
+AND routine_name = 'drop_partition_time'
+AND grantee != 'PUBLIC';
 
 DROP FUNCTION @extschema@.check_subpart_sameconfig(text);
 DROP FUNCTION @extschema@.create_parent(text, text, text, text, text[], int, text, text, boolean, text, text, text[], boolean, text, boolean);
@@ -3986,10 +3991,11 @@ IF current_setting('server_version_num')::int >= 110000 THEN
 -- ########################  START POSTGRESQL 11 ONLY SECTION ##############################
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON PROCEDURE @extschema@.undo_partition_proc(text, text, int, int, text, boolean, int, int, boolean, text[], boolean) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON PROCEDURE @extschema@.undo_partition_proc(text, text, int, int, text, boolean, int, int, boolean, text[], boolean) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'undo_partition_proc'; 
+AND routine_name = 'undo_partition_proc'
+AND grantee != 'PUBLIC';
 
 DROP PROCEDURE @extschema@.undo_partition_proc(text, text, int, int, text, boolean, int, int, boolean, text[]);
 

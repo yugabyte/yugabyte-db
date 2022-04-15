@@ -26,8 +26,8 @@ v_last_partition_created        boolean;
 v_last_partition_id             bigint;
 v_last_partition_timestamp      timestamptz;
 v_max_id_parent                 bigint;
-v_max_time_default               timestamptz;
-v_new_search_path               text := '@extschema@,pg_temp';
+v_max_time_default              timestamptz;
+v_new_search_path               text;
 v_next_partition_id             bigint;
 v_next_partition_timestamp      timestamptz;
 v_old_search_path               text;
@@ -76,10 +76,15 @@ IF v_adv_lock = 'false' THEN
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
+IF length(v_old_search_path) > 0 THEN
+   v_new_search_path := '@extschema@,pg_temp,'||v_old_search_path;
+ELSE
+    v_new_search_path := '@extschema@,pg_temp';
+END IF;
 IF p_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
+        v_new_search_path := format('%s,%s'),v_jobmon_schema, v_new_search_path;
     END IF;
 END IF;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
@@ -176,6 +181,7 @@ LOOP
     v_partition_expression := CASE
         WHEN v_row.epoch = 'seconds' THEN format('to_timestamp(%I)', v_row.control)
         WHEN v_row.epoch = 'milliseconds' THEN format('to_timestamp((%I/1000)::float)', v_row.control)
+        WHEN v_row.epoch = 'nanoseconds' THEN format('to_timestamp((%I/1000000000)::float)', v_row.control)
         ELSE format('%I', v_row.control)
     END;
     RAISE DEBUG 'run_maint: v_partition_expression: %', v_partition_expression;

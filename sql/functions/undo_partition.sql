@@ -14,52 +14,52 @@ CREATE FUNCTION @extschema@.undo_partition(
     AS $$
 DECLARE
 
-ex_context              text;
-ex_detail               text;
-ex_hint                 text;
-ex_message              text;
-v_adv_lock              boolean;
-v_batch_interval_id     bigint;
-v_batch_interval_time   interval;
-v_batch_loop_count      int := 0;
-v_child_loop_total      bigint := 0;
-v_child_table           text;
-v_col                   text;
-v_column_list           text;
-v_control               text;
-v_control_type          text;
-v_child_min_id          bigint;
-v_child_min_time        timestamptz;
-v_epoch                 text;
-v_function_name         text;
-v_jobmon                boolean;
-v_jobmon_schema         text;
-v_job_id                bigint;
-v_inner_loop_count      int;
-v_lock_iter             int := 1;
-v_lock_obtained         boolean := FALSE;
-v_new_search_path       text;
-v_old_search_path       text;
-v_parent_schema         text;
-v_parent_tablename      text;
-v_partition_expression  text;
-v_partition_interval    text;
-v_partition_type        text;
-v_relkind               char;
-v_row                   record;
-v_rowcount              bigint;
-v_sql                   text;
-v_step_id               bigint;
-v_sub_count             int;
-v_target_schema         text;
-v_target_tablename      text;
-v_template_schema       text;
-v_template_siblings     int;
-v_template_table        text;
-v_template_tablename    text;
-v_total                 bigint := 0;
-v_trig_name             text;
-v_undo_count            int := 0;
+ex_context                      text;
+ex_detail                       text;
+ex_hint                         text;
+ex_message                      text;
+v_adv_lock                      boolean;
+v_batch_interval_id             bigint;
+v_batch_interval_time           interval;
+v_batch_loop_count              int := 0;
+v_child_loop_total              bigint := 0;
+v_child_table                   text;
+v_col                           text;
+v_column_list                   text;
+v_control                       text;
+v_control_type                  text;
+v_child_min_id                  bigint;
+v_child_min_time                timestamptz;
+v_epoch                         text;
+v_function_name                 text;
+v_jobmon                        boolean;
+v_jobmon_schema                 text;
+v_job_id                        bigint;
+v_inner_loop_count              int;
+v_lock_iter                     int := 1;
+v_lock_obtained                 boolean := FALSE;
+v_new_search_path               text;
+v_old_search_path               text;
+v_parent_schema                 text;
+v_parent_tablename              text;
+v_partition_expression          text;
+v_partition_interval            text;
+v_partition_type                text;
+v_relkind                       char;
+v_row                           record;
+v_rowcount                      bigint;
+v_sql                           text;
+v_step_id                       bigint;
+v_sub_count                     int;
+v_target_schema                 text;
+v_target_tablename              text;
+v_template_schema               text;
+v_template_siblings             int;
+v_template_table                text;
+v_template_tablename            text;
+v_total                         bigint := 0;
+v_trig_name                     text;
+v_undo_count                    int := 0;
 
 BEGIN
 /*
@@ -131,10 +131,15 @@ ELSE
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
+IF length(v_old_search_path) > 0 THEN
+   v_new_search_path := '@extschema@,pg_temp,'||v_old_search_path;
+ELSE
+    v_new_search_path := '@extschema@,pg_temp';
+END IF;
 IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
+        v_new_search_path := format('%s,%s'),v_jobmon_schema, v_new_search_path;
     END IF;
 END IF;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
@@ -179,6 +184,7 @@ END IF;
 v_partition_expression := CASE
     WHEN v_epoch = 'seconds' THEN format('to_timestamp(%I)', v_control)
     WHEN v_epoch = 'milliseconds' THEN format('to_timestamp((%I/1000)::float)', v_control)
+    WHEN v_epoch = 'nanoseconds' THEN format('to_timestamp((%I/1000000000)::float)', v_control)
     ELSE format('%I', v_control)
 END;
 
@@ -305,11 +311,12 @@ LOOP
         v_lock_obtained := FALSE; -- reset for reuse later
 
         IF v_partition_type = 'native' THEN
-            EXECUTE format('ALTER TABLE %I.%I DETACH PARTITION %I.%I'
+            v_sql := format('ALTER TABLE %I.%I DETACH PARTITION %I.%I'
                             , v_parent_schema
                             , v_parent_tablename
                             , v_parent_schema
                             , v_child_table);
+            EXECUTE v_sql;
         ELSE
             EXECUTE format('ALTER TABLE %I.%I NO INHERIT %I.%I'
                             , v_parent_schema
@@ -519,5 +526,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

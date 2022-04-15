@@ -22,7 +22,7 @@ v_inherit_fk                    boolean;
 v_job_id                        bigint;
 v_jobmon                        boolean;
 v_jobmon_schema                 text;
-v_new_search_path               text := '@extschema@,pg_temp';
+v_new_search_path               text;
 v_old_search_path               text;
 v_parent_grant                  record;
 v_parent_schema                 text;
@@ -103,10 +103,15 @@ IF v_control_type <> 'time' THEN
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
+IF length(v_old_search_path) > 0 THEN
+   v_new_search_path := '@extschema@,pg_temp,'||v_old_search_path;
+ELSE
+    v_new_search_path := '@extschema@,pg_temp';
+END IF;
 IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
+        v_new_search_path := format('%s,%s'),v_jobmon_schema, v_new_search_path;
     END IF;
 END IF;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
@@ -121,6 +126,7 @@ END IF;
 v_partition_expression := CASE
     WHEN v_epoch = 'seconds' THEN format('to_timestamp(%I)', v_control)
     WHEN v_epoch = 'milliseconds' THEN format('to_timestamp((%I/1000)::float)', v_control)
+    WHEN v_epoch = 'nanoseconds' THEN format('to_timestamp((%I/1000000000)::float)', v_control)
     ELSE format('%I', v_control)
 END;
 RAISE DEBUG 'create_partition_time: v_partition_expression: %', v_partition_expression;
@@ -268,6 +274,14 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                     , v_partition_name
                     , EXTRACT('epoch' FROM v_partition_timestamp_start)::bigint * 1000
                     , EXTRACT('epoch' FROM v_partition_timestamp_end)::bigint * 1000);
+            ELSIF v_epoch = 'nanoseconds' THEN
+                EXECUTE format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I FOR VALUES FROM (%L) TO (%L)'
+                    , v_parent_schema
+                    , v_parent_tablename
+                    , v_parent_schema
+                    , v_partition_name
+                    , EXTRACT('epoch' FROM v_partition_timestamp_start)::bigint * 1000000000
+                    , EXTRACT('epoch' FROM v_partition_timestamp_end)::bigint * 1000000000);
             END IF;
             -- Create secondary, time-based constraint since native's constraint is already integer based
             EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%s >= %L AND %4$s < %6$L)'
@@ -311,6 +325,15 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                             , EXTRACT('epoch' from v_partition_timestamp_start)::bigint * 1000
                             , v_control
                             , EXTRACT('epoch' from v_partition_timestamp_end)::bigint * 1000);
+        ELSIF v_epoch = 'nanoseconds' THEN
+            EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
+                            , v_parent_schema
+                            , v_partition_name
+                            , v_partition_name||'_partition_int_check'
+                            , v_control
+                            , EXTRACT('epoch' from v_partition_timestamp_start)::bigint * 1000000000
+                            , v_control
+                            , EXTRACT('epoch' from v_partition_timestamp_end)::bigint * 1000000000);
         END IF;
 
         EXECUTE format('ALTER TABLE %I.%I INHERIT %I.%I'
@@ -432,7 +455,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     PERFORM @extschema@.apply_constraints(p_parent_table, p_job_id := v_job_id);
 
     IF v_publications IS NOT NULL THEN
-        -- NOTE: Publications currently not supported on parent table, but are supported on the table partitions if individually assigned.
+        -- NOTE: Native publication inheritance is only supported on PG14+
         PERFORM @extschema@.apply_publications(p_parent_table, v_parent_schema, v_partition_name);
     END IF;
 

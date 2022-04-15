@@ -18,8 +18,6 @@ v_control               text;
 v_control_type          text;
 v_datetime_string       text;
 v_epoch                 text;
-v_new_search_path       text := '@extschema@,pg_temp';
-v_old_search_path       text;
 v_parent_table          text;
 v_partition_interval    text;
 v_partition_type        text;
@@ -36,9 +34,6 @@ BEGIN
  * Passing an interval lets you set one different than the default configured one if desired.
  */
 
-SELECT current_setting('search_path') INTO v_old_search_path;
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
-
 SELECT n.nspname, c.relname INTO v_child_schema, v_child_tablename
 FROM pg_catalog.pg_class c
 JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
@@ -46,7 +41,6 @@ WHERE n.nspname = split_part(p_child_table, '.', 1)::name
 AND c.relname = split_part(p_child_table, '.', 2)::name;
 
 IF v_child_tablename IS NULL THEN
-    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
     RAISE EXCEPTION 'Child table given does not exist (%)', p_child_table;
 END IF;
 
@@ -106,6 +100,8 @@ IF v_control_type = 'time' OR (v_control_type = 'id' AND v_epoch <> 'none') THEN
                 child_start_time := to_timestamp(v_start_time_string::double precision);
             ELSIF v_epoch = 'milliseconds' THEN
                 child_start_time := to_timestamp((v_start_time_string::double precision) / 1000);
+            ELSIF v_epoch = 'nanoseconds' THEN
+                child_start_time := to_timestamp((v_start_time_string::double precision) / 1000000000);
             END IF;
         ELSE
             RAISE EXCEPTION 'Unexpected code path in show_partition_info(). Please report this bug with the configuration that lead to it.';
@@ -145,8 +141,6 @@ ELSE
 END IF;
 
 suffix = v_suffix;
-
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 RETURN;
 

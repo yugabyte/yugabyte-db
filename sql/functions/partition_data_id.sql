@@ -24,8 +24,6 @@ v_lock_iter                 int := 1;
 v_lock_obtained             boolean := FALSE;
 v_max_partition_id          bigint;
 v_min_partition_id          bigint;
-v_new_search_path           text := '@extschema@,pg_temp';
-v_old_search_path           text;
 v_parent_tablename          text;
 v_partition_interval        bigint;
 v_partition_id              bigint[];
@@ -115,9 +113,6 @@ ELSIF v_partition_type = 'native' AND current_setting('server_version_num')::int
     END IF;
 
 END IF;
-
-SELECT current_setting('search_path') INTO v_old_search_path;
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 IF p_batch_interval IS NULL OR p_batch_interval > v_partition_interval THEN
     p_batch_interval := v_partition_interval;
@@ -230,7 +225,6 @@ IF v_default_exists THEN
         , v_current_partition_name
         , v_column_list);
 
-
 ELSE
 
     PERFORM @extschema@.create_partition_id(p_parent_table, v_partition_id, p_analyze);
@@ -259,8 +253,6 @@ END LOOP;
 IF v_partition_type = 'partman' THEN
     PERFORM @extschema@.create_function_id(p_parent_table);
 END IF;
-
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 RETURN v_total_rows;
 

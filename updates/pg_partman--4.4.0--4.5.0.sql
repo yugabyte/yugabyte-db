@@ -22,64 +22,74 @@
 CREATE TEMP TABLE partman_preserve_privs_temp (statement text);
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_sub_parent(text, text, text, text, text, text[], int, text, boolean, text, text, boolean, boolean) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_sub_parent(text, text, text, text, text, text[], int, text, boolean, text, text, boolean, boolean) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'create_sub_parent'; 
+AND routine_name = 'create_sub_parent'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_partition_id(text, bigint[], boolean, text) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_partition_id(text, bigint[], boolean, text) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'create_partition_id'; 
+AND routine_name = 'create_partition_id'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_partition_time(text, timestamptz[], boolean, text) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_partition_time(text, timestamptz[], boolean, text) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'create_partition_time'; 
+AND routine_name = 'create_partition_time'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_parent(text, text, text, text, text[], int, text, text, boolean, text, text, text[], boolean, text, boolean) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_parent(text, text, text, text, text[], int, text, text, boolean, text, text, text[], boolean, text, boolean) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'create_parent'; 
+AND routine_name = 'create_parent'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.apply_constraints(text, text, boolean, bigint) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.apply_constraints(text, text, boolean, bigint) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'apply_constraints'; 
+AND routine_name = 'apply_constraints'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.partition_data_id(text, int, bigint, numeric, text, boolean, text, text[]) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.partition_data_id(text, int, bigint, numeric, text, boolean, text, text[]) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'partition_data_id'; 
+AND routine_name = 'partition_data_id'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.partition_data_time(text, int, interval, numeric, text, boolean, text, text[]) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.partition_data_time(text, int, interval, numeric, text, boolean, text, text[]) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'partition_data_time'; 
+AND routine_name = 'partition_data_time'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.run_maintenance(text, boolean, boolean) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.run_maintenance(text, boolean, boolean) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'run_maintenance'; 
+AND routine_name = 'run_maintenance'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.run_maintenance(text, boolean, boolean) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.run_maintenance(text, boolean, boolean) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'run_maintenance'; 
+AND routine_name = 'run_maintenance'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.undo_partition(text, int, text, boolean, numeric, text, text[]) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.undo_partition(text, int, text, boolean, numeric, text, text[]) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'undo_partition'; 
+AND routine_name = 'undo_partition'
+AND grantee != 'PUBLIC';
 
 DROP FUNCTION @extschema@.create_partition_id(text, bigint[], boolean, boolean);
 DROP FUNCTION @extschema@.create_partition_time(text, timestamptz[], boolean, boolean); 
@@ -3843,22 +3853,25 @@ IF current_setting('server_version_num')::int >= 110000 THEN
 -- ########################  START POSTGRESQL 11 ONLY SECTION ##############################
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON PROCEDURE @extschema@.partition_data_proc(text, text, int, int, text, text, int, int, boolean, text[]) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON PROCEDURE @extschema@.partition_data_proc(text, text, int, int, text, text, int, int, boolean, text[]) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'partition_data_proc'; 
+AND routine_name = 'partition_data_proc'
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON PROCEDURE @extschema@.undo_partition_proc(text, text, int, int, text, boolean, int, int, boolean, text[]) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON PROCEDURE @extschema@.undo_partition_proc(text, text, int, int, text, boolean, int, int, boolean, text[]) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'undo_partition_proc'; 
+AND routine_name = 'undo_partition_proc' 
+AND grantee != 'PUBLIC';
 
 INSERT INTO partman_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON PROCEDURE @extschema@.run_maintenance_proc(int, boolean, boolean) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+SELECT 'GRANT EXECUTE ON PROCEDURE @extschema@.run_maintenance_proc(int, boolean, boolean) TO '||array_to_string(array_agg('"'||grantee::text||'"'), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'run_maintenance_proc'; 
+AND routine_name = 'run_maintenance_proc'
+AND grantee != 'PUBLIC';
 
 DROP PROCEDURE @extschema@.partition_data_proc (text, text, int, int, text, text, int, int, boolean);
 DROP PROCEDURE @extschema@.undo_partition_proc(text, text, int, int, text, boolean, int, int, boolean); 

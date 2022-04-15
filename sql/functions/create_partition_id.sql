@@ -20,7 +20,7 @@ v_inherit_privileges    boolean;
 v_job_id                bigint;
 v_jobmon                boolean;
 v_jobmon_schema         text;
-v_new_search_path       text := '@extschema@,pg_temp';
+v_new_search_path       text;
 v_old_search_path       text;
 v_parent_grant          record;
 v_parent_schema         text;
@@ -85,10 +85,15 @@ IF v_control_type <> 'id' THEN
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
+IF length(v_old_search_path) > 0 THEN
+   v_new_search_path := '@extschema@,pg_temp,'||v_old_search_path;
+ELSE
+    v_new_search_path := '@extschema@,pg_temp';
+END IF;
 IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
+        v_new_search_path := format('%s,%s'),v_jobmon_schema, v_new_search_path;
     END IF;
 END IF;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
@@ -327,7 +332,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     PERFORM @extschema@.apply_constraints(p_parent_table, p_job_id := v_job_id);
 
     IF v_publications IS NOT NULL THEN
-        -- NOTE: Publications currently not supported on parent table, but are supported on the table partitions if individually assigned.
+        -- NOTE: Native publication inheritance is only supported on PG14+
         PERFORM @extschema@.apply_publications(p_parent_table, v_parent_schema, v_partition_name);
     END IF;
 

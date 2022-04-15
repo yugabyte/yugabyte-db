@@ -2,7 +2,6 @@ CREATE FUNCTION @extschema@.apply_cluster(p_parent_schema text, p_parent_tablena
     LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_new_search_path   text := '@extschema@,pg_temp';
     v_old_search_path   text;
     v_parent_indexdef   text;
     v_relkind           char;
@@ -14,9 +13,6 @@ BEGIN
 * Adapted from code fork by https://github.com/dturon/pg_partman
 */
     
-SELECT current_setting('search_path') INTO v_old_search_path;
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
-
 SELECT c.relkind INTO v_relkind
 FROM pg_catalog.pg_class c
 JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
@@ -64,8 +60,6 @@ LOOP
         EXECUTE v_sql;
     END IF;
 END LOOP;
-
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 END;
 $$;

@@ -27,8 +27,6 @@ v_lock_iter                 int := 1;
 v_lock_obtained             boolean := FALSE;
 v_max_partition_timestamp   timestamptz;
 v_min_partition_timestamp   timestamptz;
-v_new_search_path           text := '@extschema@,pg_temp';
-v_old_search_path           text;
 v_parent_tablename          text;
 v_parent_tablename_real     text;
 v_partition_expression      text;
@@ -127,9 +125,6 @@ ELSIF v_partition_type = 'native' AND current_setting('server_version_num')::int
     END IF;
 END IF;
 
-SELECT current_setting('search_path') INTO v_old_search_path;
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
-
 IF p_batch_interval IS NULL OR p_batch_interval > v_partition_interval THEN
     p_batch_interval := v_partition_interval;
 END IF;
@@ -139,6 +134,7 @@ SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partition
 v_partition_expression := CASE
     WHEN v_epoch = 'seconds' THEN format('to_timestamp(%I)', v_control)
     WHEN v_epoch = 'milliseconds' THEN format('to_timestamp((%I/1000)::float)', v_control)
+    WHEN v_epoch = 'nanoseconds' THEN format('to_timestamp((%I/1000000000)::float)', v_control)
     ELSE format('%I', v_control)
 END;
 
@@ -250,7 +246,7 @@ FOR i IN 1..p_batch_count LOOP
         WHILE v_lock_iter <= 5 LOOP
             v_lock_iter := v_lock_iter + 1;
             BEGIN
-                EXECUTE format('SELECT %s FROM ONLY %I.%I WHERE %s >= %L AND %3$s < %5$L FOR UPDATE NOWAIT'
+                EXECUTE format('SELECT %s FROM ONLY %I.%I WHERE %s >= %L AND %4$s < %5$L FOR UPDATE NOWAIT'
                     , v_column_list
                     , v_source_schemaname
                     , v_source_tablename
@@ -325,8 +321,6 @@ END LOOP;
 IF v_partition_type IN ('partman', 'time-custom') THEN
     PERFORM @extschema@.create_function_time(p_parent_table);
 END IF;
-
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 RETURN v_total_rows;
 

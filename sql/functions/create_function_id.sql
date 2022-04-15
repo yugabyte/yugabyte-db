@@ -25,7 +25,7 @@ v_last_partition                text;
 v_max                           bigint;
 v_next_partition_id             bigint;
 v_next_partition_name           text;
-v_new_search_path               text := '@extschema@,pg_temp';
+v_new_search_path               text;
 v_old_search_path               text;
 v_optimize_trigger              int;
 v_parent_schema                 text;
@@ -93,10 +93,15 @@ IF v_control_type <> 'id' THEN
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
+IF length(v_old_search_path) > 0 THEN
+   v_new_search_path := '@extschema@,pg_temp,'||v_old_search_path;
+ELSE
+    v_new_search_path := '@extschema@,pg_temp';
+END IF;
 IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
+        v_new_search_path := format('%s,%s'),v_jobmon_schema, v_new_search_path;
     END IF;
 END IF;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
@@ -303,5 +308,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

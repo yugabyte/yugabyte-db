@@ -20,7 +20,7 @@ v_infinite_time_partitions      boolean;
 v_job_id                        bigint;
 v_jobmon                        boolean;
 v_jobmon_schema                 text;
-v_new_search_path               text := '@extschema@,pg_temp';
+v_new_search_path               text;
 v_old_search_path               text;
 v_new_length                    int;
 v_next_partition_name           text;
@@ -97,10 +97,15 @@ IF v_control_type <> 'time' THEN
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
+IF length(v_old_search_path) > 0 THEN
+   v_new_search_path := '@extschema@,pg_temp,'||v_old_search_path;
+ELSE
+    v_new_search_path := '@extschema@,pg_temp';
+END IF;
 IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
+        v_new_search_path := format('%s,%s'),v_jobmon_schema, v_new_search_path;
     END IF;
 END IF;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
@@ -125,6 +130,7 @@ ELSE
     v_partition_expression := CASE
         WHEN v_epoch = 'seconds' THEN format('to_timestamp(%I)', v_control)
         WHEN v_epoch = 'milliseconds' THEN format('to_timestamp((%I/1000)::float)', v_control)
+        WHEN v_epoch = 'nanoseconds' THEN format('to_timestamp((%I/1000000000)::float)', v_control)
         ELSE format('%I', v_control)
     END;
 
@@ -150,6 +156,7 @@ END IF; -- end infinite time check
 v_partition_expression := CASE
     WHEN v_epoch = 'seconds' THEN format('to_timestamp(NEW.%I)', v_control)
     WHEN v_epoch = 'milliseconds' THEN format('to_timestamp((NEW.%I/1000)::float)', v_control)
+    WHEN v_epoch = 'nanoseconds' THEN format('to_timestamp((NEW.%I/1000000000)::float)', v_control)
     ELSE format('NEW.%I', v_control)
 END;
 
@@ -375,5 +382,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 
