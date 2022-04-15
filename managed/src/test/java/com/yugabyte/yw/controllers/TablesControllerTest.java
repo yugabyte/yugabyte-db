@@ -10,7 +10,9 @@ import static com.yugabyte.yw.common.AssertHelper.assertForbidden;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.ModelFactory.createFromConfig;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.ModelFactory.generateTablespaceParams;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -19,13 +21,13 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyObject;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyBoolean;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -48,37 +50,35 @@ import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
-
+import com.yugabyte.yw.common.TableSpaceStructures.PlacementBlock;
+import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.controllers.TablesController.PlacementBlock;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.controllers.TablesController.TableInfoResp;
-import com.yugabyte.yw.controllers.TablesController.TableSpaceInfo;
-
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
+import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
-import com.yugabyte.yw.common.utils.FileUtils;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -93,17 +93,20 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
+import junitparams.JUnitParamsRunner;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.Test;
 import org.junit.Ignore;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
-import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
@@ -116,14 +119,17 @@ import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes;
 import org.yb.master.MasterTypes.RelationType;
-
 import play.Environment;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 
+@RunWith(JUnitParamsRunner.class)
 public class TablesControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(TablesControllerTest.class);
+
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
+
   private YBClientService mockService;
   private TablesController tablesController;
   private YBClient mockClient;
@@ -133,6 +139,8 @@ public class TablesControllerTest extends FakeDBApplication {
   private NodeUniverseManager mockNodeUniverseManager;
   private Environment mockedEnvironment;
   MockedStatic<FileUtils> mockedFileUtils;
+  private Customer customer;
+  private Users user;
 
   private Schema getFakeSchema() {
     List<ColumnSchema> columnSchemas = new LinkedList<>();
@@ -174,6 +182,9 @@ public class TablesControllerTest extends FakeDBApplication {
     mockedFileUtils
         .when(() -> FileUtils.readResource(anyString(), anyObject()))
         .thenReturn("QUERY");
+
+    customer = ModelFactory.testCustomer();
+    user = ModelFactory.testUser(customer);
   }
 
   @After
@@ -215,8 +226,6 @@ public class TablesControllerTest extends FakeDBApplication {
     tableInfoList.add(ti3);
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
     when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe u1 = createUniverse(customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u1.universeUUID);
@@ -260,8 +269,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testUniverseListMastersNotQueryable() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe u1 = createUniverse("Universe-1", customer.getCustomerId());
     customer.addUniverseUUID(u1.universeUUID);
     customer.save();
@@ -280,8 +287,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateCassandraTableWithInvalidUUID() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     String authToken = user.createAuthToken();
     customer.save();
 
@@ -301,8 +306,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateCassandraTableWithInvalidParams() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     String authToken = user.createAuthToken();
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
@@ -329,8 +332,6 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(
             Matchers.any(TaskType.class), Matchers.any(TableDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     String authToken = user.createAuthToken();
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
@@ -417,8 +418,6 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockSchemaResponse.getTableId()).thenReturn(tableUUID.toString().replace("-", ""));
 
     // Creating fake authentication
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(universe.universeUUID);
@@ -445,8 +444,6 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockClient.getTableSchemaByUUID(any(String.class))).thenReturn(mockSchemaResponse);
 
     // Creating fake authentication
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = createUniverse(customer.getCustomerId());
     final Universe u = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u.universeUUID);
@@ -520,8 +517,6 @@ public class TablesControllerTest extends FakeDBApplication {
             Matchers.any(TaskType.class), Matchers.any(BulkImportParams.class)))
         .thenReturn(fakeTaskUUID);
 
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     ModelFactory.awsProvider(customer);
     String authToken = user.createAuthToken();
     Universe universe = createUniverse(customer.getCustomerId());
@@ -554,8 +549,6 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(
             Matchers.any(TaskType.class), Matchers.any(BulkImportParams.class)))
         .thenReturn(fakeTaskUUID);
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     ModelFactory.awsProvider(customer);
     String authToken = user.createAuthToken();
     Universe universe = createUniverse(customer.getCustomerId());
@@ -587,8 +580,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateBackupWithInvalidParams() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     String url =
         "/api/customers/"
@@ -613,8 +604,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateBackupWithInvalidStorageConfig() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     String url =
         "/api/customers/"
@@ -642,8 +631,8 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateBackupWithReadOnlyUser() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer, Users.Role.ReadOnly);
+    user.delete();
+    user = ModelFactory.testUser(customer, Users.Role.ReadOnly);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     String url =
         "/api/customers/"
@@ -668,8 +657,8 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateBackupWithBackupAdminUser() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer, Users.Role.BackupAdmin);
+    user.delete();
+    user = ModelFactory.testUser(customer, Users.Role.BackupAdmin);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     UUID tableUUID = UUID.randomUUID();
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(customer, "TEST17");
@@ -694,7 +683,6 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
-    System.out.println(result);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.BackupUniverse, taskType.getValue());
     assertOk(result);
@@ -707,8 +695,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateBackupWithValidParams() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     UUID tableUUID = UUID.randomUUID();
     String url =
@@ -747,8 +733,6 @@ public class TablesControllerTest extends FakeDBApplication {
   @Test
   @Ignore
   public void testCreateBackupOnDisabledTableFails() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = createUniverse(customer.getCustomerId());
     final Universe u = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u.universeUUID);
@@ -770,8 +754,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateBackupFailureInProgress() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     UUID tableUUID = UUID.randomUUID();
     Universe universe = createUniverse(customer.getCustomerId());
     universe =
@@ -809,8 +791,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateBackupCronExpression() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     UUID tableUUID = UUID.randomUUID();
     String url =
@@ -842,8 +822,6 @@ public class TablesControllerTest extends FakeDBApplication {
   @Test
   @Ignore
   public void testCreateMultiBackup() throws Exception {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     String url =
         "/api/customers/"
@@ -862,6 +840,7 @@ public class TablesControllerTest extends FakeDBApplication {
         ArgumentCaptor.forClass(MultiTableBackup.Params.class);
 
     UUID fakeTaskUUID = UUID.randomUUID();
+
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
@@ -877,8 +856,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateMultiBackupFailureInProgress() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = createUniverse(customer.getCustomerId());
     universe =
         Universe.saveDetails(
@@ -910,8 +887,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateMultiBackupScheduleCronNoTables() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     String url =
         "/api/customers/"
@@ -937,8 +912,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateMultiBackupScheduleFrequencyEmptyKeyspace() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     String url =
         "/api/customers/"
@@ -963,8 +936,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteTableWithValidParams() throws Exception {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Map<String, String> flashData = Collections.emptyMap();
     Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
     Http.Request request = mock(Http.Request.class);
@@ -1002,8 +973,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteTableWithInvalidparams() {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe universe = createUniverse(customer.getCustomerId());
     final Universe u = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u.universeUUID);
@@ -1088,8 +1057,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testListTableSpaces() throws Exception {
-    Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe u1 = createUniverse(customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u1.universeUUID);
@@ -1110,8 +1077,8 @@ public class TablesControllerTest extends FakeDBApplication {
 
     List<TableSpaceInfo> tableSpaceInfoRespList =
         objectMapper.readValue(json.toString(), new TypeReference<List<TableSpaceInfo>>() {});
-    Assert.assertNotNull(tableSpaceInfoRespList);
-    Assert.assertEquals(4, tableSpaceInfoRespList.size());
+    assertNotNull(tableSpaceInfoRespList);
+    assertEquals(4, tableSpaceInfoRespList.size());
 
     Map<String, TableSpaceInfo> tableSpacesMap =
         tableSpaceInfoRespList.stream().collect(Collectors.toMap(x -> x.name, Function.identity()));
@@ -1120,29 +1087,127 @@ public class TablesControllerTest extends FakeDBApplication {
     TableSpaceInfo us_west_2_tablespace = tableSpacesMap.get("us_west_2_tablespace");
     TableSpaceInfo us_west_1_tablespace = tableSpacesMap.get("us_west_1_tablespace");
     TableSpaceInfo us_west_3_tablespace = tableSpacesMap.get("us_west_3_tablespace");
-    Assert.assertNotNull(ap_south_1_tablespace);
-    Assert.assertNotNull(us_west_2_tablespace);
-    Assert.assertNotNull(us_west_1_tablespace);
-    Assert.assertNotNull(us_west_3_tablespace);
+    assertNotNull(ap_south_1_tablespace);
+    assertNotNull(us_west_2_tablespace);
+    assertNotNull(us_west_1_tablespace);
+    assertNotNull(us_west_3_tablespace);
 
-    Assert.assertEquals(3, ap_south_1_tablespace.numReplicas);
-    Assert.assertEquals(3, ap_south_1_tablespace.placementBlocks.size());
+    assertEquals(3, ap_south_1_tablespace.numReplicas);
+    assertEquals(3, ap_south_1_tablespace.placementBlocks.size());
     Map<String, PlacementBlock> ap_south_1_tablespace_zones =
         ap_south_1_tablespace
             .placementBlocks
             .stream()
             .collect(Collectors.toMap(x -> x.zone, Function.identity()));
-    Assert.assertNotNull(ap_south_1_tablespace_zones.get("ap-south-1a"));
-    Assert.assertEquals("ap-south-1", ap_south_1_tablespace_zones.get("ap-south-1a").region);
-    Assert.assertEquals("aws", ap_south_1_tablespace_zones.get("ap-south-1a").cloud);
-    Assert.assertEquals(1, ap_south_1_tablespace_zones.get("ap-south-1a").minNumReplicas);
+    assertNotNull(ap_south_1_tablespace_zones.get("ap-south-1a"));
+    assertEquals("ap-south-1", ap_south_1_tablespace_zones.get("ap-south-1a").region);
+    assertEquals("aws", ap_south_1_tablespace_zones.get("ap-south-1a").cloud);
+    assertEquals(1, ap_south_1_tablespace_zones.get("ap-south-1a").minNumReplicas);
 
-    Assert.assertEquals(3, us_west_2_tablespace.numReplicas);
-    Assert.assertEquals(3, us_west_2_tablespace.placementBlocks.size());
-    Assert.assertEquals(1, us_west_1_tablespace.numReplicas);
-    Assert.assertEquals(1, us_west_1_tablespace.placementBlocks.size());
-    Assert.assertEquals(1, us_west_3_tablespace.numReplicas);
-    Assert.assertEquals(1, us_west_3_tablespace.placementBlocks.size());
+    assertEquals(3, us_west_2_tablespace.numReplicas);
+    assertEquals(3, us_west_2_tablespace.placementBlocks.size());
+    assertEquals(1, us_west_1_tablespace.numReplicas);
+    assertEquals(1, us_west_1_tablespace.placementBlocks.size());
+    assertEquals(1, us_west_3_tablespace.numReplicas);
+    assertEquals(1, us_west_3_tablespace.placementBlocks.size());
+  }
+
+  @Test
+  public void testCreateTablespaces_HappyPath() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+
+    Provider provider = ModelFactory.awsProvider(customer);
+    Universe universe = createFromConfig(provider, "Existing", "r1-az1-4-1;r1-az2-3-1;r1-az3-4-1");
+    String authToken = user.createAuthToken();
+
+    CreateTablespaceParams params =
+        generateTablespaceParams(
+            universe.universeUUID, provider.code, 3, "r1-az1-1;r1-az2-1;r1-az3-1");
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/universes/"
+                + universe.universeUUID
+                + "/tablespaces",
+            authToken,
+            Json.toJson(params));
+
+    assertOk(result);
+  }
+
+  @Test
+  public void testCreateTablespaces_AnnotatedValidators_FailFlows() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+
+    Provider provider = ModelFactory.awsProvider(customer);
+    Universe universe = createFromConfig(provider, "Existing", "r1-az1-4-1;r1-az2-3-1;r1-az3-4-1");
+    String authToken = user.createAuthToken();
+
+    CreateTablespaceParams params =
+        generateTablespaceParams(
+            universe.universeUUID, provider.code, 0, "r1-az1-1;r1-az2-1;r1-az3-1");
+    assertCreateTableSpacesError(
+        universe.universeUUID,
+        authToken,
+        params,
+        "{\"tablespaceInfos[0].numReplicas\":[\"must be greater than or equal to 1\"]}");
+
+    params = new CreateTablespaceParams();
+    params.tablespaceInfos = new ArrayList<>();
+    assertCreateTableSpacesError(
+        universe.universeUUID,
+        authToken,
+        params,
+        "{\"tablespaceInfos\":[\"size must be between 1 and 2147483647\"]}");
+
+    params =
+        generateTablespaceParams(
+            universe.universeUUID, provider.code, 3, "r1-az1-1;r1-az2-1;r1-az3-1");
+    params.tablespaceInfos.get(0).name = "";
+    assertCreateTableSpacesError(
+        universe.universeUUID,
+        authToken,
+        params,
+        "{\"tablespaceInfos[0].name\":[\"size must be between 1 and 2147483647\"]}");
+
+    params = generateTablespaceParams(universe.universeUUID, provider.code, 3, "");
+    assertCreateTableSpacesError(
+        universe.universeUUID,
+        authToken,
+        params,
+        "{\"tablespaceInfos[0].placementBlocks\":[\"size must be between 1 and 2147483647\"]}");
+
+    params =
+        generateTablespaceParams(
+            universe.universeUUID, provider.code, 3, "r1-az1-1;r1-az2-1;r1-az3-1");
+    params.tablespaceInfos.get(0).placementBlocks.get(0).cloud = "";
+    assertCreateTableSpacesError(
+        universe.universeUUID,
+        authToken,
+        params,
+        "{\"tablespaceInfos[0].placementBlocks[0].cloud\":[\"size must be between"
+            + " 1 and 2147483647\"]}");
+  }
+
+  private void assertCreateTableSpacesError(
+      UUID universeUUID, String authToken, CreateTablespaceParams params, String error) {
+    Result result =
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "POST",
+                    "/api/customers/"
+                        + customer.getUuid()
+                        + "/universes/"
+                        + universeUUID
+                        + "/tablespaces",
+                    authToken,
+                    Json.toJson(params)));
+    assertBadRequest(result, error);
   }
 
   @Test
@@ -1194,7 +1259,6 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
 
     Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe u1 = createUniverse(customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u1.universeUUID);
@@ -1336,7 +1400,6 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
     when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
     Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
     Universe u1 = createUniverse(customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u1.universeUUID);

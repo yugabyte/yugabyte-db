@@ -312,7 +312,11 @@ public enum TaskType {
 
   UpdateMountedDisks("subtasks.UpdateMountedDisks"),
 
-  TransferXClusterCerts("subtasks.TransferXClusterCerts");
+  TransferXClusterCerts("subtasks.TransferXClusterCerts"),
+
+  CreateTableSpacesInUniverse("CreateTableSpacesInUniverse"),
+
+  CreateTableSpaces("subtasks.CreateTableSpaces");
 
   private String relativeClassPath;
 

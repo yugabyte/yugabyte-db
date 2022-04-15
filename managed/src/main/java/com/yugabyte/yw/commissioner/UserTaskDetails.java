@@ -73,6 +73,9 @@ public class UserTaskDetails {
     // Creating Table
     CreatingTable,
 
+    // Creating Tablespaces
+    CreatingTablespaces,
+
     // Importing Data
     ImportingData,
 
@@ -270,6 +273,10 @@ public class UserTaskDetails {
       case CreatingTable:
         title = "Creating Table";
         description = "Create a table.";
+        break;
+      case CreatingTablespaces:
+        title = "Creating Tablespaces";
+        description = "Create tablespaces.";
         break;
       case ImportingData:
         title = "Importing Data";
