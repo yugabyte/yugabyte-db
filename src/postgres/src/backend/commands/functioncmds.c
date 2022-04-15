@@ -2460,7 +2460,7 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 		}
 
 		/* Must be able to become new owner */
-		check_is_member_of_role(newOwnerId, GetUserId());
+		check_is_member_of_role(GetUserId(), newOwnerId);
 
 		/* New owner must have CREATE privilege on function's schema */
 		namespaceId = proc->pronamespace;
