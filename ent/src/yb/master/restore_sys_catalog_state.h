@@ -57,10 +57,11 @@ class RestoreSysCatalogState {
       const yb::OpId& op_id, tablet::Tablet* tablet);
 
   CHECKED_STATUS ProcessPgCatalogRestores(
-      const Schema& pg_yb_catalog_version_schema,
+      yb::tablet::TableInfo* pg_yb_catalog_meta,
       const docdb::DocDB& restoring_db,
       const docdb::DocDB& existing_db,
-      docdb::DocWriteBatch* write_batch);
+      docdb::DocWriteBatch* write_batch,
+      const docdb::DocReadContext& doc_read_context);
 
   Result<bool> TEST_MatchTable(const TableId& id, const SysTablesEntryPB& table);
 
@@ -113,6 +114,10 @@ class RestoreSysCatalogState {
   CHECKED_STATUS PrepareTableCleanup(
       const TableId& id, SysTablesEntryPB pb, const Schema& schema,
       docdb::DocWriteBatch* write_batch, const HybridTime& now_ht);
+
+  CHECKED_STATUS IncrementLegacyCatalogVersion(
+      const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+      docdb::DocWriteBatch* write_batch);
 
   struct Objects {
     std::unordered_map<NamespaceId, SysNamespaceEntryPB> namespaces;
