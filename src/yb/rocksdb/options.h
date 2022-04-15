@@ -1365,6 +1365,10 @@ struct DBOptions {
   // The filters are currently used to expire files in time-series DBs that have
   // completely expired based on their table and/or column TTL.
   std::shared_ptr<CompactionFileFilterFactory> compaction_file_filter_factory;
+
+  // Used for identifying disk in priorty pool. This corresponds to the hashed
+  // data root directory for the rocksdb instance.
+  uint64_t disk_group_no;
 };
 
 // Options to control the behavior of a database (passed to DB::Open)
