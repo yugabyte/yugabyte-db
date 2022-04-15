@@ -286,8 +286,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<PerformFuture> Perform(
       BufferableOperations ops, UseCatalogSession use_catalog_session);
 
-  void UpdateInTxnLimit(uint64_t* read_time);
-
   PgClient& pg_client_;
 
   // Connected database.
@@ -314,8 +312,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   bool buffering_enabled_ = false;
   BufferingSettings buffering_settings_;
   PgOperationBuffer buffer_;
-
-  HybridTime in_txn_limit_;
 
   const tserver::TServerSharedObject* const tserver_shared_object_;
   const YBCPgCallbacks& pg_callbacks_;

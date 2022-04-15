@@ -137,10 +137,6 @@ class YBOperation {
   // Returns the partition key of the operation.
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const = 0;
 
-  // Returns whether this operation is being performed on a table where distributed transactions
-  // are enabled.
-  virtual bool IsTransactional() const;
-
   // Whether this is an operation on one of the YSQL system catalog tables.
   bool IsYsqlCatalogOp() const;
 
@@ -483,8 +479,6 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   bool returns_sidecar() override { return true; }
 
   void SetHashCode(uint16_t hash_code) override;
-
-  bool IsTransactional() const override;
 
   void set_is_single_row_txn(bool is_single_row_txn) {
     is_single_row_txn_ = is_single_row_txn;
