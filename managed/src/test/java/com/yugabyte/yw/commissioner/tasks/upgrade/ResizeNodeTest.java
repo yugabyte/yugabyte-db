@@ -387,7 +387,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       List<TaskType> taskTypesSequence,
       Map<Integer, Map<String, Object>> paramsForTask,
       boolean waitForMasterLeader,
-      boolean is_rf1) {
+      boolean isRf1) {
     List<TaskType> nodeUpgradeTasks = new ArrayList<>();
     if (increaseVolume) {
       nodeUpgradeTasks.addAll(RESIZE_VOLUME_SEQ);
@@ -398,7 +398,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     List<UniverseDefinitionTaskBase.ServerType> processTypes =
         onlyTserver ? ImmutableList.of(TSERVER) : ImmutableList.of(MASTER, TSERVER);
 
-    int index = is_rf1 ? PLACEHOLDER_INDEX_RF1 : PLACEHOLDER_INDEX;
+    int index = isRf1 ? PLACEHOLDER_INDEX_RF1 : PLACEHOLDER_INDEX;
     for (ServerType processType : processTypes) {
       paramsForTask.put(
           index, ImmutableMap.of("process", processType.name().toLowerCase(), "command", "stop"));
@@ -422,7 +422,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         if (taskType == TaskType.AnsibleClusterServerCtl) {
           paramsForTask.put(
               index,
-              ImmutableMap.of("process", processType.name().toLowerCase(), "command", "start"));
+              ImmutableMap.of(
+                  "process",
+                  processType.name().toLowerCase(),
+                  "command",
+                  "start",
+                  "checkVolumesAttached",
+                  processType == TSERVER));
         } else if (taskType == TaskType.ChangeMasterConfig) {
           paramsForTask.put(index, ImmutableMap.of("opType", "AddMaster"));
         } else {
@@ -431,7 +437,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         taskTypesSequence.add(index++, taskType);
       }
     }
-    index = is_rf1 ? index + 1 : index + 2;
+    index = isRf1 ? index + 1 : index + 2;
     for (ServerType processType : processTypes) {
       taskTypesSequence.add(index++, TaskType.WaitForFollowerLag);
     }
