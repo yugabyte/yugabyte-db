@@ -296,4 +296,17 @@ extern PGDLLEXPORT Datum nvarchar2recv(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_replace_empty_strings(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_replace_null_strings(PG_FUNCTION_ARGS);
 
+/* from regexp.c */
+extern PGDLLEXPORT Datum orafce_regexp_instr(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_regexp_instr_no_start(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_regexp_instr_no_n(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_regexp_instr_no_endoption(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_regexp_instr_no_flags(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_regexp_instr_no_subexpr(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_textregexreplace_noopt(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_textregexreplace(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_textregexreplace_extended(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_textregexreplace_extended_no_n(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_textregexreplace_extended_no_flags(PG_FUNCTION_ARGS);
+
 #endif

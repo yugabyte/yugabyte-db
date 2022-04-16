@@ -6,6 +6,7 @@
 *.opensdf
 *.suo
 *.*.user
+*.bc
 /.deps/
 /orafce.sql
 /orafce.sql.in

@@ -1,9 +1,9 @@
 MODULE_big = orafce
-OBJS= parse_keyword.o convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o sqlparse.o putline.o assert.o plunit.o random.o aggregate.o orafce.o varchar2.o nvarchar2.o charpad.o charlen.o replace_empty_string.o
+OBJS= regexp.o parse_keyword.o convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o sqlparse.o putline.o assert.o plunit.o random.o aggregate.o orafce.o varchar2.o nvarchar2.o charpad.o charlen.o replace_empty_string.o
 
 EXTENSION = orafce
 
-DATA = orafce--3.20.sql orafce--3.2--3.3.sql orafce--3.3--3.4.sql orafce--3.4--3.5.sql orafce--3.5--3.6.sql orafce--3.6--3.7.sql orafce--3.7--3.8.sql orafce--3.8--3.9.sql orafce--3.9--3.10.sql orafce--3.10--3.11.sql orafce--3.11--3.12.sql orafce--3.12--3.13.sql orafce--3.13--3.14.sql orafce--3.14--3.15.sql orafce--3.15--3.16.sql orafce--3.16--3.17.sql orafce--3.17--3.18.sql orafce--3.18--3.19.sql orafce--3.19--3.20.sql
+DATA = orafce--3.21.sql orafce--3.2--3.3.sql orafce--3.3--3.4.sql orafce--3.4--3.5.sql orafce--3.5--3.6.sql orafce--3.6--3.7.sql orafce--3.7--3.8.sql orafce--3.8--3.9.sql orafce--3.9--3.10.sql orafce--3.10--3.11.sql orafce--3.11--3.12.sql orafce--3.12--3.13.sql orafce--3.13--3.14.sql orafce--3.14--3.15.sql orafce--3.15--3.16.sql orafce--3.16--3.17.sql orafce--3.17--3.18.sql orafce--3.18--3.19.sql orafce--3.19--3.20.sql orafce--3.20--3.21.sql
 DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 
 PG_CONFIG ?= pg_config
