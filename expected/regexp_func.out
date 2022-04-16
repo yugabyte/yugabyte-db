@@ -575,32 +575,32 @@ SELECT REGEXP_REPLACE('512.123.4567', '([[:digit:]]{3})\.([[:digit:]]{3})\.([[:d
 
 -- ORACLE> SELECT REGEXP_REPLACE('512.123.4567 612.123.4567', '([[:digit:]]{3})\.([[:digit:]]{3})\.([[:digit:]]{4})', '(\1) \2-\3') FROM DUAL; -> (512) 123-4567 (612) 123-4567
 SELECT oracle.REGEXP_REPLACE('512.123.4567 612.123.4567', '([[:digit:]]{3})\.([[:digit:]]{3})\.([[:digit:]]{4})', '(\1) \2-\3');
-       regexp_replace        
------------------------------
- (512) 123-4567 612.123.4567
+        regexp_replace         
+-------------------------------
+ (512) 123-4567 (612) 123-4567
 (1 row)
 
 -- ORACLE> SELECT REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ') FROM DUAL; -> number your street, zipcode town, FR
 SELECT oracle.REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ');
-                regexp_replace                
-----------------------------------------------
- number your     street,    zipcode  town, FR
+            regexp_replace            
+--------------------------------------
+ number your street, zipcode town, FR
 (1 row)
 
 -- ORACLE> SELECT REGEXP_REPLACE('number   your     street,'||CHR(10)||'    zipcode  town, FR', '( ){2,}', ' ') FROM DUAL; -> number your street,
 -- zipcode town, FR
 SELECT oracle.REGEXP_REPLACE('number   your     street,'||CHR(10)||'    zipcode  town, FR', '( ){2,}', ' ');
-     regexp_replace      
--------------------------
- number your     street,+
-     zipcode  town, FR
+   regexp_replace    
+---------------------
+ number your street,+
+  zipcode town, FR
 (1 row)
 
 -- ORACLE> SELECT REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9) FROM DUAL; -> number    your street, zipcode town, FR
 SELECT oracle.REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9);
-               regexp_replace               
---------------------------------------------
- number   your street,    zipcode  town, FR
+             regexp_replace             
+----------------------------------------
+ number   your street, zipcode town, FR
 (1 row)
 
 -- ORACLE> SELECT REGEXP_REPLACE('number   your     street,    zipcode  town, FR', '( ){2,}', ' ', 9, 0) FROM DUAL; -> number    your street, zipcode town, FR
@@ -695,11 +695,7 @@ SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, -1, 
 ERROR:  argument 'occurrence' must be a positive number
 -- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'g') FROM DUAL; -> ORA-01760
 SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'g');
-    regexp_replace     
------------------------
- A PXstgreSQL function
-(1 row)
-
+ERROR:  modifier 'g' is not supported by this function
 --
 -- Test NULL input in the regexp_* functions that must returned NULL except for the modifier
 -- or regexp flag. There is an exception with regexp_replace(), if the pattern is null (second
@@ -868,91 +864,91 @@ SELECT oracle.REGEXP_SUBSTR('1234', '2(3)(4)', 1, 1, 'i', 0);
  234
 (1 row)
 
--- Special case for second parameter in REGEXP_REPLACE, when null returns the original value.
+-- ORACLE> SELECT REGEXP_REPLACE(null, '\d', 'a') FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE(null, '\d', 'a');
  regexp_replace 
 ----------------
  
 (1 row)
 
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, 'a') FROM DUAL; -> 1234
 SELECT oracle.REGEXP_REPLACE('1234', null, 'a');
  regexp_replace 
 ----------------
  1234
 (1 row)
 
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, null) FROM DUAL; -> 1234
 SELECT oracle.REGEXP_REPLACE('1234', null, null);
  regexp_replace 
 ----------------
  1234
 (1 row)
 
+-- ORACLE> SELECT REGEXP_REPLACE('1234', '\d', null) FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE('1234', '\d', null);
  regexp_replace 
 ----------------
  
 (1 row)
 
+-- ORACLE> SELECT REGEXP_REPLACE('1234', '\d', 'a', null) FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', null);
  regexp_replace 
 ----------------
- a234
+ 
 (1 row)
 
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, 'a', 2) FROM DUAL; -> 1234
 SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 2);
  regexp_replace 
 ----------------
  1234
 (1 row)
 
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, 'a', null) FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE('1234', null, 'a', null);
  regexp_replace 
 ----------------
- 1234
+ 
 (1 row)
 
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, 'a', 1) FROM DUAL; -> 1234
 SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 1);
  regexp_replace 
 ----------------
  1234
 (1 row)
 
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, 'a', 1, null) FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 1, null);
  regexp_replace 
 ----------------
- 1234
+ 
 (1 row)
 
+-- ORACLE> SELECT REGEXP_REPLACE('1234', '\d', 'a', 1, null) FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, null);
  regexp_replace 
 ----------------
  
 (1 row)
 
-SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, null);
- regexp_replace 
-----------------
- 
-(1 row)
-
-SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, null);
- regexp_replace 
-----------------
- 
-(1 row)
-
+-- ORACLE> SELECT REGEXP_REPLACE('1234', '\d', 'a', 1, 1, null) FROM DUAL; -> a234
 SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, 1, null);
  regexp_replace 
 ----------------
  a234
 (1 row)
 
+-- ORACLE> SELECT REGEXP_REPLACE('1234', '\d', 'a', 1, NULL, 'i') FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, NULL, 'i');
  regexp_replace 
 ----------------
  
 (1 row)
 
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, 'a', 1, 1, 'i') FROM DUAL; -> 1234
 SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 1, 1, 'i');
  regexp_replace 
 ----------------

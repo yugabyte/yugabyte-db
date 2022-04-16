@@ -1079,7 +1079,7 @@ orafce_textregexreplace_noopt(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(orafce_replace_text_regexp(s, p, r,
 										 REG_ADVANCED, PG_GET_COLLATION(),
-										 0, 1));
+										 0, 0));
 }
 
 /*
@@ -1095,6 +1095,17 @@ orafce_textregexreplace(PG_FUNCTION_ARGS)
 	text	   *opt = NULL;
 	pg_re_flags flags;
 
+	/* Always return NULL when start position or occurrence are NULL */
+	if (PG_NARGS() > 3 && PG_ARGISNULL(3))
+		PG_RETURN_NULL();
+	if (PG_NARGS() > 4 && PG_ARGISNULL(4))
+		PG_RETURN_NULL();
+
+	/*
+	 * Special case for second parameter in REGEXP_REPLACE, when NULL
+	 * returns the original value unless the start position or occurrences
+	 * are NULL too. In this case, it returns NULL (see instruction above).
+	 */
 	if (PG_ARGISNULL(1) && !PG_ARGISNULL(0))
 		PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(0));
 
@@ -1131,7 +1142,7 @@ orafce_textregexreplace(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(orafce_replace_text_regexp(s, p, r,
 										 flags.cflags, PG_GET_COLLATION(),
-										 0, flags.glob ? 0 : 1));
+										 0, 0));
 }
 
 /*
@@ -1151,6 +1162,17 @@ orafce_textregexreplace_extended(PG_FUNCTION_ARGS)
 	text	   *flags = NULL;
 	pg_re_flags re_flags;
 
+	/* Always return NULL when start position or occurrence are NULL */
+	if (PG_NARGS() > 3 && PG_ARGISNULL(3))
+		PG_RETURN_NULL();
+	if (PG_NARGS() > 4 && PG_ARGISNULL(4))
+		PG_RETURN_NULL();
+
+	/*
+	 * Special case for second parameter in REGEXP_REPLACE, when NULL
+	 * returns the original value unless the start position or occurrences
+	 * are NULL too. In this case, it returns NULL (see instruction above).
+	 */
 	if (PG_ARGISNULL(1) && !PG_ARGISNULL(0))
 		PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(0));
 
@@ -1164,9 +1186,6 @@ orafce_textregexreplace_extended(PG_FUNCTION_ARGS)
 	/* Collect optional parameters */
 	if (PG_NARGS() > 3)
 	{
-		if (PG_ARGISNULL(3))
-			PG_RETURN_NULL();
-
 		start = PG_GETARG_INT32(3);
 		if (start <= 0)
 			ereport(ERROR,
@@ -1175,9 +1194,6 @@ orafce_textregexreplace_extended(PG_FUNCTION_ARGS)
 	}
 	if (PG_NARGS() > 4)
 	{
-		if (PG_ARGISNULL(4))
-			PG_RETURN_NULL();
-
 		n = PG_GETARG_INT32(4);
 		if (n < 0)
 			ereport(ERROR,
@@ -1193,9 +1209,19 @@ orafce_textregexreplace_extended(PG_FUNCTION_ARGS)
 	/* Determine options */
 	parse_re_flags(&re_flags, flags);
 
-	/* If N was not specified, deduce it from the 'g' flag */
+	/* The global modifier is not allowed with Oracle */
+	if (re_flags.glob)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("modifier 'g' is not supported by this function")));
+
+
+	/*
+	 * If N was not specified, force the 'g' modifier. This is the
+	 * default in Oracle when no occurence is specified.
+	 */
 	if (PG_NARGS() <= 4)
-		n = re_flags.glob ? 0 : 1;
+		n = 0;
 
 	/* Do the replacement(s) */
 	PG_RETURN_TEXT_P(orafce_replace_text_regexp(s, p, r,

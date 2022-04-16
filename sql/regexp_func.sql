@@ -286,19 +286,30 @@ SELECT oracle.REGEXP_SUBSTR('1234', '234', 1, 1, 'i', null);
 SELECT oracle.REGEXP_SUBSTR('1234', '2(3)(4)', 1, 1, 'i', 1);
 SELECT oracle.REGEXP_SUBSTR('1234', '2(3)(4)', 1, 1, 'i', 2);
 SELECT oracle.REGEXP_SUBSTR('1234', '2(3)(4)', 1, 1, 'i', 0);
--- Special case for second parameter in REGEXP_REPLACE, when null returns the original value.
+
+-- ORACLE> SELECT REGEXP_REPLACE(null, '\d', 'a') FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE(null, '\d', 'a');
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, 'a') FROM DUAL; -> 1234
 SELECT oracle.REGEXP_REPLACE('1234', null, 'a');
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, null) FROM DUAL; -> 1234
 SELECT oracle.REGEXP_REPLACE('1234', null, null);
+-- ORACLE> SELECT REGEXP_REPLACE('1234', '\d', null) FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE('1234', '\d', null);
+-- ORACLE> SELECT REGEXP_REPLACE('1234', '\d', 'a', null) FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', null);
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, 'a', 2) FROM DUAL; -> 1234
 SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 2);
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, 'a', null) FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE('1234', null, 'a', null);
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, 'a', 1) FROM DUAL; -> 1234
 SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 1);
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, 'a', 1, null) FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 1, null);
+-- ORACLE> SELECT REGEXP_REPLACE('1234', '\d', 'a', 1, null) FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, null);
-SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, null);
-SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, null);
+-- ORACLE> SELECT REGEXP_REPLACE('1234', '\d', 'a', 1, 1, null) FROM DUAL; -> a234
 SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, 1, null);
+-- ORACLE> SELECT REGEXP_REPLACE('1234', '\d', 'a', 1, NULL, 'i') FROM DUAL; -> NULL
 SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, NULL, 'i');
+-- ORACLE> SELECT REGEXP_REPLACE('1234', null, 'a', 1, 1, 'i') FROM DUAL; -> 1234
 SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 1, 1, 'i');
