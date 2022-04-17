@@ -9,6 +9,11 @@ Revision history for pgTAP
   the analysis.
 * Fixed a pluralization error reporting xUnit test failures to report "failed 1
   test" instead of "failed 1 tests".
+* Removed the indentation for diagnostic comments at the start of subtests to
+  make it easier to see where they start and end. This changes the output
+  format, which will not affect tests run by `pg_prove`, but will break tests
+  that depend on diffing files, as `pg_regress` does. Thanks to Matt DeLuco for
+  highlighting the visual confusion of the indented diagnostic (#264).
 
 1.2.0 2021-12-05T18:08:13Z
 --------------------------

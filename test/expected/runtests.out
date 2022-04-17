@@ -1,7 +1,7 @@
 \unset ECHO
 ok 1 - starting up
 ok 2 - starting up some more
-    # Subtest: whatever."test ident"()
+# Subtest: whatever."test ident"()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -11,7 +11,7 @@ ok 2 - starting up some more
     ok 7 - teardown more
     1..7
 ok 3 - whatever."test ident"
-    # Subtest: whatever.testdividebyzero()
+# Subtest: whatever.testdividebyzero()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -23,7 +23,7 @@ ok 3 - whatever."test ident"
     #             SQL function "runtests" statement 1
 not ok 4 - whatever.testdividebyzero
 # Failed test 4: "whatever.testdividebyzero"
-    # Subtest: whatever.testplpgsql()
+# Subtest: whatever.testplpgsql()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -34,7 +34,7 @@ not ok 4 - whatever.testdividebyzero
     ok 8 - teardown more
     1..8
 ok 5 - whatever.testplpgsql
-    # Subtest: whatever.testplpgsqldie()
+# Subtest: whatever.testplpgsqldie()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -55,7 +55,7 @@ ok 5 - whatever.testplpgsql
     #             SQL function "runtests" statement 1
 not ok 6 - whatever.testplpgsqldie
 # Failed test 6: "whatever.testplpgsqldie"
-    # Subtest: whatever.testthis()
+# Subtest: whatever.testthis()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -65,7 +65,7 @@ not ok 6 - whatever.testplpgsqldie
     ok 7 - teardown more
     1..7
 ok 7 - whatever.testthis
-    # Subtest: whatever.testy()
+# Subtest: whatever.testy()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -77,7 +77,7 @@ ok 7 - whatever.testthis
     # Looks like you failed 1 test of 6
 not ok 8 - whatever.testy
 # Failed test 8: "whatever.testy"
-    # Subtest: whatever.testz()
+# Subtest: whatever.testz()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -92,7 +92,7 @@ ok 11 - shutting down more
 # Looks like you failed 3 tests of 11
 ok 1 - starting up
 ok 2 - starting up some more
-    # Subtest: whatever."test ident"()
+# Subtest: whatever."test ident"()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -102,7 +102,7 @@ ok 2 - starting up some more
     ok 7 - teardown more
     1..7
 ok 3 - whatever."test ident"
-    # Subtest: whatever.testdividebyzero()
+# Subtest: whatever.testdividebyzero()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -113,7 +113,7 @@ ok 3 - whatever."test ident"
     #             SQL function "runtests" statement 1
 not ok 4 - whatever.testdividebyzero
 # Failed test 4: "whatever.testdividebyzero"
-    # Subtest: whatever.testplpgsql()
+# Subtest: whatever.testplpgsql()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -124,7 +124,7 @@ not ok 4 - whatever.testdividebyzero
     ok 8 - teardown more
     1..8
 ok 5 - whatever.testplpgsql
-    # Subtest: whatever.testplpgsqldie()
+# Subtest: whatever.testplpgsqldie()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -144,7 +144,7 @@ ok 5 - whatever.testplpgsql
     #             SQL function "runtests" statement 1
 not ok 6 - whatever.testplpgsqldie
 # Failed test 6: "whatever.testplpgsqldie"
-    # Subtest: whatever.testthis()
+# Subtest: whatever.testthis()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -154,7 +154,7 @@ not ok 6 - whatever.testplpgsqldie
     ok 7 - teardown more
     1..7
 ok 7 - whatever.testthis
-    # Subtest: whatever.testy()
+# Subtest: whatever.testy()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
@@ -166,7 +166,7 @@ ok 7 - whatever.testthis
     # Looks like you failed 1 test of 6
 not ok 8 - whatever.testy
 # Failed test 8: "whatever.testy"
-    # Subtest: whatever.testz()
+# Subtest: whatever.testz()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more

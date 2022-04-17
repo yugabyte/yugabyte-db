@@ -29,7 +29,7 @@ BEGIN
     FOR i IN 1..COALESCE(array_upper(tests, 1), 0) LOOP
 
         -- What subtest are we running?
-        RETURN NEXT '    ' || diag_test_name('Subtest: ' || tests[i]);
+        RETURN NEXT diag_test_name('Subtest: ' || tests[i]);
 
         -- Reset the results.
         tok := TRUE;
