@@ -42,7 +42,7 @@ ok 5 - whatever.testthis
     not ok 2 - this test intentionally fails
     # Failed test 2: "this test intentionally fails"
     1..2
-    # Looks like you failed 1 tests of 2
+    # Looks like you failed 1 test of 2
 not ok 6 - whatever.testy
 # Failed test 6: "whatever.testy"
     # Subtest: whatever.testz()

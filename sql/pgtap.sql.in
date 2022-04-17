@@ -6622,13 +6622,13 @@ BEGIN
                         tok := FALSE;
                         RETURN NEXT '    ' || diag(
                             'Looks like you failed ' || ffaild || ' test' ||
-                             CASE tfaild WHEN 1 THEN '' ELSE 's' END
+                             CASE ffaild WHEN 1 THEN '' ELSE 's' END
                              || ' of ' || fnumb
                         );
                     END IF;
                 END IF;
 
-            EXCEPTION WHEN raise_exception THEN
+            EXCEPTION WHEN OTHERS THEN
                 -- Something went wrong. Record that fact.
                 errstate := SQLSTATE;
                 errmsg := SQLERRM;

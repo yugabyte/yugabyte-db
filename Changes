@@ -3,6 +3,12 @@ Revision history for pgTAP
 
 1.2.1
 --------------------------
+* Fixed an issue with xUnit tests where they would exit immediately on
+  unexpected errors (aside from PL/pgSQL RAISE errors) rather than exit just the
+  current test function. Thanks to @kzathey for the report and to @fjf2002 for
+  the analysis.
+* Fixed a pluralization error reporting xUnit test failures to report "failed 1
+  test" instead of "failed 1 tests".
 
 1.2.0 2021-12-05T18:08:13Z
 --------------------------
