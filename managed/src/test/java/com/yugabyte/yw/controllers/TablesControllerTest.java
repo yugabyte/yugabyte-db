@@ -20,6 +20,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.anyObject;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Matchers.any;
@@ -238,8 +239,12 @@ public class TablesControllerTest extends FakeDBApplication {
     customer.addUniverseUUID(u1.universeUUID);
     customer.save();
 
-    Result r = tablesController.listTables(customer.uuid, u1.universeUUID);
-    assertEquals(200, r.status());
+    Result r =
+        assertThrows(
+                PlatformServiceException.class,
+                () -> tablesController.listTables(customer.uuid, u1.universeUUID))
+            .getResult();
+    assertEquals(503, r.status());
     assertEquals("Expected error. Masters are not currently queryable.", contentAsString(r));
     assertAuditEntry(0, customer.uuid);
   }
