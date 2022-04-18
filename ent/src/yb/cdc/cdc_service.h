@@ -33,6 +33,7 @@
 
 #include "yb/util/net/net_util.h"
 #include "yb/util/service_util.h"
+#include "yb/util/semaphore.h"
 
 namespace yb {
 
@@ -269,6 +270,9 @@ class CDCServiceImpl : public CDCServiceIf {
   MetricRegistry* metric_registry_;
 
   std::shared_ptr<CDCServerMetrics> server_metrics_;
+
+  // Prevents GetChanges "storms" by rejecting when all permits have been acquired.
+  Semaphore get_changes_rpc_sem_;
 
   // Used to protect tablet_checkpoints_ and stream_metadata_ maps.
   mutable rw_spinlock mutex_;
