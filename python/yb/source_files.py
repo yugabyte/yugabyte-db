@@ -105,13 +105,13 @@ def get_file_category(rel_path: str) -> SourceFileCategory:
     if rel_path.startswith('src/') or rel_path.startswith('ent/src/'):
         return SourceFileCategory.CPP
 
+    if rel_path.startswith('build-support/') or rel_path.startswith('python/yb/build_postgres.py'):
+        return SourceFileCategory.BUILD_SCRIPTS
+
     if rel_path.startswith('python/'):
         return SourceFileCategory.PYTHON
 
     if rel_path.startswith('java/'):
         return SourceFileCategory.JAVA
-
-    if rel_path.startswith('build-support/'):
-        return SourceFileCategory.BUILD_SCRIPTS
 
     return SourceFileCategory.OTHER
