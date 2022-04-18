@@ -122,12 +122,6 @@ def adjust_error_on_warning_flag(flag: str, step: str, language: str) -> Optiona
             # Skip this flag altogether during the configure step.
             return None
 
-        if flag == '-fsanitize=thread':
-            # Don't actually enable TSAN in the configure step, otherwise configure will think that
-            # our pthread library is not working properly.
-            # https://gist.githubusercontent.com/mbautin/366970ac55c9d3579816d5e8563e70b4/raw
-            return None
-
     if step == 'make':
         # No changes.
         return flag
@@ -396,8 +390,11 @@ class PostgresBuilder(YbBuildToolBase):
         # We need to add this directory to PATH so Postgres build could find Bison.
         thirdparty_installed_common_bin_path = os.path.join(
             self.thirdparty_dir, 'installed', 'common', 'bin')
-        new_path_str = ':'.join([thirdparty_installed_common_bin_path] + self.original_path)
-        os.environ['PATH'] = new_path_str
+        os.environ['PATH'] = ':'.join([thirdparty_installed_common_bin_path] + self.original_path)
+
+        if self.build_type == 'tsan':
+            self.set_env_var('TSAN_OPTIONS', os.getenv('TSAN_OPTIONS', '') + ' report_bugs=0')
+            logging.info("TSAN_OPTIONS for Postgres build: %s", os.getenv('TSAN_OPTIONS'))
 
     def sync_postgres_source(self) -> None:
         logging.info("Syncing postgres source code")
@@ -448,6 +445,7 @@ class PostgresBuilder(YbBuildToolBase):
                 '--with-icu',
                 '--with-ldap',
                 '--with-openssl',
+                '--with-gssapi',
                 # Options are ossp (original/old implementation), bsd (BSD) and e2fs
                 # (libuuid-based for Unix/Mac).
                 '--with-uuid=e2fs',
