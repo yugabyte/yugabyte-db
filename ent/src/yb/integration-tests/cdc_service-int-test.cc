@@ -34,6 +34,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/slice.h"
+#include "yb/util/test_util.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -58,6 +59,10 @@ DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(update_metrics_interval_ms);
 DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_bool(cdc_enable_replicate_intents);
+
+DECLARE_double(cdc_get_changes_free_rpc_ratio);
+DECLARE_int32(rpc_workers_limit);
+DECLARE_uint64(transaction_manager_workers_limit);
 
 METRIC_DECLARE_entity(cdc);
 METRIC_DECLARE_gauge_int64(last_read_opid_index);
@@ -128,7 +133,8 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
   void GetTablet(std::string* tablet_id,
                  const client::YBTableName& table_name = kTableName);
   void GetChanges(const TabletId& tablet_id, const CDCStreamId& stream_id,
-      int64_t term, int64_t index, bool* has_error = nullptr);
+                  int64_t term, int64_t index,
+                  bool* has_error = nullptr, ::yb::cdc::CDCErrorPB_Code* code = nullptr);
   void WriteTestRow(int32_t key, int32_t int_val, const string& string_val,
       const TabletId& tablet_id, const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
   void WriteToProxyWithRetries(
@@ -269,7 +275,8 @@ void CDCServiceTest::GetTablet(std::string* tablet_id,
 }
 
 void CDCServiceTest::GetChanges(const TabletId& tablet_id, const CDCStreamId& stream_id,
-                                int64_t term, int64_t index, bool* has_error) {
+                                int64_t term, int64_t index,
+                                bool* has_error, ::yb::cdc::CDCErrorPB_Code* code) {
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
 
@@ -289,6 +296,9 @@ void CDCServiceTest::GetChanges(const TabletId& tablet_id, const CDCStreamId& st
       ASSERT_FALSE(change_resp.has_error());
     } else if (!s.ok() || change_resp.has_error()) {
       *has_error = true;
+      if (code && change_resp.error().has_code()) {
+        *code = change_resp.error().code();
+      }
       return;
     }
   }
@@ -1884,6 +1894,74 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
 
   ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->Start());
   ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->WaitStarted());
+}
+
+class CDCServiceLowRpc: public CDCServiceTest {
+ public:
+  void SetUp() override {
+    FLAGS_rpc_workers_limit = 4;
+    FLAGS_transaction_manager_workers_limit = 4;
+    // Uncommenting below causes test to timeout. We stop throttling with a negative ratio.
+    // FLAGS_cdc_get_changes_free_rpc_ratio = -.5;
+
+    CDCServiceTest::SetUp();
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceLowRpc, ::testing::Values(true));
+
+TEST_P(CDCServiceLowRpc, TestGetChangesRpcMax) {
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+
+  std::string tablet_id;
+  GetTablet(&tablet_id);
+
+  tserver::MiniTabletServer* leader_mini_tserver;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    leader_mini_tserver = GetLeaderForTablet(tablet_id);
+    return leader_mini_tserver != nullptr;
+  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for tablet to have a leader."));
+  ASSERT_NO_FATALS(WriteTestRow(0, 200, "key0", tablet_id, leader_mini_tserver->server()->proxy()));
+
+  // Call GetChanges with 20 threads, even though our setup only allows 7 RPC threads at a time.
+  int num_get_changes = 200;
+  int num_threads = 20;
+  TestThreadHolder thread_holder;
+  std::atomic<int> gets(0);
+  std::atomic<int> not_ready_errors(0);
+  for (int i = 0; i != num_threads; ++i) {
+    thread_holder.AddThreadFunctor([this, &stream_id, &gets, &not_ready_errors, tablet_id,
+                                    &stop = thread_holder.stop_flag()] {
+      for (int cnt = 0; cnt < 10; ++cnt) {
+        int value = ++gets;
+        bool has_error = false;
+        ::yb::cdc::CDCErrorPB_Code code;
+        // Call GetChanges for this one row
+        GetChanges(tablet_id, stream_id, 0, value, &has_error, &code);
+        // We should either succeed or error specifically because we're being throttled.
+        if (has_error) {
+          ASSERT_EQ(code, CDCErrorPB_Code_LEADER_NOT_READY);
+          ++not_ready_errors;
+        }
+      }
+    });
+  }
+
+  // Wait for the threads to finish running GetChanges on all entries.
+  while (!thread_holder.stop_flag().load(std::memory_order_acquire)) {
+    auto cur = gets.load(std::memory_order_acquire);
+    if (cur >= num_get_changes) {
+      break;
+    }
+    LOG(INFO) << "Num getChanges " << cur << " of " << num_get_changes;
+    SleepFor(MonoDelta::FromMilliseconds(100));
+  }
+
+  thread_holder.Stop();
+
+  // We should have gotten some throttling errors because ran more RPC threads than available.
+  LOG(INFO) << "LEADER_NOT_READY errors: " << not_ready_errors.load(std::memory_order_acquire);
 }
 
 } // namespace cdc

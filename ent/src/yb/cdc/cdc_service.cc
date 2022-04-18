@@ -13,6 +13,7 @@
 #include "yb/cdc/cdc_service.h"
 
 #include <shared_mutex>
+#include <algorithm>
 #include <chrono>
 #include <memory>
 
@@ -85,9 +86,15 @@ DEFINE_bool(enable_cdc_state_table_caching, true, "Enable caching the cdc_state 
 
 DEFINE_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
 
+DEFINE_double(cdc_get_changes_free_rpc_ratio, .10,
+              "When the TServer only has this percentage of RPCs remaining because the rest are "
+              "GetChanges, reject additional requests to throttle/backoff and prevent deadlocks.");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
+
+DECLARE_int32(rpc_workers_limit);
 
 METRIC_DEFINE_entity(cdc);
 
@@ -110,13 +117,17 @@ CDCServiceImpl::CDCServiceImpl(TSTabletManager* tablet_manager,
     : CDCServiceIf(metric_entity_server),
       tablet_manager_(tablet_manager),
       metric_registry_(metric_registry),
-      server_metrics_(std::make_shared<CDCServerMetrics>(metric_entity_server)) {
+      server_metrics_(std::make_shared<CDCServerMetrics>(metric_entity_server)),
+      get_changes_rpc_sem_(std::max(1.0, floor(
+          FLAGS_rpc_workers_limit * (1 - FLAGS_cdc_get_changes_free_rpc_ratio)))) {
   const auto server = tablet_manager->server();
   async_client_init_.emplace(
       "cdc_client", FLAGS_cdc_ybclient_reactor_threads, FLAGS_cdc_read_rpc_timeout_ms / 1000,
       server->permanent_uuid(), &server->options(), server->metric_entity(), server->mem_tracker(),
       server->messenger());
   async_client_init_->Start();
+
+  LOG_IF(WARNING, get_changes_rpc_sem_.GetValue() == 1) << "only 1 thread available for GetChanges";
 
   update_peers_and_metrics_thread_.reset(new std::thread(
       &CDCServiceImpl::UpdatePeersAndMetrics, this));
@@ -298,6 +309,15 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCService
 void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
                                 GetChangesResponsePB* resp,
                                 RpcContext context) {
+  if (!get_changes_rpc_sem_.TryAcquire()) {
+    SetupErrorAndRespond(resp->mutable_error(), STATUS(LeaderNotReadyToServe, "Not ready to serve"),
+                         CDCErrorPB::LEADER_NOT_READY, &context);
+    return;
+  }
+  auto scope_exit = ScopeExit([this] {
+    get_changes_rpc_sem_.Release();
+  });
+
   if (!CheckOnline(req, resp, &context)) {
     return;
   }
