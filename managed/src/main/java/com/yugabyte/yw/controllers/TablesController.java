@@ -87,7 +87,9 @@ import play.mvc.Result;
     value = "Table management",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class TablesController extends AuthenticatedController {
-  public static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
+  private static final String mastersUnavailableErrMsg =
+      "Expected error. Masters are not currently queryable.";
 
   Commissioner commissioner;
 
@@ -189,10 +191,7 @@ public class TablesController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
-      String errMsg = "Expected error. Masters are not currently queryable.";
-      LOG.warn(errMsg);
-      // TODO: This should be temporary unavailable error and not a success!!
-      return YBPSuccess.withMessage(errMsg);
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, mastersUnavailableErrMsg);
     }
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = ybService.getClient(masterAddresses, certificate);
@@ -311,9 +310,7 @@ public class TablesController extends AuthenticatedController {
 
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
-      String errMsg = "Expected error. Masters are not currently queryable.";
-      LOG.warn(errMsg);
-      return ok(errMsg);
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, mastersUnavailableErrMsg);
     }
 
     Map<String, Double> tableSizes = getTableSizesOrEmpty(universe);
@@ -406,12 +403,13 @@ public class TablesController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     YBClient client = null;
     String masterAddresses = universe.getMasterAddresses(true);
+
+    if (masterAddresses.isEmpty()) {
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, mastersUnavailableErrMsg);
+    }
+
     try {
       String certificate = universe.getCertificateNodetoNode();
-      if (masterAddresses.isEmpty()) {
-        LOG.warn("Expected error. Masters are not currently queryable.");
-        return ok("Expected error. Masters are not currently queryable.");
-      }
       client = ybService.getClient(masterAddresses, certificate);
       GetTableSchemaResponse response =
           client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
