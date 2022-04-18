@@ -1,8 +1,8 @@
 ---
-title: Install Yugabyte Platform software - Kubernetes
-headerTitle: Install Yugabyte Platform software - Kubernetes
+title: Install YugabyteDB Anywhere software - Kubernetes
+headerTitle: Install YugabyteDB Anywhere software - Kubernetes
 linkTitle: Install software
-description: Install Yugabyte Platform software in your Kubernetes environment.
+description: Install YugabyteDB Anywhere software in your Kubernetes environment.
 menu:
   preview:
     parent: install-yugabyte-platform
@@ -36,9 +36,9 @@ showAsideToc: true
 
 </ul>
 
-## Install Yugabyte Platform on a Kubernetes Cluster
+## Install YugabyteDB Anywhere on a Kubernetes Cluster
 
-You install Yugabyte Platform on a Kubernetes cluster as follows:
+You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
 
 1. Create a namespace by executing the following `kubectl create namespace` command:
 
@@ -46,7 +46,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     kubectl create namespace yb-platform
     ```
 
-1. Apply the Yugabyte Platform secret that you obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form) by running the following `kubectl create` command:
+1. Apply the YugabyteDB Anywhere secret that you obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form) by running the following `kubectl create` command:
 
     ```sh
     kubectl create -f yugabyte-k8s-secret.yml -n yb-platform
@@ -83,7 +83,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     yugabytedb/yugaware  2.13.0         2.13.0.1-b2  YugaWare is YugaByte Database's Orchestration a...
     ```
 
-1. Run the following `helm install` command to install the Yugabyte Platform (`yugaware`) Helm chart:
+1. Run the following `helm install` command to install the YugabyteDB Anywhere (`yugaware`) Helm chart:
 
     ```sh
     helm install yw-test yugabytedb/yugaware --version 2.13.0 -n yb-platform --wait
@@ -121,7 +121,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     yw-test-yugaware-0   4/4     Running   0          12s
     ```
 
-    <br>Note that even though the preceding output indicates that the `yw-test-yugaware-0` pod is running, it does not mean that Yugabyte Platform is ready to accept your queries. If you open `localhost:80` and see an error (such as 502), it means that `yugaware` is still being initialized. You can check readiness of `yugaware` by executing the following command:
+    <br>Note that even though the preceding output indicates that the `yw-test-yugaware-0` pod is running, it does not mean that YugabyteDB Anywhere is ready to accept your queries. If you open `localhost:80` and see an error (such as 502), it means that `yugaware` is still being initialized. You can check readiness of `yugaware` by executing the following command:
 
     ```sh
     kubectl logs --follow -n yb-platform yw-test-yugaware-0 yugaware
@@ -133,11 +133,11 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     [info] AkkaHttpServer.scala:447 [main] Listening for HTTP on /0.0.0.0:9000
     ```
 
-    <br>If Yugabyte Platform fails to start for the first time, verify that your system meets the installation requirements, as per [Prepare the Kubernetes environment](../../prepare-environment/kubernetes/).
+    <br>If YugabyteDB Anywhere fails to start for the first time, verify that your system meets the installation requirements, as per [Prepare the Kubernetes environment](../../prepare-environment/kubernetes/).
 
-## Customize Yugabyte Platform
+## Customize YugabyteDB Anywhere
 
-You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways, such as the following:
+You can customize YugabyteDB Anywhere on a Kubernetes cluster in a number of ways, such as the following:
 
 - You can change CPU and memory resources by executing a command similar to the following:
 
@@ -150,7 +150,7 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
     --set prometheus.resources.requests.mem=6Gi
   ```
 
-- You can disable the public-facing load balancer by providing the annotations to Yugabyte Platform service for disabling that load balancer. Since every cloud provider has different annontations for doing this, refer to the following documentation:
+- You can disable the public-facing load balancer by providing the annotations to YugabyteDB Anywhere service for disabling that load balancer. Since every cloud provider has different annontations for doing this, refer to the following documentation:
 
   - For Google Cloud, see [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing).
   - For Azure, see [AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb).
@@ -164,7 +164,7 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
   --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
   ```
 
-## Delete the Helm Installation of Yugabyte Platform
+## Delete the Helm Installation of YugabyteDB Anywhere
 
 To delete the Helm installation, run the following command:
 

@@ -21,9 +21,9 @@ Monitor performance metrics for your cluster to ensure the cluster configuration
 
 Use these metrics to monitor the performance of your cluster and to determine whether the configuration needs to change. For information on changing or scaling your cluster, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
-You can enable alerts for some performance metrics. Refer to [Cloud alerts](../cloud-alerts/).
+You can enable alerts for some performance metrics. Refer to [Alerts](../cloud-alerts/).
 
-![Cloud Cluster Performance Metrics](/images/yb-cloud/cloud-clusters-metrics.png)
+![Cluster Performance Metrics](/images/yb-cloud/cloud-clusters-metrics.png)
 
 You can show metrics for the past hour, 6 hours, 12 hours, 24 hours, or 7 days.
 
@@ -31,7 +31,7 @@ You can show metrics for the past hour, 6 hours, 12 hours, 24 hours, or 7 days.
 
 The **Overview** tab shows metrics averaged over all the nodes in the cluster.
 
-You can enable alerts for CPU usage and disk usage. Refer to [Cloud alerts](../cloud-alerts/).
+You can enable alerts for CPU usage and disk usage. Refer to [Alerts](../cloud-alerts/).
 
 The following table describes the metrics available on the **Overview**.
 

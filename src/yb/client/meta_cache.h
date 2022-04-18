@@ -516,7 +516,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       CoarseTimePoint deadline);
 
   // Lookup all tablets corresponding to a table.
-  void LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+  void LookupAllTablets(const std::shared_ptr<YBTable>& table,
                         CoarseTimePoint deadline,
                         LookupTabletRangeCallback callback);
 
@@ -659,6 +659,10 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   bool DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
                           CoarseTimePoint deadline,
                           LookupTabletRangeCallback* callback);
+
+  template <class Func, class Callback>
+  void RefreshTablePartitions(
+      Func&& func, const std::shared_ptr<YBTable>& table, Callback&& callback);
 
   YBClient* const client_;
 

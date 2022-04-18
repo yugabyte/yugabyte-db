@@ -1,4 +1,4 @@
-```
+```ebnf
 create_procedure ::= CREATE [ OR REPLACE ] PROCEDURE name ( 
                      [ arg_decl [ , ... ] ] )  
                      { LANGUAGE lang_name

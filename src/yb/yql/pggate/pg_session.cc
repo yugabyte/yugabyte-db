@@ -120,10 +120,34 @@ bool Erase(Container* container, PgOid table_id, const Slice& ybctid) {
 
 YB_DEFINE_ENUM(SessionType, (kRegular)(kTransactional)(kCatalog));
 
+bool IsNeedTransaction(const PgsqlOp& op, bool non_ddl_txn_for_sys_tables_allowed) {
+  // op.need_transaction will be false for write operation in case upper level decides that
+  // it is single row transaction. But in case the non_ddl_txn_for_sys_tables_allowed flag is true
+  // extra read operation is possible within current transaction.
+  //
+  // Example:
+  // CREATE TABLE t (k INT PRIMARY KEY);
+  // INSERT INTO t VALUES(1);
+  // SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+  // INSERT INTO t VALUES(1);
+  //
+  // Last statement inserts row with k = 1 and this is a single row transaction.
+  // But row with k = 1 already exists in the t table. As a result the
+  // 'duplicate key value violates unique constraint "t_pkey"' will be raised.
+  // But this error contains contraints name which is read from sys table pg_class (in case it
+  // is not yet in the postgres's cache). And this read from sys table will be performed in context
+  // of currently running transaction (single row) because the yb_non_ddl_txn_for_sys_tables_allowed
+  // GUC variable is true. As a result there will be 2 operations in context of single row
+  // transaction.
+  // To handle this situation correctly is it necessary to start transaction in case write
+  // operation doesn't require it, but the non_ddl_txn_for_sys_tables_allowed flag is true.
+  return op.need_transaction() || (op.is_write() && non_ddl_txn_for_sys_tables_allowed);
+}
+
 Result<bool> ShouldHandleTransactionally(
   const PgTxnManager& txn_manager, const PgTableDesc& table, const PgsqlOp& op) {
   if (!table.schema().table_properties().is_transactional() ||
-      !op.need_transaction() ||
+      !IsNeedTransaction(op, yb_non_ddl_txn_for_sys_tables_allowed) ||
       YBCIsInitDbModeEnvVarSet()) {
     return false;
   }
@@ -154,7 +178,9 @@ Result<SessionType> GetRequiredSessionType(
     return SessionType::kTransactional;
   }
 
-  return !YBCIsInitDbModeEnvVarSet() && table.schema().table_properties().is_ysql_catalog_table()
+  return op.is_read() &&
+         table.schema().table_properties().is_ysql_catalog_table() &&
+        !YBCIsInitDbModeEnvVarSet()
       ? SessionType::kCatalog
       : SessionType::kRegular;
 }
@@ -169,6 +195,16 @@ void Update(BufferingSettings* buffering_settings) {
     ? FLAGS_ysql_session_max_batch_size
     : static_cast<uint64_t>(ysql_session_max_batch_size);
   buffering_settings->max_in_flight_operations = static_cast<uint64_t>(ysql_max_in_flight_ops);
+}
+
+RowMarkType GetRowMarkType(const PgsqlOp& op) {
+  return op.is_read()
+      ? GetRowMarkTypeFromPB(down_cast<const PgsqlReadOp&>(op).read_request())
+      : RowMarkType::ROW_MARK_ABSENT;
+}
+
+bool IsReadOnly(const PgsqlOp& op) {
+  return op.is_read() && !IsValidRowMarkType(GetRowMarkType(op));
 }
 
 } // namespace
@@ -232,15 +268,14 @@ class PgSession::RunHelper {
     if (pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
       txn_priority_requirement = kHighestPriority;
     } else if (op->is_read()) {
-      const auto& read_req = down_cast<PgsqlReadOp&>(*op).read_request();
-      auto row_mark_type = GetRowMarkTypeFromPB(read_req);
+      const auto row_mark_type = GetRowMarkType(*op);
       read_only = read_only && !IsValidRowMarkType(row_mark_type);
-      if (RowMarkNeedsHigherPriority((RowMarkType) row_mark_type)) {
+      if (RowMarkNeedsHigherPriority(row_mark_type)) {
         txn_priority_requirement = kHigherPriorityRange;
       }
     }
-    pg_session_.UpdateInTxnLimit(read_time);
-    return pg_session_.pg_txn_manager_->CalculateIsolation(read_only, txn_priority_requirement);
+    return pg_session_.pg_txn_manager_->CalculateIsolation(
+        read_only, txn_priority_requirement, read_time);
   }
 
   Result<PerformFuture> Flush() {
@@ -503,13 +538,15 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
   }
 
   if (transactional) {
-    TxnPriorityRequirement txn_priority_requirement = kLowerPriorityRange;
+    auto txn_priority_requirement = kLowerPriorityRange;
     if (GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
       txn_priority_requirement = kHighestPriority;
     }
 
-    RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(false, txn_priority_requirement));
-    in_txn_limit_ = clock_->Now();
+    // Use 0 as the value of in_txn_limit to force setting current time as txn limit
+    uint64_t in_txn_limit = 0;
+    RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
+        false /* read_only */, txn_priority_requirement, &in_txn_limit));
   }
 
   return Perform(std::move(ops), UseCatalogSession::kFalse);
@@ -531,10 +568,6 @@ Result<PerformFuture> PgSession::Perform(
     options.set_use_catalog_session(true);
   } else {
     pg_txn_manager_->SetupPerformOptions(&options);
-
-    if (in_txn_limit_ && pg_txn_manager_->IsTxnInProgress()) {
-      options.set_in_txn_limit_ht(in_txn_limit_.ToUint64());
-    }
   }
   options.set_force_global_transaction(yb_force_global_transaction);
 
@@ -696,15 +729,12 @@ Status PgSession::RollbackSubTransaction(SubTransactionId id) {
   return pg_client_.RollbackSubTransaction(id);
 }
 
-void PgSession::UpdateInTxnLimit(uint64_t* read_time) {
-  if (!read_time) {
-    return;
-  }
+void PgSession::ResetHasWriteOperationsInDdlMode() {
+  has_write_ops_in_ddl_mode_ = false;
+}
 
-  if (!*read_time) {
-    *read_time = clock_->Now().ToUint64();
-  }
-  in_txn_limit_ = HybridTime(*read_time);
+bool PgSession::HasWriteOperationsInDdlMode() const {
+  return has_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
 }
 
 Status PgSession::ValidatePlacement(const string& placement_info) {
@@ -743,6 +773,7 @@ Result<PerformFuture> PgSession::RunAsync(
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
       *pg_txn_manager_, *table, **op));
   RunHelper runner(this, group_session_type);
+  const auto ddl_mode = pg_txn_manager_->IsDdlMode();
   for (; table_op.operation; table_op = generator()) {
     table = table_op.table;
     op = table_op.operation;
@@ -752,6 +783,7 @@ Result<PerformFuture> PgSession::RunAsync(
               group_session_type,
               IllegalState,
               "Operations on different sessions can't be mixed");
+    has_write_ops_in_ddl_mode_ = has_write_ops_in_ddl_mode_ || (ddl_mode && !IsReadOnly(**op));
     RETURN_NOT_OK(runner.Apply(*table, *op, read_time, force_non_bufferable));
   }
   return runner.Flush();

@@ -165,7 +165,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
                           int32_t key,
                           const std::string& value) {
     auto op = InsertRow(session, table, key, value);
-    RETURN_NOT_OK(session->Flush());
+    RETURN_NOT_OK(session->TEST_Flush());
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
       return STATUS_FORMAT(
           RemoteError, "Write failed: $0", QLResponsePB::QLStatus_Name(op->response().status()));
@@ -185,7 +185,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
 
   Result<QLValue> ReadRow(const YBSessionPtr& session, const TableHandle& table, int32_t key) {
     auto op = SelectRow(session, table, key);
-    RETURN_NOT_OK(session->Flush());
+    RETURN_NOT_OK(session->TEST_Flush());
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
       return STATUS_FORMAT(
           RemoteError, "Read failed: $0", QLResponsePB::QLStatus_Name(op->response().status()));
@@ -370,7 +370,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
         }
 
         auto op = InsertRow(session, key, Format("value_$0", key));
-        auto flush_status = session->FlushAndGetOpsErrors();
+        auto flush_status = session->TEST_FlushAndGetOpsErrors();
         const auto& status = flush_status.status;
         if (status.ok()) {
           ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -490,7 +490,7 @@ TEST_F_EX(QLStressTest, Increment, QLStressTestIntValue) {
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, kKey);
     table_.AddInt64ColumnValue(req, kValueColumn, 0);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
 
@@ -1072,7 +1072,7 @@ TEST_F_EX(QLStressTest, DynamicCompactionPriority, QLStressDynamicCompactionPrio
       QLAddInt32HashValue(req, key);
       table_.AddStringColumnValue(req, kValueColumn, value);
       session->Apply(op);
-      ASSERT_OK(session->Flush());
+      ASSERT_OK(session->TEST_Flush());
       ASSERT_OK(CheckOp(op.get()));
       std::this_thread::sleep_for(100ms);
       ++key;

@@ -1,7 +1,7 @@
 ---
-title: Database authorization in Yugabyte Cloud clusters
+title: Database authorization in YugabyteDB Managed clusters
 linkTitle: Database authorization
-description: The default YugabyteDB users and roles available in Yugabyte Cloud clusters.
+description: The default YugabyteDB users and roles available in YugabyteDB Managed clusters.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -15,7 +15,7 @@ showAsideToc: true
 
 To manage database access and authorization, YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBAC), consisting of a collection of privileges on resources given to roles.
 
-Clusters in Yugabyte Cloud include a set of default users and roles in YSQL and YCQL.
+Clusters in YugabyteDB Managed include a set of default users and roles in YSQL and YCQL.
 
 ## YSQL default roles and users
 
@@ -36,21 +36,21 @@ yugabyte=> \du
  yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
 ```
 
-The following table describes the default YSQL roles and users in Yugabyte Cloud clusters.
+The following table describes the default YSQL roles and users in YugabyteDB Managed clusters.
 
 <!-- Portions of this table are also under RBAC in core docs -->
 
 | Role | Description |
 | --- | --- |
 | [admin](#admin-and-yb-superuser) | The default user for your cluster. If you added your own credentials during cluster creation, the user name will be the one you entered. Although not a superuser, this role is a member of yb_superuser, and you can use it to perform database operations, create other yb_superuser users, create extensions, and manage your cluster. |
-| postgres | Superuser role created during database creation. Not available to cloud users. |
+| postgres | Superuser role created during database creation. Not available to YugabyteDB Managed users. |
 | [yb_extension](#yb-extension) | Role that allows non-superuser users to create PostgreSQL extensions. |
-| [yb_superuser](#admin-and-yb-superuser) | Yugabyte Cloud only role. This role is assigned to the default cluster user (that is, admin) to perform all the required operations on the database, including creating other yb_superuser users. For security reasons, yb_superuser doesn't have YugabyteDB superuser privileges. |
-| yugabyte | Superuser role used during database creation, by Yugabyte support to perform maintenance operations, and for backups (ysql_dumps). Not available to cloud users. |
+| [yb_superuser](#admin-and-yb-superuser) | YugabyteDB Managed only role. This role is assigned to the default cluster user (that is, admin) to perform all the required operations on the database, including creating other yb_superuser users. For security reasons, yb_superuser doesn't have YugabyteDB superuser privileges. |
+| yugabyte | Superuser role used during database creation, by Yugabyte support to perform maintenance operations, and for backups (ysql_dumps). Not available to YugabyteDB Managed users. |
 
 ### Admin and yb_superuser
 
-When creating a YugabyteDB cluster in Yugabyte Cloud, you set up the credentials for your admin user. For security reasons, this user does not have YugabyteDB superuser privileges; it is instead a member of `yb_superuser`, a role specific to Yugabyte Cloud clusters.
+When creating a YugabyteDB cluster in YugabyteDB Managed, you set up the credentials for your admin user. For security reasons, this user does not have YugabyteDB superuser privileges; it is instead a member of `yb_superuser`, a role specific to YugabyteDB Managed clusters.
 
 Although not a superuser, `yb_superuser` includes sufficient privileges to perform all the required operations on a database, including creating other yb_superuser users, as follows:
 
@@ -58,7 +58,7 @@ Although not a superuser, `yb_superuser` includes sufficient privileges to perfo
 
 - Member of the following roles: `pg_read_all_stats`, `pg_signal_backend`, and [yb_extension](#yb-extension).
 
-`yb_superuser` is the highest privileged role you have access to in Yugabyte Cloud. You can't delete, change the passwords, or login using the `postgres` or `yugabyte` superuser roles.
+`yb_superuser` is the highest privileged role you have access to in YugabyteDB Managed. You can't delete, change the passwords, or login using the `postgres` or `yugabyte` superuser roles.
 
 ### yb_extension
 
@@ -74,4 +74,4 @@ In YCQL, there is a single superuser called `cassandra` used during database cre
 - [Manage Users and Roles in YugabyteDB](../../../secure/authorization/create-roles/)
 - [Role-based access control](../../../secure/authorization/)
 - [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/)
-- [Create YSQL extensions in Yugabyte Cloud](../../cloud-clusters/add-extensions/)
+- [Create YSQL extensions in YugabyteDB Managed](../../cloud-clusters/add-extensions/)

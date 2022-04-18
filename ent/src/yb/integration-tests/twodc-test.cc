@@ -86,6 +86,7 @@ DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(check_bootstrap_required);
 
 namespace yb {
 
@@ -232,7 +233,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
       int32_t key = i;
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, key);
-      ASSERT_OK(session->ApplyAndFlush(op));
+      ASSERT_OK(session->TEST_ApplyAndFlush(op));
     }
   }
 
@@ -287,7 +288,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
       int32_t key = i;
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, key);
-      ASSERT_OK(session->ApplyAndFlush(op));
+      ASSERT_OK(session->TEST_ApplyAndFlush(op));
     }
   }
 
@@ -1157,7 +1158,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, UpdateWithinTransaction) {
   auto op = table_handle.NewInsertOp();
   auto req = op->mutable_request();
   QLAddInt32HashValue(req, 0);
-  ASSERT_OK(txn.first->ApplyAndFlush(op));
+  ASSERT_OK(txn.first->TEST_ApplyAndFlush(op));
 
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 

@@ -1,8 +1,8 @@
 ---
-title: Create a multi-zone universe using Yugabyte Platform
+title: Create a multi-zone universe using YugabyteDB Anywhere
 headerTitle: Create a multi-zone universe
 linkTitle: Multi-zone universe
-description: Use Yugabyte Platform to create a YugabyteDB universe that spans multiple availability zones.
+description: Use YugabyteDB Anywhere to create a YugabyteDB universe that spans multiple availability zones.
 menu:
   preview:
     identifier: create-multi-zone-universe
@@ -29,7 +29,7 @@ Generic</a>
 
 </ul>
 
-This document describes how to create a YugabyteDB universe using any cloud provider, except Kubernetes, in one geographic region across multiple availability zones.
+You can create a YugabyteDB universe using any cloud provider, except Kubernetes, in one geographic region across multiple availability zones.
 
 ## Prerequisites
 
@@ -37,11 +37,9 @@ Before you start creating a universe, ensure that you performed steps applicable
 
 ## Create a universe
 
-If no universes have been created yet, the Yugabyte Platform Dashboard looks similar to the following:
+If no universes have been created yet, the **Dashboard** does not display any.
 
-![Dashboard with No Universes](/images/ee/no-univ-dashboard.png)
-
-Click **Create Universe** to create the universe, and then enter your intent.
+Click **Create Universe** to create a universe and then enter your intent.
 
 The **Provider**, **Regions**, and **Instance Type** fields are initialized based on the [configured cloud providers](../../configure-yugabyte-platform/set-up-cloud-provider/). When you provide the value in the **Nodes** field, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
 
@@ -55,7 +53,7 @@ To create a multi-zone universe using [Google Cloud provider (GCP)](../../config
 
 - Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3), as per the following illustration:<br><br>
 
-  ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1.png)
+  ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1.png)<br><br>
 
 - Click **Create**.
 
@@ -63,7 +61,7 @@ To create a multi-zone universe using [Google Cloud provider (GCP)](../../config
 
 The **Universes** view allows you to examine various aspects of the universe:
 
-- **Overview** provides the information on the current Yugabyte Platform version, the number of nodes included in the primary cluster, the cost associated with running the universe, the CPU and disk usage, the geographical location of the nodes, the operations per second and average latency, the number of different types of tables, as well as the health monitor.
+- **Overview** provides the information on the current YugabyteDB Anywhere version, the number of nodes included in the primary cluster, the cost associated with running the universe, the CPU and disk usage, the geographical location of the nodes, the operations per second and average latency, the number of different types of tables, as well as the health monitor.
 - **Tables** provides details about YSQL, YCQL, and YEDIS tables included in the universe.
 - **Nodes** provide details on nodes included in the universe and allows you to perform actions on a specific node (connect, stop, remove, display live and slow queries, download logs). You can also use **Nodes** to open the cloud provider's instances page. For example, in case of GCP, if you navigate to **Compute Engine > VM Instances** and search for instances that contain the name of your universe in the instances name, you should see a list of instances.
 - **Metrics** displays graphs representing information on operations, latency, and other parameters for each type of node and server.
@@ -81,7 +79,7 @@ Once the universe is ready, its **Overview** tab should appear similar to the fo
 
 You connect to a database node as follows:
 
-- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured, as shown in the following illustration:<br>
+- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured, as shown in the following illustration:<br><br>
 
   ![Multi-zone universe nodes](/images/yp/multi-zone-universe-nodes-1.png)
 
@@ -91,7 +89,7 @@ You connect to a database node as follows:
 
   ![Multi-zone universe connect](/images/yp/multi-zone-universe-connect-2.png)
 
-- Run the preceding command from the Yugabyte Platform server, as follows:
+- Run the preceding command from the YugabyteDB Anywhere server, as follows:
 
   ```sh
   centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/109e95b5-bf08-4a8f-a7fb-2d2866865e15/yb-gcp-config-key.pem -ostricthostkeychecking=no -p 54422 yugabyte@10.150.1.56
@@ -102,7 +100,7 @@ You connect to a database node as follows:
 
 ## Run workloads
 
-Yugabyte Platform includes a number of sample applications enclosed in Docker containers.
+YugabyteDB Anywhere includes a number of sample applications enclosed in Docker containers.
 
 To access instructions on how to run sample applications, select your universe's **Overview** and then click **Actions > Run Sample Apps** to open the **Run Sample Apps** dialog shown in the following illustration:
 
@@ -130,7 +128,7 @@ $ sudo su - yugabyte
 
     ![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
 
-  - Click the **Export** icon for **YCQL Services** to trigger export into a shell variable on the database node **yb-dev-helloworld1-n1** to which you are connected. Remember to replace the following IP addresses with those displayed in the Yugabyte Platform console.
+  - Click the **Export** icon for **YCQL Services** to trigger export into a shell variable on the database node **yb-dev-helloworld1-n1** to which you are connected. Remember to replace the following IP addresses with those displayed in the YugabyteDB Anywhere UI.
 
     ```sh
     $ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"

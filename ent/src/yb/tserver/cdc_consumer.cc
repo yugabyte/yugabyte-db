@@ -140,7 +140,7 @@ void CDCConsumer::Shutdown() {
     producer_consumer_tablet_map_from_master_.clear();
     uuid_master_addrs_.clear();
     {
-      SharedLock<rw_spinlock> read_lock(producer_pollers_map_mutex_);
+      std::lock_guard<rw_spinlock> producer_pollers_map_write_lock(producer_pollers_map_mutex_);
       for (auto &uuid_and_client : remote_clients_) {
         uuid_and_client.second->Shutdown();
       }
@@ -330,7 +330,7 @@ void CDCConsumer::TriggerPollForNewTablets() {
             streams_with_same_num_producer_consumer_tablets_.end();
         auto cdc_poller = std::make_shared<CDCPoller>(
             entry.first, entry.second,
-            std::bind(&CDCConsumer::ShouldContinuePolling, this, entry.first),
+            std::bind(&CDCConsumer::ShouldContinuePolling, this, entry.first, entry.second),
             std::bind(&CDCConsumer::RemoveFromPollersMap, this, entry.first),
             thread_pool_.get(),
             rpcs_.get(),
@@ -369,7 +369,8 @@ void CDCConsumer::RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_ta
   }
 }
 
-bool CDCConsumer::ShouldContinuePolling(const cdc::ProducerTabletInfo producer_tablet_info) {
+bool CDCConsumer::ShouldContinuePolling(const cdc::ProducerTabletInfo producer_tablet_info,
+                                        const cdc::ConsumerTabletInfo consumer_tablet_info) {
   std::lock_guard<std::mutex> l(should_run_mutex_);
   if (!should_run_) {
     return false;
@@ -378,7 +379,10 @@ bool CDCConsumer::ShouldContinuePolling(const cdc::ProducerTabletInfo producer_t
   SharedLock<rw_spinlock> read_lock_master(master_data_mutex_);
 
   const auto& it = producer_consumer_tablet_map_from_master_.find(producer_tablet_info);
-  if (it == producer_consumer_tablet_map_from_master_.end()) {
+  // We either no longer need to poll for this tablet, or a different tablet should be polling
+  // for it now instead of this one (due to a local tablet split).
+  if (it == producer_consumer_tablet_map_from_master_.end() ||
+      it->second.tablet_id != consumer_tablet_info.tablet_id) {
     // We no longer care about this tablet, abort the cycle.
     return false;
   }

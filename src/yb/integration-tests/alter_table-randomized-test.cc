@@ -395,7 +395,7 @@ struct MirrorTable {
         }
       }
       session->Apply(op);
-      const auto flush_status = session->FlushAndGetOpsErrors();
+      const auto flush_status = session->TEST_FlushAndGetOpsErrors();
       const auto& s = flush_status.status;
       if (s.ok()) {
         if (op->response().status() == QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH &&

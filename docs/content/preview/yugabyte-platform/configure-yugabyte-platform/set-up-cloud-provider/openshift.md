@@ -64,15 +64,13 @@ showAsideToc: true
 
 </ul>
 
-This document describes how to configure OpenShift for YugabyteDB universes using Yugabyte Platform. If no cloud providers are configured via the Yugabyte Platform console, the main Dashboard page requests to configure at least one provider, as per the following illustration:
+You can configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page requests to configure at least one provider.
 
-![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
-
-To create a YugabyteDB universe using the deployed platform, you start by creating the required Role-based access control (RBAC) and adding the provider in the platform.
+To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you start by creating the required Role-based access control (RBAC) and adding the provider in the YugabyteDB Anywhere.
 
 ## Creating RBAC and kubeconfig
 
-kubeconfig is used by Yugabyte Platform to create universes in the OCP cluster.
+kubeconfig is used by YugabyteDB Anywhere to create universes in the OCP cluster.
 
 To create a ServiceAccount in the yb-platform project, execute the following command:
 
@@ -125,13 +123,13 @@ Expect the following output:
 Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
 ```
 
-## Creating a Provider in Yugabyte Platform
+## Creating a Provider in YugabyteDB Anywhere
 
-Since Yugabyte Platform manages YugabyteDB universes, Yugabyte Platform needs details about the cloud providers. In your case, the provider is your own OCP cluster.
+Since YugabyteDB Anywhere manages YugabyteDB universes, YugabyteDB Anywhere needs details about the cloud providers. In your case, the provider is your own OCP cluster.
 
 You can create a provider as follows:
 
-- Open the Yugabyte Platform web UI and click **Configure a Provider** to open the **Cloud Provider Configuration** page shown in the following illustration.
+- Open YugabyteDB Anywhere UI and click **Configure a Provider** to open the **Cloud Provider Configuration** page shown in the following illustration.
 - Select **Red Hat OpenShift** and complete the fields, as follows:
   - In the **Type** filed, select **OpenShift**.
   - In the **Name** field, enter ocp-test.
@@ -156,7 +154,7 @@ You should see the newly-added provider under **Red Hat OpenShift configs**.
 
 You can create a universe using the provider as follows:
 
-- Use the Yugabyte Platform web UI to navigate to **Universes** and then click **Create Universe**.
+- Use YugabyteDB Anywhere UI to navigate to **Universes** and then click **Create Universe**.
 
 - Complete the **Create Universe** page shown in the following illustration by entering the following information:
 

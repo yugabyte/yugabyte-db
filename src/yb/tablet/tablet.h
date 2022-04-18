@@ -825,6 +825,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
+  const docdb::SchemaPackingStorage& PrimarySchemaPackingStorage();
+
   std::unique_ptr<const Schema> key_schema_;
 
   RaftGroupMetadataPtr metadata_;
@@ -972,6 +974,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   template <class F>
   auto GetRegularDbStat(const F& func, const decltype(func())& default_value) const;
+
+  Result<docdb::CompactionSchemaPacking> GetSchemaPacking(
+    const Uuid& uuid, uint32_t schema_version);
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 

@@ -128,6 +128,10 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
 
+  void IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
+                           IsBootstrapRequiredResponsePB* resp,
+                           rpc::RpcContext rpc) override;
+
   void Shutdown() override;
 
   // Gets the associated metrics entity object stored in the additional metadata of the tablet.
@@ -211,6 +215,11 @@ class CDCServiceImpl : public CDCServiceIf {
                                  const std::shared_ptr<tablet::TabletPeer>& peer);
 
   Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
+
+  void TabletLeaderIsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
+                                       IsBootstrapRequiredResponsePB* resp,
+                                       rpc::RpcContext* context,
+                                       const std::shared_ptr<tablet::TabletPeer>& peer);
 
   Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);

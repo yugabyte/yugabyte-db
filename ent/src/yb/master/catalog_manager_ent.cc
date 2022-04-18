@@ -30,6 +30,7 @@
 #include "yb/cdc/cdc_service.h"
 
 #include "yb/client/client-internal.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -128,10 +129,15 @@ DEFINE_bool(allow_consecutive_restore, true,
             "Is it allowed to restore to a time before the last restoration was done.");
 TAG_FLAG(allow_consecutive_restore, runtime);
 
+DEFINE_bool(check_bootstrap_required, false,
+            "Is it necessary to check whether bootstrap is required for Universe Replication.");
+
 namespace yb {
 
 using rpc::RpcContext;
 using pb_util::ParseFromSlice;
+using client::internal::RemoteTabletServer;
+using client::internal::RemoteTabletPtr;
 
 namespace master {
 namespace enterprise {
@@ -1914,13 +1920,23 @@ Status CatalogManager::RestoreSysCatalog(
   docdb::DocWriteBatch write_batch(
       tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
 
+  // Restore the pg_catalog tables.
   if (FLAGS_enable_ysql) {
-    // Restore the pg_catalog tables.
+    // We also need to increment the catalog version by 1 so that
+    // postgres and tservers can refresh their catalog cache.
     const auto* meta = tablet->metadata();
-    const auto& pg_yb_catalog_version_schema =
-        VERIFY_RESULT(meta->GetTableInfo(kPgYbCatalogVersionTableId))->schema();
+    auto pg_yb_catalog_meta_result = meta->GetTableInfo(kPgYbCatalogVersionTableId);
+    std::shared_ptr<yb::tablet::TableInfo> pg_yb_catalog_meta = nullptr;
+    // If the catalog version table is not found then this is a cluster upgraded from < 2.4, so
+    // we need to use the SysYSQLCatalogConfigEntryPB. All other errors are fatal.
+    if (!pg_yb_catalog_meta_result.ok() && !pg_yb_catalog_meta_result.status().IsNotFound()) {
+      return pg_yb_catalog_meta_result.status();
+    } else if (pg_yb_catalog_meta_result.ok()) {
+      pg_yb_catalog_meta = *pg_yb_catalog_meta_result;
+    }
+    // Pass an empty schema to indicate that this is older version cluster.
     auto status = state.ProcessPgCatalogRestores(
-        pg_yb_catalog_version_schema, doc_db, tablet->doc_db(), &write_batch);
+        pg_yb_catalog_meta.get(), doc_db, tablet->doc_db(), &write_batch, doc_read_context());
 
     // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
     // status in case of validation failures so that it gets propagated back to the client before
@@ -2693,7 +2709,8 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
             req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
         session->Apply(op);
       }
-      RETURN_NOT_OK(session->Flush());
+      // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+      RETURN_NOT_OK(session->TEST_Flush());
     }
   } else {
     // Update and add table_id.
@@ -2882,7 +2899,8 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
     }
   }
   // Flush all the delete operations.
-  s = session->Flush();
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  s = session->TEST_Flush();
   if (!s.ok()) {
     LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
     return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
@@ -2977,6 +2995,7 @@ Status CatalogManager::GetCDCStream(const GetCDCStreamRequestPB* req,
     if (option.has_key() && option.key() == cdc::kIdType)
       id_type_option_value = option.value();
   }
+
   if (id_type_option_value == cdc::kNamespaceId) {
     stream_info->set_namespace_id(stream_lock->namespace_id());
   }
@@ -3045,7 +3064,8 @@ Status CatalogManager::ListCDCStreams(const ListCDCStreamsRequestPB* req,
       continue;
     }
 
-    if (filter_table && !entry.second->table_id().empty() &&
+    if (filter_table &&
+        entry.second->table_id().size() > 0 &&
         table->id() != entry.second->table_id().Get(0)) {
       continue; // Skip deleting/deleted streams and streams from other tables.
     }
@@ -3401,6 +3421,69 @@ Status CatalogManager::ValidateTableSchema(
   return Status::OK();
 }
 
+Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
+    client::internal::RemoteTabletPtr tablet) {
+  auto ts = tablet->LeaderTServer();
+  if (ts == nullptr) {
+    return STATUS(NotFound, "Tablet leader not found for tablet", tablet->tablet_id());
+  }
+  return ts;
+}
+
+Status CatalogManager::IsBootstrapRequired(scoped_refptr<UniverseReplicationInfo> universe,
+                                           const TableId& producer_table,
+                                           const std::unordered_map<TableId, std::string>&
+                                           table_bootstrap_ids) {
+  if (!FLAGS_check_bootstrap_required) {
+    return Status::OK();
+  }
+  {
+    auto lock = universe->LockForRead();
+    auto master_addresses = lock->pb.producer_master_addresses();
+    auto cdc_rpc = VERIFY_RESULT(universe->GetOrCreateCDCRpcTasks(master_addresses));
+
+    std::string bootstrap_id = (table_bootstrap_ids.count(producer_table) > 0) ?
+      table_bootstrap_ids.at(producer_table) : std::string();
+
+    auto ybclient = cdc_rpc->client();
+    auto table = VERIFY_RESULT(ybclient->OpenTable(producer_table));
+
+    auto future = ybclient->LookupAllTabletsFuture(table,
+        CoarseMonoClock::Now() + MonoDelta::FromSeconds(30));
+
+    auto tablets = VERIFY_RESULT(future.get());
+    std::unordered_map<RemoteTabletServer*,
+                      std::list<RemoteTabletPtr>> ts_to_tablet;
+
+    for (auto& tablet : tablets) {
+      auto ts = VERIFY_RESULT(GetLeaderTServer(tablet));
+      ts_to_tablet[ts].push_back(tablet);
+    }
+
+    for (auto& pair : ts_to_tablet) {
+      auto cdc_service = GetCDCServiceProxy(pair.first);
+
+      cdc::IsBootstrapRequiredRequestPB req;
+      cdc::IsBootstrapRequiredResponsePB resp;
+      if (!bootstrap_id.empty()) req.set_stream_id(bootstrap_id);
+      for (auto& tablet : pair.second) {
+        req.add_tablet_ids(tablet->tablet_id());
+      }
+      rpc::RpcController rpc;
+
+      // TO DO: Make this call Async to allow for parallelization
+      RETURN_NOT_OK(cdc_service->IsBootstrapRequired(req, &resp, &rpc));
+      if (resp.has_error() || resp.bootstrap_required()) {
+        return STATUS(InternalError, Substitute(
+          "Error Missing Data in Logs. Bootstrap is required for producer $0",
+          universe->id()));
+      }
+    }
+  }
+  return Status::OK();
+}
+
+
 Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
       scoped_refptr<UniverseReplicationInfo> universe,
       const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
@@ -3512,6 +3595,13 @@ void CatalogManager::GetTableSchemaCallback(
     LOG(ERROR) << "Found error while validating table schema for table " << info->table_id
                << ": " << status;
     return;
+  }
+
+  status = IsBootstrapRequired(universe, info->table_id, table_bootstrap_ids);
+  if (!status.ok()) {
+    MarkUniverseReplicationFailed(universe, s);
+    LOG(ERROR) << "Found error while checking if bootstrap is required for table " << info->table_id
+               << ": " << status;
   }
 
   status = AddValidatedTableAndCreateCdcStreams(universe,
@@ -3638,7 +3728,14 @@ void CatalogManager::GetTablegroupSchemaCallback(
     return;
   }
 
-  Status status = AddValidatedTableAndCreateCdcStreams(universe,
+  Status status = IsBootstrapRequired(universe, producer_tablegroup_id, table_bootstrap_ids);
+  if (!status.ok()) {
+    MarkUniverseReplicationFailed(universe, s);
+    LOG(ERROR) << "Found error while checking if bootstrap is required for table "
+               << producer_tablegroup_id << ": " << status;
+  }
+
+  status = AddValidatedTableAndCreateCdcStreams(universe,
                                                        table_bootstrap_ids,
                                                        producer_tablegroup_id,
                                                        consumer_tablegroup_id);
@@ -3735,7 +3832,16 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     return;
   }
 
-  Status status = AddValidatedTableAndCreateCdcStreams(universe,
+  Status status = IsBootstrapRequired(universe,
+                                      *producer_parent_table_ids.begin(),
+                                      table_bootstrap_ids);
+  if (!status.ok()) {
+    MarkUniverseReplicationFailed(universe, s);
+    LOG(ERROR) << "Found error while checking if bootstrap is required for table "
+               << *producer_parent_table_ids.begin() << ": " << status;
+  }
+
+  status = AddValidatedTableAndCreateCdcStreams(universe,
                                                        table_bootstrap_ids,
                                                        *producer_parent_table_ids.begin(),
                                                        *consumer_parent_table_ids.begin());
@@ -3963,21 +4069,47 @@ Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
     std::shared_ptr<client::YBSession> session = ybclient->NewSession();
 
     for (const auto& stream : streams) {
+      // First fetch the parent opid.
+      string parent_op_id = OpId(0, 0).ToString();
+
+      const auto read_op = cdc_table.NewReadOp();
+      auto* const read_req = read_op->mutable_request();
+      QLAddStringHashValue(read_req, split_tablet_ids.source);
+
+      auto cond = read_req->mutable_where_expr()->mutable_condition();
+      cond->set_op(QLOperator::QL_OP_AND);
+      QLAddStringCondition(
+          cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream->id());
+      read_req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
+      read_req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
+      cdc_table.AddColumns({master::kCdcCheckpoint}, read_req);
+
+      // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+      RETURN_NOT_OK(session->TEST_ReadSync(read_op));
+      auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
+      if (row_block->row_count() == 1) {
+        parent_op_id = row_block->row(0).column(0).string_value();
+      } else {
+        LOG(WARNING) << "Unable to find op_id in cdc_state table for tablet: "
+            << split_tablet_ids.source << ", stream: " << stream->id();
+      }
+
       for (const auto& child_tablet_id :
            {split_tablet_ids.children.first, split_tablet_ids.children.second}) {
         const auto insert_op = cdc_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
         auto* insert_req = insert_op->mutable_request();
+        auto* const condition = insert_req->mutable_if_expr()->mutable_condition();
+        condition->set_op(QL_OP_NOT_EXISTS);
         QLAddStringHashValue(insert_req, child_tablet_id);
         QLAddStringRangeValue(insert_req, stream->id());
-        // TODO(JHE) set the checkpoint to a different value? OpId of the SPLIT_OP itself perhaps?
-        cdc_table.AddStringColumnValue(insert_req, master::kCdcCheckpoint, OpId().ToString());
-        // TODO(JHE) what to set the time to?
-        // cdc_table.AddTimestampColumnValue(
-        //     insert_req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
+        cdc_table.AddStringColumnValue(insert_req, master::kCdcCheckpoint, parent_op_id);
+        cdc_table.AddTimestampColumnValue(
+            insert_req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
         session->Apply(insert_op);
       }
     }
-    RETURN_NOT_OK(session->Flush());
+    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+    RETURN_NOT_OK(session->TEST_Flush());
   }
 
   return Status::OK();
@@ -4959,6 +5091,16 @@ Status CatalogManager::ClearFailedUniverse() {
   RETURN_NOT_OK(DeleteUniverseReplication(&req, &resp, /* RpcContext */ nullptr));
 
   return Status::OK();
+}
+
+std::shared_ptr<cdc::CDCServiceProxy> CatalogManager::GetCDCServiceProxy(RemoteTabletServer* ts) {
+  auto ybclient = master_->cdc_state_client_initializer().client();
+  auto hostport = HostPortFromPB(ts->DesiredHostPort(ybclient->cloud_info()));
+  DCHECK(!hostport.host().empty());
+
+  auto cdc_service = std::make_shared<cdc::CDCServiceProxy>(&ybclient->proxy_cache(), hostport);
+
+  return cdc_service;
 }
 
 }  // namespace enterprise

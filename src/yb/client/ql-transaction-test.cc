@@ -285,7 +285,7 @@ TEST_F(QLTransactionTest, WriteRestart) {
       table_.SetInt32Condition(cond, kValueColumn, QLOperator::QL_OP_EQUAL, old_value);
       req->mutable_column_refs()->add_ids(table_.ColumnId(kValueColumn));
       LOG(INFO) << "Updating value";
-      auto status = session->ApplyAndFlush(op);
+      auto status = session->TEST_ApplyAndFlush(op);
       ASSERT_OK(status);
       if (!retry) {
         ASSERT_EQ(QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR, op->response().status());
@@ -596,7 +596,7 @@ void QLTransactionTest::TestReadOnlyTablets(IsolationLevel isolation_level,
   if (perform_write) {
     ASSERT_OK(WriteRow(session, 1 /* key */, 1 /* value */, WriteOpType::INSERT, Flush::kFalse));
   }
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
 
   // Verify intents were written if expected.
   if (written_intents_expected) {
@@ -1096,7 +1096,7 @@ TEST_F_EX(QLTransactionTest, CorrectStatusRequestBatching, QLTransactionBigLogSe
         while (!stop) {
           auto value_before_start = value.load();
           YBqlReadOpPtr op = ReadRow(session, key);
-          ASSERT_OK(session->Flush());
+          ASSERT_OK(session->TEST_Flush());
           ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK)
                         << op->response().ShortDebugString();
           auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();

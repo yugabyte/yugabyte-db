@@ -225,4 +225,4 @@ You can also verify this using the ysqlsh client shell.
 ## Next steps
 
 - Explore [Scaling Python Applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Python applications with Yugabyte Cloud](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/).
+- Learn how to [develop Python applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/).

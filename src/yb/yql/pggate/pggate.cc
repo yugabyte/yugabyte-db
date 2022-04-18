@@ -1523,7 +1523,12 @@ Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  pg_session_->ResetHasWriteOperationsInDdlMode();
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
+}
+
+bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
+  return pg_session_->HasWriteOperationsInDdlMode();
 }
 
 Status PgApiImpl::ExitSeparateDdlTxnMode() {
