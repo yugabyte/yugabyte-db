@@ -73,55 +73,38 @@ Configuring the on-premises provided consists of a number of steps.
 
 ### Complete the provider information {#on-premise-provider-info}
 
+You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, click either **Add Configuration** or **Edit Provider**, and then complete the fields of the **Provider Info** form shown in the following illustration:
+
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-1.png)
 
-#### Provider Name
+- In the **Provider Name** field, supply the provider name, which is an internal tag that helps with organizing your providers, so you know where you want to deploy your YugabyteDB universes.
 
-Supply the provider name, which is an internal tag that helps with organizing your providers, so you know where you want to deploy your YugabyteDB universes.
+- Use **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
 
-#### SSH User
+  If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually provision nodes](#manually-provision-nodes).
 
-To provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere requires SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
+- In the **SSH Port** field, provide the port number of SSH client connections.
 
-If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually Provision Nodes](#manually-provision-nodes).
+- Enable the **Manually Provision Nodes** field if you choose to manually set up your database nodes. Otherwise, YugabyteDB Anywhere will use the sudo user to set up YugabyteDB nodes. For manual provisioning, you would be prompted to run a Python script at a later stage or to run a set of commands on the database nodes.
 
-#### SSH Port
+  If any of the following statements are applicable to your use case, you need to [provision the nodes manually](#provision-nodes-manually):
 
-Provide the port number of SSH client connections.
+  - Preprovisioned `yugabyte:yugabyte` user and group.
+  - Sudo user requires a password.
+  - The SSH user is not a sudo user.
 
-#### Manually Provision Nodes
+- Use the **SSH Key** field to enter the full content of the private key available to the SSH user for gaining access via SSH into your instances. 
 
-Enable this option if you choose to manually set up your database nodes. Otherwise, YugabyteDB Anywhere will use the sudo user to set up YugabyteDB nodes. For manual provisioning, you would be prompted to run a Python script at a later stage or to run a set of commands on the database nodes.
+  Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`. 
 
-If any of the following statements are applicable to your use case, you need to [provision the nodes manually](#provision-nodes-manually):
+- Enable the **Air Gap Install** field if you want the installation to run in an air-gapped mode without expecting any internet access.
 
-* Pre-provisioned `yugabyte:yugabyte` user and group.
-* Sudo user requires a password.
-* The SSH user is not a sudo user.
+- Optionally, you may enable **Advanced** and complete the following: 
 
-#### SSH Key
-
-Ensure that the SSH key is pasted correctly (the supported format is RSA).
-
-#### Air Gap Install
-
-Enable this option if you want the installation to run in an air-gapped mode without expecting any internet access.
-
-#### Desired Home Directory
-
-Optionally, specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
-
-#### Node Exporter Port
-
-Specify the port number for the Node Exporter. The default value is 9300.
-
-#### Install Node Exporter
-
-Enable this option if you want the Node Exporter installed. You can skip this step if you have Node Exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
-
-#### Node Exporter User
-
-Override the default Prometheus user. This is useful when the user is pre-provisioned on nodes (in case user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
+  - Use the **Desired Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
+  - Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
+  - Enabe the **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
+  - The **Node Exporter User** field allows you to override the default Prometheus user. This is useful when the user is preprovisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
 
 ### Configure hardware for YugabyteDB nodes
 
@@ -129,25 +112,11 @@ Complete the **Instance Types** fields, as per the following illustration, to pr
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-2.png)
 
-#### Machine Type
-
-Define a value to be used internally as an identifier in the **Instance Type** universe field.
-
-#### Num Cores
-
-Define the number of cores to be assigned to a node.
-
-#### Mem Size GB
-
-Define the memory allocation of a node.
-
-#### Vol size GB
-
-Define the disk volume of a node.
-
-#### Mount Paths
-
-Define a mount point with enough space to contain your node density. Use `/data`. If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
+- Use the **Machine Type** field to define a value to be used internally as an identifier in the **Instance Type** universe field.
+- Use the **Num Cores** field to define the number of cores to be assigned to a node.
+- Use the **Mem Size GB** field to define the memory allocation of a node.
+- Use the **Vol size GB** field to define the disk volume of a node.
+- Use the **Mount Paths** field to define a mount point with enough space to contain your node density. Use `/data`. If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
 
 ### Define regions and zones
 
@@ -171,10 +140,10 @@ For each node you want to add, click **Add Instances** to add a YugabyteDB node.
 
 To provision your nodes manually, you have the following two options:
 
-1. If the SSH user you provided has sudo privileges but requires a password, you can [run the pre-provisioning script](#running-the-pre-provisioning-script).
+1. If the SSH user you provided has sudo privileges but requires a password, you can [run the preprovisioning script](#running-the-preprovisioning-script).
 2. If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](#setting-up-database-nodes-manually).
 
-#### Running the pre-provisioning script
+#### Running the preprovisioning script
 
 This step is only required if you set **Manually Provision Nodes** to true and the SSH user has sudo privileges which require a password; otherwise you skip this step.
 
@@ -218,7 +187,7 @@ For each node, perform the following:
 
 * [Set up time synchronization](#set-up-time-synchronization)
 * [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
-* [Pre-provision the node](#pre-provision-nodes-manually)
+* [Preprovision the node](#preprovision-nodes-manually)
 * [Install Prometheus node exporter](#install-prometheus-node-exporter)
 * [Install backup utilities](#install-backup-utilities)
 * [Set crontab permissions](#set-crontab-permissions)
@@ -250,7 +219,7 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 
 The preceding table is based on the information on the [default ports page](/preview/reference/configuration/default-ports/).
 
-##### Pre-provision nodes manually
+##### Preprovision nodes manually
 
 This process carries out all provisioning tasks on the database nodes which require elevated privileges. Once the database nodes have been prepared in this way, the universe creation process from YugabyteDB Anywhere will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
 
