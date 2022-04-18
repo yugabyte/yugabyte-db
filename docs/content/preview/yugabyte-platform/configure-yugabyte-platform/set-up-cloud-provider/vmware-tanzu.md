@@ -11,7 +11,7 @@ menu:
     identifier: set-up-cloud-provider-4-vmware-tanzu
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
@@ -72,7 +72,7 @@ Before you start, ensure that you have the `kubeconfig` file generated during [Y
 
 To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), open the YugabyteDB Anywhere UI, navigate to **Dashboard**, and click **Configure a Provider**.
 
-### Configure TKG credentials
+## Configure TKG credentials
 
 You configure the TKG credentials as follows:
 
@@ -94,7 +94,7 @@ You configure the TKG credentials as follows:
 - The **Pull Secret File** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
 
 
-### Configure region and zones
+## Configure region and zones
 
 You configure region and zones as follows:
 
@@ -120,7 +120,7 @@ You configure region and zones as follows:
 
   - Optionally, complete the **Overrides** field. If not completed, YugabyteDB Anywhere uses the default values specified inside the Helm chart.
 
-    To add Service-level annotations, use the following overrides:
+    To add service-level annotations, use the following overrides:
 
     ```config
     serviceEndpoints:
@@ -169,7 +169,7 @@ You configure region and zones as follows:
 
   - Click **Save**. <br>
 
-    If your configuration is successful, you are redirected to **VMware Tanzu configs**.
+  If your configuration is successful, you are redirected to **VMware Tanzu configs**.
 
 ## Appendix: VMware Tanzu Application Service
 
