@@ -1,8 +1,8 @@
 ---
-title: Configure the VMware Tanzu provider
-headerTitle: Configure the VMware Tanzu provider
+title: Configure the VMware Tanzu cloud provider
+headerTitle: Configure the VMware Tanzu cloud provider
 linkTitle: Configure the cloud provider
-description: Configure the VMware Tanzu provider
+description: Configure the VMware Tanzu cloud provider
 aliases:
   - /deploy/pivotal-cloud-foundry/
   - /preview/deploy/pivotal-cloud-foundry/
@@ -11,7 +11,7 @@ menu:
     identifier: set-up-cloud-provider-4-vmware-tanzu
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
@@ -66,98 +66,112 @@ showAsideToc: true
 
 </ul>
 
-This document explains how to configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using YugabyteDB Anywhere.
-
-## Configuring the VMware Tanzu Provider
+You can configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using YugabyteDB Anywhere.
 
 Before you start, ensure that you have the `kubeconfig` file generated during [YugabyteDB Anywhere Installation](/preview/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#create-a-kubeconfig-file-for-a-kubernetes-cluster) so YugabyteDB Anywhere can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
 
-To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), open the **Yugabyte Admin Console** and click **Configure a Provider**, as shown in the following illustration:
+To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), open the YugabyteDB Anywhere UI, navigate to **Dashboard**, and click **Configure a Provider**.
 
-![Admin Console](/images/deploy/pivotal-cloud-foundry/admin-console.png)
+## Configure TKG credentials
 
-### How to Configure TKG Credentials
+You configure the TKG credentials as follows:
 
-- Navigate to **Configs > Cloud Provider Configuration > Infrastructure > VMware Tanzu**.
-- Use the **Name** field to provide a meaningful name for your configuration.
-- Use the **Kube Config** field to specify the kubeconfig for an availability zone at one of the following levels:
-
-  - At the **provider level**, in which case this configuration file will be used for all availability zones in all regions. You use the **Cloud Provider Configuration** window for this setting.
-  - At the **zone level**, which is important for multi-zone or multi-region deployments. You use the **Add new region** dialog for this setting.
-- Use the **Service Account** field to provide the name of the service account that has the necessary access to manage the cluster, as described in [Create Cluster](/preview/deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
-
-- Use the **Image Registry** field to specify the location of the YugabyteDB image. You should accept the default setting, unless you are hosting your own registry.
-- The **Pull Secret** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
+- Navigate to **Configs > Infrastructure > VMware Tanzu**, as per the following illustration:<br><br>
 
   ![Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-1.png)
 
-### How to Configure Region and Zones
+- Use the **Name** field to provide a meaningful name for your configuration.
 
-- On the **Create VMware Tanzu Configuration** page, click **Add Region** to open the **Add new region** dialog shown in the following illustration: <br><br>
+- Use the **Kube Config** field to specify the kube config for an availability zone at one of the following levels:
 
-  ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)
+  - At the **provider level**, in which case this configuration file will be used for all availability zones in all regions. You use the **Cloud Provider Configuration** window for this setting.
+  - At the **zone level**, which is important for multi-zone or multi-region deployments. You use the **Add new region** dialog for this setting.
+  
+- Use the **Service Account** field to provide the name of the service account that has the necessary access to manage the cluster, as described in [Create cluster](/preview/deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
 
-- Use the **Region** field to select the region.
-- Use the **Zone** field to enter a zone label that matches your failure domain zone label `failure-domain.beta.kubernetes.io/zone`
-- In the **Storage Class** field, provide the storage class that (1) exists in your Kubernetes cluster and (2) matches the one installed on TKG. The valid input is a comma delimited value. The default is standard. That is, the default storage class is TKG - Multi Cloud: standard-sc, TKG - Service: tkg-vsan-storage-policy.
-- Use the **Kube Config** field to upload the kubeconfig file.
+- Use the **Image Registry** field to specify the location of the YugabyteDB image. You should accept the default setting, unless you are hosting your own registry.
 
-- Optionally, complete the **Overrides** field. If not completed, YugabyteDB Anywhere uses the default values specified inside the Helm chart.
+- The **Pull Secret File** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
 
-  To add Service-level annotations, use the following overrides:
 
-  ```config
-  serviceEndpoints:
-    - name: "yb-master-service"
-      type: "LoadBalancer"
-      annotations:
-        service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
-      app: "yb-master"
-      ports:
-        ui: "7000"
+## Configure region and zones
 
-    - name: "yb-tserver-service"
-      type: "LoadBalancer"
-      annotations:
-        service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
-      app: "yb-tserver"
-      ports:
-        ycql-port: "9042"
-        yedis-port: "6379"
-        ysql-port: "5433"
-  ```
+You configure region and zones as follows:
 
-  <br>To disable LoadBalancer, use the following overrides:
+- On the **Create VMware Tanzu Configuration** page, click **Add region** to open the **Add new region** dialog.
 
-  ```configuration
-  enableLoadBalancer: False
-  ```
+- Use the **Region** field to select the region. 
 
-  <br>To change the cluster domain name, use the following overrides:
+- Complete the fields of the expanded **Add new region** dialog shown in the following illustration:
 
-  ```configuration
-  domainName: my.cluster
-  ```
+  <br>
 
-  <br>To add annotations at the StatefulSet level, use the following overrides:
+  ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)<br><br>
 
-  ```configuration
-  networkAnnotation:
-    annotation1: 'foo'
-    annotation2: 'bar'
-  ```
+  - Use the **Zone** field to enter a zone label that matches your failure domain zone label `failure-domain.beta.kubernetes.io/zone`
 
-- Add a new zone by clicking **Add Zone**. Your configuration may have multiple zones, as shown in the following illustration:
+  - In the **Storage Class** field, provide the storage class that exists in your Kubernetes cluster and matches the one installed on TKG. The valid input is a comma delimited value. The default is standard. That is, the default storage class is `TKG - Multi Cloud: standard-sc`, `TKG - Service: tkg-vsan-storage-policy`.
 
-  ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-2.png)
+  - In the **Namespace** field, specify an existing namespace into which pods in this zone will be deployed.
 
-- Click **Add Region**.
+  - In the **Cluster DNS Domain** field, provide the DNS domain name used in the Kubernetes cluster.
 
-- Click **Save**. If your configuration is successful, you are redirected to **VMware Tanzu configs**, as shown in the following illustration:<br><br>
+  - Use the **Kube Config** field to upload the kube config file.
 
-  ![Finish Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-finish.png)
+  - Optionally, complete the **Overrides** field. If not completed, YugabyteDB Anywhere uses the default values specified inside the Helm chart.
 
-## Appendix Using VMware Tanzu Application Service
+    To add service-level annotations, use the following overrides:
+
+    ```config
+    serviceEndpoints:
+      - name: "yb-master-service"
+        type: "LoadBalancer"
+        annotations:
+          service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
+        app: "yb-master"
+        ports:
+          ui: "7000"
+
+      - name: "yb-tserver-service"
+        type: "LoadBalancer"
+        annotations:
+          service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
+        app: "yb-tserver"
+        ports:
+          ycql-port: "9042"
+          yedis-port: "6379"
+          ysql-port: "5433"
+    ```
+
+    <br>To disable LoadBalancer, use the following overrides:
+
+    ```configuration
+    enableLoadBalancer: False
+    ```
+
+    <br>To change the cluster domain name, use the following overrides:
+
+    ```configuration
+    domainName: my.cluster
+    ```
+
+    <br>To add annotations at the StatefulSet level, use the following overrides:
+
+    ```configuration
+    networkAnnotation:
+      annotation1: 'foo'
+      annotation2: 'bar'
+    ```
+
+  - If required, add a new zone by clicking **Add Zone**, as your configuration may have multiple zones.
+
+  - Click **Add Region**.
+
+  - Click **Save**. <br>
+
+  If your configuration is successful, you are redirected to **VMware Tanzu configs**.
+
+## Appendix: VMware Tanzu Application Service
 
 VMware Tanzu Application Service is no longer actively supported and the following information is considered legacy.
 
@@ -166,19 +180,19 @@ If you choose to use VMware Tanzu Application Service, before creating the servi
 - The YugabyteDB tile is installed in your PCF marketplace.
 - The cloud provider is configured in the YugabyteDB Anywhere instance in your PCF environment .
 
-### Creating a YugabyteDB Service Instance
+### Create a YugabyteDB Service instance
 
 You can create a YugabyteDB service instance via the App Manager UI or Cloud Foundry (cf) command-line interface (CLI).
 
 #### How to Use the PCF App Manager
 
 - In your PCF App manager, navigate to the marketplace and select **YugabyteDB**.
-- Read descriptions of the available service plans to identify the resource requirements and intended environment, as shown in the following illustration.
+- Read descriptions of the available service plans to identify the resource requirements and intended environment, as shown in the following illustration:<br><br>
 
   ![Yugabyte Service Plans](/images/deploy/pivotal-cloud-foundry/service-plan-choices.png)
 
 - Select the service plan.
-- Complete the service instance configuration, as shown in the following illustration:
+- Complete the service instance configuration, as shown in the following illustration:<br><br>
 
   ![App Manager Config](/images/deploy/pivotal-cloud-foundry/apps-manager-config.png)
 
@@ -207,7 +221,7 @@ Once you decide on the service plan, you can launch the YugabyteDB service insta
 $ cf create-service yugabyte-db x-small yb-demo -c '{"universe_name": "yb-demo"}'
 ```
 
-### Configuring the YugabyteDB Service Instance
+### Configure the YugabyteDB Service instance
 
 You can specify override options when you create a service instance using the YugabyteDB service broker.
 
