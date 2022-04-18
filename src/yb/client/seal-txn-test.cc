@@ -56,7 +56,7 @@ void SealTxnTest::TestNumBatches(bool restart) {
   size_t prev_num_non_empty = 0;
   for (auto op_type : {WriteOpType::INSERT, WriteOpType::UPDATE}) {
     ASSERT_OK(WriteRows(session, /* transaction= */ 0, op_type, Flush::kFalse));
-    ASSERT_OK(session->Flush());
+    ASSERT_OK(session->TEST_Flush());
 
     size_t num_non_empty = 0;
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);

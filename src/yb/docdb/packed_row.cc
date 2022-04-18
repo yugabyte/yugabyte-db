@@ -136,9 +136,17 @@ void SchemaPacking::ToPB(SchemaPackingPB* out) const {
 
 SchemaPackingStorage::SchemaPackingStorage() = default;
 
-const SchemaPacking* SchemaPackingStorage::Get(uint32_t version) const {
-  auto it = version_to_schema_packing_.find(version);
-  return it != version_to_schema_packing_.end() ? &it->second : nullptr;
+Result<const SchemaPacking&> SchemaPackingStorage::GetPacking(uint32_t schema_version) const {
+  auto it = version_to_schema_packing_.find(schema_version);
+  if (it == version_to_schema_packing_.end()) {
+    return STATUS_FORMAT(NotFound, "Schema packing not found: $0", schema_version);
+  }
+  return it->second;
+}
+
+Result<const SchemaPacking&> SchemaPackingStorage::GetPacking(Slice* packed_row) const {
+  auto version = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(packed_row));
+  return GetPacking(narrow_cast<uint32_t>(version));
 }
 
 void SchemaPackingStorage::AddSchema(uint32_t version, const Schema& schema) {
@@ -184,11 +192,43 @@ RowPacker::RowPacker(uint32_t version, std::reference_wrapper<const SchemaPackin
   result_.Truncate(
       result_.size() +
       util::FastEncodeUnsignedVarInt(version, result_.mutable_data() + result_.size()));
-  prefix_end_ = result_.size() + prefix_len;
-  varlen_write_pos_ = result_.GrowByAtLeast(prefix_len) - result_.AsSlice().cdata();
+  result_.GrowByAtLeast(prefix_len);
+  prefix_end_ = result_.size();
+  varlen_write_pos_ = prefix_end_ - prefix_len;
+}
+
+void RowPacker::Restart() {
+  idx_ = 0;
+  varlen_write_pos_ = prefix_end_ - packing_.prefix_len();
+  result_.Truncate(prefix_end_);
 }
 
 Status RowPacker::AddValue(ColumnId column, const QLValuePB& value) {
+  return DoAddValue(column, value);
+}
+
+Status RowPacker::AddValue(ColumnId column, const Slice& value) {
+  return DoAddValue(column, value);
+}
+
+namespace {
+
+bool IsNull(const Slice& slice) {
+  return slice.empty();
+}
+
+void PackValue(const QLValuePB& value, ValueBuffer* result) {
+  AppendEncodedValue(value, CheckIsCollate::kTrue, result);
+}
+
+void PackValue(const Slice& value, ValueBuffer* result) {
+  result->Append(value);
+}
+
+} // namespace
+
+template <class Value>
+Status RowPacker::DoAddValue(ColumnId column, const Value& value) {
   if (idx_ >= packing_.columns()) {
     return STATUS_FORMAT(InvalidArgument, "Add value for unknown column: $0, idx: $1",
                          column, idx_);
@@ -202,7 +242,7 @@ Status RowPacker::AddValue(ColumnId column, const QLValuePB& value) {
   ++idx_;
   size_t prev_size = result_.size();
   if (!column_data.nullable || !IsNull(value)) {
-    AppendEncodedValue(value, CheckIsCollate::kTrue, &result_);
+    PackValue(value, &result_);
   }
   if (column_data.varlen()) {
     LittleEndian::Store32(result_.mutable_data() + varlen_write_pos_,
@@ -217,12 +257,28 @@ Status RowPacker::AddValue(ColumnId column, const QLValuePB& value) {
 }
 
 Result<Slice> RowPacker::Complete() {
+  if (idx_ != packing_.columns()) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Not all columns packed: $0 vs $1",
+        idx_, packing_.columns());
+  }
   if (varlen_write_pos_ != prefix_end_) {
     return STATUS_FORMAT(
         InvalidArgument, "Not all varlen columns packed: $0 vs $1",
         varlen_write_pos_, prefix_end_);
   }
   return result_.AsSlice();
+}
+
+ColumnId RowPacker::NextColumnId() const {
+  return idx_ < packing_.columns() ? packing_.column_packing_data(idx_).id : kInvalidColumnId;
+}
+
+Result<const ColumnPackingData&> RowPacker::NextColumnData() const {
+  if (idx_ >= packing_.columns()) {
+    return STATUS(IllegalState, "All columns already packed");
+  }
+  return packing_.column_packing_data(idx_);
 }
 
 } // namespace docdb

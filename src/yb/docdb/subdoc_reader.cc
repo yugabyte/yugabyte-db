@@ -746,11 +746,7 @@ Status SubDocumentReaderBuilder::UpdateWithParentWriteInfo(
   auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
 
   if (value.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
-    auto version = narrow_cast<uint32_t>(VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value)));
-    schema_packing_ = schema_packing_storage_.Get(version);
-    if (!schema_packing_) {
-      return STATUS_FORMAT(NotFound, "Cannot find schema for packed row: $0", version);
-    }
+    schema_packing_ = &VERIFY_RESULT(schema_packing_storage_.GetPacking(&value)).get();
     packed_row_.Assign(value);
     packed_row_data_.doc_ht = doc_ht;
     packed_row_data_.control_fields = control_fields;

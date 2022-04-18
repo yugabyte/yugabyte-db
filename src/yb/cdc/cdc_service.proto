@@ -58,6 +58,7 @@ service CDCService {
   rpc SetCDCCheckpoint (SetCDCCheckpointRequestPB) returns (SetCDCCheckpointResponsePB) {
     option (yb.rpc.trivial) = true;
   };
+  rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
 }
 
 message CDCErrorPB {
@@ -458,4 +459,14 @@ message SetCDCCheckpointRequestPB {
 
 message SetCDCCheckpointResponsePB {
   optional CDCErrorPB error = 1;
+}
+
+message IsBootstrapRequiredRequestPB {
+  repeated string tablet_ids = 1;
+  optional string stream_id = 2;
+}
+
+message IsBootstrapRequiredResponsePB {
+  optional CDCErrorPB error = 1;
+  optional bool bootstrap_required = 2 [default = false];
 }
