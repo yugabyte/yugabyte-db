@@ -1294,12 +1294,15 @@ void CDCServiceImpl::UpdateLagMetrics() {
       if (s.IsNotFound()) {
         continue;
       }
-      auto tablet_metric = GetCDCTabletMetrics(checkpoint.producer_tablet_info, tablet_peer);
+      // Don't create new tablet metrics if they have already been deleted.
+      auto tablet_metric = GetCDCTabletMetrics(
+          checkpoint.producer_tablet_info, tablet_peer, CreateCDCMetricsEntity::kFalse);
       if (!tablet_metric) {
         continue;
       }
       tablet_metric->async_replication_sent_lag_micros->set_value(0);
       tablet_metric->async_replication_committed_lag_micros->set_value(0);
+      RemoveCDCTabletMetrics(checkpoint.producer_tablet_info, tablet_peer);
     }
   }
 }
@@ -2090,9 +2093,14 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
   return Status::OK();
 }
 
+const std::string GetCDCMetricsKey(const std::string& stream_id) {
+  return "CDCMetrics::" + stream_id;
+}
+
 std::shared_ptr<CDCTabletMetrics> CDCServiceImpl::GetCDCTabletMetrics(
     const ProducerTabletInfo& producer,
-    std::shared_ptr<tablet::TabletPeer> tablet_peer) {
+    std::shared_ptr<tablet::TabletPeer> tablet_peer,
+    CreateCDCMetricsEntity create) {
   // 'nullptr' not recommended: using for tests.
   if (tablet_peer == nullptr) {
     auto status = tablet_manager_->GetTabletPeer(producer.tablet_id, &tablet_peer);
@@ -2102,9 +2110,9 @@ std::shared_ptr<CDCTabletMetrics> CDCServiceImpl::GetCDCTabletMetrics(
   auto tablet = tablet_peer->shared_tablet();
   if (tablet == nullptr) return nullptr;
 
-  std::string key = "CDCMetrics::" + producer.stream_id;
+  const std::string key = GetCDCMetricsKey(producer.stream_id);
   std::shared_ptr<void> metrics_raw = tablet->GetAdditionalMetadata(key);
-  if (metrics_raw == nullptr) {
+  if (metrics_raw == nullptr && create) {
     //  Create a new METRIC_ENTITY_cdc here.
     MetricEntity::AttributeMap attrs;
     {
@@ -2122,6 +2130,23 @@ std::shared_ptr<CDCTabletMetrics> CDCServiceImpl::GetCDCTabletMetrics(
   }
 
   return std::static_pointer_cast<CDCTabletMetrics>(metrics_raw);
+}
+
+void CDCServiceImpl::RemoveCDCTabletMetrics(
+    const ProducerTabletInfo& producer,
+    std::shared_ptr<tablet::TabletPeer> tablet_peer) {
+  if (tablet_peer == nullptr) {
+    LOG(WARNING) << "Received null tablet peer pointer.";
+    return;
+  }
+  auto tablet = tablet_peer->shared_tablet();
+  if (tablet == nullptr) {
+    LOG(WARNING) << "Could not find tablet for tablet peer: " << tablet_peer->tablet_id();
+    return;
+  }
+
+  const std::string key = GetCDCMetricsKey(producer.stream_id);
+  tablet->RemoveAdditionalMetadata(key);
 }
 
 Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(const std::string& stream_id) {

@@ -627,6 +627,14 @@ TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {
     return metrics->async_replication_sent_lag_micros->value() == 0 &&
         metrics->async_replication_committed_lag_micros->value() == 0;
   }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag = 0"));
+
+  // Now check that UpdateLagMetrics deletes the metric.
+  cdc_service->UpdateLagMetrics();
+  auto metrics = cdc_service->GetCDCTabletMetrics(
+      {"" /* UUID */, stream_id_, tablet_id},
+      /* tablet_peer */ nullptr,
+      CreateCDCMetricsEntity::kFalse);
+  ASSERT_EQ(metrics, nullptr);
 }
 
 
