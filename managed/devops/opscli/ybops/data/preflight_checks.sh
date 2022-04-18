@@ -98,18 +98,10 @@ check_filepath() {
   check_parent="$3" # If true, will check parent directory is writable if given path doesn't exist.
   file_status="1" # 0 if success, else failed
 
-  # Use sudo command for provision.
   if [[ "$check_type" == "provision" ]]; then
-    # To reduce sudo footprint, use a format similar to what ansible would execute
-    # (e.g. /bin/sh -c */usr/bin/env python *)
-    if $check_parent; then
-      echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env python -c \"import os; \
-        filepath = '$path' if os.path.exists('$path') else os.path.dirname('$path'); \
-        exit(1) if not os.access(filepath, os.W_OK) else exit();\""
-    else
-      echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env python -c \"import os; \
-        exit(1) if not os.access('$path', os.W_OK) else exit();\""
-    fi
+    # Use sudo command for provision.
+    echo $YB_SUDO_PASS | sudo -S test -w "$path" || \
+    ($check_parent && echo $YB_SUDO_PASS | sudo -S test -w $(dirname "$path"))
   else
     test -w "$path" || ($check_parent && test -w $(dirname "$path"))
   fi
