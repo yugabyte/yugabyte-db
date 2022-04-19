@@ -654,6 +654,8 @@ Sysbench
 syscall
 syscalls
 syslog
+tablespace
+tablespaces
 tanuki
 tcpdump
 templated
