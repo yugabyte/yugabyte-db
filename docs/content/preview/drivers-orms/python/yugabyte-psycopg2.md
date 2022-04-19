@@ -34,7 +34,7 @@ showAsideToc: true
 
 The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a distributed Python driver for [YSQL](/preview/api/ysql/), built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2). Although the upstream PostgreSQL psycopg2 driver works with YugabyteDB, the Yugabyte driver is cluster- and topology-aware, and eliminates the need for external load balancers.
 
-## CRUD operations with YugabyteDB Psycopg2 driver
+## CRUD operations with YugabyteDB psycopg2 driver
 
 Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/quick-start/build-apps/python/ysql-psycopg2/) page under the Quick start section.
 
@@ -44,44 +44,59 @@ After completing these steps, you should have a working Python application that 
 
 ### Step 1: Add the YugabyteDB driver dependency
 
-<!-- TODO: After publishing the driver -->
+Building Psycopg requires a few prerequisites (a C compiler and some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#build-prerequisites) and [the FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
+
+The YugabyteDB Psycopg2 requires PostgreSQL version 11 or above (preferably 14).
+
+Once you've installed the prerequisites, you install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
+
+```sh
+$ pip install psycopg2-yugabytedb
+```
+
+Or, you can use the setup.py script if you've downloaded the source package locally:
+
+```sh
+$ python setup.py build
+$ sudo python setup.py install
+```
 
 ### Step 2: Connect to your cluster
 
-Python applications can connect to and query the YugabyteDB database. First, import the psycopg2 package.
+First, import the psycopg2 package.
 
 ```python
 import psycopg2
 ```
 
-The Connection details can be provided as a string or a dictionary.
+You can provide the connection details as a string, or as a dictionary.
 
-- Connection String
+- Connection string:
 
   ```python
   "dbname=database_name host=hostname port=port user=username  password=password load_balance=true"
   ```
 
-- Connection Dictionary
+- Connection dictionary:
 
   ```python
   user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True'
   ```
 
-Example URL for connecting to YugabyteDB can be seen below.
+Here's a sample call to connect to YugabyteDB:
 
 ```python
 conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte', load_balance='True')
 ```
 
 | Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| host  | Hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
-| database/dbname | Database name | yugabyte
-| user | User connecting to the database | yugabyte
-| password | User password | yugabyte
-| load-balance | enables uniform load balancing | false
+| :-------- | :---------- | :------ |
+| host | Hostname of the YugabyteDB instance | localhost |
+| port | Listen port for YSQL | 5433 |
+| database/dbname | Database name | yugabyte |
+| user | User connecting to the database | yugabyte |
+| password | User password | yugabyte |
+| load_balance | Enables uniform load balancing | false |
 
 #### Use SSL
 
@@ -92,9 +107,9 @@ conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<usernam
 ```
 
 | Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| sslmode | SSL mode  | prefer
-| sslrootcert | path to the root certificate on your computer | ~/.postgresql/
+| :-------- | :---------- | :------ |
+| sslmode | SSL mode | prefer |
+| sslrootcert | path to the root certificate on your computer | ~/.postgresql/ |
 
 If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](/preview/yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
 
