@@ -27,7 +27,7 @@ You can configure Amazon S3 as your backup target, as follows:
 
 4. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the S3 backup.
 
-5. If **IAM Role** is disabled, enter values for **Access Key** and **Access Secret** fields.
+5. If **IAM Role** is disabled, enter values for the **Access Key** and **Access Secret** fields.
 
 6. Enter values for the **S3 Bucket** and **S3 Bucket Host Base** fields.
 
@@ -51,7 +51,7 @@ You can configure Network File System (NFS) as your backup target, as follows:
 
    ![NFS Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)<br><br>
 
-3. Use the **Configuration Name** field to provide a meaning name for you backup configuration.
+3. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
 
 4. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
 
@@ -67,9 +67,9 @@ You can configure Google Cloud Storage (GCS) as your backup target, as follows:
 
    ![GCS Configuration](/images/yp/cloud-provider-configuration-backup-gcs.png)<br><br>
 
-3. Use the **Configuration Name** field to provide a meaning name for you backup configuration.
+3. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
 
-4. Complete  **GCS Bucket** and **GCS Credentials** fields.
+4. Complete the **GCS Bucket** and **GCS Credentials** fields.
 
    For information on how to obtain GCS credentials, see [Cloud Storage authentication](https://cloud.google.com/storage/docs/authentication).
 
@@ -133,6 +133,6 @@ You can configure Azure as your backup target, as follows:
 
     ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)<br><br>
     
-    * Use the **Configuration Name** field to provide a meaning name for you backup configuration.
+    * Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
     * Enter values for the **Container URL** and **SAS Token** fields, and then click **Save**.
     
