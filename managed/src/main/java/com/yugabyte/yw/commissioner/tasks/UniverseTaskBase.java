@@ -1778,9 +1778,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public Optional<Boolean> instanceExists(
       NodeTaskParams taskParams, Map<String, String> expectedTags) {
     NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
-    ShellResponse response = nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams);
-    processShellResponse(response);
-    if (response == null || Strings.isNullOrEmpty(response.message)) {
+    ShellResponse response =
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams).processErrors();
+    if (Strings.isNullOrEmpty(response.message)) {
       // Instance does not exist.
       return Optional.empty();
     }
