@@ -113,7 +113,8 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
 
     verify(swamperHelper, times(1)).writeAlertDefinition(configuration, expected);
-    verify(queryHelper, times(1)).postManagementCommand("reload");
+    verify(swamperHelper, times(1)).writeRecordingRules();
+    verify(queryHelper, times(2)).postManagementCommand("reload");
 
     AssertHelper.assertMetricValue(
         metricService,
@@ -137,7 +138,8 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     configurationWriter.process();
 
     verify(swamperHelper, times(1)).removeAlertDefinition(definition.getUuid());
-    verify(queryHelper, times(1)).postManagementCommand("reload");
+    verify(swamperHelper, times(1)).writeRecordingRules();
+    verify(queryHelper, times(2)).postManagementCommand("reload");
 
     AssertHelper.assertMetricValue(
         metricService,
@@ -163,7 +165,8 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
     verify(swamperHelper, times(1)).writeAlertDefinition(configuration, expected);
     verify(swamperHelper, times(1)).removeAlertDefinition(missingDefinitionUuid);
-    verify(queryHelper, times(1)).postManagementCommand("reload");
+    verify(swamperHelper, times(1)).writeRecordingRules();
+    verify(queryHelper, times(2)).postManagementCommand("reload");
 
     AssertHelper.assertMetricValue(
         metricService,
@@ -191,14 +194,16 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     verify(swamperHelper, never()).writeAlertDefinition(any(), any());
     verify(swamperHelper, never()).removeAlertDefinition(any());
     // Called once after startup
-    verify(queryHelper, times(1)).postManagementCommand("reload");
+    verify(swamperHelper, times(1)).writeRecordingRules();
+    verify(queryHelper, times(2)).postManagementCommand("reload");
 
     configurationWriter.process();
 
     verify(swamperHelper, never()).writeAlertDefinition(any(), any());
     verify(swamperHelper, never()).removeAlertDefinition(any());
     // Not called on subsequent run
-    verify(queryHelper, times(1)).postManagementCommand("reload");
+    verify(swamperHelper, times(1)).writeRecordingRules();
+    verify(queryHelper, times(2)).postManagementCommand("reload");
 
     AssertHelper.assertMetricValue(
         metricService,
@@ -275,7 +280,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
                 + ","
                 + maintenanceWindow2.getUuid().toString()));
     verify(swamperHelper, times(1)).writeAlertDefinition(updatedConfiguration, updatedDefinition);
-    verify(queryHelper, times(1)).postManagementCommand("reload");
+    verify(queryHelper, times(2)).postManagementCommand("reload");
 
     maintenanceWindow.setEndTime(CommonUtils.nowMinusWithoutMillis(1, ChronoUnit.HOURS));
     maintenanceWindow.save();
@@ -292,7 +297,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
         updatedDefinition.getLabelValue(KnownAlertLabels.MAINTENANCE_WINDOW_UUIDS),
         equalTo(maintenanceWindow2.getUuid().toString()));
     verify(swamperHelper, times(1)).writeAlertDefinition(updatedConfiguration, updatedDefinition);
-    verify(queryHelper, times(2)).postManagementCommand("reload");
+    verify(queryHelper, times(3)).postManagementCommand("reload");
 
     maintenanceService.delete(maintenanceWindow2.getUuid());
 
@@ -305,6 +310,6 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     assertThat(
         updatedDefinition.getLabelValue(KnownAlertLabels.MAINTENANCE_WINDOW_UUIDS), nullValue());
     verify(swamperHelper, times(1)).writeAlertDefinition(updatedConfiguration, updatedDefinition);
-    verify(queryHelper, times(3)).postManagementCommand("reload");
+    verify(queryHelper, times(4)).postManagementCommand("reload");
   }
 }
