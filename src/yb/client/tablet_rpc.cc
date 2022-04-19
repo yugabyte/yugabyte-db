@@ -22,6 +22,7 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
 
@@ -36,6 +37,10 @@
 
 DEFINE_test_flag(bool, assert_local_op, false,
                  "When set, we crash if we received an operation that cannot be served locally.");
+DEFINE_bool(update_all_tablets_upon_network_failure, true, "If this is enabled, then "
+            "upon receiving a network error, we mark the remote server as being unreachable for "
+            "all tablets in metacache, instead of the single tablet which issued the rpc.");
+TAG_FLAG(update_all_tablets_upon_network_failure, runtime);
 DEFINE_int32(force_lookup_cache_refresh_secs, 0, "When non-zero, specifies how often we send a "
              "GetTabletLocations request to the master leader to update the tablet replicas cache. "
              "This request is only sent if we are processing a ConsistentPrefix read.");
@@ -273,6 +278,7 @@ bool TabletInvoker::ShouldUseNodeLocalForwardProxy() {
 
 Status TabletInvoker::FailToNewReplica(const Status& reason,
                                        const tserver::TabletServerErrorPB* error_code) {
+  TRACE_TO(trace_, "FailToNewReplica($0)", reason.ToString());
   if (ErrorCode(error_code) == tserver::TabletServerErrorPB::STALE_FOLLOWER) {
     VLOG(1) << "Stale follower for " << command_->ToString() << " just retry";
   } else if (ErrorCode(error_code) == tserver::TabletServerErrorPB::NOT_THE_LEADER) {
@@ -294,6 +300,13 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
   } else {
     VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason
             << ", old replica: " << yb::ToString(current_ts_);
+
+    if (GetAtomicFlag(&FLAGS_update_all_tablets_upon_network_failure) &&
+        rpc::NetworkError(reason) == rpc::NetworkErrorCode::kConnectFailed) {
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Marking TServer " << current_ts_->ToString()
+                                      << " as unreachable due to " << reason.ToString();
+      client_->data_->meta_cache_->MarkTSFailed(current_ts_, reason);
+    }
 
     bool found = !tablet_ || tablet_->MarkReplicaFailed(current_ts_, reason);
     if (!found) {
@@ -326,6 +339,7 @@ bool TabletInvoker::Done(Status* status) {
         *status = STATUS(Aborted, "Retrier finished");
       }
     }
+    TRACE_TO(trace_, "Done($0)", status->ToString(false));
     return true;
   }
 

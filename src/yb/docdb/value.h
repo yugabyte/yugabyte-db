@@ -46,6 +46,7 @@ struct ValueControlFields {
   // The timestamp provided by the user as part of a 'USING TIMESTAMP' clause in CQL.
   UserTimeMicros user_timestamp = kInvalidUserTimestamp;
 
+  void AppendEncoded(ValueBuffer* out) const;
   void AppendEncoded(std::string* out) const;
   std::string ToString() const;
 
@@ -88,7 +89,7 @@ class Value {
 
   bool has_user_timestamp() const { return control_fields_.has_user_timestamp(); }
 
-  ValueType value_type() const { return primitive_value_.value_type(); }
+  ValueEntryType value_type() const { return primitive_value_.value_type(); }
 
   PrimitiveValue* mutable_primitive_value() { return &primitive_value_; }
 
@@ -104,12 +105,13 @@ class Value {
 
   // Decode the entire value
   CHECKED_STATUS Decode(const Slice& rocksdb_value);
+  CHECKED_STATUS Decode(const Slice& rocksdb_value, const ValueControlFields& control_fields);
 
   std::string ToString() const;
 
   // Decodes the ValueType of the primitive value stored in the
   // given RocksDB value and any other values before it.
-  static Result<ValueType> DecodePrimitiveValueType(const Slice& rocksdb_value);
+  static Result<ValueEntryType> DecodePrimitiveValueType(const Slice& rocksdb_value);
 
   static const Value& Tombstone();
   static const std::string& EncodedTombstone();

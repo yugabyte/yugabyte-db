@@ -47,6 +47,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -77,6 +78,10 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(TEST_get_changes_read_loop_delay_ms);
 DECLARE_double(cdc_read_safe_deadline_ratio);
 DECLARE_bool(TEST_xcluster_simulate_have_more_records);
+
+DECLARE_double(cdc_get_changes_free_rpc_ratio);
+DECLARE_int32(rpc_workers_limit);
+DECLARE_uint64(transaction_manager_workers_limit);
 
 METRIC_DECLARE_entity(cdc);
 METRIC_DECLARE_gauge_int64(last_read_opid_index);
@@ -158,7 +163,8 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
   void GetTablet(std::string* tablet_id,
                  const client::YBTableName& table_name = kTableName);
   void GetChanges(const TabletId& tablet_id, const CDCStreamId& stream_id,
-      int64_t term, int64_t index, bool* has_error = nullptr);
+                  int64_t term, int64_t index,
+                  bool* has_error = nullptr, ::yb::cdc::CDCErrorPB_Code* code = nullptr);
   void WriteTestRow(int32_t key, int32_t int_val, const string& string_val,
       const TabletId& tablet_id, const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
   CHECKED_STATUS WriteToProxyWithRetries(
@@ -238,7 +244,7 @@ void VerifyCdcStateMatches(client::YBClient* client,
   table.AddColumns({master::kCdcCheckpoint}, req);
 
   auto session = client->NewSession();
-  ASSERT_OK(session->ApplyAndFlush(op));
+  ASSERT_OK(session->TEST_ApplyAndFlush(op));
 
   LOG(INFO) << strings::Substitute("Verifying tablet: $0, stream: $1, op_id: $2",
       tablet_id, stream_id, OpId(term, index).ToString());
@@ -279,7 +285,7 @@ void VerifyStreamDeletedFromCdcState(client::YBClient* client,
   // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
   // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
   ASSERT_OK(WaitFor([&](){
-    EXPECT_OK(session->ApplyAndFlush(op));
+    EXPECT_OK(session->TEST_ApplyAndFlush(op));
     auto row_block = ql::RowsResult(op.get()).GetRowBlock();
     if (row_block->row_count() == 0) {
       return true;
@@ -306,7 +312,8 @@ void CDCServiceTest::GetTablet(std::string* tablet_id,
 }
 
 void CDCServiceTest::GetChanges(const TabletId& tablet_id, const CDCStreamId& stream_id,
-                                int64_t term, int64_t index, bool* has_error) {
+                                int64_t term, int64_t index,
+                                bool* has_error, ::yb::cdc::CDCErrorPB_Code* code) {
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
 
@@ -326,6 +333,9 @@ void CDCServiceTest::GetChanges(const TabletId& tablet_id, const CDCStreamId& st
       ASSERT_FALSE(change_resp.has_error());
     } else if (!s.ok() || change_resp.has_error()) {
       *has_error = true;
+      if (code && change_resp.error().has_code()) {
+        *code = change_resp.error().code();
+      }
       return;
     }
   }
@@ -446,7 +456,7 @@ TEST_P(CDCServiceTest, TestCompoundKey) {
     table.AddInt32ColumnValue(req, "val", i);
     session->Apply(op);
   }
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
 
   // Get CDC changes.
   GetChangesRequestPB change_req;
@@ -567,7 +577,7 @@ TEST_P(CDCServiceTest, TestSafeTime) {
   auto leader_tserver = GetLeaderForTablet(tablet_id)->server();
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   ASSERT_OK(leader_tserver->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
-  
+
   auto ht_0 = ASSERT_RESULT(tablet_peer->LeaderSafeTime()).ToUint64();
   ASSERT_NO_FATALS(WriteTestRow(0, 10, "key0", tablet_id, leader_tserver->proxy()));
   ASSERT_NO_FATALS(WriteTestRow(1, 11, "key0", tablet_id, leader_tserver->proxy()));
@@ -662,6 +672,14 @@ TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {
     return metrics->async_replication_sent_lag_micros->value() == 0 &&
         metrics->async_replication_committed_lag_micros->value() == 0;
   }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag = 0"));
+
+  // Now check that UpdateLagMetrics deletes the metric.
+  cdc_service->UpdateLagMetrics();
+  auto metrics = cdc_service->GetCDCTabletMetrics(
+      {"" /* UUID */, stream_id_, tablet_id},
+      /* tablet_peer */ nullptr,
+      CreateCDCMetricsEntity::kFalse);
+  ASSERT_EQ(metrics, nullptr);
 }
 
 
@@ -1913,7 +1931,7 @@ TEST_P(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
     QLAddStringRangeValue(delete_req, stream_id[i]);
     session->Apply(delete_op);
   }
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
   LOG(INFO) << "Successfully deleted all streams from cdc_state";
 
   SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs + 1));
@@ -2078,6 +2096,73 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
 
   ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->Start());
   ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->WaitStarted());
+}
+
+class CDCServiceLowRpc: public CDCServiceTest {
+ public:
+  void SetUp() override {
+    FLAGS_rpc_workers_limit = 4;
+    FLAGS_transaction_manager_workers_limit = 4;
+    // Uncommenting below causes test to timeout. We stop throttling with a negative ratio.
+    // FLAGS_cdc_get_changes_free_rpc_ratio = -.5;
+
+    CDCServiceTest::SetUp();
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceLowRpc, ::testing::Values(true));
+
+TEST_P(CDCServiceLowRpc, TestGetChangesRpcMax) {
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+
+  std::string tablet_id;
+  GetTablet(&tablet_id);
+
+  tserver::MiniTabletServer* leader_mini_tserver;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    leader_mini_tserver = GetLeaderForTablet(tablet_id);
+    return leader_mini_tserver != nullptr;
+  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for tablet to have a leader."));
+  ASSERT_NO_FATALS(WriteTestRow(0, 200, "key0", tablet_id, leader_mini_tserver->server()->proxy()));
+
+  // Call GetChanges with 20 threads, even though our setup only allows 7 RPC threads at a time.
+  int num_get_changes = 200;
+  int num_threads = 20;
+  TestThreadHolder thread_holder;
+  std::atomic<int> gets(0);
+  std::atomic<int> not_ready_errors(0);
+  for (int i = 0; i != num_threads; ++i) {
+    thread_holder.AddThreadFunctor([this, &gets, &not_ready_errors, tablet_id,
+                                    &stop = thread_holder.stop_flag()] {
+      for (int cnt = 0; cnt < 10; ++cnt) {
+        int value = ++gets;
+        bool has_error = false;
+        ::yb::cdc::CDCErrorPB_Code code;
+        // Call GetChanges for this one row
+        GetChanges(tablet_id, stream_id_, 0, value, &has_error, &code);
+        // We should either succeed or error specifically because we're being throttled.
+        if (has_error) {
+          ASSERT_EQ(code, CDCErrorPB_Code_LEADER_NOT_READY);
+          ++not_ready_errors;
+        }
+      }
+    });
+  }
+
+  // Wait for the threads to finish running GetChanges on all entries.
+  while (!thread_holder.stop_flag().load(std::memory_order_acquire)) {
+    auto cur = gets.load(std::memory_order_acquire);
+    if (cur >= num_get_changes) {
+      break;
+    }
+    LOG(INFO) << "Num getChanges " << cur << " of " << num_get_changes;
+    SleepFor(MonoDelta::FromMilliseconds(100));
+  }
+
+  thread_holder.Stop();
+
+  // We should have gotten some throttling errors because ran more RPC threads than available.
+  LOG(INFO) << "LEADER_NOT_READY errors: " << not_ready_errors.load(std::memory_order_acquire);
 }
 
 } // namespace cdc

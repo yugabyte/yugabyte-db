@@ -278,6 +278,8 @@ public enum TaskType {
 
   CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
 
+  ManageAlertDefinitions("subtasks.ManageAlertDefinitions"),
+
   UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
 
   UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
@@ -306,7 +308,9 @@ public enum TaskType {
 
   CheckMemory("subtasks.check.CheckMemory"),
 
-  UpdateMountedDisks("subtasks.UpdateMountedDisks");
+  UpdateMountedDisks("subtasks.UpdateMountedDisks"),
+
+  TransferXClusterCerts("subtasks.TransferXClusterCerts");
 
   private String relativeClassPath;
 

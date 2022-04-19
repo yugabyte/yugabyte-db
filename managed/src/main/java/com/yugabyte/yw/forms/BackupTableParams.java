@@ -3,7 +3,10 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.Backup.StorageConfigType;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
@@ -37,6 +40,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Action type")
   public ActionType actionType;
 
+  @ApiModelProperty(value = "Full Table type backup")
+  public Boolean isFullBackup = false;
+
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
 
@@ -50,6 +56,9 @@ public class BackupTableParams extends TableManagerParams {
   // of backing up an entire universe transactionally
   @ApiModelProperty(value = "Backups")
   public List<BackupTableParams> backupList;
+
+  @ApiModelProperty(value = "Per region locations")
+  public List<BackupUtil.RegionLocations> regionLocations;
 
   // Specifies the frequency for running the backup in milliseconds.
   @ApiModelProperty(value = "Frequency to run the backup, in milliseconds")
@@ -111,15 +120,31 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Backup size in bytes")
   public long backupSizeInBytes = 0L;
 
+  @ApiModelProperty(value = "Type of backup storage config")
+  public StorageConfigType storageConfigType = null;
+
+  @ApiModelProperty(value = "Time unit for backup expiry time")
+  public TimeUnit expiryTimeUnit = TimeUnit.DAYS;
+
   @JsonIgnore
   public Set<String> getTableNames() {
     Set<String> tableNames = new HashSet<>();
     if (tableUUIDList != null && !tableUUIDList.isEmpty()) {
-      tableNames.addAll(tableNameList);
+      if (tableNameList != null) {
+        tableNames.addAll(tableNameList);
+      }
     } else if (getTableName() != null) {
       tableNames.add(getTableName());
     }
 
     return tableNames;
+  }
+
+  public boolean isFullBackup() {
+    return isFullBackup;
+  }
+
+  public void setFullBackup(boolean isFullBackup) {
+    this.isFullBackup = isFullBackup;
   }
 }

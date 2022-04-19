@@ -241,7 +241,7 @@ void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
 
 KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht) {
   char buf[kMaxBytesPerEncodedHybridTime + 1];
-  buf[0] = ValueTypeAsChar::kHybridTime;
+  buf[0] = KeyEntryTypeAsChar::kHybridTime;
   auto end = doc_ht.EncodedInDocDbFormat(buf + 1);
   return KeyBytes(key, Slice(buf, end));
 }
@@ -251,9 +251,9 @@ void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter) {
 }
 
 void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
-  key_bytes->AppendValueType(ValueType::kMaxByte);
+  key_bytes->AppendKeyEntryType(KeyEntryType::kMaxByte);
   SeekForward(*key_bytes, iter);
-  key_bytes->RemoveValueTypeSuffix(ValueType::kMaxByte);
+  key_bytes->RemoveKeyEntryTypeSuffix(KeyEntryType::kMaxByte);
 }
 
 void SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key,
@@ -509,10 +509,9 @@ void AddSupportedFilterPolicy(
   table_options->supported_filter_policies->emplace(filter_policy->Name(), filter_policy);
 }
 
-PriorityThreadPool* GetGlobalPriorityThreadPool
-  (const scoped_refptr<MetricEntity>& metric_entity = nullptr) {
+PriorityThreadPool* GetGlobalPriorityThreadPool() {
     static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
-      GetGlobalRocksDBPriorityThreadPoolSize(), metric_entity);
+      GetGlobalRocksDBPriorityThreadPoolSize());
     return &priority_thread_pool_for_compactions_and_flushes;
 }
 
@@ -573,7 +572,8 @@ void InitRocksDBOptions(
     rocksdb::Options* options, const string& log_prefix,
     const shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
-    rocksdb::BlockBasedTableOptions table_options) {
+    rocksdb::BlockBasedTableOptions table_options,
+    const uint64_t group_no) {
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
   options->create_if_missing = true;
@@ -584,6 +584,7 @@ void InitRocksDBOptions(
   options->boundary_extractor = DocBoundaryValuesExtractorInstance();
   options->compaction_measure_io_stats = FLAGS_rocksdb_compaction_measure_io_stats;
   options->memory_monitor = tablet_options.memory_monitor;
+  options->disk_group_no = group_no;
   if (FLAGS_db_write_buffer_size != -1) {
     options->write_buffer_size = FLAGS_db_write_buffer_size;
   } else {
@@ -591,10 +592,7 @@ void InitRocksDBOptions(
   }
   options->env = tablet_options.rocksdb_env;
   options->checkpoint_env = rocksdb::Env::Default();
-  options->priority_thread_pool_for_compactions_and_flushes =
-    (tablet_options.ServerMetricEntity) ?
-    GetGlobalPriorityThreadPool(tablet_options.ServerMetricEntity) :
-    GetGlobalPriorityThreadPool();
+  options->priority_thread_pool_for_compactions_and_flushes = GetGlobalPriorityThreadPool();
 
   if (FLAGS_num_reserved_small_compaction_threads != -1) {
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;

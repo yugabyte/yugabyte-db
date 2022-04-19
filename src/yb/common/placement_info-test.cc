@@ -46,11 +46,10 @@ TEST(PlacementInfoTest, TestTablespaceJsonProcessing) {
       "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":2},"
       "{\"cloud\":\"c2\",\"region\":\"r2\",\"zone\":\"z2\",\"min_num_replicas\":1}]}";
 
-  QLValuePB option, invalid_option;
-  option.set_string_value("replica_placement=" + valid_json);
-  invalid_option.set_string_value("read_replica_placement=" + valid_json);
+  auto option = "replica_placement=" + valid_json;
+  auto invalid_option = "read_replica_placement=" + valid_json;
 
-  vector<QLValuePB> options;
+  vector<std::string> options;
 
   // Negative tests.
   // 1. Empty input.
@@ -68,53 +67,51 @@ TEST(PlacementInfoTest, TestTablespaceJsonProcessing) {
 
   // 4. Empty json.
   options.clear();
-  QLValuePB opt_empty_value;
-  opt_empty_value.set_string_value("replica_placement=[{}]");
+  auto opt_empty_value = "replica_placement=[{}]";
   options.emplace_back(opt_empty_value);
   ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
 
   // 5. Missing num_replicas field.
   options.clear();
-  QLValuePB invalid_json_option;
-  invalid_json_option.set_string_value("replica_placement={\"placement_blocks\":"
-      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":3}]}");
+  auto invalid_json_option = "replica_placement={\"placement_blocks\":"
+      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":3}]}";
   options.emplace_back(invalid_json_option);
   ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
 
   // 6. Invalid value for num_replicas field.
   options.clear();
-  invalid_json_option.set_string_value(
+  invalid_json_option =
       "replica_placement={\"num_replicas\":\"abc\",\"placement_blocks\":"
-      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":3}]}");
+      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":3}]}";
   options.emplace_back(invalid_json_option);
   ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
 
   // 7. Missing placement blocks field.
   options.clear();
-  invalid_json_option.set_string_value("replica_placement={\"num_replicas\":3}");
+  invalid_json_option = "replica_placement={\"num_replicas\":3}";
   options.emplace_back(invalid_json_option);
   ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
 
   // 8. Missing keys in placement blocks.
   options.clear();
-  invalid_json_option.set_string_value(
+  invalid_json_option =
       "replica_placement={\"num_replicas\":\"abc\",\"placement_blocks\":"
-      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\"}]}");
+      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\"}]}";
   options.emplace_back(invalid_json_option);
   ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
 
   // 9. Invalid format for "min_num_replicas".
   options.clear();
-  invalid_json_option.set_string_value(
-        "replica_placement={\"num_replicas\":3,\"placement_blocks\":"
-        "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":\"abc\"}]}");
+  invalid_json_option =
+      "replica_placement={\"num_replicas\":3,\"placement_blocks\":"
+      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":\"abc\"}]}";
   options.emplace_back(invalid_json_option);
   ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
 
   // 10. Invalid json.
   options.clear();
-  invalid_json_option.set_string_value("replica_placement=["
-      "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_number_of_replica");
+  invalid_json_option = "replica_placement=["
+      "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_number_of_replica";
   options.emplace_back(invalid_json_option);
   ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
 
@@ -140,7 +137,107 @@ TEST(PlacementInfoTest, TestTablespaceJsonProcessing) {
     ASSERT_EQ(placement_block.zone, "z2");
     ASSERT_EQ(placement_block.min_num_replicas, 1);
   }
+}
 
+// Test the tablespace preferred zone info parsing.
+TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
+  // Variables to be used throughout the test.
+  const string& zone1 = R"#("cloud":"c1","region":"r1","zone":"z1","min_num_replicas":1)#";
+  const string& zone2 = R"#("cloud":"c1","region":"r1","zone":"z2","min_num_replicas":1)#";
+  const string& zone3 = R"#("cloud":"c1","region":"r1","zone":"z3","min_num_replicas":1)#";
+  const string format =
+      R"#(replica_placement={"num_replicas":3,"placement_blocks": [{$0},{$1},{$2}]})#";
+
+  // Valid option with no preferred zones.
+  {
+    auto no_preferred_zone = strings::Substitute(format, zone1, zone2, zone3);
+    PlacementInfoConverter::Placement result =
+        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{no_preferred_zone}));
+    for (auto& info : result.placement_infos) {
+      ASSERT_EQ(info.leader_preference, 0);
+    }
+  }
+
+  // Negative priority.
+  {
+    auto negative_priority =
+        strings::Substitute(format, zone1 + R"#(,"leader_preference":-1)#", zone2, zone3);
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{negative_priority}));
+  }
+
+  // Zero priority.
+  {
+    auto zero_priority =
+        strings::Substitute(format, zone1 + R"#(,"leader_preference":0)#", zone2, zone3);
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{zero_priority}));
+  }
+
+  // No priority 1.
+  {
+    auto no_priority_1 =
+        strings::Substitute(format, zone1 + R"#(,"leader_preference":2)#", zone2, zone3);
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{no_priority_1}));
+  }
+
+  // Non contiguous priority.
+  {
+    auto non_cont_priority_1 = strings::Substitute(
+        format,
+        zone1 + R"#(,"leader_preference":1)#",
+        zone2 + R"#(,"leader_preference":1)#",
+        zone3 + R"#(,"leader_preference":3)#");
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{non_cont_priority_1}));
+  }
+
+  // Non contiguous priority3.
+  {
+    auto non_cont_priority_3 = strings::Substitute(
+        format,
+        zone1 + R"#(,"leader_preference":1)#",
+        zone2 + R"#(,"leader_preference":3)#",
+        zone3 + R"#(,"leader_preference":3)#");
+
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{non_cont_priority_3}));
+  }
+
+  // Only 1 zone has priority
+  {
+    auto one_zone_priority =
+        strings::Substitute(format, zone1 + R"#(,"leader_preference":1)#", zone2, zone3);
+    auto result =
+        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{one_zone_priority}));
+    for (auto& info : result.placement_infos) {
+      ASSERT_EQ(info.leader_preference, info.zone == "z1" ? 1 : 0);
+    }
+  }
+
+  // Two zones have priority 1
+  {
+    auto two_zone_priority = strings::Substitute(
+        format,
+        zone1 + R"#(,"leader_preference":1)#",
+        zone2 + R"#(,"leader_preference":1)#",
+        zone3);
+    auto result =
+        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{two_zone_priority}));
+    for (auto& info : result.placement_infos) {
+      ASSERT_EQ(info.leader_preference, info.zone == "z3" ? 0 : 1);
+    }
+  }
+
+  // All unique priority
+  {
+    auto teo_zone_priority = strings::Substitute(
+        format,
+        zone1 + R"#(,"leader_preference":1)#",
+        zone2 + R"#(,"leader_preference":2)#",
+        zone3 + R"#(,"leader_preference":3)#");
+    auto result =
+        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{teo_zone_priority}));
+    for (auto& info : result.placement_infos) {
+      ASSERT_EQ(info.leader_preference, info.zone[1] - '0');
+    }
+  }
 }
 
 } // namespace yb

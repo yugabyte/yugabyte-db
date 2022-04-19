@@ -18,6 +18,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -138,12 +139,13 @@ public class CustomerConfig extends Model {
   public Map<String, String> dataAsMap() {
     Map<String, String> result = new ObjectMapper().convertValue(data, Map.class);
     // Remove not String values.
+    Map<String, String> r = new HashMap<>();
     for (Entry<String, String> entry : result.entrySet()) {
-      if (!(entry.getValue() instanceof String)) {
-        result.remove(entry.getKey());
+      if (entry.getValue() instanceof String) {
+        r.put(entry.getKey(), entry.getValue());
       }
     }
-    return result;
+    return r;
   }
 
   public CustomerConfig generateUUID() {
@@ -346,6 +348,7 @@ public class CustomerConfig extends Model {
       LOG.debug("Invalid State transition {} to {}", this.state, newState);
       return;
     }
+    LOG.info("Customer config: transitioned from {} to {}", this.state, newState);
     this.state = newState;
     save();
   }

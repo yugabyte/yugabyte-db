@@ -377,6 +377,22 @@ inline void CopyToBuffer(const Slice& source, std::string* dest) {
   source.CopyToBuffer(dest);
 }
 
+inline bool operator<(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) < 0;
+}
+
+inline bool operator<=(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) <= 0;
+}
+
+inline bool operator>(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) > 0;
+}
+
+inline bool operator>=(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) >= 0;
+}
+
 }  // namespace yb
 
 namespace rocksdb {

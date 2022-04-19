@@ -10,9 +10,15 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.models.common.Unit;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
+import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
+@Getter
 public enum PlatformMetrics {
   // Health check common
   HEALTH_CHECK_STATUS("Health check status for universe", Unit.STATUS),
@@ -86,28 +92,33 @@ public enum PlatformMetrics {
   ALERT_MANAGER_CHANNEL_STATUS("Alert manager channel status", Unit.STATUS),
   METRIC_PROCESSOR_STATUS("Platform metrics processor status", Unit.STATUS),
 
-  UNIVERSE_EXISTS("Flag, indicating that universe exists", Unit.STATUS),
-  UNIVERSE_PAUSED("Flag, indicating that universe is paused", Unit.STATUS),
-  UNIVERSE_UPDATE_IN_PROGRESS("Flag, indicating that universe update is in progress", Unit.STATUS),
-  UNIVERSE_BACKUP_IN_PROGRESS("Flag, indicating that universe backup is in progress", Unit.STATUS),
-  UNIVERSE_NODE_FUNCTION("Flag, indicating expected node functions", Unit.STATUS),
+  UNIVERSE_EXISTS("Flag, indicating that universe exists", Unit.STATUS, false),
+  UNIVERSE_PAUSED("Flag, indicating that universe is paused", Unit.STATUS, false),
+  UNIVERSE_UPDATE_IN_PROGRESS(
+      "Flag, indicating that universe update is in progress", Unit.STATUS, false),
+  UNIVERSE_BACKUP_IN_PROGRESS(
+      "Flag, indicating that universe backup is in progress", Unit.STATUS, false),
+  UNIVERSE_NODE_FUNCTION("Flag, indicating expected node functions", Unit.STATUS, false),
   UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAYS(
-      "Remaining Encryption-at-Rest config validity in days", Unit.DAY);
+      "Remaining Encryption-at-Rest config validity in days", Unit.DAY, false);
 
   private final String help;
   private final Unit unit;
+  private final Set<MetricSourceState> validForSourceStates;
 
+  // By default metrics are valid only for active source
   PlatformMetrics(String help, Unit unit) {
+    this(help, unit, true);
+  }
+
+  PlatformMetrics(String help, Unit unit, boolean onlyActive) {
+    Set<MetricSourceState> validForSourceStates =
+        onlyActive
+            ? ImmutableSet.of(MetricSourceState.ACTIVE)
+            : ImmutableSet.of(MetricSourceState.ACTIVE, MetricSourceState.INACTIVE);
     this.help = help;
     this.unit = unit;
-  }
-
-  public String getHelp() {
-    return help;
-  }
-
-  public Unit getUnit() {
-    return unit;
+    this.validForSourceStates = validForSourceStates;
   }
 
   public String getUnitName() {
@@ -117,5 +128,15 @@ public enum PlatformMetrics {
   public String getMetricName() {
     // ybp is required to list all platform alerts in Prometheus UI by prefix
     return "ybp_" + name().toLowerCase();
+  }
+
+  public static Set<PlatformMetrics> invalidForState(MetricSourceState state) {
+    return Arrays.stream(values())
+        .filter(m -> !m.getValidForSourceStates().contains(state))
+        .collect(Collectors.toSet());
+  }
+
+  public static PlatformMetrics fromMetricName(String metricName) {
+    return valueOf(metricName.substring(4).toUpperCase());
   }
 }

@@ -21,6 +21,8 @@ import {
 } from '../../../actions/cloud';
 import { getTlsCertificates, getTlsCertificatesResponse } from '../../../actions/customers';
 import {
+  rollingUpgrade,
+  rollingUpgradeResponse,
   createUniverse,
   createUniverseResponse,
   editUniverse,
@@ -106,14 +108,14 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     submitAddUniverseReadReplica: (values, universeUUID) => {
-      dispatch(addUniverseReadReplica(values, universeUUID)).then((response) => {
-        dispatch(addUniverseReadReplicaResponse(response.payload));
+      return dispatch(addUniverseReadReplica(values, universeUUID)).then((response) => {
+        return dispatch(addUniverseReadReplicaResponse(response.payload));
       });
     },
 
     submitEditUniverseReadReplica: (values, universeUUID) => {
-      dispatch(editUniverseReadReplica(values, universeUUID)).then((response) => {
-        dispatch(editUniverseReadReplicaResponse(response.payload));
+      return dispatch(editUniverseReadReplica(values, universeUUID)).then((response) => {
+        return dispatch(editUniverseReadReplicaResponse(response.payload));
       });
     },
 
@@ -133,12 +135,21 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     submitEditUniverse: (values, universeUUID) => {
-      dispatch(editUniverse(values, universeUUID)).then((response) => {
+      return dispatch(editUniverse(values, universeUUID)).then((response) => {
         if (response.error) {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
         }
-        dispatch(editUniverseResponse(response.payload));
+        return dispatch(editUniverseResponse(response.payload));
+      });
+    },
+
+    submitUniverseNodeResize: (values, universeUUID) => {
+      return dispatch(rollingUpgrade(values, universeUUID)).then((response) => {
+        if (!response.error) {
+          dispatch(closeUniverseDialog());
+        }
+        return dispatch(rollingUpgradeResponse(response.payload));
       });
     },
 
@@ -192,6 +203,14 @@ const mapDispatchToProps = (dispatch) => {
 
     showFullMoveModal: () => {
       dispatch(openDialog('fullMoveModal'));
+    },
+
+    showSmartResizeModal: () => {
+      dispatch(openDialog('smartResizeModal'));
+    },
+
+    showUpgradeNodesModal: () => {
+      dispatch(openDialog('resizeNodesModal'));
     },
 
     fetchNodeInstanceList: (providerUUID) => {

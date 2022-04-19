@@ -30,6 +30,7 @@ import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Summary;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -43,6 +44,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -51,6 +53,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -120,6 +123,9 @@ public class TaskExecutor {
 
   // Task futures are waited for this long before checking abort status.
   private static final long TASK_SPIN_WAIT_INTERVAL_MS = 2000;
+
+  // Max size of the callstack for task creator thread.
+  private static final int MAX_TASK_CREATOR_CALLSTACK_SIZE = 15;
 
   // Default wait timeout for subtasks to complete since the abort call.
   private final Duration defaultAbortTaskTimeout = Duration.ofSeconds(60);
@@ -259,6 +265,7 @@ public class TaskExecutor {
         runnableTasks.forEach(
             (uuid, runnable) -> {
               runnable.setAbortTime(abortTime);
+              runnable.cancelWaiterIfAborted();
             });
       }
     }
@@ -388,6 +395,7 @@ public class TaskExecutor {
     if (runnableTask.getAbortTime() == null) {
       // This is not atomic but it is ok.
       runnableTask.setAbortTime(Instant.now());
+      runnableTask.cancelWaiterIfAborted();
     }
     // Update the task state in the memory and DB.
     runnableTask.compareAndSetTaskState(
@@ -700,6 +708,7 @@ public class TaskExecutor {
     final TaskInfo taskInfo;
     // Timeout limit for this task.
     final Duration timeLimit;
+    final String[] creatorCallstack;
 
     Instant taskScheduledTime;
     Instant taskStartTime;
@@ -723,6 +732,23 @@ public class TaskExecutor {
         }
       }
       timeLimit = duration;
+      if (log.isDebugEnabled()) {
+        StackTraceElement[] elements = Thread.currentThread().getStackTrace();
+        // Track who creates this task. Skip the first three which contain getStackTrace and
+        // runnable task creation (concrete and abstract classes).
+        creatorCallstack =
+            IntStream.range(3, elements.length)
+                .limit(MAX_TASK_CREATOR_CALLSTACK_SIZE)
+                .mapToObj(idx -> elements[idx].toString())
+                .toArray(String[]::new);
+      } else {
+        creatorCallstack = new String[0];
+      }
+    }
+
+    @VisibleForTesting
+    String[] getCreatorCallstack() {
+      return creatorCallstack;
     }
 
     // State and error message updates to tasks are done in this method instead of waitForSubTasks
@@ -849,6 +875,12 @@ public class TaskExecutor {
           taskDetails,
           t);
 
+      if (log.isDebugEnabled()) {
+        log.debug(
+            "Task creator callstack:\n{}",
+            Arrays.stream(creatorCallstack).collect(Collectors.joining("\n")));
+      }
+
       ObjectNode details = taskDetails.deepCopy();
       details.put("errorString", errorString);
       taskInfo.refresh();
@@ -876,6 +908,8 @@ public class TaskExecutor {
   public class RunnableTask extends AbstractRunnableTask {
     // Subtask groups to hold subtasks.
     private final Queue<SubTaskGroup> subTaskGroups = new ConcurrentLinkedQueue<>();
+    // Latch for timed wait for this task.
+    private final CountDownLatch waiterLatch = new CountDownLatch(1);
     // Current execution position of subtasks.
     private int subTaskPosition = 0;
     private TaskExecutionListener taskExecutionListener;
@@ -1018,6 +1052,32 @@ public class TaskExecutor {
         throw new RuntimeException("One or more SubTaskGroups failed while running.");
       }
     }
+
+    /**
+     * Abort-aware wait function makes the current thread to wait until the timeout or the abort
+     * signal is received. It can be a replacement for Thread.sleep in subtasks.
+     *
+     * @param waitTime the maximum time to wait.
+     */
+    public void waitFor(Duration waitTime) {
+      checkNotNull(waitTime);
+      try {
+        if (waiterLatch.await(waitTime.toMillis(), TimeUnit.MILLISECONDS)) {
+          // Count reached zero first, another thread must have decreased it.
+          throw new CancellationException(toString() + " is aborted while waiting.");
+        }
+      } catch (InterruptedException e) {
+        throw new CancellationException(e.getMessage());
+      }
+    }
+
+    /** Cancel the waiter latch if the task is aborted. */
+    @VisibleForTesting
+    void cancelWaiterIfAborted() {
+      if (getAbortTime() != null) {
+        waiterLatch.countDown();
+      }
+    }
   }
 
   /** Runnable task for subtasks in a task. */
@@ -1042,6 +1102,8 @@ public class TaskExecutor {
 
     @Override
     public void run() {
+      // Sets the top-level user task UUID.
+      task.setUserTaskUUID(parentRunnableTask.getTaskUUID());
       super.run();
     }
 

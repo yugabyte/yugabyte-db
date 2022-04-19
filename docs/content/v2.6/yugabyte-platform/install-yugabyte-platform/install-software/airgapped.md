@@ -66,7 +66,7 @@ $ wget --trust-server-names https://get.replicated.com/airgap
 Download the `yugaware` binary and change the following number, as required:
 
 ```sh
-$ wget https://downloads.yugabyte.com/releases/2.6.15.0/yugabyte-2.6.15.0-b3-linux-x86_64.airgap
+$ wget https://downloads.yugabyte.com/releases/2.6.16.0/yugabyte-2.6.16.0-b14-linux-x86_64.airgap
 ```
 
 Switch to the following directory:
@@ -121,7 +121,7 @@ Upload the Yugabyte license file that you received from [Yugabyte](https://www.y
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
-Two options to install Yugabyte Platform are presentedas, shown in the following illustrations:
+Two options to install Yugabyte Platform are presented as shown in the following illustrations:
 
 ![Replicated License Air-gapped Install](/images/replicated/replicated-license-airgapped-install-option.png)
 

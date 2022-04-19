@@ -31,6 +31,10 @@
     AWS_SECRET_ACCESS_KEY: "{{ aws_secret_key | default(lookup('env', 'AWS_SECRET_ACCESS_KEY')) }}"
   when: s3_package_path is defined
   tags: yb-prebuilt-ami
+  register: s3cmd_result
+  retries: "{{ num_retries }}"
+  delay: "{{ retry_delay }}"
+  until: s3cmd_result is succeeded
 
 - name: Download package | Create credentials file and download "{{ package_name }}" from GCS
   block:
@@ -55,6 +59,10 @@
           - "{{ gcs_package_path }}"
           - "{{ remote_tmp_package }}"
         creates: "{{ remote_tmp_package }}"
+      register: gsutil_result
+      retries: "{{ num_retries }}"
+      delay: "{{ retry_delay }}"
+      until: gsutil_result is succeeded
   always:
     - name: Download package | Cleanup GCS credentials file
       when: gcs_credentials_json_file is defined and gcs_credentials_json_file.path != ""
@@ -69,6 +77,10 @@
     dest: "{{ remote_tmp_package }}"
     checksum: "{{ http_package_checksum | default('') }}"
   when: http_package_path is defined
+  register: get_url_result
+  retries: "{{ num_retries }}"
+  delay: "{{ retry_delay }}"
+  until: get_url_result is succeeded
 
 - name: Download package | Create release binary directory
   file:
@@ -78,7 +90,6 @@
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
   tags: yb-prebuilt-ami
-
 
 - name: Download package | Move package "{{ remote_tmp_package }}" to "{{ tmp_package_location }}"
   copy:

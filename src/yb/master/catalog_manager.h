@@ -86,6 +86,7 @@
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
 #include "yb/util/rw_mutex.h"
+#include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/version_tracker.h"
@@ -647,6 +648,8 @@ class CatalogManager :
                                          const TSDescriptorVector& ts_descs,
                                          ValidateReplicationInfoResponsePB* resp);
 
+  CHECKED_STATUS CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info) const;
+
   // Loops through the table's placement infos and populates the corresponding config from
   // each placement.
   CHECKED_STATUS HandlePlacementUsingReplicationInfo(
@@ -834,7 +837,7 @@ class CatalogManager :
                                    CompactSysCatalogResponsePB* resp,
                                    rpc::RpcContext* rpc);
 
-  CHECKED_STATUS SplitTablet(const TabletId& tablet_id, bool select_all_tablets_for_split) override;
+  CHECKED_STATUS SplitTablet(const TabletId& tablet_id, bool is_manual_split) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   CHECKED_STATUS SplitTablet(
@@ -860,6 +863,9 @@ class CatalogManager :
       const std::string& split_partition_key) override;
 
   CHECKED_STATUS TEST_IncrementTablePartitionListVersion(const TableId& table_id) override;
+
+  CHECKED_STATUS TEST_SendTestRetryRequest(
+      const PeerId& peer_id, int32_t num_retries, StdStatusCallback callback);
 
   // Schedule a task to run on the async task thread pool.
   CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) override;
@@ -1345,12 +1351,12 @@ class CatalogManager :
 
   CHECKED_STATUS DoSplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
-      std::string split_partition_key, bool select_all_tablets_for_split);
+      std::string split_partition_key, bool is_manual_split);
 
   // Splits tablet using specified split_hash_code as a split point.
   CHECKED_STATUS DoSplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code,
-      bool select_all_tablets_for_split);
+      bool is_manual_split);
 
   // Calculate the total number of replicas which are being handled by servers in state.
   int64_t GetNumRelevantReplicas(const BlacklistPB& state, bool leaders_only);
@@ -1404,6 +1410,9 @@ class CatalogManager :
       SysRowEntryType type) {
     return SnapshotSchedulesToObjectIdsMap();
   }
+
+  Result<SnapshotScheduleId> FindCoveringScheduleForObject(
+      SysRowEntryType type, const std::string& object_id);
 
   Status DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
                            DeleteNamespaceResponsePB* resp,
@@ -1623,7 +1632,7 @@ class CatalogManager :
 
   void SplitTabletWithKey(
       const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
-      const std::string& split_partition_key, bool select_all_tablets_for_split);
+      const std::string& split_partition_key, bool is_manual_split);
 
   // From the list of TServers in 'ts_descs', return the ones that match any placement policy
   // in 'placement_info'. Returns error if there are insufficient TServers to match the

@@ -96,6 +96,8 @@ class CDCConsumer {
     return TEST_num_successful_write_rpcs.load(std::memory_order_acquire);
   }
 
+  CHECKED_STATUS ReloadCertificates();
+
  private:
   // Runs a thread that periodically polls for any new threads.
   void RunThread();
@@ -109,7 +111,8 @@ class CDCConsumer {
   // polled for.
   void TriggerPollForNewTablets();
 
-  bool ShouldContinuePolling(const cdc::ProducerTabletInfo producer_tablet_info);
+  bool ShouldContinuePolling(const cdc::ProducerTabletInfo producer_tablet_info,
+                             const cdc::ConsumerTabletInfo consumer_tablet_info);
 
   void RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_tablet_info);
 

@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -80,6 +81,11 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
     // For cron to systemd upgrades
     public boolean isSystemdUpgrade = false;
+    // To use custom image flow if it is a VM upgrade with custom images.
+    public VmUpgradeTaskType vmUpgradeTaskType = VmUpgradeTaskType.None;
+
+    // In case a node doesn't have custom AMI, ignore the value of USE_CUSTOM_IMAGE config.
+    public boolean ignoreUseCustomImageConfig;
   }
 
   @Override

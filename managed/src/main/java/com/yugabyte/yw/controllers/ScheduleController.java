@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
+import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
 import com.yugabyte.yw.models.paging.SchedulePagedResponse;
 import io.swagger.annotations.Api;
@@ -78,9 +79,7 @@ public class ScheduleController extends AuthenticatedController {
     ScheduleApiFilter apiFilter = apiQuery.getFilter();
     ScheduleFilter filter = apiFilter.toFilter().toBuilder().customerUUID(customerUUID).build();
     SchedulePagedQuery query = apiQuery.copyWithFilter(filter, SchedulePagedQuery.class);
-
-    SchedulePagedResponse schedules = Schedule.pagedList(query);
-
+    SchedulePagedApiResponse schedules = Schedule.pagedList(query);
     return PlatformResults.withData(schedules);
   }
 
@@ -139,8 +138,12 @@ public class ScheduleController extends AuthenticatedController {
       } else if (schedule.getStatus().equals(State.Active) && schedule.getRunningState()) {
         throw new PlatformServiceException(CONFLICT, "Cannot edit schedule as it is running.");
       } else if (params.frequency != null) {
+        if (params.frequencyTimeUnit == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Please provide time unit for frequency");
+        }
         BackupUtil.validateBackupFrequency(params.frequency);
         schedule.updateFrequency(params.frequency);
+        schedule.updateFrequencyTimeUnit(params.frequencyTimeUnit);
       } else if (params.cronExpression != null) {
         BackupUtil.validateBackupCronExpression(params.cronExpression);
         schedule.updateCronExpression(params.cronExpression);

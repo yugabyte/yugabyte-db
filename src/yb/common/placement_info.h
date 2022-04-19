@@ -33,6 +33,7 @@ class PlacementInfoConverter {
     string region = "";
     string zone = "";
     int min_num_replicas = 0;
+    int leader_preference = 0;
   };
 
   struct Placement {
@@ -42,7 +43,7 @@ class PlacementInfoConverter {
 
   static Result<Placement> FromString(const std::string& placement);
 
-  static Result<Placement> FromQLValue(const vector<QLValuePB>& placement);
+  static Result<Placement> FromQLValue(const std::vector<std::string>& placement);
 
  private:
   static Result<Placement> FromJson(const std::string& placement_str,

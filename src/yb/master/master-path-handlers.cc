@@ -55,8 +55,10 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
@@ -952,6 +954,7 @@ void MasterPathHandlers::HandleCatalogManager(
     string href_table_id = table_uuid;
     string table_name = table_locked->name();
     table_row[kState] = SysTablesEntryPB_State_Name(table_locked->pb.state());
+    table_row[kHidden] = table_locked->is_hidden() ? "true" : "false";
     Capitalize(&table_row[kState]);
     table_row[kMessage] = EscapeForHtmlToString(table_locked->pb.state_msg());
 
@@ -1039,7 +1042,8 @@ void MasterPathHandlers::HandleCatalogManager(
                 << "  <th>State</th>\n"
                 << "  <th>Message</th>\n"
                 << "  <th>UUID</th>\n"
-                << "  <th>YSQL OID</th>\n";
+                << "  <th>YSQL OID</th>\n"
+                << "  <th>Hidden</th>\n";
 
       if (tpeIdx == kUserTable || tpeIdx == kUserIndex) {
         if (has_tablegroups[tpeIdx]) {
@@ -1063,13 +1067,15 @@ void MasterPathHandlers::HandleCatalogManager(
             "<td>$2</td>"
             "<td>$3</td>"
             "<td>$4</td>"
-            "<td>$5</td>",
+            "<td>$5</td>"
+            "<td>$6</td>",
             table.second[kKeyspace],
             table.second[kTableName],
             table.second[kState],
             table.second[kMessage],
             table.second[kUuid],
-            table.second[kYsqlOid]);
+            table.second[kYsqlOid],
+            table.second[kHidden]);
 
         if (tpeIdx == kUserTable || tpeIdx == kUserIndex) {
           if (has_tablegroups[tpeIdx]) {
@@ -1191,11 +1197,17 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
                 << GetPgsqlTablespaceOid(tablespace_id)
                 << "  </td></tr>\n";
       }
-      auto replication_info = CHECK_RESULT(master_->catalog_manager()->GetTableReplicationInfo(
-            l->pb.replication_info(), tablespace_id));
-      *output << "  <tr><td>Replication Info:</td><td>"
-              << "    <pre class=\"prettyprint\">" << replication_info.DebugString() << "</pre>"
-              << "  </td></tr>\n </table>\n";
+      *output << "  <tr><td>Replication Info:</td><td>";
+      auto replication_info = master_->catalog_manager()->GetTableReplicationInfo(
+          l->pb.replication_info(), tablespace_id);
+      if (replication_info.ok()) {
+        *output << "    <pre class=\"prettyprint\">" << replication_info->DebugString() << "</pre>";
+      } else {
+        LOG(WARNING) << replication_info.status().CloneAndPrepend(
+            "Unable to determine Tablespace information.");
+        *output << "  Unable to determine Tablespace information.";
+      }
+      *output << "  </td></tr>\n </table>\n";
     } else {
       // The table was associated with a tablespace, but that tablespace was not found.
       *output << "  <tr><td>Replication Info:</td><td>";
@@ -1225,7 +1237,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>SplitDepth</th><th>State</th>"
-      "<th>Message</th><th>RaftConfig</th></tr>\n";
+             "<th>Hidden</th><th>Message</th><th>RaftConfig</th></tr>\n";
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     auto locations = tablet->GetReplicaLocations();
     vector<TabletReplica> sorted_locations;
@@ -1240,11 +1252,12 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     string state = SysTabletsEntryPB_State_Name(l->pb.state());
     Capitalize(&state);
     *output << Substitute(
-        "<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td></tr>\n",
+        "<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td><td>$6</td></tr>\n",
         tablet->tablet_id(),
         EscapeForHtmlToString(partition_schema.PartitionDebugString(partition, schema)),
         l->pb.split_depth(),
         state,
+        l->is_hidden(),
         EscapeForHtmlToString(l->pb.state_msg()),
         RaftConfigToHtml(sorted_locations, tablet->tablet_id()));
   }
@@ -1589,6 +1602,54 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
                           "<i class='fa fa-terminal yb-dashboard-icon' aria-hidden='true'></i>",
                           "Build Type ", version_info.build_type());
+
+  // Encryption Status
+  string encryption_status_icon;
+  string encryption_status_str;
+
+  IsEncryptionEnabledResponsePB encryption_resp;
+  auto encryption_state =
+      master_->encryption_manager().GetEncryptionState(config.encryption_info(), &encryption_resp);
+
+  switch (encryption_state) {
+    case EncryptionManager::EncryptionState::kUnknown:
+      encryption_status_icon = "fa-question label label-danger";
+      encryption_status_str = "Unknown";
+      break;
+    case EncryptionManager::EncryptionState::kNeverEnabled:
+      encryption_status_icon = "fa-unlock";
+      encryption_status_str = "Never enabled";
+      break;
+    case EncryptionManager::EncryptionState::kEnabled:
+      encryption_status_icon = "fa-lock";
+      encryption_status_str = Substitute("Enabled with key: $0", encryption_resp.key_id());
+      break;
+    case EncryptionManager::EncryptionState::kEnabledUnkownIfKeyIsInMem:
+      encryption_status_icon = "fa-question label label-danger";
+      encryption_status_str = Substitute(
+          "Enabled with key: $0. Unable to determine if encryption keys are in memory",
+          encryption_resp.key_id());
+      break;
+    case EncryptionManager::EncryptionState::kEnabledKeyNotInMem:
+      encryption_status_icon = "fa-times label label-danger";
+      encryption_status_str = Substitute(
+          "Enabled with key: $0. Node Does not have universe key in memory",
+          encryption_resp.key_id());
+      break;
+    case EncryptionManager::EncryptionState::kDisabled:
+      encryption_status_str = "Disabled";
+      encryption_status_icon = "fa-unlock-alt";
+      break;
+  }
+
+  (*output) << Substitute(
+      " <tr><td>$0<span class='yb-overview'>$1</span></td>"
+      "<td><i class='fa $2' aria-hidden='true'> </i>  $3</td></tr>\n",
+      "<i class='fa fa-key yb-dashboard-icon' aria-hidden='true'></i>",
+      "Encryption Status ",
+      encryption_status_icon,
+      encryption_status_str);
+
   (*output) << "</table>";
   (*output) << "</div> <!-- panel-body -->\n";
   (*output) << "</div> <!-- panel -->\n";

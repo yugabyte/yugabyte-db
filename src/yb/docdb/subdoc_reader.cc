@@ -31,6 +31,7 @@
 #include "yb/docdb/expiration.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bytes.h"
+#include "yb/docdb/packed_row.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
@@ -41,6 +42,7 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/fast_varint.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -210,7 +212,7 @@ Result<SubDocument*> LazySubDocumentHolder::Get() {
   Slice temp = key_;
   temp.remove_prefix(parent_->key_.size());
   for (;;) {
-    PrimitiveValue child_key_part;
+    KeyEntryValue child_key_part;
     RETURN_NOT_OK(child_key_part.DecodeFromKey(&temp));
     current = current->GetOrAddChild(child_key_part).first;
     if (temp.empty()) {
@@ -227,23 +229,27 @@ Result<SubDocument*> LazySubDocumentHolder::Get() {
 // This class provides a wrapper to access data corresponding to a RocksDB row.
 class DocDbRowData {
  public:
-  DocDbRowData(const Slice& key, const DocHybridTime& write_time, Value&& value);
+  DocDbRowData(const Slice& key, const DocHybridTime& write_time);
 
-  static Result<std::unique_ptr<DocDbRowData>> CurrentRow(IntentAwareIterator* iter);
+  static Result<std::unique_ptr<DocDbRowData>> CurrentRow(
+      IntentAwareIterator* iter, const PackedColumnData& packed_column_data,
+      const KeyBytes* packed_row_key);
 
   const KeyBytes& key() const { return target_key_; }
 
   const Value& value() const { return value_; }
 
+  Value& value() { return value_; }
+
   const DocHybridTime& write_time() const { return write_time_; }
 
-  bool IsTombstone() const { return value_.value_type() == ValueType::kTombstone; }
+  bool IsTombstone() const { return value_.value_type() == ValueEntryType::kTombstone; }
 
   bool IsCollection() const { return IsCollectionType(value_.value_type()); }
 
   bool IsPrimitiveValue() const { return IsPrimitiveValueType(value_.value_type()); }
 
-  PrimitiveValue* mutable_primitive_value() { return value_.mutable_primitive_value(); }
+  void InitWriteTime();
 
  private:
   const KeyBytes target_key_;
@@ -254,27 +260,55 @@ class DocDbRowData {
 };
 
 DocDbRowData::DocDbRowData(
-    const Slice& key, const DocHybridTime& write_time, Value&& value):
-    target_key_(std::move(key)), write_time_(std::move(write_time)), value_(std::move(value)) {}
+    const Slice& key, const DocHybridTime& write_time):
+    target_key_(std::move(key)), write_time_(std::move(write_time)) {}
 
-Result<std::unique_ptr<DocDbRowData>> DocDbRowData::CurrentRow(IntentAwareIterator* iter) {
-  auto key_data = VERIFY_RESULT(iter->FetchKey());
-  DCHECK(key_data.same_transaction ||
-      iter->read_time().global_limit >= key_data.write_time.hybrid_time())
-      << "Bad key: " << SubDocKey::DebugSliceToString(key_data.key)
-      << ", global limit: " << iter->read_time().global_limit
-      << ", write time: " << key_data.write_time.hybrid_time();
-  Value value;
-  // TODO -- we could optimize be decoding directly into a SubDocument instance on the heap which
-  // could be later bound to our result SubDocument. This could work if e.g. Value could be
-  // initialized with a PrimitiveValue*.
-  RETURN_NOT_OK(value.Decode(iter->value()));
+Result<std::unique_ptr<DocDbRowData>> DocDbRowData::CurrentRow(
+    IntentAwareIterator* iter, const PackedColumnData& packed_column_data,
+    const KeyBytes* packed_row_key) {
+  std::unique_ptr<DocDbRowData> result;
 
-  if (key_data.write_time == DocHybridTime::kMin) {
-    return STATUS(Corruption, "No hybrid timestamp found on entry");
+  if (iter->valid()) {
+    auto key_data = VERIFY_RESULT(iter->FetchKey());
+    DCHECK(key_data.same_transaction ||
+        iter->read_time().global_limit >= key_data.write_time.hybrid_time())
+        << "Bad key: " << SubDocKey::DebugSliceToString(key_data.key)
+        << ", global limit: " << iter->read_time().global_limit
+        << ", write time: " << key_data.write_time.hybrid_time();
+
+    if (key_data.write_time == DocHybridTime::kMin) {
+      return STATUS(Corruption, "No hybrid timestamp found on entry");
+    }
+
+    if (!packed_column_data || packed_column_data.row->doc_ht < key_data.write_time) {
+      result = std::make_unique<DocDbRowData>(key_data.key, key_data.write_time);
+      // TODO -- we could optimize be decoding directly into a SubDocument instance on the heap
+      // which could be later bound to our result SubDocument. This could work if e.g. Value could
+      // be initialized with a PrimitiveValue*.
+      RETURN_NOT_OK(result->value().Decode(iter->value()));
+    }
   }
 
-  return std::make_unique<DocDbRowData>(key_data.key, key_data.write_time, std::move(value));
+  if (!result) {
+    if (!packed_column_data) {
+      return STATUS(
+          InternalError, "Invalid iter without packed column data in DocDbRowData::CurrentRow");
+    }
+    result = std::make_unique<DocDbRowData>(*packed_row_key, packed_column_data.row->doc_ht);
+    RETURN_NOT_OK(result->value().Decode(
+        packed_column_data.slice, packed_column_data.row->control_fields));
+  }
+
+  return result;
+}
+
+void DocDbRowData::InitWriteTime() {
+  if (value_.has_user_timestamp()) {
+    value_.mutable_primitive_value()->SetWriteTime(value_.user_timestamp());
+  } else {
+    value_.mutable_primitive_value()->SetWriteTime(
+        write_time_.hybrid_time().GetPhysicalValueMicros());
+  }
 }
 
 // This class provides a convenience handle for modifying a SubDocument specified by a provided
@@ -317,7 +351,7 @@ Status DocDbRowAssembler::SetTombstone() {
     return Status::OK();
   }
   auto* subdoc = VERIFY_RESULT(root_.Get());
-  *subdoc = SubDocument(ValueType::kTombstone);
+  *subdoc = SubDocument(ValueEntryType::kTombstone);
   is_tombstoned_ = true;
   return Status::OK();
 }
@@ -331,14 +365,8 @@ Status DocDbRowAssembler::SetPrimitiveValue(DocDbRowData* row) {
   // since it's on the critical path of all reads.
   auto* subdoc = VERIFY_RESULT(root_.Get());
 
-  auto* mutable_primitive_value = row->mutable_primitive_value();
-
-  if (row->value().has_user_timestamp()) {
-    mutable_primitive_value->SetWriteTime(row->value().user_timestamp());
-  } else {
-    mutable_primitive_value->SetWriteTime(row->write_time().hybrid_time().GetPhysicalValueMicros());
-  }
-  *subdoc = SubDocument(*mutable_primitive_value);
+  row->InitWriteTime();
+  *subdoc = SubDocument(std::move(*row->value().mutable_primitive_value()));
   return Status::OK();
 }
 
@@ -347,8 +375,8 @@ Result<bool> DocDbRowAssembler::HasStoredValue() {
     return false;
   }
   auto* subdoc = VERIFY_RESULT(root_.Get());
-  return subdoc->value_type() != ValueType::kInvalid
-      && subdoc->value_type() != ValueType::kTombstone;
+  return subdoc->value_type() != ValueEntryType::kInvalid
+      && subdoc->value_type() != ValueEntryType::kTombstone;
 }
 
 class ScopedDocDbRowContext;
@@ -545,7 +573,8 @@ Result<ScopedDocDbRowContextWithData*> ScopedDocDbCollectionContext::GetNextChil
       current_child_.reset();
     }
     if (parent_->iter_->valid()) {
-      SetNextChild(VERIFY_RESULT(DocDbRowData::CurrentRow(parent_->iter_)));
+      SetNextChild(VERIFY_RESULT(DocDbRowData::CurrentRow(
+          parent_->iter_, PackedColumnData(), nullptr)));
     }
   }
   DCHECK(
@@ -619,7 +648,7 @@ Status ProcessSubDocument(ScopedDocDbRowContextWithData* scope) {
   if (data->IsPrimitiveValue()) {
     auto ttl_opt = obsolescence_tracker->GetTtlRemainingSeconds(data->write_time().hybrid_time());
     if (ttl_opt) {
-      data->mutable_primitive_value()->SetTtl(*ttl_opt);
+      data->value().mutable_primitive_value()->SetTtl(*ttl_opt);
     }
     return assembler->SetPrimitiveValue(data);
   }
@@ -636,20 +665,21 @@ SubDocumentReader::SubDocumentReader(
     const KeyBytes& target_subdocument_key,
     IntentAwareIterator* iter,
     DeadlineInfo* deadline_info,
-    const ObsolescenceTracker& ancestor_obsolescence_tracker):
-    target_subdocument_key_(target_subdocument_key), iter_(iter), deadline_info_(deadline_info),
-    ancestor_obsolescence_tracker_(ancestor_obsolescence_tracker) {}
+    const ObsolescenceTracker& ancestor_obsolescence_tracker)
+    : target_subdocument_key_(target_subdocument_key), iter_(iter), deadline_info_(deadline_info),
+      ancestor_obsolescence_tracker_(ancestor_obsolescence_tracker) {}
 
-Status SubDocumentReader::Get(SubDocument* result) {
+Status SubDocumentReader::Get(SubDocument* result, const PackedColumnData& packed_column_data) {
   IntentAwareIteratorPrefixScope target_scope(target_subdocument_key_, iter_);
-  if (!iter_->valid()) {
-    *result = SubDocument(ValueType::kInvalid);
+  if (!iter_->valid() && !packed_column_data) {
+    *result = SubDocument(ValueEntryType::kInvalid);
     return Status::OK();
   }
-  auto first_row = VERIFY_RESULT(DocDbRowData::CurrentRow(iter_));
-  auto current_key = first_row->key();
 
-  if (current_key == target_subdocument_key_) {
+  auto first_row = VERIFY_RESULT(DocDbRowData::CurrentRow(
+      iter_, packed_column_data, &target_subdocument_key_));
+
+  if (first_row->key() == target_subdocument_key_) {
     ScopedDocDbRowContextWithData context(
         std::move(first_row), iter_, deadline_info_, result, ancestor_obsolescence_tracker_);
     return ProcessSubDocument(&context);
@@ -664,31 +694,31 @@ Status SubDocumentReader::Get(SubDocument* result) {
   RETURN_NOT_OK(collection.SetFirstChild(std::move(first_row)));
   auto num_children = VERIFY_RESULT(ProcessChildren(&collection));
   if (num_children == 0) {
-    *result = SubDocument(ValueType::kTombstone);
+    *result = SubDocument(ValueEntryType::kTombstone);
   }
   return Status::OK();
 }
 
 SubDocumentReaderBuilder::SubDocumentReaderBuilder(
-    IntentAwareIterator* iter, DeadlineInfo* deadline_info)
-    : iter_(iter), deadline_info_(deadline_info) {}
+    IntentAwareIterator* iter, DeadlineInfo* deadline_info,
+    std::reference_wrapper<const SchemaPackingStorage> schema_packing_storage)
+    : iter_(iter), deadline_info_(deadline_info), schema_packing_storage_(schema_packing_storage) {}
 
-Result<std::unique_ptr<SubDocumentReader>> SubDocumentReaderBuilder::Build(
+SubDocumentReader SubDocumentReaderBuilder::Build(
     const KeyBytes& sub_doc_key) {
-  return std::make_unique<SubDocumentReader>(
-      sub_doc_key, iter_, deadline_info_, parent_obsolescence_tracker_);
+  return SubDocumentReader(sub_doc_key, iter_, deadline_info_, parent_obsolescence_tracker_);
 }
 
 Status SubDocumentReaderBuilder::InitObsolescenceInfo(
     const ObsolescenceTracker& table_obsolescence_tracker,
     const Slice& root_doc_key, const Slice& target_subdocument_key) {
   parent_obsolescence_tracker_ = table_obsolescence_tracker;
+  schema_packing_ = nullptr;
 
   // Look at ancestors to collect ttl/write-time metadata.
   IntentAwareIteratorPrefixScope prefix_scope(root_doc_key, iter_);
-  Slice temp_key = target_subdocument_key;
-  Slice prev_iter_key = temp_key.Prefix(root_doc_key.size());
-  temp_key.remove_prefix(root_doc_key.size());
+  Slice prev_iter_key = target_subdocument_key.Prefix(root_doc_key.size());
+  Slice temp_key = target_subdocument_key.WithoutPrefix(root_doc_key.size());
   for (;;) {
     // for each iteration of this loop, we consume another piece of the subdoc key path
     auto decode_result = VERIFY_RESULT(SubDocKey::DecodeSubkey(&temp_key));
@@ -713,9 +743,42 @@ Status SubDocumentReaderBuilder::UpdateWithParentWriteInfo(
   if (!iter_->valid()) {
     return Status::OK();
   }
+  auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
+
+  if (value.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
+    schema_packing_ = &VERIFY_RESULT(schema_packing_storage_.GetPacking(&value)).get();
+    packed_row_.Assign(value);
+    packed_row_data_.doc_ht = doc_ht;
+    packed_row_data_.control_fields = control_fields;
+  }
 
   parent_obsolescence_tracker_ = parent_obsolescence_tracker_.Child(doc_ht);
   return Status::OK();
+}
+
+PackedColumnData SubDocumentReaderBuilder::GetPackedColumn(ColumnId column_id) {
+  if (!schema_packing_) {
+    return PackedColumnData();
+  }
+
+  static char null_column_type = ValueEntryTypeAsChar::kNullLow;
+
+  if (column_id == KeyEntryValue::kLivenessColumn.GetColumnId()) {
+    return PackedColumnData {
+      .row = &packed_row_data_,
+      .slice = Slice(&null_column_type, sizeof(null_column_type)),
+    };
+  }
+
+  auto slice = schema_packing_->GetValue(column_id, packed_row_.AsSlice());
+  if (!slice) {
+    return PackedColumnData();
+  }
+
+  return PackedColumnData {
+    .row = &packed_row_data_,
+    .slice = slice->empty() ? Slice(&null_column_type, sizeof(null_column_type)) : *slice,
+  };
 }
 
 }  // namespace docdb

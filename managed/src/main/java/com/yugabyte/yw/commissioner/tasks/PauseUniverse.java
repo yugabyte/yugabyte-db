@@ -87,6 +87,9 @@ public class PauseUniverse extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       }
       createSwamperTargetUpdateTask(false);
+      // Remove alert definition files.
+      createUnivManageAlertDefinitionsTask(false)
+          .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       // Mark universe task state to success.
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       // Run all the tasks.
@@ -104,6 +107,7 @@ public class PauseUniverse extends UniverseTaskBase {
             u.setUniverseDetails(universeDetails);
           });
 
+      metricService.markSourceInactive(params().customerUUID, params().universeUUID);
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;

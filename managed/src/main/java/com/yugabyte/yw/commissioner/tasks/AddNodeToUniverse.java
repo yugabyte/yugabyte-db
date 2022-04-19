@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -146,7 +147,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
               universe.name);
 
           // Set gflags for master.
-          createGFlagsOverrideTasks(node, ServerType.MASTER, true /* isShell */);
+          createGFlagsOverrideTasks(
+              node,
+              ServerType.MASTER,
+              true /* isShell */,
+              VmUpgradeTaskType.None,
+              false /*ignoreUseCustomImageConfig*/);
 
           // Start a shell master process.
           createStartMasterTasks(node).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);

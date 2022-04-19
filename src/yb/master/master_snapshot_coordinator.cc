@@ -68,6 +68,11 @@ DEFINE_bool(schedule_snapshot_rpcs_out_of_band, true,
             " background scheduling.");
 TAG_FLAG(schedule_snapshot_rpcs_out_of_band, runtime);
 
+DEFINE_bool(skip_crash_on_duplicate_snapshot, false,
+            "Should we not crash when we get a create snapshot request with the same "
+            "id as one of the previous snapshots.");
+TAG_FLAG(skip_crash_on_duplicate_snapshot, runtime);
+
 DECLARE_bool(allow_consecutive_restore);
 
 namespace yb {
@@ -222,7 +227,13 @@ class MasterSnapshotCoordinator::Impl {
       std::lock_guard<std::mutex> lock(mutex_);
       auto emplace_result = snapshots_.emplace(std::move(snapshot));
       if (!emplace_result.second) {
-        return STATUS_FORMAT(IllegalState, "Duplicate snapshot id: $0", id);
+        LOG(INFO) << "Received a duplicate create snapshot request for id: " << id;
+        if (FLAGS_skip_crash_on_duplicate_snapshot) {
+          LOG(INFO) << "Skipping duplicate create snapshot request gracefully.";
+          return Status::OK();
+        } else {
+          return STATUS_FORMAT(IllegalState, "Duplicate snapshot id: $0", id);
+        }
       }
 
       if (leader_term >= 0) {
@@ -290,7 +301,7 @@ class MasterSnapshotCoordinator::Impl {
     }
 
     auto first_key = sub_doc_key.doc_key().range_group().front();
-    if (first_key.value_type() != docdb::ValueType::kInt32) {
+    if (first_key.type() != docdb::KeyEntryType::kInt32) {
       LOG(DFATAL) << "Unexpected value type for the first range component of sys catalog entry "
                   << "(kInt32 expected): "
                   << AsString(sub_doc_key.doc_key().range_group());;
@@ -316,7 +327,7 @@ class MasterSnapshotCoordinator::Impl {
 
     auto value_type = decoded_value.primitive_value().value_type();
 
-    if (value_type == docdb::ValueType::kTombstone) {
+    if (value_type == docdb::ValueEntryType::kTombstone) {
       std::lock_guard<std::mutex> lock(mutex_);
       auto id = Uuid::TryFullyDecode(id_str);
       if (id.IsNil()) {
@@ -328,7 +339,7 @@ class MasterSnapshotCoordinator::Impl {
       return Status::OK();
     }
 
-    if (value_type != docdb::ValueType::kString) {
+    if (value_type != docdb::ValueEntryType::kString) {
       return STATUS_FORMAT(
           Corruption,
           "Bad value type: $0, expected kString while replaying write for sys catalog",
@@ -514,7 +525,7 @@ class MasterSnapshotCoordinator::Impl {
       auto options = schedule.options();
       options.set_delete_time(context_.Clock()->Now().ToUint64());
       auto* value = pair->mutable_value();
-      value->push_back(docdb::ValueTypeAsChar::kString);
+      value->push_back(docdb::ValueEntryTypeAsChar::kString);
       pb_util::AppendPartialToString(options, value);
     }
 
@@ -919,7 +930,7 @@ class MasterSnapshotCoordinator::Impl {
     auto* write_batch = query->operation().AllocateRequest()->mutable_write_batch();
     auto pair = write_batch->add_write_pairs();
     pair->set_key((*encoded_key).AsSlice().cdata(), (*encoded_key).size());
-    char value = { docdb::ValueTypeAsChar::kTombstone };
+    char value = { docdb::ValueEntryTypeAsChar::kTombstone };
     pair->set_value(&value, 1);
 
     query->set_callback([this, id, &map](const Status& s) {

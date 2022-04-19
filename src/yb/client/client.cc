@@ -497,9 +497,6 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));
 
-  // Init local host names used for locality decisions.
-  RETURN_NOT_OK_PREPEND(c->data_->InitLocalHostNames(),
-                        "Could not determine local host names");
   c->data_->cloud_info_pb_ = data_->cloud_info_pb_;
   c->data_->uuid_ = data_->uuid_;
 
@@ -1987,7 +1984,7 @@ void YBClient::LookupTabletById(const std::string& tablet_id,
       tablet_id, table, include_inactive, deadline, std::move(callback), use_cache);
 }
 
-void YBClient::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+void YBClient::LookupAllTablets(const std::shared_ptr<YBTable>& table,
                                 CoarseTimePoint deadline,
                                 LookupTabletRangeCallback callback) {
   data_->meta_cache_->LookupAllTablets(table, deadline, std::move(callback));
@@ -2001,7 +1998,7 @@ std::future<Result<internal::RemoteTabletPtr>> YBClient::LookupTabletByKeyFuture
 }
 
 std::future<Result<std::vector<internal::RemoteTabletPtr>>> YBClient::LookupAllTabletsFuture(
-    const std::shared_ptr<const YBTable>& table,
+    const std::shared_ptr<YBTable>& table,
     CoarseTimePoint deadline) {
   return MakeFuture<Result<std::vector<internal::RemoteTabletPtr>>>([&](auto callback) {
     this->LookupAllTablets(table, deadline, std::move(callback));

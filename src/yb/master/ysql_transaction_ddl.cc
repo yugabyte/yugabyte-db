@@ -137,7 +137,7 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
   }
   const tablet::Tablet* catalog_tablet = tablet_peer->tablet();
   const Schema& pg_database_schema =
-      *VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema;
+      VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema();
 
   // Use Scan to query the 'pg_database' table, filtering by our 'oid'.
   Schema projection;
@@ -153,7 +153,7 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(e_oid_val);
-    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);

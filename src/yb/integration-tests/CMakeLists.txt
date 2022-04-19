@@ -78,7 +78,9 @@ target_link_libraries(integration-tests
 
 add_dependencies(integration-tests
   yb-tserver
-  yb-master)
+  yb-master
+  yb-admin
+  yb-ts-cli)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
@@ -127,6 +129,7 @@ ADD_YB_TEST(master_sysnamespace-itest)
 ADD_YB_TEST(master_path_handlers-itest)
 ADD_YB_TEST(master_failover-itest)
 ADD_YB_TEST(master_config-itest)
+ADD_YB_TEST(master_tasks-test)
 ADD_YB_TEST(network_failure-test)
 ADD_YB_TEST(system_table_fault_tolerance)
 ADD_YB_TEST(raft_consensus-itest)

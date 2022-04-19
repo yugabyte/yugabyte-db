@@ -21,90 +21,42 @@
 #include "yb/util/enums.h"
 #include "yb/util/mem_tracker.h"
 
-typedef struct evp_pkey_st EVP_PKEY;
-typedef struct ssl_st SSL;
-typedef struct ssl_ctx_st SSL_CTX;
-typedef struct x509_st X509;
-
 namespace yb {
 namespace rpc {
 
-#define YB_RPC_SSL_TYPE_DECLARE(name) \
-  struct BOOST_PP_CAT(name, Free) { \
-    void operator()(name* value) const; \
-  }; \
-  \
-  typedef std::unique_ptr<name, BOOST_PP_CAT(name, Free)> BOOST_PP_CAT(name, Ptr);
-
-
-namespace detail {
-
-YB_RPC_SSL_TYPE_DECLARE(EVP_PKEY);
-YB_RPC_SSL_TYPE_DECLARE(SSL);
-YB_RPC_SSL_TYPE_DECLARE(SSL_CTX);
-YB_RPC_SSL_TYPE_DECLARE(X509);
-
-} // namespace detail
+YB_STRONGLY_TYPED_BOOL(MatchingCertKeyPair);
+YB_STRONGLY_TYPED_BOOL(RequireClientCertificate);
+YB_STRONGLY_TYPED_BOOL(UseClientCertificate);
 
 class SecureContext {
  public:
-  SecureContext();
+  SecureContext(RequireClientCertificate require_client_certificate,
+                UseClientCertificate use_client_certificate,
+                const std::string& required_uid = {});
+  ~SecureContext();
 
-  SecureContext(const SecureContext&) = delete;
-  void operator=(const SecureContext&) = delete;
-
-  CHECKED_STATUS AddCertificateAuthority(const Slice& data);
   CHECKED_STATUS AddCertificateAuthorityFile(const std::string& file);
 
-  CHECKED_STATUS UsePrivateKey(const Slice& data);
-  CHECKED_STATUS UseCertificate(const Slice& data);
+  CHECKED_STATUS UseCertificates(
+      const std::string& ca_cert_file, const Slice& certificate_data, const Slice& pkey_data);
 
   // Generates and uses temporary keys, should be used only during testing.
-  CHECKED_STATUS TEST_GenerateKeys(int bits, const std::string& common_name);
-
-  detail::SSLPtr Create() const;
-  EVP_PKEY* private_key() const { return pkey_.get(); }
-  X509* certificate() const { return certificate_.get(); }
-
-  void set_require_client_certificate(bool value) {
-    require_client_certificate_ = value;
-  }
-
-  bool require_client_certificate() const {
-    return require_client_certificate_;
-  }
-
-  void set_use_client_certificate(bool value) {
-    use_client_certificate_ = value;
-  }
-
-  bool use_client_certificate() const {
-    return use_client_certificate_;
-  }
-
-  void set_required_uid(const std::string& value) {
-    required_uid_ = value;
-  }
-
-  const std::string& required_uid() const {
-    return required_uid_;
-  }
+  CHECKED_STATUS TEST_GenerateKeys(int bits, const std::string& common_name,
+                                   MatchingCertKeyPair matching_cert_key_pair);
 
  private:
-  CHECKED_STATUS AddCertificateAuthority(X509* cert);
+  class Impl;
+  std::unique_ptr<Impl> impl_;
 
-  detail::SSL_CTXPtr context_;
-  detail::EVP_PKEYPtr pkey_;
-  detail::X509Ptr certificate_;
-  bool require_client_certificate_ = false;
-  bool use_client_certificate_ = false;
-  std::string required_uid_;
+  friend class SecureRefiner;
 };
 
 const Protocol* SecureStreamProtocol();
 StreamFactoryPtr SecureStreamFactory(
     StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker,
     const SecureContext* context);
+
+void InitOpenSSL();
 
 } // namespace rpc
 } // namespace yb

@@ -114,10 +114,6 @@ Result<Slice> RpcController::GetSidecar(int idx) const {
   return call_->GetSidecar(idx);
 }
 
-Result<SidecarPtr> RpcController::GetSidecarPtr(int idx) const {
-  return SidecarPtr(call_, VERIFY_RESULT(call_->GetSidecarPtr(idx)));
-}
-
 Result<SidecarHolder> RpcController::GetSidecarHolder(int idx) const {
   return call_->GetSidecarHolder(idx);
 }
@@ -146,6 +142,10 @@ int32_t RpcController::call_id() const {
     return call_->call_id();
   }
   return -1;
+}
+
+CallResponsePtr RpcController::response() const {
+  return CallResponsePtr(call_, &call_->call_response_);
 }
 
 } // namespace rpc

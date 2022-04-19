@@ -475,6 +475,16 @@ export default class RollingUpgradeForm extends Component {
             title="Confirm Resize Nodes"
             onFormSubmit={submitAction}
             error={error}
+            footerAccessory={
+              <YBCheckBox
+                  label="Confirm rolling restart"
+                  input={{
+                    checked: this.state.formConfirmed,
+                    onChange: this.toggleConfirmValidation
+                  }}
+              />
+            }
+            asyncValidating={!this.state.formConfirmed}
           >
             <div className="form-right-aligned-labels rolling-upgrade-form top-10 time-delay-container">
               <Field

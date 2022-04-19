@@ -1,7 +1,7 @@
 ---
 title: Grafana Dashboard
 headerTitle: Grafana Dashboard
-linkTitle: Grafana Dashboard 
+linkTitle: Grafana Dashboard
 description: Learn about setting up the community dashboards with Prometheus data source using Grafana.
 menu:
   v2.8:
@@ -15,17 +15,17 @@ showAsideToc: true
  <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/observability/grafana-dashboard/macos/" class="nav-link active">
+    <a href="/preview/explore/observability/grafana-dashboard/macos/" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 </ul>
-   
-You can create dashboards for your local YugabyteDB clusters using [Grafana](https://grafana.com/grafana/), an open source platform to perform visualization and analytics which lets you add queries and explore metrics to customize your graphs.
-To create dashboards, you need to add Prometheus metrics as a data source in Grafana. The visualization it provides gives a better understanding of the health and performance of your YugabyteDB clusters. 
 
-This tutorial uses the [yugabyted](../../../../reference/configuration/yugabyted) local cluster management utility. 
+You can create dashboards for your local YugabyteDB clusters using [Grafana](https://grafana.com/grafana/), an open source platform to perform visualization and analytics which lets you add queries and explore metrics to customize your graphs.
+To create dashboards, you need to add Prometheus metrics as a data source in Grafana. The visualization it provides gives a better understanding of the health and performance of your YugabyteDB clusters.
+
+This tutorial uses the [yugabyted](../../../../reference/configuration/yugabyted) local cluster management utility.
 In this tutorial, you'll use Grafana to populate dashboards with the metrics you collect with the [Prometheus Integration](../../../../explore/observability/prometheus-integration/macos/)
 
 ## Prerequisite
@@ -38,8 +38,8 @@ A local instance of Prometheus displaying the metrics of your YugabyteDB cluster
 
 - Install Grafana and start the server according to the [Grafana documentation](https://grafana.com/docs/grafana/latest/installation/mac/).
 
-- Open the Grafana UI on http://localhost:3000. The default login is `admin`, with a password of `admin`. 
-- Follow the steps on [this page](https://prometheus.io/docs/visualization/grafana/) to create a Prometheus data source. 
+- Open the Grafana UI on http://localhost:3000. The default login is `admin`, with a password of `admin`.
+- Follow the steps on [this page](https://prometheus.io/docs/visualization/grafana/) to create a Prometheus data source.
 
 ## Create a dashboard
 
@@ -57,7 +57,7 @@ There are different ways to create a dashboard in Grafana. For this tutorial, yo
 
   ![Grafana dashboard](/images/ce/graf-dash-details.png)
 
-- After clicking import, you can see the new dashboard with various details starting with the status of your master and t-server nodes. The metrics displayed are further categorized by API types (YSQL, YCQL) and by API methods(Insert, Select, Update, and so on). 
+- After clicking import, you can see the new dashboard with various details starting with the status of your master and t-server nodes. The metrics displayed are further categorized by API types (YSQL, YCQL) and by API methods(Insert, Select, Update, and so on).
 
   ![Grafana dashboard](/images/ce/graf-server-status.png)
 

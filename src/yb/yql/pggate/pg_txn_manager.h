@@ -24,6 +24,7 @@
 #include "yb/common/transaction.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/tserver/pg_client.fwd.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
@@ -56,8 +57,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   virtual ~PgTxnManager();
 
   CHECKED_STATUS BeginTransaction();
-  CHECKED_STATUS CalculateIsolation(
-      bool read_only_op, TxnPriorityRequirement txn_priority_requirement);
+  CHECKED_STATUS CalculateIsolation(bool read_only_op,
+                                    TxnPriorityRequirement txn_priority_requirement,
+                                    uint64_t* in_txn_limit = nullptr);
   CHECKED_STATUS RecreateTransaction();
   CHECKED_STATUS RestartTransaction();
   CHECKED_STATUS ResetTransactionReadPoint();
@@ -122,6 +124,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // and cancels the other transaction.
   uint64_t priority_ = 0;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
+  HybridTime in_txn_limit_;
 
   std::unique_ptr<tserver::TabletServerServiceProxy> tablet_server_proxy_;
 

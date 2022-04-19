@@ -479,6 +479,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
         # Check if secondary subnet is present. If so, configure it.
         if host_info.get('secondary_subnet'):
+            # Wait for host to be ready to run ssh commands
+            self.wait_for_host(args, use_default_port)
             self.cloud.configure_secondary_interface(
                 args, self.extra_vars, self.cloud.get_subnet_cidr(args,
                                                                   host_info['secondary_subnet']))
@@ -1275,3 +1277,60 @@ class AccessDeleteKeyMethod(AbstractAccessMethod):
         except Exception as e:
             logging.error(e)
             print(json.dumps({"error": "Unable to delete Keypair: {}".format(args.key_pair_name)}))
+
+
+class TransferXClusterCerts(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(TransferXClusterCerts, self).__init__(base_command, "transfer_xcluster_certs")
+        self.ssh_user = "yugabyte"  # Default ssh username.
+
+    def add_extra_args(self):
+        super(TransferXClusterCerts, self).add_extra_args()
+        self.parser.add_argument("--root_cert_path",
+                                 help="The path to the root cert of the source universe on "
+                                      "the Platform host")
+        self.parser.add_argument("--replication_config_name",
+                                 required=True,
+                                 help="The format of this name must be "
+                                      "[Source universe UUID]_[Config name]")
+        self.parser.add_argument("--producer_certs_dir",
+                                 help="The directory containing the certs on the target universe")
+        self.parser.add_argument("--action",
+                                 default="copy",
+                                 help="If true, the root certificate will be removed")
+
+    def _verify_params(self, args):
+        if len(args.replication_config_name.split("_", 1)) != 2:
+            raise YBOpsRuntimeError(
+                "--replication_config_name {} is not valid. It must have " +
+                "[Source universe UUID]_[Config name] format"
+                .format(args.replication_config_name))
+
+    def callback(self, args):
+        self._verify_params(args)
+        if args.ssh_user is not None:
+            self.ssh_user = args.ssh_user
+        host_info = self.cloud.get_host_info(args)
+        ssh_options = {
+            "ssh_user": self.ssh_user,
+            "private_key_file": args.private_key_file
+        }
+        ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+
+        # TODO: Add support for rotate certs
+        if args.action == "copy":
+            if args.root_cert_path is None:
+                raise YBOpsRuntimeError("--root_cert_path argument is missing")
+            self.cloud.copy_xcluster_root_cert(
+                ssh_options,
+                args.root_cert_path,
+                args.replication_config_name,
+                args.producer_certs_dir)
+        elif args.action == "remove":
+            self.cloud.remove_xcluster_root_cert(
+                ssh_options,
+                args.replication_config_name,
+                args.producer_certs_dir)
+        else:
+            raise YBOpsRuntimeError("The action \"{}\" was not found: Must be either copy, "
+                                    "or remove".format(args.action))

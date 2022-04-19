@@ -934,7 +934,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
             values.forEach(
                 actualValue ->
                     assertEquals(
-                        "Unexpected value for key " + expectedKey, actualValue, expectedValue));
+                        "Unexpected value for key " + expectedKey, expectedValue, actualValue));
           }
         });
   }
@@ -963,7 +963,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     update.setParameter("memSize", 16);
     update.setParameter("details", "{\"volumeDetailsList\":[],\"tenancy\":\"Shared\"}");
     int modifiedCount = Ebean.execute(update);
-    assertEquals(modifiedCount, 1);
+    assertEquals(1, modifiedCount);
 
     when(mockConfigHelper.getAWSInstancePrefixesSupported())
         .thenReturn(ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3."));
@@ -1044,13 +1044,13 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     changeDiskSize.forEach(
         task -> {
           JsonNode details = task.getTaskDetails();
-          assertEquals(details.get("deviceInfo").get("volumeSize").asInt(), intendedVolumeSize);
-          assertEquals(details.get("deviceInfo").get("numVolumes").asInt(), 1);
+          assertEquals(intendedVolumeSize, details.get("deviceInfo").get("volumeSize").asInt());
+          assertEquals(1, details.get("deviceInfo").get("numVolumes").asInt());
           assertNotNull(details.get("instanceType"));
         });
 
     List<TaskInfo> persistChangeDiskSize = subTasksByPosition.get(position++);
-    assertEquals(persistChangeDiskSize.size(), 1);
+    assertEquals(1, persistChangeDiskSize.size());
     assertTaskType(persistChangeDiskSize, TaskType.PersistResizeNode);
 
     // Find start position of each node's subtasks
@@ -1132,7 +1132,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     }
 
     List<TaskInfo> persistChangeInstanceType = subTasksByPosition.get(position);
-    assertEquals(persistChangeInstanceType.size(), 1);
+    assertEquals(1, persistChangeInstanceType.size());
     assertTaskType(persistChangeInstanceType, TaskType.PersistResizeNode);
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);

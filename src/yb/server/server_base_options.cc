@@ -160,6 +160,11 @@ WebserverOptions& ServerBaseOptions::CompleteWebserverOptions() {
   return webserver_opts;
 }
 
+std::string ServerBaseOptions::HostsString() {
+  return !server_broadcast_addresses.empty() ? server_broadcast_addresses
+                                             : rpc_opts.rpc_bind_addresses;
+}
+
 void ServerBaseOptions::SetMasterAddressesNoValidation(MasterAddressesPtr master_addresses) {
   if (master_addresses) {
     LOG(INFO) << "Updating master addrs to " << MasterAddressesToString(*master_addresses);

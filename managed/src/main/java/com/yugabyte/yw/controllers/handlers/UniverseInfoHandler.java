@@ -12,13 +12,13 @@ package com.yugabyte.yw.controllers.handlers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
+import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -34,7 +34,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.queries.QueryHelper;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -46,11 +45,13 @@ import play.mvc.Http;
 
 @Slf4j
 public class UniverseInfoHandler {
+
   @Inject private MetricQueryHelper metricQueryHelper;
   @Inject private QueryHelper queryHelper;
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private YBClientService ybService;
   @Inject private NodeUniverseManager nodeUniverseManager;
+  @Inject private HealthChecker healthChecker;
 
   public UniverseResourceDetails getUniverseResources(
       Customer customer, UniverseDefinitionTaskParams taskParams) {
@@ -108,7 +109,9 @@ public class UniverseInfoHandler {
       // TODO(API) dig deeper and find root cause of RuntimeException
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
-    if (result.has("error")) throw new PlatformServiceException(BAD_REQUEST, result.get("error"));
+    if (result.has("error")) {
+      throw new PlatformServiceException(BAD_REQUEST, result.get("error"));
+    }
     return result;
   }
 
@@ -124,6 +127,12 @@ public class UniverseInfoHandler {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
     return detailsList;
+  }
+
+  public void triggerHealthCheck(Customer customer, Universe universe) {
+    // We do not OBSERVE the result of the checkSingleUniverse, we are just interested that
+    // the health check result is queued.
+    healthChecker.checkSingleUniverse(customer, universe);
   }
 
   public HostAndPort getMasterLeaderIP(Universe universe) {
@@ -150,13 +159,9 @@ public class UniverseInfoHandler {
     JsonNode resultNode;
     try {
       resultNode = queryHelper.liveQueries(universe);
-    } catch (NullPointerException e) {
-      log.error("Universe does not have a private IP or DNS", e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Universe failed to fetch live queries");
-    } catch (Throwable t) {
-      log.error("Error retrieving queries for universe", t);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
+    } catch (Exception e) {
+      log.error("Error retrieving queries for universe", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
     return resultNode;
   }
@@ -168,13 +173,9 @@ public class UniverseInfoHandler {
     } catch (IllegalArgumentException e) {
       log.error(e.getMessage(), e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
-    } catch (NullPointerException e) {
-      log.error("Universe does not have a private IP or DNS", e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Universe failed to fetch slow queries");
-    } catch (Throwable t) {
-      log.error("Error retrieving queries for universe", t);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
+    } catch (Exception e) {
+      log.error("Error retrieving queries for universe", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
     return resultNode;
   }
@@ -182,14 +183,9 @@ public class UniverseInfoHandler {
   public JsonNode resetSlowQueries(Universe universe) {
     try {
       return queryHelper.resetQueries(universe);
-    } catch (NullPointerException e) {
-      // TODO: Investigate why catch NPE??
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed reach node, invalid IP or DNS.");
-    } catch (Throwable t) {
-      // TODO: Investigate why catch Throwable??
-      log.error("Error resetting slow queries for universe", t);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
+    } catch (Exception e) {
+      log.error("Error resetting slow queries for universe", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
 
