@@ -51,7 +51,7 @@ You can configure Network File System (NFS) as your backup target, as follows:
 
    ![NFS Cloud Provider Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)<br><br>
 
-3. Use the **Configuration Name** field to provide a meaning name for you backup configuration.
+3. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
 
 4. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
 
