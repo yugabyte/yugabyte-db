@@ -157,7 +157,7 @@ showAsideToc: true
     ```
 
     \
-    You might have to `unload` the service before loading it.
+    You might need to `unload` the service before loading it.
 
 ## Download YugabyteDB
 
