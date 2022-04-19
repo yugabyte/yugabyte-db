@@ -8,41 +8,31 @@ headcontent: Create backups and restore your data.
 aliases:
   - /manage/backup-restore/
 menu:
-  preview:
+  latest:
     identifier: backup-restore
     parent: manage
     weight: 702
 ---
 
-YugabyteDB is a distributed database that internally replicates data. It is possible to place the regions in separate fault domains, therefore backups for the purpose of data redundancy are not necessary. However, it is an operational best practice to have a backup strategy. For example, an error in the application layer could cause it to write bad data into the database. In such a scenario, it is essential to be able to restore the database from a backup to a state before the application error was introduced.
+Backup and Recovery is the process of creating and storing copies of the data that can be used for protection against data loss. By setting up a proper data backup strategy, you make sure you can always restore to a most recent known working state and minimize application downtimes, which in turn guarantees business and application continuity.
 
-This section goes into details of backing up data and restoring it from YugabyteDB.
+Note that unlike traditional single-instance databases, YugabyteDB is designed for fault tolerance. By maintaining at least three copies of the data across multiple data regions or multiple clouds, it makes sure no losses occur in case a single node or a single data region becomes unavailable. Thus, with YugabyteDB, backups are mainly used to:
+1. Recover from a user or software error, e.g. accidental table removal.
+2. Recover from a severe disaster scenario, like a full cluster failure or a simultaneous outage of multiple data regions (probability of such scenarios is extremely low, but it’s still recommended to maintain a way to recover from them).
+3. Maintain a remote copy of the data as required by data protection regulations.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="back-up-data/">
+    <a class="section-link icon-offset" href="export-import-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Back up data</div>
+        <div class="title">Export and import data</div>
       </div>
       <div class="body">
-        This section describes how to create a backup of the data in YugabyteDB.
+        This section describes how to export to and import data from a SQL or CQL script.
       </div>
     </a>
   </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="restore-data/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
-        <div class="title">Restore data</div>
-      </div>
-      <div class="body">
-        This section describes how to restore data into YugabyteDB from a backup.
-      </div>
-    </a>
-  </div>
-</div>
-<div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="snapshot-ysql/">
       <div class="head">
@@ -54,6 +44,8 @@ This section goes into details of backing up data and restoring it from Yugabyte
       </div>
     </a>
   </div>
+</div>
+<div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="point-in-time-recovery/">
       <div class="head">
