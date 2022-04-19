@@ -91,7 +91,9 @@ inline To down_cast(From* f) {                   // so we only accept pointers
 
   // TODO(user): This should use COMPILE_ASSERT.
   if (false) {
-    yb::implicit_cast<From*, To>(nullptr);
+    yb::implicit_cast<typename base::remove_const<From>::type*,
+                      typename base::remove_const<
+                          typename base::remove_pointer<To>::type>::type*>(nullptr);
   }
 
   // uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
@@ -110,13 +112,14 @@ inline To down_cast(From* f) {                   // so we only accept pointers
 template<typename To, typename From>
 inline To down_cast(From& f) { // NOLINT
   COMPILE_ASSERT(base::is_reference<To>::value, target_type_not_a_reference);
-  typedef typename base::remove_reference<To>::type* ToAsPointer;
+  typedef typename base::remove_reference<To>::type ToType;
   if (false) {
     // Compile-time check that To inherits from From. See above for details.
-    yb::implicit_cast<From*, ToAsPointer>(nullptr);
+    yb::implicit_cast<typename base::remove_const<From>::type*,
+                      typename base::remove_const<ToType>::type*>(nullptr);
   }
 
-  assert(dynamic_cast<ToAsPointer>(&f) != nullptr);  // RTTI: debug mode only
+  assert(dynamic_cast<ToType*>(&f) != nullptr);  // RTTI: debug mode only
   return static_cast<To>(f);
 }
 

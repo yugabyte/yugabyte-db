@@ -135,11 +135,6 @@ DEFINE_bool(load_balancer_ignore_cloud_info_similarity, false,
             "If true, ignore the similarity between cloud infos when deciding which tablet "
             "to move.");
 
-// TODO(tsplit): make false by default or even remove flag after
-// https://github.com/yugabyte/yugabyte-db/issues/10301 is fixed.
-DEFINE_test_flag(
-    bool, load_balancer_skip_inactive_tablets, true, "Don't move inactive (hidden) tablets");
-
 namespace yb {
 namespace master {
 
@@ -461,6 +456,8 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   VLOG(1) << "Number of remote bootstraps before running load balancer: "
           << global_state_->total_starting_tablets_;
 
+  bool task_added = false;
+
   // Iterate over all the tables to take actions based on the data collected on the previous loop.
   for (const auto& table : GetTableMap()) {
     state_ = nullptr;
@@ -490,6 +487,29 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     TabletServerId out_from_ts;
     TabletServerId out_to_ts;
 
+    if (!PREDICT_FALSE(FLAGS_TEST_load_balancer_handle_under_replicated_tablets_only)) {
+      // Handle cleanup after over-replication.
+      for (; remaining_removals > 0; --remaining_removals) {
+        if (state_->allow_only_leader_balancing_) {
+          YB_LOG_EVERY_N_SECS(INFO, 30)
+              << "Skipping remove replicas. Only leader balancing table " << table.first;
+          break;
+        }
+        auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
+        if (!handle_remove.ok()) {
+          LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
+                       << StatusToString(handle_remove);
+          master_errors++;
+          break;
+        }
+        if (!*handle_remove) {
+          break;
+        }
+
+        task_added = true;
+      }
+    }
+
     // Handle adding and moving replicas.
     for ( ; remaining_adds > 0; --remaining_adds) {
       if (state_->allow_only_leader_balancing_) {
@@ -507,29 +527,13 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       if (!*handle_add) {
         break;
       }
+
+      task_added = true;
     }
+
     if (PREDICT_FALSE(FLAGS_TEST_load_balancer_handle_under_replicated_tablets_only)) {
       LOG(INFO) << "Skipping remove replicas and leader moves for " << table.first;
       continue;
-    }
-
-    // Handle cleanup after over-replication.
-    for ( ; remaining_removals > 0; --remaining_removals) {
-      if (state_->allow_only_leader_balancing_) {
-        YB_LOG_EVERY_N_SECS(INFO, 30) << "Skipping remove replicas. Only leader balancing table "
-                                      << table.first;
-        break;
-      }
-      auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
-      if (!handle_remove.ok()) {
-        LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
-                     << StatusToString(handle_remove);
-        master_errors++;
-        break;
-      }
-      if (!*handle_remove) {
-        break;
-      }
     }
 
     // Handle tablet servers with too many leaders.
@@ -551,10 +555,12 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       if (!*handle_leader) {
         break;
       }
+
+      task_added = true;
     }
   }
 
-  RecordActivity(master_errors);
+  RecordActivity(task_added, master_errors);
 }
 
 void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
@@ -584,7 +590,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
   }
 }
 
-void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
+void ClusterLoadBalancer::RecordActivity(bool tasks_added_in_this_run, uint32_t master_errors) {
   // Update the list of tables for whom load-balancing has been
   // skipped in this run.
   {
@@ -595,6 +601,12 @@ void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
   uint32_t table_tasks = 0;
   for (const auto& table : GetTableMap()) {
     table_tasks += table.second->NumLBTasks();
+  }
+
+  if (!master_errors && !table_tasks && tasks_added_in_this_run) {
+    VLOG(1) << "Tasks scheduled by Load balancer have already completed. Force setting table tasks "
+               "count to 1 so that it does not appear idle";
+    ++table_tasks;
   }
 
   struct ActivityInfo ai {table_tasks, master_errors};
@@ -1432,7 +1444,7 @@ Result<TabletInfos> ClusterLoadBalancer::GetTabletsForTable(const TableId& table
         table_uuid);
   }
 
-  return table_info->GetTablets(IncludeInactive(!FLAGS_TEST_load_balancer_skip_inactive_tablets));
+  return table_info->GetTablets(IncludeInactive::kTrue);
 }
 
 const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {

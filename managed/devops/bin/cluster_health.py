@@ -177,9 +177,12 @@ def check_output(cmd, env):
         output = subprocess.check_output(
             cmd, stderr=subprocess.STDOUT, env=env, timeout=CMD_TIMEOUT_SEC)
         return str(output.decode('utf-8').encode("ascii", "ignore").decode("ascii"))
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError as ex:
         return 'Error executing command {}: {}'.format(
-            cmd, e.output.decode("utf-8").encode("ascii", "ignore"))
+            cmd, ex.output.decode("utf-8").encode("ascii", "ignore"))
+    except subprocess.TimeoutExpired:
+        return 'Error: timed out executing command {} for {} seconds'.format(
+            cmd, CMD_TIMEOUT_SEC)
 
 
 def safe_pipe(command_str):
@@ -331,14 +334,23 @@ class NodeChecker():
         if len(lines) < 2:
             return e.fill_and_return_entry([output], True)
 
-        msgs.append(lines[0])
-        for line in lines[1:]:
+        found_header = False
+        for line in lines:
             msgs.append(line)
             if not line:
+                continue
+            if line.startswith("Filesystem"):
+                found_header = True
+                continue
+            if not found_header:
                 continue
             percentage = line.split()[4][:-1]
             if int(percentage) > DISK_UTILIZATION_THRESHOLD_PCT:
                 found_error = True
+
+        if not found_header:
+            return e.fill_and_return_entry([output], True)
+
         return e.fill_and_return_entry(msgs, found_error)
 
     def get_certificate_expiration_date(self, cert_path):
@@ -650,7 +662,7 @@ class NodeChecker():
         logging.info("Checking redis cli works for node {}".format(self.node))
         e = self._new_entry("Connectivity with redis-cli")
         redis_cli = '{}/bin/redis-cli'.format(YB_TSERVER_DIR)
-        remote_cmd = 'echo "ping" | {} -h {} -p {}'.format(redis_cli, self.node, self.redis_port)
+        remote_cmd = '{} -h {} -p {} ping'.format(redis_cli, self.node, self.redis_port)
 
         output = self._remote_check_output(remote_cmd).strip()
 
@@ -669,8 +681,8 @@ class NodeChecker():
             host = '__local_ysql_socket__'
             port_args = ""
 
-        ysqlsh_cmd = "{} -h {} {} -U yugabyte".format(
-            ysqlsh, host, port_args, '"sslmode=require"' if self.enable_tls_client else '')
+        ysqlsh_cmd = "{} {} -h {} {} -U yugabyte".format(
+            'env sslmode="require"' if (self.enable_tls_client) else '', ysqlsh, host, port_args, )
 
         return ysqlsh_cmd
 
@@ -700,7 +712,7 @@ class NodeChecker():
 
         errors = []
         output = self._remote_check_output(remote_cmd).strip()
-        if not (output.startswith('You are connected to database')):
+        if 'You are connected to database' not in output:
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
@@ -711,10 +723,12 @@ class NodeChecker():
         remote_cmd = "timedatectl status"
         output = self._remote_check_output(remote_cmd).strip()
 
-        clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: )|' +
-                            r'(systemd-timesyncd\.service active: ))(.*)$', output, re.MULTILINE)
+        clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: ))(.*)$',
+                            output, re.MULTILINE)
         if clock_re:
-            ntp_enabled_answer = clock_re.group(8).strip()
+            ntp_enabled_answer = clock_re.group(7).strip()
+        elif "systemd-timesyncd.service active:" in output:  # Ignore this check, see PLAT-3373
+            ntp_enabled_answer = "yes"
         else:
             return e.fill_and_return_entry(["Error getting NTP state - incorrect answer format"],
                                            True)
@@ -748,6 +762,15 @@ class NodeChecker():
             else:
                 errors.append("Error getting NTP synchronization state {}"
                               .format(ntp_synchronized_answer))
+
+        # Check if a time sync service is running. Stderr redirection is necessary since
+        # "service does not exist" prints to stderr but should not error.
+        remote_cmd = ""
+        for ntp_service in ["chronyd", "ntp", "ntpd", "systemd-timesyncd"]:
+            remote_cmd = remote_cmd + "systemctl status " + ntp_service + " 2>&1; "
+        output = self._remote_check_output(remote_cmd).strip()
+        if "Active: active (running)" not in output:
+            errors.append("NTP service not running")
 
         return e.fill_and_return_entry(errors, len(errors) > 0)
 

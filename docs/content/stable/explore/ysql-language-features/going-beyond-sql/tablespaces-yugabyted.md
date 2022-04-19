@@ -2,7 +2,7 @@ A cluster with the preceding configuration can be created using the following yu
 
 ```sh
 bin/yugabyted start                            \
-  --base_dir=/home/yugabyte/yugabyte-data      \
+  --base_dir=/home/yugabyte/<IP1>/yugabyte-data      \
   --listen=<IP1>                               \
   --master_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a" \
   --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a"
@@ -10,7 +10,7 @@ bin/yugabyted start                            \
 
 ```sh
 bin/yugabyted start                            \
-  --base_dir=/home/yugabyte/yugabyte-data      \
+  --base_dir=/home/yugabyte/<IP2>/yugabyte-data      \
   --listen=<IP2>                               \
   --join=<IP1>                                 \
   --master_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1b" \
@@ -19,7 +19,7 @@ bin/yugabyted start                            \
 
 ```sh
 bin/yugabyted start                            \
-  --base_dir=/home/yugabyte/yugabyte-data      \
+  --base_dir=/home/yugabyte/<IP3>/yugabyte-data      \
   --listen=<IP3>                               \
   --join=<IP1>                                 \
   --master_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1c" \
@@ -28,7 +28,7 @@ bin/yugabyted start                            \
 
 ```sh
 bin/yugabyted start                            \
-  --base_dir=/home/yugabyte/yugabyte-data      \
+  --base_dir=/home/yugabyte/<IP4>/yugabyte-data      \
   --listen=<IP4>                               \
   --join=<IP1>                                 \
   --tserver_flags "placement_cloud=aws,placement_region=ap-south-1,placement_zone=ap-south-1a"
@@ -36,7 +36,7 @@ bin/yugabyted start                            \
 
 ```sh
 bin/yugabyted start                            \
-  --base_dir=/home/yugabyte/yugabyte-data      \
+  --base_dir=/home/yugabyte/<IP5>/yugabyte-data      \
   --listen=<IP5>                               \
   --join=<IP1>                                 \
   --tserver_flags "placement_cloud=aws,placement_region=eu-west-2,placement_zone=eu-west-2c"
@@ -44,7 +44,7 @@ bin/yugabyted start                            \
 
 ```sh
 bin/yugabyted start                            \
-  --base_dir=/home/yugabyte/yugabyte-data      \
+  --base_dir=/home/yugabyte/<IP6>/yugabyte-data      \
   --listen=<IP6>                               \
   --join=<IP1>                                 \
   --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a"
@@ -52,7 +52,7 @@ bin/yugabyted start                            \
 
 ```sh
 bin/yugabyted start                            \
-  --base_dir=/home/yugabyte/yugabyte-data      \
+  --base_dir=/home/yugabyte/<IP7>/yugabyte-data      \
   --listen=<IP7>                               \
   --join=<IP1>                                 \
   --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a"

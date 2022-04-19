@@ -14,15 +14,19 @@
 
 #include "yb/yql/pggate/pggate.h"
 
-#include <boost/optional.hpp>
+#include <list>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "yb/client/client_fwd.h"
 #include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/tablet_server.h"
 
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_key.h"
@@ -37,21 +41,32 @@
 
 #include "yb/server/secure.h"
 
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_forward_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/range.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
 
+#include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_ddl.h"
 #include "yb/yql/pggate/pg_delete.h"
+#include "yb/yql/pggate/pg_dml.h"
+#include "yb/yql/pggate/pg_dml_read.h"
+#include "yb/yql/pggate/pg_dml_write.h"
 #include "yb/yql/pggate/pg_insert.h"
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_sample.h"
 #include "yb/yql/pggate/pg_select.h"
+#include "yb/yql/pggate/pg_select_index.h"
+#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/pg_sys_table_prefetcher.h"
+#include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_truncate_colocated.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pg_update.h"
@@ -72,9 +87,24 @@ namespace yb {
 namespace pggate {
 
 using docdb::PrimitiveValue;
-using docdb::ValueType;
+using docdb::KeyEntryType;
 
 namespace {
+
+struct TableHolder {
+  explicit TableHolder(const PgTableDescPtr& descr) : table_(descr) {}
+  PgTable table_;
+};
+
+class PgsqlReadOpWithPgTable : private TableHolder, public PgsqlReadOp {
+ public:
+  explicit PgsqlReadOpWithPgTable(Arena* arena, const PgTableDescPtr& descr)
+      : TableHolder(descr), PgsqlReadOp(arena, *table_) {}
+
+  PgTable& table() {
+    return table_;
+  }
+};
 
 CHECKED_STATUS AddColumn(PgCreateTable* pg_stmt, const char *attr_name, int attr_num,
                          const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range,
@@ -120,38 +150,66 @@ std::unique_ptr<tserver::TServerSharedObject> InitTServerSharedObject() {
       tserver::TServerSharedObject::OpenReadOnly(FLAGS_pggate_tserver_shm_fd)));
 }
 
-Result<std::vector<std::string>> FetchExistingYbctids(PgSession::ScopedRefPtr session,
-                                                      PgOid database_id,
-                                                      PgOid table_id,
-                                                      const std::vector<Slice>& ybctids) {
-  auto desc  = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
-  PgTable target(desc);
-  auto read_op = std::make_shared<PgsqlReadOp>(*target);
-  PgsqlExpressionPB* expr_pb = read_op->read_request().add_targets();
-  expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
-  auto doc_op = std::make_shared<PgDocReadOp>(session, &target, std::move(read_op));
-
-  // Postgres uses SELECT FOR KEY SHARE query for FK check.
-  // Use same lock level.
-  PgExecParameters exec_params = doc_op->ExecParameters();
-  exec_params.rowmark = ROW_MARK_KEYSHARE;
-  RETURN_NOT_OK(doc_op->ExecuteInit(&exec_params));
-  RETURN_NOT_OK(doc_op->PopulateDmlByYbctidOps(ybctids));
-  RETURN_NOT_OK(doc_op->Execute());
-  std::vector<std::string> result;
-  result.reserve(ybctids.size());
-  std::list<PgDocResult> rowsets;
-  do {
-    rowsets.clear();
-    RETURN_NOT_OK(doc_op->GetResult(&rowsets));
-    for (auto& row : rowsets) {
-      RETURN_NOT_OK(row.ProcessSystemColumns());
-      for (const auto& ybctid : row.ybctids()) {
-        result.push_back(ybctid.ToBuffer());
-      }
+CHECKED_STATUS FetchExistingYbctids(PgSession::ScopedRefPtr session,
+                                    PgOid database_id,
+                                    std::vector<TableYbctid>* ybctids) {
+  // Group the items by the table ID.
+  std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
+    if (a.table_id != b.table_id) {
+      return a.table_id < b.table_id;
     }
-  } while (!rowsets.empty());
-  return result;
+    return a.ybctid < b.ybctid;
+  });
+
+  auto arena = std::make_shared<Arena>();
+
+  // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
+  std::vector<std::pair<PgOid, std::shared_ptr<PgDocReadOp>>> doc_ops;
+  std::vector<Slice> table_ybctids;
+  table_ybctids.reserve(ybctids->size());
+  for (auto it = ybctids->begin(); it != ybctids->end(); ) {
+    table_ybctids.clear();
+    const auto& table_id = it->table_id;
+    while (it != ybctids->end() && it->table_id == table_id) {
+      table_ybctids.emplace_back((it++)->ybctid);
+    }
+
+    auto desc = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
+    auto read_op = std::make_shared<PgsqlReadOpWithPgTable>(arena.get(), desc);
+
+    auto* expr_pb = read_op->read_request().add_targets();
+    expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
+    auto doc_op = std::make_shared<PgDocReadOp>(session, &read_op->table(), std::move(read_op));
+
+    // Postgres uses SELECT FOR KEY SHARE query for FK check.
+    // Use same lock level.
+    PgExecParameters exec_params = doc_op->ExecParameters();
+    exec_params.rowmark = ROW_MARK_KEYSHARE;
+    RETURN_NOT_OK(doc_op->ExecuteInit(&exec_params));
+    RETURN_NOT_OK(doc_op->PopulateDmlByYbctidOps(table_ybctids));
+    RETURN_NOT_OK(doc_op->Execute());
+    doc_ops.emplace_back(table_id, std::move(doc_op));
+  }
+
+  // Collect the results from the docdb ops.
+  ybctids->clear();
+  for (auto& it : doc_ops) {
+    const auto& table_id = it.first;
+    auto& doc_op = it.second;
+    std::list<PgDocResult> rowsets;
+    do {
+      rowsets.clear();
+      RETURN_NOT_OK(doc_op->GetResult(&rowsets));
+      for (auto& row : rowsets) {
+        RETURN_NOT_OK(row.ProcessSystemColumns());
+        for (const auto& ybctid : row.ybctids()) {
+          ybctids->emplace_back(table_id, ybctid.ToBuffer());
+        }
+      }
+    } while (!rowsets.empty());
+  }
+
+  return Status::OK();
 }
 
 } // namespace
@@ -955,11 +1013,11 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
       PgObjectId(descr.database_oid, descr.table_oid)));
   SCHECK_EQ(descr.nattrs, target_desc->num_key_columns(), Corruption,
             "Number of key components does not match column description");
-  vector<PrimitiveValue> *values = nullptr;
+  vector<docdb::KeyEntryValue> *values = nullptr;
   PgsqlExpressionPB *expr_pb;
   PgsqlExpressionPB temp_expr_pb;
   google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values;
-  vector<docdb::PrimitiveValue> hashed_components, range_components;
+  vector<docdb::KeyEntryValue> hashed_components, range_components;
   hashed_components.reserve(target_desc->num_hash_key_columns());
   range_components.reserve(target_desc->num_key_columns() - target_desc->num_hash_key_columns());
   size_t remain_attr = descr.nattrs;
@@ -984,21 +1042,25 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
         }
 
         if (attr->is_null) {
-          values->emplace_back(ValueType::kNullLow);
+          values->emplace_back(KeyEntryType::kNullLow);
         } else {
           if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
             expr_pb->mutable_value()->set_binary_value(pg_session_->GenerateNewRowid());
           } else {
             const YBCPgCollationInfo& collation_info = attr->collation_info;
+            Arena arena;
             PgConstant value(
-                attr->type_entity, collation_info.collate_is_valid_non_c,
+                &arena, attr->type_entity, collation_info.collate_is_valid_non_c,
                 collation_info.sortkey, attr->datum, false);
             SCHECK_EQ(column.internal_type(), value.internal_type(), Corruption,
                       "Attribute value type does not match column type");
-            RETURN_NOT_OK(value.Eval(expr_pb->mutable_value()));
+            auto* temp_value = VERIFY_RESULT(value.Eval());
+            if (temp_value) {
+              temp_value->ToGoogleProtobuf(expr_pb->mutable_value());
+            }
           }
-          values->push_back(PrimitiveValue::FromQLValuePB(expr_pb->value(),
-                                                          column.desc().sorting_type()));
+          values->push_back(docdb::KeyEntryValue::FromQLValuePB(
+              expr_pb->value(), column.desc().sorting_type()));
         }
 
         if (--remain_attr == 0) {
@@ -1008,15 +1070,16 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
                     target_desc->num_key_columns() - target_desc->num_hash_key_columns(),
                     Corruption, "Number of range components does not match column description");
           if (hashed_values.empty()) {
-            return processor(docdb::DocKey(move(range_components)).Encode());
+            return processor(docdb::DocKey(std::move(range_components)).Encode());
           }
           string partition_key;
           const PartitionSchema& partition_schema = target_desc->partition_schema();
-          RETURN_NOT_OK(partition_schema.EncodeKey(hashed_values, &partition_key));
+          RETURN_NOT_OK(partition_schema.EncodePgsqlKey(hashed_values, &partition_key));
           const uint16_t hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
 
           return processor(
-              docdb::DocKey(hash, move(hashed_components), move(range_components)).Encode());
+              docdb::DocKey(hash, std::move(hashed_components),
+                std::move(range_components)).Encode());
         }
         break;
       }
@@ -1266,7 +1329,21 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return down_cast<PgDmlRead*>(handle)->Exec(exec_params);
+  auto& dml_read = *down_cast<PgDmlRead*>(handle);
+  if (pg_sys_table_prefetcher_ && dml_read.IsReadFromYsqlCatalog() && dml_read.read_req()) {
+    // In case of sys tables prefething is enabled all reads from sys table must use cached data.
+    auto data = VERIFY_RESULT(pg_sys_table_prefetcher_->GetData(
+        pg_session_.get(), *dml_read.read_req(), dml_read.IsIndexOrderedScan()));
+    if (!data) {
+      // DLOG(FATAL) is used instead of SCHECK to let user on release build proceed by reading
+      // data from a master in a non efficient way (by using separate RPC).
+      DLOG(FATAL) << "Data was not prefetched for request "
+                  << dml_read.read_req()->ShortDebugString();
+    } else {
+      dml_read.UpgradeDocOp(MakeDocReadOpWithData(pg_session_, std::move(data)));
+    }
+  }
+  return dml_read.Exec(exec_params);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1282,11 +1359,9 @@ Status PgApiImpl::NewColumnRef(
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgColumnRef::SharedPtr colref =
-    make_shared<PgColumnRef>(attr_num, type_entity, collate_is_valid_non_c, type_attrs);
-  stmt->AddExpr(colref);
+  *expr_handle = stmt->arena().NewObject<PgColumnRef>(
+      attr_num, type_entity, collate_is_valid_non_c, type_attrs);
 
-  *expr_handle = colref.get();
   return Status::OK();
 }
 
@@ -1298,12 +1373,9 @@ Status PgApiImpl::NewConstant(
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgExpr::SharedPtr pg_const =
-    make_shared<PgConstant>(type_entity, collate_is_valid_non_c, collation_sortkey,
-                            datum, is_null);
-  stmt->AddExpr(pg_const);
+  *expr_handle = stmt->arena().NewObject<PgConstant>(
+      &stmt->arena(), type_entity, collate_is_valid_non_c, collation_sortkey, datum, is_null);
 
-  *expr_handle = pg_const.get();
   return Status::OK();
 }
 
@@ -1314,11 +1386,9 @@ Status PgApiImpl::NewConstantVirtual(
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgExpr::SharedPtr pg_const =
-    make_shared<PgConstant>(type_entity, false /* collate_is_valid_non_c */, datum_kind);
-  stmt->AddExpr(pg_const);
 
-  *expr_handle = pg_const.get();
+  *expr_handle = stmt->arena().NewObject<PgConstant>(
+      &stmt->arena(), type_entity, false /* collate_is_valid_non_c */, datum_kind);
   return Status::OK();
 }
 
@@ -1330,12 +1400,10 @@ Status PgApiImpl::NewConstantOp(
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgExpr::SharedPtr pg_const =
-    make_shared<PgConstant>(type_entity, collate_is_valid_non_c, collation_sortkey,
-      datum, is_null, is_gt ? PgExpr::Opcode::PG_EXPR_GT : PgExpr::Opcode::PG_EXPR_LT);
-  stmt->AddExpr(pg_const);
+  *expr_handle = stmt->arena().NewObject<PgConstant>(
+      &stmt->arena(), type_entity, collate_is_valid_non_c, collation_sortkey, datum, is_null,
+      is_gt ? PgExpr::Opcode::PG_EXPR_GT : PgExpr::Opcode::PG_EXPR_LT);
 
-  *expr_handle = pg_const.get();
   return Status::OK();
 }
 
@@ -1371,10 +1439,9 @@ Status PgApiImpl::NewOperator(
   RETURN_NOT_OK(PgExpr::CheckOperatorName(opname));
 
   // Create operator.
-  PgExpr::SharedPtr pg_op = make_shared<PgOperator>(opname, type_entity, collate_is_valid_non_c);
-  stmt->AddExpr(pg_op);
+  *op_handle = stmt->arena().NewObject<PgOperator>(
+      &stmt->arena(), opname, type_entity, collate_is_valid_non_c);
 
-  *op_handle = pg_op.get();
   return Status::OK();
 }
 
@@ -1456,7 +1523,12 @@ Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  pg_session_->ResetHasWriteOperationsInDdlMode();
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
+}
+
+bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
+  return pg_session_->HasWriteOperationsInDdlMode();
 }
 
 Status PgApiImpl::ExitSeparateDdlTxnMode() {
@@ -1490,11 +1562,10 @@ void PgApiImpl::ResetCatalogReadTime() {
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
     PgOid table_id, const Slice& ybctid, PgOid database_id) {
   return pg_session_->ForeignKeyReferenceExists(
-      table_id, ybctid, std::bind(FetchExistingYbctids,
-                                  pg_session_,
-                                  database_id,
-                                  std::placeholders::_1,
-                                  std::placeholders::_2));
+      table_id, ybctid, make_lw_function(
+          [this, database_id](std::vector<TableYbctid>* ybctids) {
+            return FetchExistingYbctids(pg_session_, database_id, ybctids);
+          }));
 }
 
 void PgApiImpl::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {
@@ -1509,7 +1580,7 @@ void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
   pg_session_->AddForeignKeyReference(table_id, ybctid);
 }
 
-void PgApiImpl::SetTimeout(const int timeout_ms) {
+void PgApiImpl::SetTimeout(int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
 }
 
@@ -1519,6 +1590,30 @@ Result<client::TabletServersInfo> PgApiImpl::ListTabletServers() {
 
 Status PgApiImpl::ValidatePlacement(const char *placement_info) {
   return pg_session_->ValidatePlacement(placement_info);
+}
+
+void PgApiImpl::StartSysTablePrefetching() {
+  if (pg_sys_table_prefetcher_) {
+    DLOG(FATAL) << "Sys table prefetching was started already";
+  }
+  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher());
+}
+
+void PgApiImpl::StopSysTablePrefetching() {
+  if (!pg_sys_table_prefetcher_) {
+    DLOG(FATAL) << "Sys table prefetching was not started yet";
+  } else {
+    pg_sys_table_prefetcher_.reset();
+  }
+}
+
+void PgApiImpl::RegisterSysTableForPrefetching(
+  const PgObjectId& table_id, const PgObjectId& index_id) {
+  if (!pg_sys_table_prefetcher_) {
+    DLOG(FATAL) << "Sys table prefetching was not started yet";
+  } else {
+    pg_sys_table_prefetcher_->Register(table_id, index_id);
+  }
 }
 
 } // namespace pggate

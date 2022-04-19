@@ -314,7 +314,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
       int inserted = last_row_in_batch - first_row_in_batch;
 
-      const auto flush_status = session->FlushAndGetOpsErrors();
+      const auto flush_status = session->TEST_FlushAndGetOpsErrors();
       const auto& s = flush_status.status;
       if (PREDICT_FALSE(!s.ok())) {
         for (const auto& e : flush_status.errors) {
@@ -3423,7 +3423,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
     const auto partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
     docdb::KeyBytes encoded_doc_key;
     docdb::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
-        split_hash_code, std::vector<docdb::PrimitiveValue>());
+        split_hash_code, std::vector<docdb::KeyEntryValue>());
     req.set_split_encoded_key(encoded_doc_key.ToStringBuffer());
     req.set_split_partition_key(partition_key);
   }

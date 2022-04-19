@@ -62,7 +62,7 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time = ReadHybridTime::Max(),
-    const std::vector<PrimitiveValue>* projection = nullptr);
+    const std::vector<KeyEntryValue>* projection = nullptr);
 
 // This class reads SubDocument instances for a given table. The caller should initialize with
 // UpdateTableTombstoneTime and SetTableTtl, if applicable, before calling Get(). Instances
@@ -72,7 +72,9 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
 // modifying the provided IntentAwareIterator.
 class DocDBTableReader {
  public:
-  DocDBTableReader(IntentAwareIterator* iter, CoarseTimePoint deadline);
+  DocDBTableReader(
+      IntentAwareIterator* iter, CoarseTimePoint deadline,
+      std::reference_wrapper<const SchemaPackingStorage> schema_packing_storage);
 
   // Updates expiration/overwrite data based on table tombstone time. If the table is not a
   // colocated table as indicated by the provided root_doc_key, this method is a no-op.
@@ -90,7 +92,7 @@ class DocDBTableReader {
   // found, this method will seek back to the SubDocument root and attempt to grab the whole range
   // of data for root_doc_key, build this into result, and return doc_found accordingly.
   Result<bool> Get(
-      const Slice& root_doc_key, const std::vector<PrimitiveValue>* projection,
+      const Slice& root_doc_key, const std::vector<KeyEntryValue>* projection,
       SubDocument* result);
 
  private:

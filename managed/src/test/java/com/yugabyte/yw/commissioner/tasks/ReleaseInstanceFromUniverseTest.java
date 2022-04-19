@@ -78,6 +78,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
+    userIntent.provider = defaultProvider.uuid.toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = 3;

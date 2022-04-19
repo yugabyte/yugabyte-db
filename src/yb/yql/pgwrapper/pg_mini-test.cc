@@ -55,34 +55,36 @@
 
 using namespace std::literals;
 
-DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(rocksdb_use_logging_iterator);
+
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
+
+DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_int32(txn_max_apply_batch_records);
-DECLARE_int64(apply_intents_task_injected_delay_ms);
-DECLARE_uint64(max_clock_skew_usec);
-DECLARE_int64(db_write_buffer_size);
-DECLARE_bool(rocksdb_use_logging_iterator);
-DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(yb_num_shards_per_tserver);
-DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
-DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
-DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
-DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
-
-DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
-DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_int32(yb_num_shards_per_tserver);
 
+DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
+DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_filter_block_size_bytes);
 DECLARE_int64(db_index_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
 DECLARE_int64(tablet_force_split_threshold_bytes);
-DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
+DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 namespace pgwrapper {
@@ -134,6 +136,16 @@ std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type) {
 }
 
 YB_DEFINE_ENUM(TestStatement, (kInsert)(kDelete));
+
+Result<int64_t> GetCatalogVersion(PGConn* conn) {
+  return conn->FetchValue<int64_t>("SELECT current_version FROM pg_yb_catalog_version");
+}
+
+Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
+  const auto initial_version = VERIFY_RESULT(GetCatalogVersion(conn));
+  RETURN_NOT_OK(conn->Execute(ddl_query));
+  return initial_version != VERIFY_RESULT(GetCatalogVersion(conn));
+}
 
 } // namespace
 
@@ -1171,8 +1183,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
   }
 
   void TestInOperatorLock() {
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(conn.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
+    auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     ASSERT_OK(conn.Execute(
         "CREATE TABLE t (h INT, r1 INT, r2 INT, PRIMARY KEY(h, r1 ASC, r2 ASC))"));
     ASSERT_OK(conn.Execute(
@@ -1181,12 +1192,11 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     auto res = ASSERT_RESULT(conn.Fetch(
         "SELECT * FROM t WHERE h = 1 AND r1 IN (11, 12) AND r2 = 1 FOR KEY SHARE"));
 
-    auto extra_conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(extra_conn.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
     ASSERT_OK(extra_conn.Execute("ROLLBACK"));
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 13 AND r2 = 1"));
     ASSERT_OK(extra_conn.Execute("COMMIT"));
 
@@ -1196,19 +1206,36 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     res = ASSERT_RESULT(conn.Fetch(
         "SELECT * FROM t WHERE h IN (1, 2) AND r1 = 11 FOR KEY SHARE"));
 
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
     ASSERT_OK(extra_conn.Execute("ROLLBACK"));
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 11 AND r2 = 2"));
     ASSERT_OK(extra_conn.Execute("ROLLBACK"));
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 12 AND r2 = 2"));
     ASSERT_OK(extra_conn.Execute("COMMIT"));
 
     ASSERT_OK(conn.Execute("COMMIT;"));
     const auto count = ASSERT_RESULT(conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(4, count);
+  }
+
+  // Check that 2 rows with same PK can't be inserted from different txns.
+  void TestDuplicateInsert() {
+    DuplicateInsertImpl(IndexRequirement::NO, true /* low_pri_txn_insert_same_key */);
+  }
+
+  // Check that 2 rows with identical unique index can't be inserted from different txns.
+  void TestDuplicateUniqueIndexInsert() {
+    DuplicateInsertImpl(IndexRequirement::UNIQUE, false /* low_pri_txn_insert_same_key */);
+  }
+
+  // Check that 2 rows with identical non-unique index can be inserted from different txns.
+  void TestDuplicateNonUniqueIndexInsert() {
+    DuplicateInsertImpl(IndexRequirement::NON_UNIQUE,
+    false /* low_pri_txn_insert_same_key */,
+    true /* low_pri_txn_succeed */);
   }
 
   static Result<PGConn> SetHighPriTxn(Result<PGConn> connection) {
@@ -1236,6 +1263,39 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
   static Result<PGResultPtr> FetchInTxn(PGConn* connection, const std::string& query) {
     return TxnHelper<level>::FetchInTxn(connection, query);
+  }
+
+ private:
+  enum class IndexRequirement {
+    NO,
+    UNIQUE,
+    NON_UNIQUE
+  };
+
+  void DuplicateInsertImpl(
+    IndexRequirement index, bool low_pri_txn_insert_same_key, bool low_pri_txn_succeed = false) {
+    auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+    if (index != IndexRequirement::NO) {
+      ASSERT_OK(conn.Execute(Format("CREATE $0 INDEX ON t(v)",
+                                    index == IndexRequirement::UNIQUE ? "UNIQUE" : "")));
+    }
+    ASSERT_OK(StartTxn(&conn));
+    auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+    ASSERT_OK(StartTxn(&extra_conn));
+    ASSERT_OK(extra_conn.Execute(Format("INSERT INTO t VALUES($0, 10)",
+                                        low_pri_txn_insert_same_key ? "1" : "2")));
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 10)"));
+    ASSERT_OK(conn.Execute("COMMIT"));
+    const auto low_pri_txn_commit_status = extra_conn.Execute("COMMIT");
+    if (low_pri_txn_succeed) {
+      ASSERT_OK(low_pri_txn_commit_status);
+    } else {
+      ASSERT_NOK(low_pri_txn_commit_status);
+    }
+    const auto count = ASSERT_RESULT(
+      extra_conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t WHERE v = 10"));
+    ASSERT_EQ(low_pri_txn_succeed ? 2 : 1, count);
   }
 };
 
@@ -1367,6 +1427,70 @@ TEST_F_EX(PgMiniTest,
           YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshot),
           PgMiniTestTxnHelperSnapshot) {
   TestSameColumnUpdate();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateInsertSerializable),
+          PgMiniTestTxnHelperSerializable) {
+  TestDuplicateInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateInsertSnapshot),
+          PgMiniTestTxnHelperSnapshot) {
+  TestDuplicateInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateUniqueIndexInsertSerializable),
+          PgMiniTestTxnHelperSerializable) {
+  TestDuplicateUniqueIndexInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateUniqueIndexInsertSnapshot),
+          PgMiniTestTxnHelperSnapshot) {
+  TestDuplicateUniqueIndexInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertSerializable),
+          PgMiniTestTxnHelperSerializable) {
+  TestDuplicateNonUniqueIndexInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertSnapshot),
+          PgMiniTestTxnHelperSnapshot) {
+  TestDuplicateNonUniqueIndexInsert();
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentSingleRowUpdate)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, counter INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 0)"));
+  const size_t thread_count = 10;
+  const size_t increment_per_thread = 5;
+  {
+    CountDownLatch latch(thread_count);
+    TestThreadHolder thread_holder;
+    for (size_t i = 0; i < thread_count; ++i) {
+      thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &latch] {
+        auto thread_conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(thread_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+        latch.CountDown();
+        latch.Wait();
+        for (size_t j = 0; j < increment_per_thread; ++j) {
+          ASSERT_OK(thread_conn.Execute("UPDATE t SET counter = counter + 1 WHERE k = 1"));
+        }
+      });
+    }
+  }
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT counter FROM t WHERE k = 1"));
+  ASSERT_EQ(1, PQnfields(res.get()));
+  ASSERT_EQ(1, PQntuples(res.get()));
+  auto counter = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  ASSERT_EQ(thread_count * increment_per_thread, counter);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1991,7 +2115,7 @@ void PgMiniTest::TestBigInsert(bool restart) {
 
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       Slice key = iter->key();
-      ASSERT_FALSE(key.TryConsumeByte(docdb::ValueTypeAsChar::kTransactionApplyState))
+      ASSERT_FALSE(key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kTransactionApplyState))
           << "Key: " << iter->key().ToDebugString() << ", value: " << iter->value().ToDebugString();
     }
   }
@@ -2052,6 +2176,26 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumn)) 
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumnWithSelect)) {
   TestConcurrentDeleteRowAndUpdateColumn(/* select_before_update= */ true);
+}
+
+// The test checks catalog version is updated only in case of changes in sys catalog.
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CatalogVersionUpdateIfNeeded)) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto schema_ddl = "CREATE SCHEMA IF NOT EXISTS test";
+  const auto first_create_schema = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, schema_ddl));
+  ASSERT_TRUE(first_create_schema);
+  const auto second_create_schema = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, schema_ddl));
+  ASSERT_FALSE(second_create_schema);
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  const auto add_column_ddl = "ALTER TABLE t ADD COLUMN IF NOT EXISTS v INT";
+  const auto first_add_column = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, add_column_ddl));
+  ASSERT_TRUE(first_add_column);
+  const auto second_add_column = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, add_column_ddl));
+  ASSERT_FALSE(second_add_column);
 }
 
 // Test that we don't sequential restart read on the same table if intents were written

@@ -22,7 +22,7 @@ from ybops.cloud.common.ansible import AnsibleProcess
 from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
                          get_internal_datafile_path, get_ssh_host_port, remote_exec_command,
-                         scp_to_tmp)
+                         scp_to_tmp, wait_for_ssh)
 from ybops.utils.remote_shell import RemoteShell
 
 
@@ -41,6 +41,7 @@ class AbstractCloud(AbstractCommandParser):
     YSQLSH_CERT_DIR = os.path.join(YB_HOME_DIR, ".yugabytedb")
     ROOT_CERT_NAME = "ca.crt"
     ROOT_CERT_NEW_NAME = "ca_new.crt"
+    PRODUCER_CERTS_DIR_NAME = "yugabyte-tls-producer"
     CLIENT_ROOT_NAME = "root.crt"
     CLIENT_CERT_NAME = "yugabytedb.crt"
     CLIENT_KEY_NAME = "yugabytedb.key"
@@ -222,8 +223,6 @@ class AbstractCloud(AbstractCommandParser):
 
     def configure_secondary_interface(self, args, extra_vars, subnet_cidr):
         logging.info("[app] Configuring second NIC")
-        # Adding a wait just for safety.
-        self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern, extra_vars["ssh_port"])
         subnet_network, subnet_netmask = subnet_cidr.split('/')
         # Copy and run script to configure routes
         scp_to_tmp(
@@ -244,6 +243,13 @@ class AbstractCloud(AbstractCommandParser):
             extra_vars["ssh_host"], extra_vars["ssh_port"], extra_vars["ssh_user"],
             args.private_key_file, 'sudo reboot')
         self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern, extra_vars["ssh_port"])
+        # Make sure we can ssh into the node after the reboot as well.
+        if wait_for_ssh(extra_vars["ssh_host"], extra_vars["ssh_port"],
+                        extra_vars["ssh_user"], args.private_key_file, num_retries=120):
+            pass
+        else:
+            raise YBOpsRuntimeError("Could not ssh into node {}".format(extra_vars["ssh_host"]))
+
         # Verify that the command ran successfully:
         rc, stdout, stderr = remote_exec_command(extra_vars["ssh_host"], extra_vars["ssh_port"],
                                                  extra_vars["ssh_user"], args.private_key_file,
@@ -480,6 +486,59 @@ class AbstractCloud(AbstractCommandParser):
 
         # Reset the write permission as a sanity check.
         remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
+
+    def copy_xcluster_root_cert(
+            self,
+            ssh_options,
+            root_cert_path,
+            replication_config_name,
+            producer_certs_dir):
+        if producer_certs_dir is None:
+            producer_certs_dir = self.PRODUCER_CERTS_DIR_NAME
+        remote_shell = RemoteShell(ssh_options)
+        node_ip = ssh_options["ssh_host"]
+        src_root_cert_dir_path = os.path.join(producer_certs_dir, replication_config_name)
+        src_root_cert_path = os.path.join(src_root_cert_dir_path, self.ROOT_CERT_NAME)
+        logging.info("Moving server cert located at {} to {}:{}.".format(
+            root_cert_path, node_ip, src_root_cert_dir_path))
+
+        remote_shell.run_command('mkdir -p ' + src_root_cert_dir_path)
+        # Give write permissions. If the command fails, ignore.
+        remote_shell.run_command('chmod -f 666 {}/* || true'.format(src_root_cert_dir_path))
+        remote_shell.put_file(root_cert_path, src_root_cert_path)
+
+        # Reset the write permission as a sanity check.
+        remote_shell.run_command('chmod 400 {}/*'.format(src_root_cert_dir_path))
+
+    def remove_xcluster_root_cert(
+            self,
+            ssh_options,
+            replication_config_name,
+            producer_certs_dir):
+        def check_rm_result(rm_result):
+            if rm_result.exited and rm_result.stderr.find("No such file or directory") == -1:
+                raise YBOpsRuntimeError(
+                    "Remote shell command 'rm' failed with "
+                    "return code '{}' and error '{}'".format(rm_result.stderr.encode('utf-8'),
+                                                             rm_result.exited))
+
+        if producer_certs_dir is None:
+            producer_certs_dir = self.PRODUCER_CERTS_DIR_NAME
+        remote_shell = RemoteShell(ssh_options)
+        node_ip = ssh_options["ssh_host"]
+        src_root_cert_dir_path = os.path.join(producer_certs_dir, replication_config_name)
+        src_root_cert_path = os.path.join(src_root_cert_dir_path, self.ROOT_CERT_NAME)
+        logging.info("Removing server cert located at {} from server {}.".format(
+            src_root_cert_dir_path, node_ip))
+
+        remote_shell.run_command('chmod -f 666 {}/* || true'.format(src_root_cert_dir_path))
+        result = remote_shell.run_command_raw('rm ' + src_root_cert_path)
+        check_rm_result(result)
+        # Remove the directory only if it is empty.
+        result = remote_shell.run_command_raw('rm -d ' + src_root_cert_dir_path)
+        check_rm_result(result)
+        # No need to check the result of this command.
+        remote_shell.run_command_raw('rm -d ' + producer_certs_dir)
 
     def copy_client_certs(
             self,

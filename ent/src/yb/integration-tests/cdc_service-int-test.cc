@@ -238,7 +238,7 @@ void VerifyCdcStateMatches(client::YBClient* client,
   table.AddColumns({master::kCdcCheckpoint}, req);
 
   auto session = client->NewSession();
-  ASSERT_OK(session->ApplyAndFlush(op));
+  ASSERT_OK(session->TEST_ApplyAndFlush(op));
 
   LOG(INFO) << strings::Substitute("Verifying tablet: $0, stream: $1, op_id: $2",
       tablet_id, stream_id, OpId(term, index).ToString());
@@ -279,7 +279,7 @@ void VerifyStreamDeletedFromCdcState(client::YBClient* client,
   // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
   // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
   ASSERT_OK(WaitFor([&](){
-    EXPECT_OK(session->ApplyAndFlush(op));
+    EXPECT_OK(session->TEST_ApplyAndFlush(op));
     auto row_block = ql::RowsResult(op.get()).GetRowBlock();
     if (row_block->row_count() == 0) {
       return true;
@@ -446,7 +446,7 @@ TEST_P(CDCServiceTest, TestCompoundKey) {
     table.AddInt32ColumnValue(req, "val", i);
     session->Apply(op);
   }
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
 
   // Get CDC changes.
   GetChangesRequestPB change_req;
@@ -567,7 +567,7 @@ TEST_P(CDCServiceTest, TestSafeTime) {
   auto leader_tserver = GetLeaderForTablet(tablet_id)->server();
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   ASSERT_OK(leader_tserver->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
-  
+
   auto ht_0 = ASSERT_RESULT(tablet_peer->LeaderSafeTime()).ToUint64();
   ASSERT_NO_FATALS(WriteTestRow(0, 10, "key0", tablet_id, leader_tserver->proxy()));
   ASSERT_NO_FATALS(WriteTestRow(1, 11, "key0", tablet_id, leader_tserver->proxy()));
@@ -662,6 +662,14 @@ TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {
     return metrics->async_replication_sent_lag_micros->value() == 0 &&
         metrics->async_replication_committed_lag_micros->value() == 0;
   }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag = 0"));
+
+  // Now check that UpdateLagMetrics deletes the metric.
+  cdc_service->UpdateLagMetrics();
+  auto metrics = cdc_service->GetCDCTabletMetrics(
+      {"" /* UUID */, stream_id_, tablet_id},
+      /* tablet_peer */ nullptr,
+      CreateCDCMetricsEntity::kFalse);
+  ASSERT_EQ(metrics, nullptr);
 }
 
 
@@ -1913,7 +1921,7 @@ TEST_P(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
     QLAddStringRangeValue(delete_req, stream_id[i]);
     session->Apply(delete_op);
   }
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
   LOG(INFO) << "Successfully deleted all streams from cdc_state";
 
   SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs + 1));

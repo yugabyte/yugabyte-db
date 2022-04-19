@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -99,7 +100,11 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
 
         // Set gflags for master.
         createGFlagsOverrideTasks(
-            ImmutableList.of(currentNode), ServerType.MASTER, true /*isShell */);
+            ImmutableList.of(currentNode),
+            ServerType.MASTER,
+            true /*isShell */,
+            VmUpgradeTaskType.None,
+            false /*ignoreUseCustomImageConfig*/);
 
         // Start a master process.
         createStartMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))

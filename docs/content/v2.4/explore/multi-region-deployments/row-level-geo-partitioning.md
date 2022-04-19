@@ -15,7 +15,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/enable-authentication/ysql" class="nav-link active">
+    <a href="/preview/secure/enable-authentication/ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -23,7 +23,7 @@ showAsideToc: true
 </ul>
 
 
-Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the database level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics and transparently schema change propagation across the regions would benefit from this feature. 
+Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the database level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics and transparently schema change propagation across the regions would benefit from this feature.
 
 {{< tip title="" >}}
 Geo-partitioning makes it easy for developers to move data closer to users for:
@@ -33,7 +33,7 @@ Geo-partitioning makes it easy for developers to move data closer to users for:
 
 Geo-partitioning of data enables fine-grained, row-level control over the placement of table data across different geographical locations. This is accomplished in two simple steps – first, partitioning a table into user-defined table partitions, and subsequently pinning these partitions to the desired geographic locations by configuring metadata for each partition.
 
-* The first step of creating user-defined table partitions is done by designating a column of the table as the partition column that will be used to geo-partition the data. The value of this column for a given row is used to determine the table partition that the row belongs to. 
+* The first step of creating user-defined table partitions is done by designating a column of the table as the partition column that will be used to geo-partition the data. The value of this column for a given row is used to determine the table partition that the row belongs to.
 * The second step involves configuring the partitions created in step one to pin data to the respective geographic locations by setting the appropriate metadata. Note that the data in each partition can be configured to get replicated across multiple zones in a cloud provider region, or across multiple nearby regions / datacenters.
 
 An entirely new geographic partition can be introduced dynamically by adding a new table partition and configuring it to keep the data resident in the desired geographic location. Data in one or more of the existing geographic locations can be purged efficiently simply by dropping the necessary partitions. Users of traditional RDBMS would recognize this scheme as being close to user-defined list-based table partitions, with the ability to control the geographic location of each partition.
@@ -44,7 +44,7 @@ This tutorial explains this feature in the context of an example scenario descri
 
 ## Example scenario
 
-Let us look at this feature in the context of a use case. Say that a large but imaginary bank, Yuga Bank, wants to offer an online banking service to users in many countries by processing their deposits, withdrawals, and transfers. 
+Let us look at this feature in the context of a use case. Say that a large but imaginary bank, Yuga Bank, wants to offer an online banking service to users in many countries by processing their deposits, withdrawals, and transfers.
 
 The following attributes would be required in order to build such a service.
 
@@ -72,7 +72,7 @@ CREATE TABLE transactions (
     geo_partition VARCHAR,
     account_type VARCHAR NOT NULL,
     amount NUMERIC NOT NULL,
-    txn_type VARCHAR NOT NULL, 
+    txn_type VARCHAR NOT NULL,
     created_at TIMESTAMP DEFAULT NOW()
 ) PARTITION BY LIST (geo_partition);
 ```
@@ -81,23 +81,23 @@ Next, we create one partition per desired geography under the parent table. In t
 
 
 ```
-CREATE TABLE transactions_eu 
-    PARTITION OF transactions 
-      (user_id, account_id, geo_partition, account_type, 
+CREATE TABLE transactions_eu
+    PARTITION OF transactions
+      (user_id, account_id, geo_partition, account_type,
        amount, txn_type, created_at,
        PRIMARY KEY (user_id HASH, account_id, geo_partition))
     FOR VALUES IN ('EU');
 
-CREATE TABLE transactions_india 
+CREATE TABLE transactions_india
     PARTITION OF transactions
-      (user_id, account_id, geo_partition, account_type, 
+      (user_id, account_id, geo_partition, account_type,
        amount, txn_type, created_at,
        PRIMARY KEY (user_id HASH, account_id, geo_partition))
     FOR VALUES IN ('India');
 
-CREATE TABLE transactions_default 
+CREATE TABLE transactions_default
     PARTITION OF transactions
-      (user_id, account_id, geo_partition, account_type, 
+      (user_id, account_id, geo_partition, account_type,
        amount, txn_type, created_at,
        PRIMARY KEY (user_id HASH, account_id, geo_partition))
     DEFAULT;
@@ -166,7 +166,7 @@ Let us test this by inserting a few rows of data and verifying they are written 
 
 
 ```
-INSERT INTO transactions 
+INSERT INTO transactions
     VALUES (100, 10001, 'EU', 'checking', 120.50, 'debit');
 ```
 
@@ -226,9 +226,9 @@ Now, let us insert data into the other partitions.
 
 
 ```
-INSERT INTO transactions 
+INSERT INTO transactions
     VALUES (200, 20001, 'India', 'savings', 1000, 'credit');
-INSERT INTO transactions 
+INSERT INTO transactions
     VALUES (300, 30001, 'US', 'checking', 105.25, 'debit');
 ```
 
@@ -266,9 +266,9 @@ In order to make things interesting, let us say user 100, whose first transactio
 
 
 ```
-INSERT INTO transactions 
+INSERT INTO transactions
     VALUES (100, 10001, 'India', 'savings', 2000, 'credit');
-INSERT INTO transactions 
+INSERT INTO transactions
     VALUES (100, 10001, 'US', 'checking', 105, 'debit');
 ```
 
@@ -338,9 +338,9 @@ Assume that after a while, our fictitious Yuga Bank gets a lot of customers acro
 
 
 ```
-CREATE TABLE transactions_brazil 
+CREATE TABLE transactions_brazil
     PARTITION OF transactions
-      (user_id, account_id, geo_partition, account_type, 
+      (user_id, account_id, geo_partition, account_type,
        amount, txn_type, created_at,
        PRIMARY KEY (user_id HASH, account_id, geo_partition))
     FOR VALUES IN ('Brazil');
@@ -355,7 +355,7 @@ And with that, the new region is ready to store transactions of the residents of
 
 
 ```
-INSERT INTO transactions 
+INSERT INTO transactions
     VALUES (400, 40001, 'Brazil', 'savings', 1000, 'credit');
 
 yugabyte=# select * from transactions_brazil;

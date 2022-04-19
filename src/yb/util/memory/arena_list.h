@@ -17,12 +17,15 @@
 #include <boost/intrusive/list.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/memory/arena.h"
 
 namespace yb {
 
 template <class Entry>
-struct ArenaListNode : public boost::intrusive::list_base_hook<> {
+struct ArenaListNode : public boost::intrusive::list_base_hook<boost::intrusive::link_mode<
+    boost::intrusive::normal_link>> {
   Entry* value_ptr = nullptr;
 };
 
@@ -107,6 +110,14 @@ class ArenaList {
 
   void clear() {
     list_.clear();
+  }
+
+  void pop_back() {
+    list_.pop_back();
+  }
+
+  void pop_front() {
+    list_.pop_front();
   }
 
   iterator erase(iterator it) {

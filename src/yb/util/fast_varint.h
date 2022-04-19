@@ -95,12 +95,19 @@ CHECKED_STATUS FastDecodeDescendingSignedVarIntUnsafe(Slice *slice, int64_t *des
 Result<int64_t> FastDecodeDescendingSignedVarIntUnsafe(Slice* slice);
 
 size_t UnsignedVarIntLength(uint64_t v);
-void FastAppendUnsignedVarIntToStr(uint64_t v, std::string* dest);
-void FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest, size_t *size);
+size_t FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest);
 CHECKED_STATUS FastDecodeUnsignedVarInt(
     const uint8_t* src, size_t src_size, uint64_t* v, size_t* decoded_size);
 Result<uint64_t> FastDecodeUnsignedVarInt(Slice* slice);
 Result<uint64_t> FastDecodeUnsignedVarInt(const Slice& slice);
+
+template <class Out>
+inline void FastAppendUnsignedVarInt(uint64_t v, Out* dest) {
+  char buf[kMaxVarIntBufferSize];
+  size_t len = FastEncodeUnsignedVarInt(v, to_uchar_ptr(buf));
+  DCHECK_LE(len, kMaxVarIntBufferSize);
+  dest->append(buf, len);
+}
 
 }  // namespace util
 }  // namespace yb

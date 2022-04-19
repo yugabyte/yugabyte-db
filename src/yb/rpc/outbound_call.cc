@@ -193,15 +193,10 @@ OutboundCall::~OutboundCall() {
 }
 
 void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
-  if (status.ok()) {
-    // Even when call is already finished (timed out) we should notify connection that it was sent
-    // because it should expect response with appropriate id.
-    conn->CallSent(shared_from(this));
-  }
-
   if (IsFinished()) {
     LOG_IF_WITH_PREFIX(DFATAL, !IsTimedOut())
-        << "Transferred call is in wrong state: " << state_.load(std::memory_order_acquire);
+        << "Transferred call is in wrong state: " << state_.load(std::memory_order_acquire)
+        << ", status: " << this->status();
   } else if (status.ok()) {
     SetSent();
   } else {
@@ -509,12 +504,7 @@ bool OutboundCall::IsFinished() const {
 }
 
 Result<Slice> OutboundCall::GetSidecar(size_t idx) const {
-  auto ptr = VERIFY_RESULT(GetSidecarPtr(idx));
-  return Slice(ptr[0], ptr[1]);
-}
-
-Result<const uint8_t*const*> OutboundCall::GetSidecarPtr(size_t idx) const {
-  return call_response_.GetSidecarPtr(idx);
+  return call_response_.GetSidecar(idx);
 }
 
 Result<SidecarHolder> OutboundCall::GetSidecarHolder(size_t idx) const {
@@ -601,17 +591,16 @@ CallResponse::CallResponse()
     : parsed_(false) {
 }
 
-Result<const uint8_t*const*> CallResponse::GetSidecarPtr(size_t idx) const {
+Result<Slice> CallResponse::GetSidecar(size_t idx) const {
   DCHECK(parsed_);
   if (idx + 1 >= sidecar_bounds_.size()) {
     return STATUS_FORMAT(InvalidArgument, "Index $0 does not reference a valid sidecar", idx);
   }
-  return &sidecar_bounds_[idx];
+  return Slice(sidecar_bounds_[idx], sidecar_bounds_[idx + 1]);
 }
 
 Result<SidecarHolder> CallResponse::GetSidecarHolder(size_t idx) const {
-  auto bounds = VERIFY_RESULT(GetSidecarPtr(idx));
-  return SidecarHolder(response_data_.buffer(), Slice(bounds[0], bounds[1]));
+  return SidecarHolder(response_data_.buffer(), VERIFY_RESULT(GetSidecar(idx)));
 }
 
 Status CallResponse::ParseFrom(CallData* call_data) {

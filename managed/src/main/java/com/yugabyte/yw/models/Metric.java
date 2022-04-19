@@ -10,9 +10,11 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
@@ -89,5 +91,13 @@ public class Metric {
     this.labels = new HashMap<>(labels);
     this.keyLabels.clear();
     return this;
+  }
+
+  public Map<String, String> getKeyLabelValues() {
+    return labels
+        .entrySet()
+        .stream()
+        .filter(e -> keyLabels.contains(e.getKey()))
+        .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
   }
 }

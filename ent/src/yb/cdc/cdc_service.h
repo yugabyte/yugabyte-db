@@ -34,6 +34,8 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/service_util.h"
 
+#include <boost/optional.hpp>
+
 namespace yb {
 
 namespace client {
@@ -51,7 +53,9 @@ class TSTabletManager;
 namespace cdc {
 
 typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>
-    CDCServiceProxyMap;
+  CDCServiceProxyMap;
+
+YB_STRONGLY_TYPED_BOOL(CreateCDCMetricsEntity);
 
 static const char* const kRecordType = "record_type";
 static const char* const kRecordFormat = "record_format";
@@ -117,15 +121,30 @@ class CDCServiceImpl : public CDCServiceIf {
                           GetCDCDBStreamInfoResponsePB* resp,
                           rpc::RpcContext context) override;
 
+  CHECKED_STATUS UpdateCdcReplicatedIndexEntry(const string& tablet_id,
+                                               int64 replicated_index,
+                                               boost::optional<int64> replicated_term);
+
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
 
+  void IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
+                           IsBootstrapRequiredResponsePB* resp,
+                           rpc::RpcContext rpc) override;
+
   void Shutdown() override;
 
-  // Used in cdc_service-int-test.cc.
+  // Gets the associated metrics entity object stored in the additional metadata of the tablet.
+  // If the metrics object is not present, then create it if create == true (eg if we have just
+  // moved leaders) and not else (used to not recreate deleted metrics).
   std::shared_ptr<CDCTabletMetrics> GetCDCTabletMetrics(
       const ProducerTabletInfo& producer,
-      std::shared_ptr<tablet::TabletPeer> tablet_peer = nullptr);
+      std::shared_ptr<tablet::TabletPeer> tablet_peer = nullptr,
+      CreateCDCMetricsEntity create = CreateCDCMetricsEntity::kTrue);
+
+  void RemoveCDCTabletMetrics(
+      const ProducerTabletInfo& producer,
+      std::shared_ptr<tablet::TabletPeer> tablet_peer);
 
   void UpdateCDCTabletMetrics(const GetChangesResponsePB* resp,
                               const ProducerTabletInfo& producer_tablet,
@@ -141,6 +160,7 @@ class CDCServiceImpl : public CDCServiceIf {
   bool CDCEnabled();
 
  private:
+  FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);
   FRIEND_TEST(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure);
 
   class Impl;
@@ -196,6 +216,11 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
 
+  void TabletLeaderIsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
+                                       IsBootstrapRequiredResponsePB* resp,
+                                       rpc::RpcContext* context,
+                                       const std::shared_ptr<tablet::TabletPeer>& peer);
+
   Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);
   CHECKED_STATUS GetTServers(const TabletId& tablet_id,
@@ -214,6 +239,26 @@ class CDCServiceImpl : public CDCServiceIf {
 
   CHECKED_STATUS UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id, int64_t min_index,
                                                   int64_t min_term = -1);
+
+  // Used as a callback function for parallelizing async cdc rpc calls.
+  // Given a finished tasks counter, and the number of total rpc calls
+  // in flight, the callback will increment the counter when called, and
+  // set the promise to be fulfilled when all tasks have completed.
+  void XClusterAsyncPromiseCallback(std::promise<void>* const promise,
+                                    std::atomic<int>* const finished_tasks,
+                                    int total_tasks);
+
+  CHECKED_STATUS BootstrapProducerHelperParallelized(
+    const BootstrapProducerRequestPB* req,
+    BootstrapProducerResponsePB* resp,
+    std::vector<client::YBOperationPtr>* ops,
+    CDCCreationState* creation_state);
+
+  CHECKED_STATUS BootstrapProducerHelper(
+    const BootstrapProducerRequestPB* req,
+    BootstrapProducerResponsePB* resp,
+    std::vector<client::YBOperationPtr>* ops,
+    CDCCreationState* creation_state);
 
   void ComputeLagMetric(int64_t last_replicated_micros, int64_t metric_last_timestamp_micros,
                         int64_t cdc_state_last_replication_time_micros,

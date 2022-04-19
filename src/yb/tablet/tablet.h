@@ -515,7 +515,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return clock_;
   }
 
-  SchemaPtr GetSchema(const std::string& table_id = "") const override;
+  docdb::DocReadContextPtr GetDocReadContext(const std::string& table_id = "") const override;
 
   Schema GetKeySchema(const std::string& table_id = "") const;
 
@@ -678,6 +678,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return (val != additional_metadata_.end()) ? val->second : nullptr;
   }
 
+  size_t RemoveAdditionalMetadata(const std::string& key) {
+    std::lock_guard<std::mutex> lock(control_path_mutex_);
+    return additional_metadata_.erase(key);
+  }
+
   void InitRocksDBOptions(
       rocksdb::Options* options, const std::string& log_prefix,
       rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions());
@@ -819,6 +824,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void SyncRestoringOperationFilter(ResetSplit reset_split) EXCLUDES(operation_filters_mutex_);
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
+
+  const docdb::SchemaPackingStorage& PrimarySchemaPackingStorage();
 
   std::unique_ptr<const Schema> key_schema_;
 
@@ -967,6 +974,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   template <class F>
   auto GetRegularDbStat(const F& func, const decltype(func())& default_value) const;
+
+  Result<docdb::CompactionSchemaPacking> GetSchemaPacking(
+    const Uuid& uuid, uint32_t schema_version);
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 

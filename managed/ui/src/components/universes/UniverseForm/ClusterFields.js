@@ -98,6 +98,13 @@ const GP3_DEFAULT_DISK_THROUGHPUT = 125;
 const GP3_MAX_THROUGHPUT = 1000;
 const GP3_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
 
+const UltraSSD_DEFAULT_DISK_IOPS = 3000;
+const UltraSSD_DEFAULT_DISK_THROUGHPUT = 125;
+const UltraSSD_MIN_DISK_IOPS = 100;
+const UltraSSD_DISK_IOPS_MAX_PER_GB = 300;
+const UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
+const UltraSSD_DISK_THROUGHPUT_CAP = 2500;
+
 const initialState = {
   universeName: '',
   instanceTypeSelected: '',
@@ -139,6 +146,22 @@ const initialState = {
 };
 
 const portValidation = (value) => (value && value < 65536 ? undefined : 'Invalid Port');
+
+function getMinDiskIops(storageType, volumeSize) {
+  return storageType === 'UltraSSD_LRS' ?
+         Math.max(UltraSSD_MIN_DISK_IOPS, volumeSize) : 0;
+}
+
+function getMaxDiskIops(storageType, volumeSize) {
+  switch (storageType) {
+    case 'IO1':
+      return IO1_MAX_DISK_IOPS;
+    case 'UltraSSD_LRS':
+      return volumeSize * UltraSSD_DISK_IOPS_MAX_PER_GB;
+    default:
+      return GP3_MAX_IOPS;
+  }
+}
 
 export default class ClusterFields extends Component {
   constructor(props) {
@@ -710,7 +733,7 @@ export default class ClusterFields extends Component {
           setPlacementStatus(placementStatusObject);
         }
       }
-      this.configureUniverseNodeList();
+      this.configureUniverseNodeList(!_.isEqual(this.state.regionList, prevState.regionList));
     } else if (currentProvider && currentProvider.code === 'onprem') {
       toggleDisableSubmit(false);
       if (
@@ -764,7 +787,7 @@ export default class ClusterFields extends Component {
       this.props.handleHasFieldChanged(true);
     }
 
-    this.doAuthCheck();
+    this.doAuthAndVolumeSizeValidation();
   }
 
   numNodesChangedViaAzList(value) {
@@ -813,7 +836,9 @@ export default class ClusterFields extends Component {
       updateFormField(`${clusterType}.diskIops`, volumeDetail.diskIops);
       updateFormField(`${clusterType}.throughput`, volumeDetail.throughput);
       updateFormField(`${clusterType}.storageType`, deviceInfo.storageType);
+      updateFormField(`${clusterType}.storageClass`, deviceInfo.storageClass);
       updateFormField(`${clusterType}.mountPoints`, mountPoints);
+      this.initThroughputAndIops(deviceInfo);
       this.setState({ deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType });
     }
   }
@@ -828,6 +853,16 @@ export default class ClusterFields extends Component {
     const { updateFormField, clusterType } = this.props;
     const currentDeviceInfo = _.clone(this.state.deviceInfo);
     currentDeviceInfo.storageType = storageValue;
+    this.initThroughputAndIops(currentDeviceInfo);
+    if (storageValue === 'Scratch') {
+      this.setState({ gcpInstanceWithEphemeralStorage: true });
+    }
+    updateFormField(`${clusterType}.storageType`, storageValue);
+    this.setState({ deviceInfo: currentDeviceInfo });
+  }
+
+  initThroughputAndIops(currentDeviceInfo) {
+    const { updateFormField, clusterType } = this.props;
     if (currentDeviceInfo.storageType === 'IO1') {
       currentDeviceInfo.diskIops = IO1_DEFAULT_DISK_IOPS;
       currentDeviceInfo.throughput = null;
@@ -837,15 +872,15 @@ export default class ClusterFields extends Component {
       currentDeviceInfo.throughput = GP3_DEFAULT_DISK_THROUGHPUT;
       updateFormField(`${clusterType}.diskIops`, GP3_DEFAULT_DISK_IOPS);
       updateFormField(`${clusterType}.throughput`, GP3_DEFAULT_DISK_THROUGHPUT);
+    } else if (currentDeviceInfo.storageType === 'UltraSSD_LRS') {
+      currentDeviceInfo.diskIops = UltraSSD_DEFAULT_DISK_IOPS;
+      currentDeviceInfo.throughput = UltraSSD_DEFAULT_DISK_THROUGHPUT;
+      updateFormField(`${clusterType}.diskIops`, currentDeviceInfo.diskIops);
+      updateFormField(`${clusterType}.throughput`, currentDeviceInfo.throughput);
     } else {
       currentDeviceInfo.diskIops = null;
       currentDeviceInfo.throughput = null;
     }
-    if (storageValue === 'Scratch') {
-      this.setState({ gcpInstanceWithEphemeralStorage: true });
-    }
-    updateFormField(`${clusterType}.storageType`, storageValue);
-    this.setState({ deviceInfo: currentDeviceInfo });
   }
 
   numVolumesChanged(val) {
@@ -854,51 +889,93 @@ export default class ClusterFields extends Component {
     this.setState({ deviceInfo: { ...this.state.deviceInfo, numVolumes: val } });
   }
 
-  volumeSizeChanged(val) {
-    const { updateFormField, clusterType } = this.props;
-    updateFormField(`${clusterType}.volumeSize`, val);
-    this.setState({ deviceInfo: { ...this.state.deviceInfo, volumeSize: val } });
+  checkVolumeSizeRestrictions() {
+    const {
+      validateVolumeSizeUnchanged,
+      clusterType,
+      universe: { currentUniverse }
+    } = this.props;
+    const {
+      hasInstanceTypeChanged,
+      deviceInfo
+    } = this.state;
+
+    if (!validateVolumeSizeUnchanged ||
+        hasInstanceTypeChanged ||
+        isEmptyObject(currentUniverse.data) ||
+        isEmptyObject(currentUniverse.data.universeDetails)
+    ) {
+      return true;
+    }
+    const curCluster = getClusterByType(
+        currentUniverse.data.universeDetails.clusters,
+        clusterType
+    );
+    if (!isEmptyObject(curCluster) &&
+        Number(curCluster.userIntent.deviceInfo.volumeSize) !== Number(deviceInfo.volumeSize)
+    ) {
+      return false;
+    }
+    return true;
   }
 
-  setThroughputByIops(currentIops, currentThroughput) {
+  volumeSizeChanged(val) {
     const { updateFormField, clusterType } = this.props;
-    if (this.state.deviceInfo.storageType === 'GP3') {
+    const { deviceInfo: { storageType, diskIops } } = this.state;
+    updateFormField(`${clusterType}.volumeSize`, val);
+    this.setState({ deviceInfo: { ...this.state.deviceInfo, volumeSize: val } });
+    if (storageType === 'UltraSSD_LRS') {
+      this.diskIopsChanged(diskIops);
+    }
+  }
+
+  getThroughputByIops(currentIops, currentThroughput) {
+    const { deviceInfo: { storageType } } = this.state;
+    if (storageType === 'GP3') {
       if (
         (currentIops > GP3_DEFAULT_DISK_IOPS || currentThroughput > GP3_DEFAULT_DISK_THROUGHPUT) &&
         currentIops / currentThroughput < GP3_IOPS_TO_MAX_DISK_THROUGHPUT
       ) {
-        const newThroughput = Math.min(
+        return Math.min(
           GP3_MAX_THROUGHPUT,
           Math.max(currentIops / GP3_IOPS_TO_MAX_DISK_THROUGHPUT, GP3_DEFAULT_DISK_THROUGHPUT)
         );
-        updateFormField(`${clusterType}.throughput`, newThroughput);
-        this.setState({ deviceInfo: { ...this.state.deviceInfo, throughput: newThroughput } });
       }
+    } else
+    if (storageType === 'UltraSSD_LRS') {
+      const maxThroughput =
+          Math.min(currentIops / UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT, UltraSSD_DISK_THROUGHPUT_CAP);
+      return Math.max(0, Math.min(maxThroughput, currentThroughput));
     }
+
+    return currentThroughput;
   }
 
   diskIopsChanged(val) {
     const { updateFormField, clusterType } = this.props;
-    const maxDiskIops =
-      this.state.deviceInfo.storageType === 'IO1' ? IO1_MAX_DISK_IOPS : GP3_MAX_IOPS;
-    const actualVal = Math.max(0, Math.min(maxDiskIops, val));
+    const { deviceInfo: { storageType, volumeSize, throughput, diskIops } } = this.state;
+    const maxDiskIops = getMaxDiskIops(storageType, volumeSize);
+    const minDiskIops = getMinDiskIops(storageType, volumeSize);
+
+    const actualVal = Math.max(minDiskIops, Math.min(maxDiskIops, val));
     updateFormField(`${clusterType}.diskIops`, actualVal);
-    if (
-      this.state.deviceInfo.storageType === 'IO1' ||
-      this.state.deviceInfo.storageType === 'GP3'
-    ) {
-      this.setState({ deviceInfo: { ...this.state.deviceInfo, diskIops: actualVal } });
-      this.setThroughputByIops(actualVal, this.state.deviceInfo.throughput);
+    this.setState({ deviceInfo: { ...this.state.deviceInfo, diskIops: actualVal } });
+
+    if ((storageType === 'IO1'
+        || storageType === 'GP3'
+        || storageType === 'UltraSSD_LRS') && diskIops !== actualVal) {
+      //resetting throughput
+      this.throughputChanged(throughput);
     }
   }
 
   throughputChanged(val) {
     const { updateFormField, clusterType } = this.props;
-    updateFormField(`${clusterType}.throughput`, val);
-    if (this.state.deviceInfo.storageType === 'GP3') {
-      this.setState({ deviceInfo: { ...this.state.deviceInfo, throughput: val } });
-      this.setThroughputByIops(this.state.deviceInfo.diskIops, val);
-    }
+    const { deviceInfo: { diskIops } } = this.state;
+    var actualVal = this.getThroughputByIops(Number(diskIops), val);
+
+    updateFormField(`${clusterType}.throughput`, actualVal);
+    this.setState({ deviceInfo: { ...this.state.deviceInfo, throughput: actualVal } });
   }
 
   defaultRegionChanged(val) {
@@ -925,8 +1002,11 @@ export default class ClusterFields extends Component {
     }
   }
 
-  doAuthCheck() {
-    this.props.toggleDisableSubmit(!this.state.enableYSQL && !this.state.enableYCQL);
+  doAuthAndVolumeSizeValidation() {
+    const { toggleDisableSubmit } = this.props;
+    const { enableYSQL, enableYCQL } = this.state;
+    const authCheck = enableYSQL || enableYCQL;
+    toggleDisableSubmit(!authCheck || !this.checkVolumeSizeRestrictions());
   }
 
   updateFormFields(obj) {
@@ -1246,7 +1326,7 @@ export default class ClusterFields extends Component {
     }
   }
 
-  configureUniverseNodeList() {
+  configureUniverseNodeList(regionsChanged) {
     const {
       universe: { universeConfigTemplate, currentUniverse },
       formValues,
@@ -1298,10 +1378,10 @@ export default class ClusterFields extends Component {
       this.props.type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists);
     updateTaskParams(universeTaskParams, userIntent, clusterType, isEdit);
     universeTaskParams.userAZSelected = false;
+    universeTaskParams.regionsChanged = regionsChanged;
 
     const allowGeoPartitioning =
       featureFlags.test['enableGeoPartitioning'] || featureFlags.released['enableGeoPartitioning'];
-    console.log('####### allowGeoPartitioning: ' + allowGeoPartitioning);
     universeTaskParams.allowGeoPartitioning = allowGeoPartitioning;
 
     const cluster = getClusterByType(universeTaskParams.clusters, clusterType);
@@ -1424,7 +1504,6 @@ export default class ClusterFields extends Component {
     } = this.props;
 
     updateFormField(`${clusterType}.regionList`, value || []);
-
     this.setState({ nodeSetViaAZList: false, regionList: value || [] });
 
     const currentProvider = providers.data.find((a) => a.uuid === formValues[clusterType].provider);
@@ -1641,6 +1720,9 @@ export default class ClusterFields extends Component {
       if (isNonEmptyObject(currentCluster.storageType)) {
         deviceInfo['storageType'] = currentCluster.storageType;
       }
+      if (isNonEmptyObject(currentCluster.storageClass)) {
+        deviceInfo['storageClass'] = currentCluster.storageClass;
+      }
     }
 
     if (isNonEmptyObject(deviceInfo)) {
@@ -1666,7 +1748,9 @@ export default class ClusterFields extends Component {
           currentProvider.code !== 'gcp' &&
           currentProvider.code !== 'azu';
         const isProvisionalIOType =
-          deviceInfo.storageType === 'IO1' || deviceInfo.storageType === 'GP3';
+          deviceInfo.storageType === 'IO1' ||
+          deviceInfo.storageType === 'GP3' ||
+          deviceInfo.storageType === 'UltraSSD_LRS';
         if (isProvisionalIOType) {
           iopsField = (
             <Field
@@ -1678,7 +1762,9 @@ export default class ClusterFields extends Component {
             />
           );
         }
-        const isProvisionalThroughput = deviceInfo.storageType === 'GP3';
+        const isProvisionalThroughput =
+            deviceInfo.storageType === 'GP3' ||
+            deviceInfo.storageType === 'UltraSSD_LRS';
         if (isProvisionalThroughput) {
           throughputField = (
             <Field
@@ -1701,6 +1787,13 @@ export default class ClusterFields extends Component {
             />
           </span>
         );
+        const smartResizePossible =
+          isDefinedNotNull(currentProvider) &&
+          (currentProvider.code === 'aws' || currentProvider.code === 'gcp') &&
+          !this.state.awsInstanceWithEphemeralStorage &&
+          !this.state.gcpInstanceWithEphemeralStorage &&
+          clusterType !== 'async';
+
         const volumeSize = (
           <span className="volume-info-field volume-info-size">
             <Field
@@ -1709,7 +1802,7 @@ export default class ClusterFields extends Component {
               label="Volume Size"
               valueFormat={volumeTypeFormat}
               onInputChanged={self.volumeSizeChanged}
-              readOnly={fixedVolumeInfo || !hasInstanceTypeChanged}
+              readOnly={fixedVolumeInfo || (!hasInstanceTypeChanged && !smartResizePossible)}
             />
           </span>
         );
@@ -2498,6 +2591,13 @@ export default class ClusterFields extends Component {
                   </div>
                 </div>
               )}
+              {!this.checkVolumeSizeRestrictions() && (
+                <div className="has-error">
+                  <div className="help-block standard-error">
+                    Forbidden change. To perform smart resize only increase volume size
+                  </div>
+                </div>
+              )}
             </Col>
           </Row>
           <Row>
@@ -2519,7 +2619,7 @@ export default class ClusterFields extends Component {
           {currentProviderUUID && !this.state.enableYSQL && !this.state.enableYCQL && (
             <div className="has-error">
               <div className="help-block standard-error">
-                Enable atleast one endpoint among YSQL and YCQL
+                Enable at least one endpoint among YSQL and YCQL
               </div>
             </div>
           )}

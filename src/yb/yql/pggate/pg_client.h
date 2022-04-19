@@ -50,6 +50,11 @@ YB_STRONGLY_TYPED_BOOL(DdlMode);
 struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
+  rpc::CallResponsePtr response;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(status, catalog_read_time);
+  }
 };
 
 using PerformCallback = std::function<void(const PerformResult&)>;

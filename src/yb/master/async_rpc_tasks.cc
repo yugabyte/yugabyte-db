@@ -354,7 +354,8 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
   // Exponential backoff with jitter.
   int64_t base_delay_ms;
   if (attempt_ <= 12) {
-    base_delay_ms = 1 << (attempt_ + 3);  // 1st retry delayed 2^4 ms, 2nd 2^5, etc.
+    // 1st retry delayed 2^4 ms, 2nd 2^5, etc.
+    base_delay_ms = std::min(1 << (attempt_ + 3), max_delay_ms());
   } else {
     base_delay_ms = max_delay_ms();
   }
@@ -1340,9 +1341,10 @@ bool IsDefinitelyPermanentError(const Status& s) {
 // ============================================================================
 AsyncGetTabletSplitKey::AsyncGetTabletSplitKey(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-    DataCallbackType result_cb)
+    bool is_manual_split, DataCallbackType result_cb)
     : AsyncTabletLeaderTask(master, callback_pool, tablet), result_cb_(result_cb) {
   req_.set_tablet_id(tablet_id());
+  req_.set_is_manual_split(is_manual_split);
 }
 
 void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
@@ -1352,7 +1354,8 @@ void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
     LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
                              << ") failed for tablet " << tablet_id() << " with error code "
                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
-    if (IsDefinitelyPermanentError(s) || s.IsIllegalState()) {
+    if (IsDefinitelyPermanentError(s) ||
+        (s.IsIllegalState() && code != tserver::TabletServerErrorPB::NOT_THE_LEADER)) {
       // It can happen that tablet leader has completed post-split compaction after previous split,
       // but followers have not yet completed post-split compaction.
       // Catalog manager decides to split again and sends GetTabletSplitKey RPC, but tablet leader
@@ -1444,14 +1447,60 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
 }
 
 void AsyncSplitTablet::Finished(const Status& status) {
-  if (tablet_split_complete_handler_) {
+  // Also treat AlreadyPresent errors as an error, since we only want to run these post split
+  // operations once.
+  if (tablet_split_complete_handler_ && status.ok() && !resp_.has_error()) {
     SplitTabletIds split_tablet_ids {
       .source = req_.tablet_id(),
       .children = {req_.new_tablet1_id(), req_.new_tablet2_id()}
     };
-    tablet_split_complete_handler_->ProcessSplitTabletResult(
-        status, table_->id(), split_tablet_ids);
+    tablet_split_complete_handler_->ProcessSplitTabletResult(table_->id(), split_tablet_ids);
+  } else {
+    VLOG_WITH_PREFIX(1) << "Skipping processing of AsyncSplitTablet result for table "
+                        << table_->id() << ", tablet " << req_.tablet_id() << ".";
   }
+}
+
+AsyncTestRetry::AsyncTestRetry(
+    Master* master,
+    ThreadPool* callback_pool,
+    const TabletServerId& ts_uuid,
+    const int32_t num_retries,
+    StdStatusCallback callback)
+    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, /* table = */ nullptr),
+      num_retries_(num_retries),
+      callback_(std::move(callback)) {}
+
+string AsyncTestRetry::description() const {
+  return Format("$0 Test retry RPC", permanent_uuid());
+}
+
+TabletServerId AsyncTestRetry::permanent_uuid() const {
+  return permanent_uuid_;
+}
+
+void AsyncTestRetry::HandleResponse(int attempt) {
+  server::UpdateClock(resp_, master_->clock());
+
+  if (resp_.has_error()) {
+    Status status = StatusFromPB(resp_.error().status());
+
+    LOG(INFO) << "TEST: TS " << permanent_uuid() << ": test retry failed: " << status.ToString();
+    return;
+  }
+
+  callback_(Status::OK());
+  TransitionToCompleteState();
+}
+
+bool AsyncTestRetry::SendRequest(int attempt) {
+  tserver::TestRetryRequestPB req;
+  req.set_dest_uuid(permanent_uuid_);
+  req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  req.set_num_retries(num_retries_);
+
+  ts_admin_proxy_->TestRetryAsync(req, &resp_, &rpc_, BindRpcCallback());
+  return true;
 }
 
 }  // namespace master

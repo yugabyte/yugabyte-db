@@ -324,6 +324,16 @@ public class SessionController extends AbstractPlatformController {
             Http.Cookie.builder("userId", user.uuid.toString())
                 .withSecure(ctx().request().secure())
                 .build());
+    ctx().args.put("isAudited", true);
+    Audit.create(
+        user,
+        request().path(),
+        request().method(),
+        Audit.TargetType.User,
+        user.uuid.toString(),
+        Audit.ActionType.Login,
+        null,
+        null);
     return withData(sessionInfo);
   }
 
@@ -369,11 +379,21 @@ public class SessionController extends AbstractPlatformController {
               Http.Cookie.builder("userId", user.uuid.toString())
                   .withSecure(ctx().request().secure())
                   .build());
+      ctx().args.put("isAudited", true);
+      Audit.create(
+          user,
+          request().path(),
+          request().method(),
+          Audit.TargetType.User,
+          user.uuid.toString(),
+          Audit.ActionType.Login,
+          null,
+          null);
     }
     if (environment.isDev()) {
       return redirect("http://localhost:3000/");
     } else {
-      return redirect(appConfig.getString("yb.url", "/"));
+      return redirect("/");
     }
   }
 
@@ -406,6 +426,16 @@ public class SessionController extends AbstractPlatformController {
               Http.Cookie.builder(API_TOKEN, apiToken)
                   .withSecure(ctx().request().secure())
                   .build());
+      ctx().args.put("isAudited", true);
+      Audit.create(
+          user,
+          request().path(),
+          request().method(),
+          Audit.TargetType.User,
+          user.uuid.toString(),
+          Audit.ActionType.Login,
+          null,
+          null);
       return withData(sessionInfo);
     }
     throw new PlatformServiceException(UNAUTHORIZED, "Insecure login unavailable.");

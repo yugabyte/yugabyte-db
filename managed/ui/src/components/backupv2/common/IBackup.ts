@@ -18,10 +18,29 @@ export enum Backup_States {
   DELETE_IN_PROGRESS = 'DeleteInProgress',
   QUEUED_FOR_DELETION = 'QueuedForDeletion'
 }
+
+export const BACKUP_LABEL_MAP: Record<Backup_States, string> = {
+  InProgress: 'In progress',
+  Completed: 'Completed',
+  Failed: 'Backup failed',
+  Deleted: 'Deleted',
+  Skipped: 'Cancelled',
+  FailedToDelete: 'Deletion failed',
+  Stopped: 'Cancelled',
+  DeleteInProgress: 'Deleting',
+  QueuedForDeletion: 'Queued for deletion'
+};
+
 export enum TableType {
   YQL_TABLE_TYPE = 'YQL_TABLE_TYPE',
   REDIS_TABLE_TYPE = 'REDIS_TABLE_TYPE',
   PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE'
+}
+
+export const TABLE_TYPE_MAP: Record<TableType, string> = {
+  YQL_TABLE_TYPE: 'YCQL',
+  PGSQL_TABLE_TYPE: 'YSQL',
+  REDIS_TABLE_TYPE: 'REDIS'
 }
 
 export interface Keyspace_Table {
@@ -62,4 +81,32 @@ export interface TIME_RANGE_STATE {
   startTime: any;
   endTime: any;
   label: any;
+}
+
+export enum BACKUP_API_TYPES {
+  YSQL = 'PGSQL_TABLE_TYPE',
+  YCQL = 'YQL_TABLE_TYPE'
+}
+
+export interface IStorageConfig {
+  configUUID: string;
+  configName: string;
+  name: string;
+  data: {
+    BACKUP_LOCATION: string;
+  };
+  state: 'ACTIVE' | 'INACTIVE';
+  inUse: boolean;
+}
+
+export interface ITable {
+  tableName: string;
+  keySpace: string;
+  tableUUID: string;
+  tableType: BACKUP_API_TYPES;
+}
+
+export enum Backup_Options_Type {
+  ALL = 'all',
+  CUSTOM = 'custom'
 }

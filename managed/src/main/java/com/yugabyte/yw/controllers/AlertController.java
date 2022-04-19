@@ -155,6 +155,9 @@ public class AlertController extends AuthenticatedController {
     alertService.acknowledge(filter);
 
     Alert alert = alertService.getOrBadRequest(alertUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Alert, alertUUID.toString(), Audit.ActionType.Acknowledge);
     return PlatformResults.withData(alert);
   }
 
@@ -175,6 +178,14 @@ public class AlertController extends AuthenticatedController {
     AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
 
     alertService.acknowledge(filter);
+
+    String alertUUIDs = "";
+    for (UUID uuid : filter.getUuids()) {
+      alertUUIDs += uuid.toString() + " ";
+    }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Alert, alertUUIDs, Audit.ActionType.Acknowledge);
     return YBPSuccess.empty();
   }
 
@@ -416,7 +427,7 @@ public class AlertController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     AlertChannel channel = alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID);
     alertChannelService.delete(customerUUID, alertChannelUUID);
-    metricService.handleSourceRemoval(channel.getCustomerUUID(), alertChannelUUID);
+    metricService.markSourceRemoved(channel.getCustomerUUID(), alertChannelUUID);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),

@@ -106,12 +106,15 @@ class AzureCloud(AbstractCloud):
         nsg = args.security_group_id
         vnet = args.vpcId
         public_ip = args.assign_public_ip
+        disk_iops = args.disk_iops
+        disk_throughput = args.disk_throughput
         tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
         nicId = self.get_admin().create_or_update_nic(
             vmName, vnet, subnet, zone, nsg, region, public_ip, tags)
         self.get_admin().create_or_update_vm(vmName, zone, numVolumes, private_key_file, volSize,
                                              instanceType, adminSSH, nsg, image, volType,
-                                             args.type, region, nicId, tags)
+                                             args.type, region, nicId, tags, disk_iops,
+                                             disk_throughput)
         logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
 
     def destroy_instance(self, args):

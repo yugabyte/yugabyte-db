@@ -471,9 +471,9 @@ Result<size_t> TcpStream::Send(OutboundDataPtr data) {
   return result;
 }
 
-void TcpStream::Cancelled(size_t handle) {
+bool TcpStream::Cancelled(size_t handle) {
   if (handle < data_blocks_sent_) {
-    return;
+    return false;
   }
   handle -= data_blocks_sent_;
   LOG_IF_WITH_PREFIX(DFATAL, !sending_[handle].data->IsFinished())
@@ -481,11 +481,12 @@ void TcpStream::Cancelled(size_t handle) {
   auto& entry = sending_[handle];
   if (handle == 0 && send_position_ > 0) {
     // Transfer already started, cannot drop it.
-    return;
+    return false;
   }
 
   queued_bytes_to_send_ -= entry.bytes_size();
   entry.ClearBytes();
+  return true;
 }
 
 void TcpStream::DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) {

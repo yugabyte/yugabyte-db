@@ -44,22 +44,22 @@ namespace docdb {
 // A simple conversion from RedisDataTypes to ValueTypes
 // Note: May run into issues if we want to support ttl on individual set elements,
 // as they are represented by ValueType::kNullLow.
-ValueType ValueTypeFromRedisType(RedisDataType dt) {
+ValueEntryType ValueTypeFromRedisType(RedisDataType dt) {
   switch(dt) {
   case RedisDataType::REDIS_TYPE_STRING:
-    return ValueType::kString;
+    return ValueEntryType::kString;
   case RedisDataType::REDIS_TYPE_SET:
-    return ValueType::kRedisSet;
+    return ValueEntryType::kRedisSet;
   case RedisDataType::REDIS_TYPE_HASH:
-    return ValueType::kObject;
+    return ValueEntryType::kObject;
   case RedisDataType::REDIS_TYPE_SORTEDSET:
-    return ValueType::kRedisSortedSet;
+    return ValueEntryType::kRedisSortedSet;
   case RedisDataType::REDIS_TYPE_TIMESERIES:
-    return ValueType::kRedisTS;
+    return ValueEntryType::kRedisTS;
   case RedisDataType::REDIS_TYPE_LIST:
-    return ValueType::kRedisList;
+    return ValueEntryType::kRedisList;
   default:
-    return ValueType::kInvalid;
+    return ValueEntryType::kInvalid;
   }
 }
 
@@ -101,11 +101,11 @@ CHECKED_STATUS QLValueFromSubKey(const RedisKeyValueSubKeyPB &subkey_pb, QLValue
   return Status::OK();
 }
 
-CHECKED_STATUS PrimitiveValueFromSubKey(
-    const RedisKeyValueSubKeyPB &subkey_pb, PrimitiveValue *out) {
+CHECKED_STATUS KeyEntryValueFromSubKey(
+    const RedisKeyValueSubKeyPB &subkey_pb, KeyEntryValue *out) {
   QLValuePB value;
   RETURN_NOT_OK(QLValueFromSubKey(subkey_pb, &value));
-  *out = PrimitiveValue::FromQLValuePB(
+  *out = KeyEntryValue::FromQLValuePB(
       value,
       subkey_pb.subkey_case() == RedisKeyValueSubKeyPB::kTimestampSubkey ? SortingType::kDescending
                                                                          : SortingType::kAscending);
@@ -162,8 +162,8 @@ Result<RedisDataType> GetRedisValueType(
                                key_value_pb.subkey_size(), subkey_index);
     }
 
-    PrimitiveValue subkey_primitive;
-    RETURN_NOT_OK(PrimitiveValueFromSubKey(key_value_pb.subkey(subkey_index), &subkey_primitive));
+    KeyEntryValue subkey_primitive;
+    RETURN_NOT_OK(KeyEntryValueFromSubKey(key_value_pb.subkey(subkey_index), &subkey_primitive));
     encoded_subdoc_key = DocKey::EncodedFromRedisKey(key_value_pb.hash_code(), key_value_pb.key());
     subkey_primitive.AppendToKey(&encoded_subdoc_key);
   }
@@ -193,21 +193,21 @@ Result<RedisDataType> GetRedisValueType(
   }
 
   switch (doc.value_type()) {
-    case ValueType::kInvalid: FALLTHROUGH_INTENDED;
-    case ValueType::kTombstone:
+    case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kTombstone:
       return REDIS_TYPE_NONE;
-    case ValueType::kObject:
+    case ValueEntryType::kObject:
       return REDIS_TYPE_HASH;
-    case ValueType::kRedisSet:
+    case ValueEntryType::kRedisSet:
       return REDIS_TYPE_SET;
-    case ValueType::kRedisTS:
+    case ValueEntryType::kRedisTS:
       return REDIS_TYPE_TIMESERIES;
-    case ValueType::kRedisSortedSet:
+    case ValueEntryType::kRedisSortedSet:
       return REDIS_TYPE_SORTEDSET;
-    case ValueType::kRedisList:
+    case ValueEntryType::kRedisList:
       return REDIS_TYPE_LIST;
-    case ValueType::kNullLow: FALLTHROUGH_INTENDED; // This value is a set member.
-    case ValueType::kString:
+    case ValueEntryType::kNullLow: FALLTHROUGH_INTENDED; // This value is a set member.
+    case ValueEntryType::kString:
       return REDIS_TYPE_STRING;
     default:
       return STATUS_FORMAT(Corruption,
@@ -232,8 +232,8 @@ Result<RedisValue> GetRedisValue(
       return STATUS_SUBSTITUTE(Corruption,
                                "Expected at most one subkey, got $0", key_value_pb.subkey().size());
     }
-    PrimitiveValue subkey_primitive;
-    RETURN_NOT_OK(PrimitiveValueFromSubKey(
+    KeyEntryValue subkey_primitive;
+    RETURN_NOT_OK(KeyEntryValueFromSubKey(
         key_value_pb.subkey(subkey_index == kNilSubkeyIndex ? 0 : subkey_index),
         &subkey_primitive));
     subkey_primitive.AppendToKey(&encoded_doc_key);
@@ -261,15 +261,15 @@ Result<RedisValue> GetRedisValue(
 
   if (!doc.IsPrimitive()) {
     switch (doc.value_type()) {
-      case ValueType::kObject:
+      case ValueEntryType::kObject:
         return RedisValue{REDIS_TYPE_HASH};
-      case ValueType::kRedisTS:
+      case ValueEntryType::kRedisTS:
         return RedisValue{REDIS_TYPE_TIMESERIES};
-      case ValueType::kRedisSortedSet:
+      case ValueEntryType::kRedisSortedSet:
         return RedisValue{REDIS_TYPE_SORTEDSET};
-      case ValueType::kRedisSet:
+      case ValueEntryType::kRedisSet:
         return RedisValue{REDIS_TYPE_SET};
-      case ValueType::kRedisList:
+      case ValueEntryType::kRedisList:
         return RedisValue{REDIS_TYPE_LIST};
       default:
         return STATUS_SUBSTITUTE(IllegalState, "Invalid value type: $0",
@@ -307,8 +307,8 @@ bool VerifyTypeAndSetCode(
 }
 
 bool VerifyTypeAndSetCode(
-    const docdb::ValueType expected_type,
-    const docdb::ValueType actual_type,
+    const docdb::ValueEntryType expected_type,
+    const docdb::ValueEntryType actual_type,
     RedisResponsePB *response) {
   if (actual_type != expected_type) {
     response->set_code(RedisResponsePB::WRONG_TYPE);
@@ -322,62 +322,80 @@ bool VerifyTypeAndSetCode(
 CHECKED_STATUS AddPrimitiveValueToResponseArray(const PrimitiveValue& value,
                                                 RedisArrayPB* redis_array) {
   switch (value.value_type()) {
-    case ValueType::kString: FALLTHROUGH_INTENDED;
-    case ValueType::kStringDescending: {
+    case ValueEntryType::kString:
       redis_array->add_elements(value.GetString());
       return Status::OK();
-    }
-    case ValueType::kInt64: FALLTHROUGH_INTENDED;
-    case ValueType::kInt64Descending: {
+    case ValueEntryType::kInt64:
       redis_array->add_elements(std::to_string(value.GetInt64()));
       return Status::OK();
-    }
-    case ValueType::kDouble: FALLTHROUGH_INTENDED;
-    case ValueType::kDoubleDescending: {
+    case ValueEntryType::kDouble:
       redis_array->add_elements(std::to_string(value.GetDouble()));
       return Status::OK();
-    }
     default:
       return STATUS_SUBSTITUTE(InvalidArgument, "Invalid value type: $0",
                              static_cast<int>(value.value_type()));
   }
 }
 
-CHECKED_STATUS AddResponseValuesGeneric(const PrimitiveValue& first,
-                                        const PrimitiveValue& second,
-                                        RedisResponsePB* response,
-                                        bool add_keys,
-                                        bool add_values,
-                                        bool reverse = false) {
-  if (add_keys) {
-    RETURN_NOT_OK(AddPrimitiveValueToResponseArray(first, response->mutable_array_response()));
+CHECKED_STATUS AddPrimitiveValueToResponseArray(const KeyEntryValue& value,
+                                                RedisArrayPB* redis_array) {
+  switch (value.type()) {
+    case KeyEntryType::kString: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kStringDescending:
+      redis_array->add_elements(value.GetString());
+      return Status::OK();
+    case KeyEntryType::kInt64: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kInt64Descending:
+      redis_array->add_elements(std::to_string(value.GetInt64()));
+      return Status::OK();
+    case KeyEntryType::kDouble: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDoubleDescending:
+      redis_array->add_elements(std::to_string(value.GetDouble()));
+      return Status::OK();
+    default:
+      return STATUS_FORMAT(InvalidArgument, "Invalid value type: $0", value.type());
   }
-  if (add_values) {
-    RETURN_NOT_OK(AddPrimitiveValueToResponseArray(second, response->mutable_array_response()));
-  }
-  return Status::OK();
 }
+
+struct AddResponseValuesGeneric {
+  template <class Val1, class Val2>
+  CHECKED_STATUS operator()(const Val1& first,
+                            const Val2& second,
+                            RedisResponsePB* response,
+                            bool add_keys,
+                            bool add_values,
+                            bool reverse = false) {
+    if (add_keys) {
+      RETURN_NOT_OK(AddPrimitiveValueToResponseArray(first, response->mutable_array_response()));
+    }
+    if (add_values) {
+      RETURN_NOT_OK(AddPrimitiveValueToResponseArray(second, response->mutable_array_response()));
+    }
+    return Status::OK();
+  }
+};
 
 // Populate the response array for sorted sets range queries.
 // first refers to the score for the given values.
 // second refers to a subdocument where each key is a value with the given score.
-CHECKED_STATUS AddResponseValuesSortedSets(const PrimitiveValue& first,
+CHECKED_STATUS AddResponseValuesSortedSets(const KeyEntryValue& first,
                                            const SubDocument& second,
                                            RedisResponsePB* response,
                                            bool add_keys,
                                            bool add_values,
                                            bool reverse = false) {
+  AddResponseValuesGeneric add_response_values_generic;
   if (reverse) {
     for (auto it = second.object_container().rbegin();
          it != second.object_container().rend();
          it++) {
-      const PrimitiveValue& value = it->first;
-      RETURN_NOT_OK(AddResponseValuesGeneric(value, first, response, add_values, add_keys));
+      const auto& value = it->first;
+      RETURN_NOT_OK(add_response_values_generic(value, first, response, add_values, add_keys));
     }
   } else {
     for (const auto& kv : second.object_container()) {
-      const PrimitiveValue& value = kv.first;
-      RETURN_NOT_OK(AddResponseValuesGeneric(value, first, response, add_values, add_keys));
+      const auto& value = kv.first;
+      RETURN_NOT_OK(add_response_values_generic(value, first, response, add_values, add_keys));
     }
   }
   return Status::OK();
@@ -434,7 +452,7 @@ void SetOptionalInt(RedisDataType type, int64_t value, RedisResponsePB* response
 
 Result<int64_t> GetCardinality(IntentAwareIterator* iterator, const RedisKeyValuePB& kv) {
   auto encoded_key_card = DocKey::EncodedFromRedisKey(kv.hash_code(), kv.key());
-  PrimitiveValue(ValueType::kCounter).AppendToKey(&encoded_key_card);
+  KeyEntryValue(KeyEntryType::kCounter).AppendToKey(&encoded_key_card);
   SubDocument subdoc_card;
 
   bool subdoc_card_found = false;
@@ -451,7 +469,7 @@ CHECKED_STATUS GetAndPopulateResponseValues(
     IntentAwareIterator* iterator,
     AddResponseValues add_response_values,
     const GetRedisSubDocumentData& data,
-    ValueType expected_type,
+    ValueEntryType expected_type,
     const RedisReadRequestPB& request,
     RedisResponsePB* response,
     bool add_keys, bool add_values, bool reverse) {
@@ -611,7 +629,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
 
         ValueRef value_ref(kv_entries);
         if (kv.type() == REDIS_TYPE_TIMESERIES) {
-          value_ref.set_custom_value_type(ValueType::kRedisTS);
+          value_ref.set_custom_value_type(ValueEntryType::kRedisTS);
           value_ref.set_list_extend_order(ListExtendOrder::PREPEND);
         }
 
@@ -648,8 +666,8 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
         for (int i = 0; i < kv.subkey_size(); i++) {
           // Check whether the value is already in the document, if so delete it.
           SubDocKey key_reverse = SubDocKey(DocKey::FromRedisKey(kv.hash_code(), kv.key()),
-                                            PrimitiveValue(ValueType::kSSReverse),
-                                            PrimitiveValue(kv.value(i)));
+                                            KeyEntryValue(KeyEntryType::kSSReverse),
+                                            KeyEntryValue(kv.value(i)));
           SubDocument subdoc_reverse;
           bool subdoc_reverse_found = false;
           auto encoded_key_reverse = key_reverse.EncodeWithoutHt();
@@ -758,7 +776,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
 
         if (!kv_entries.map_value().keys().empty()) {
           ValueRef value(kv_entries);
-          value.set_custom_value_type(ValueType::kRedisSortedSet);
+          value.set_custom_value_type(ValueEntryType::kRedisSortedSet);
           if (data_type == REDIS_TYPE_NONE) {
             RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
                 doc_path, value, data.read_time, data.deadline, redis_query_id(), ttl));
@@ -875,8 +893,8 @@ Status RedisWriteOperation::ApplySetTtl(const DocOperationApplyData& data) {
       MonoDelta::FromMilliseconds(request_.set_ttl_request().ttl());
   }
 
-  ValueType v_type = ValueTypeFromRedisType(value.type);
-  if (v_type == ValueType::kInvalid) {
+  auto v_type = ValueTypeFromRedisType(value.type);
+  if (v_type == ValueEntryType::kInvalid) {
     return STATUS(Corruption, "Invalid value type.");
   }
 
@@ -1006,8 +1024,8 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
         SubDocument doc_reverse;
         bool doc_reverse_found = false;
         SubDocKey subdoc_key_reverse = SubDocKey(DocKey::FromRedisKey(kv.hash_code(), kv.key()),
-                                                 PrimitiveValue(ValueType::kSSReverse),
-                                                 PrimitiveValue(kv.subkey(i).string_subkey()));
+                                                 KeyEntryValue(KeyEntryType::kSSReverse),
+                                                 KeyEntryValue(kv.subkey(i).string_subkey()));
         // Todo(Rahul): Add values to the write batch cache and then do an additional check.
         // As of now, we only check to see if a value is in rocksdb, and we should also check
         // the write batch.
@@ -1018,7 +1036,7 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
             data.doc_write_batch->doc_db(),
             get_data, redis_query_id(), TransactionOperationContext(), data.deadline,
             data.read_time));
-        if (doc_reverse_found && doc_reverse.value_type() != ValueType::kTombstone) {
+        if (doc_reverse_found && doc_reverse.value_type() != ValueEntryType::kTombstone) {
           // The value is already in the doc, needs to be removed.
           values_reverse.mutable_keys()->Add()->set_string_value(kv.subkey(i).string_subkey());
           values_reverse.mutable_values()->Add()->set_virtual_value(QLVirtualValuePB::TOMBSTONE);
@@ -1214,7 +1232,7 @@ Status RedisWriteOperation::ApplyPush(const DocOperationApplyData& data) {
   if (request_.push_request().side() == REDIS_SIDE_LEFT) {
     value_ref.set_list_extend_order(ListExtendOrder::PREPEND);
   }
-  value_ref.set_custom_value_type(ValueType::kRedisList);
+  value_ref.set_custom_value_type(ValueEntryType::kRedisList);
   if (data_type == REDIS_TYPE_NONE) {
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
         DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()), value_ref,
@@ -1253,7 +1271,7 @@ Status RedisWriteOperation::ApplyPop(const DocOperationApplyData& data) {
 
   std::vector<std::string> value;
   {
-    ValueRef value_ref(ValueType::kTombstone);
+    ValueRef value_ref(ValueEntryType::kTombstone);
 
     if (request_.pop_request().side() == REDIS_SIDE_LEFT) {
       RETURN_NOT_OK(data.doc_write_batch->ReplaceRedisInList(doc_path, 1, value_ref,
@@ -1268,7 +1286,7 @@ Status RedisWriteOperation::ApplyPop(const DocOperationApplyData& data) {
   list.mutable_map_value()->mutable_keys()->Add()->set_virtual_value(QLVirtualValuePB::COUNTER);
   list.mutable_map_value()->mutable_values()->Add()->set_int64_value(--card);
   ValueRef value_ref(list);
-  value_ref.set_custom_value_type(ValueType::kRedisList);
+  value_ref.set_custom_value_type(ValueEntryType::kRedisList);
   RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
        doc_path, value_ref, data.read_time, data.deadline, redis_query_id()));
 
@@ -1316,7 +1334,7 @@ Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
   }
 
   ValueRef value_ref(set_entries);
-  value_ref.set_custom_value_type(ValueType::kRedisSet);
+  value_ref.set_custom_value_type(ValueEntryType::kRedisSet);
 
   Status s;
 
@@ -1390,7 +1408,7 @@ ssize_t ApplyIndex(ssize_t index, ssize_t len) {
 
 } // namespace
 
-Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
+Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueEntryType value_type,
                                                       bool add_keys,
                                                       bool add_values) {
   SubDocKey doc_key(
@@ -1404,8 +1422,8 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
   GetRedisSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
   data.deadline_info = deadline_info_.get_ptr();
 
-  bool has_cardinality_subkey = value_type == ValueType::kRedisSortedSet ||
-                                value_type == ValueType::kRedisList;
+  bool has_cardinality_subkey = value_type == ValueEntryType::kRedisSortedSet ||
+                                value_type == ValueEntryType::kRedisList;
   bool return_array_response = add_keys || add_values;
 
   if (has_cardinality_subkey) {
@@ -1428,7 +1446,7 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
 
   if (VerifyTypeAndSetCode(value_type, doc.value_type(), &response_)) {
     if (return_array_response) {
-      RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), AddResponseValuesGeneric,
+      RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), AddResponseValuesGeneric(),
                                          &response_, add_keys, add_values));
     } else {
       int64_t card = has_cardinality_subkey ?
@@ -1460,7 +1478,7 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
     // Return empty response.
     response_.set_code(RedisResponsePB::OK);
     RETURN_NOT_OK(PopulateResponseFrom(
-        SubDocument::ObjectContainer(), AddResponseValuesGeneric, &response_, /* add_keys */ true,
+        SubDocument::ObjectContainer(), AddResponseValuesGeneric(), &response_, /* add_keys */ true,
         /* add_values */ true));
     return Status::OK();
   }
@@ -1473,7 +1491,7 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
     }
     auto encoded_doc_key =
         DocKey::EncodedFromRedisKey(request_.key_value().hash_code(), request_.key_value().key());
-    PrimitiveValue(ValueType::kSSForward).AppendToKey(&encoded_doc_key);
+    KeyEntryValue(KeyEntryType::kSSForward).AppendToKey(&encoded_doc_key);
     double low_double = lower_bound.subkey_bound().double_subkey();
     double high_double = upper_bound.subkey_bound().double_subkey();
 
@@ -1483,13 +1501,13 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
     SliceKeyBound low_subkey;
     if (!lower_bound.has_infinity_type()) {
       low_sub_key_bound = encoded_doc_key;
-      PrimitiveValue::Double(low_double).AppendToKey(&low_sub_key_bound);
+      KeyEntryValue::Double(low_double).AppendToKey(&low_sub_key_bound);
       low_subkey = SliceKeyBound(low_sub_key_bound, LowerBound(lower_bound.is_exclusive()));
     }
     SliceKeyBound high_subkey;
     if (!upper_bound.has_infinity_type()) {
       high_sub_key_bound = encoded_doc_key;
-      PrimitiveValue::Double(high_double).AppendToKey(&high_sub_key_bound);
+      KeyEntryValue::Double(high_double).AppendToKey(&high_sub_key_bound);
       high_subkey = SliceKeyBound(high_sub_key_bound, UpperBound(upper_bound.is_exclusive()));
     }
 
@@ -1510,7 +1528,7 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
         // Return an empty response.
         response_.set_code(RedisResponsePB::OK);
         RETURN_NOT_OK(PopulateResponseFrom(
-            SubDocument::ObjectContainer(), AddResponseValuesGeneric, &response_,
+            SubDocument::ObjectContainer(), AddResponseValuesGeneric(), &response_,
             /* add_keys */ true, /* add_values */ true));
         return Status::OK();
       }
@@ -1524,7 +1542,7 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
       }
     }
     RETURN_NOT_OK(GetAndPopulateResponseValues(
-        iterator_.get(), AddResponseValuesSortedSets, data, ValueType::kObject, request_,
+        iterator_.get(), AddResponseValuesSortedSets, data, ValueEntryType::kObject, request_,
         &response_,
         /* add_keys */ add_keys, /* add_values */ true, /* reverse */ false));
   } else {
@@ -1540,13 +1558,13 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
     // Need to switch the order since we store the timestamps in descending order.
     if (!upper_bound.has_infinity_type()) {
       low_sub_key_bound = encoded_doc_key;
-      PrimitiveValue(high_timestamp, SortOrder::kDescending).AppendToKey(&low_sub_key_bound);
+      KeyEntryValue::Int64(high_timestamp, SortOrder::kDescending).AppendToKey(&low_sub_key_bound);
       low_subkey = SliceKeyBound(low_sub_key_bound, LowerBound(upper_bound.is_exclusive()));
     }
     SliceKeyBound high_subkey;
     if (!lower_bound.has_infinity_type()) {
       high_sub_key_bound = encoded_doc_key;
-      PrimitiveValue(low_timestamp, SortOrder::kDescending).AppendToKey(&high_sub_key_bound);
+      KeyEntryValue::Int64(low_timestamp, SortOrder::kDescending).AppendToKey(&high_sub_key_bound);
       high_subkey = SliceKeyBound(high_sub_key_bound, UpperBound(lower_bound.is_exclusive()));
     }
 
@@ -1563,8 +1581,8 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
       is_reverse = false;
     }
     RETURN_NOT_OK(GetAndPopulateResponseValues(
-        iterator_.get(), AddResponseValuesGeneric, data, ValueType::kRedisTS, request_, &response_,
-        /* add_keys */ true, /* add_values */ true, is_reverse));
+        iterator_.get(), AddResponseValuesGeneric(), data, ValueEntryType::kRedisTS, request_,
+        &response_, /* add_keys */ true, /* add_values */ true, is_reverse));
   }
   return Status::OK();
 }
@@ -1625,7 +1643,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
         // Return empty response.
         response_.set_code(RedisResponsePB::OK);
         RETURN_NOT_OK(PopulateResponseFrom(SubDocument::ObjectContainer(),
-                                           AddResponseValuesGeneric,
+                                           AddResponseValuesGeneric(),
                                            &response_, /* add_keys */
                                            true, /* add_values */
                                            true));
@@ -1633,7 +1651,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
       }
       auto encoded_doc_key = DocKey::EncodedFromRedisKey(
           request_.key_value().hash_code(), request_.key_value().key());
-      PrimitiveValue(ValueType::kSSForward).AppendToKey(&encoded_doc_key);
+      KeyEntryValue(KeyEntryType::kSSForward).AppendToKey(&encoded_doc_key);
 
       bool add_keys = request_.get_collection_range_request().with_scores();
 
@@ -1648,7 +1666,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
       data.high_index = &high_bound;
 
       RETURN_NOT_OK(GetAndPopulateResponseValues(
-          iterator_.get(), AddResponseValuesSortedSets, data, ValueType::kObject, request_,
+          iterator_.get(), AddResponseValuesSortedSets, data, ValueEntryType::kObject, request_,
           &response_, add_keys, /* add_values */ true, reverse));
       break;
     }
@@ -1689,9 +1707,9 @@ Result<boost::optional<Expiration>> GetTtl(
     return boost::none;
   auto key_data = VERIFY_RESULT(iter->FetchKey());
   if (!key_data.key.compare(key_slice)) {
-    Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
+    Value doc_value = Value(PrimitiveValue(ValueEntryType::kInvalid));
     RETURN_NOT_OK(doc_value.Decode(iter->value()));
-    if (doc_value.value_type() != ValueType::kTombstone) {
+    if (doc_value.value_type() != ValueEntryType::kTombstone) {
       return Expiration(key_data.write_time.hybrid_time(), doc_value.ttl());
     }
   }
@@ -1836,8 +1854,8 @@ Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
       }
       SubDocKey key_reverse = SubDocKey(
           DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()),
-          PrimitiveValue(ValueType::kSSReverse),
-          PrimitiveValue(request_.key_value().subkey(0).string_subkey()));
+          KeyEntryValue(KeyEntryType::kSSReverse),
+          KeyEntryValue(request_.key_value().subkey(0).string_subkey()));
       SubDocument subdoc_reverse;
       bool subdoc_reverse_found = false;
       auto encoded_key_reverse = key_reverse.EncodeWithoutHt();
@@ -1921,23 +1939,23 @@ Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
       return Status::OK();
     }
     case RedisGetRequestPB::HGETALL:
-      return ExecuteHGetAllLikeCommands(ValueType::kObject, true, true);
+      return ExecuteHGetAllLikeCommands(ValueEntryType::kObject, true, true);
     case RedisGetRequestPB::HKEYS:
-      return ExecuteHGetAllLikeCommands(ValueType::kObject, true, false);
+      return ExecuteHGetAllLikeCommands(ValueEntryType::kObject, true, false);
     case RedisGetRequestPB::HVALS:
-      return ExecuteHGetAllLikeCommands(ValueType::kObject, false, true);
+      return ExecuteHGetAllLikeCommands(ValueEntryType::kObject, false, true);
     case RedisGetRequestPB::HLEN:
-      return ExecuteHGetAllLikeCommands(ValueType::kObject, false, false);
+      return ExecuteHGetAllLikeCommands(ValueEntryType::kObject, false, false);
     case RedisGetRequestPB::SMEMBERS:
-      return ExecuteHGetAllLikeCommands(ValueType::kRedisSet, true, false);
+      return ExecuteHGetAllLikeCommands(ValueEntryType::kRedisSet, true, false);
     case RedisGetRequestPB::SCARD:
-      return ExecuteHGetAllLikeCommands(ValueType::kRedisSet, false, false);
+      return ExecuteHGetAllLikeCommands(ValueEntryType::kRedisSet, false, false);
     case RedisGetRequestPB::TSCARD:
-      return ExecuteHGetAllLikeCommands(ValueType::kRedisTS, false, false);
+      return ExecuteHGetAllLikeCommands(ValueEntryType::kRedisTS, false, false);
     case RedisGetRequestPB::ZCARD:
-      return ExecuteHGetAllLikeCommands(ValueType::kRedisSortedSet, false, false);
+      return ExecuteHGetAllLikeCommands(ValueEntryType::kRedisSortedSet, false, false);
     case RedisGetRequestPB::LLEN:
-      return ExecuteHGetAllLikeCommands(ValueType::kRedisList, false, false);
+      return ExecuteHGetAllLikeCommands(ValueEntryType::kRedisList, false, false);
     case RedisGetRequestPB::UNKNOWN: {
       return STATUS(InvalidCommand, "Unknown Get Request not supported");
     }
@@ -2018,7 +2036,7 @@ Status RedisReadOperation::ExecuteKeys() {
 
     DocKey doc_key;
     RETURN_NOT_OK(doc_key.FullyDecodeFrom(key));
-    const PrimitiveValue& key_primitive = doc_key.hashed_group().front();
+    const auto& key_primitive = doc_key.hashed_group().front();
     if (!key_primitive.IsString() ||
         !RedisPatternMatch(request_.keys_request().pattern(),
                            key_primitive.GetString(),

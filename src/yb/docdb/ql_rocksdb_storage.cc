@@ -17,6 +17,7 @@
 #include "yb/common/ql_protocol.pb.h"
 
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/primitive_value_util.h"
@@ -32,17 +33,17 @@ QLRocksDBStorage::QLRocksDBStorage(const DocDB& doc_db)
 
 //--------------------------------------------------------------------------------------------------
 
-Status QLRocksDBStorage::GetIterator(const QLReadRequestPB& request,
-                                     const Schema& projection,
-                                     const Schema& schema,
-                                     const TransactionOperationContext& txn_op_context,
-                                     CoarseTimePoint deadline,
-                                     const ReadHybridTime& read_time,
-                                     const QLScanSpec& spec,
-                                     std::unique_ptr<YQLRowwiseIteratorIf> *iter) const {
-
+Status QLRocksDBStorage::GetIterator(
+    const QLReadRequestPB& request,
+    const Schema& projection,
+    std::reference_wrapper<const DocReadContext> doc_read_context,
+    const TransactionOperationContext& txn_op_context,
+    CoarseTimePoint deadline,
+    const ReadHybridTime& read_time,
+    const QLScanSpec& spec,
+    std::unique_ptr<YQLRowwiseIteratorIf> *iter) const {
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, schema, txn_op_context, doc_db_, deadline, read_time);
+      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time);
   RETURN_NOT_OK(doc_iter->Init(spec));
   *iter = std::move(doc_iter);
   return Status::OK();
@@ -61,7 +62,7 @@ Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
   auto max_hash_code = request.has_max_hash_code() ?
       boost::make_optional<int32_t>(request.max_hash_code()) : boost::none;
 
-  vector<PrimitiveValue> hashed_components;
+  vector<KeyEntryValue> hashed_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       request.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
@@ -101,14 +102,15 @@ Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
 
 //--------------------------------------------------------------------------------------------------
 
-Status QLRocksDBStorage::CreateIterator(const Schema& projection,
-                                        const Schema& schema,
-                                        const TransactionOperationContext& txn_op_context,
-                                        CoarseTimePoint deadline,
-                                        const ReadHybridTime& read_time,
-                                        YQLRowwiseIteratorIf::UniPtr* iter) const {
+Status QLRocksDBStorage::CreateIterator(
+    const Schema& projection,
+    std::reference_wrapper<const DocReadContext> doc_read_context,
+    const TransactionOperationContext& txn_op_context,
+    CoarseTimePoint deadline,
+    const ReadHybridTime& read_time,
+    YQLRowwiseIteratorIf::UniPtr* iter) const {
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, schema, txn_op_context, doc_db_, deadline, read_time);
+      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time);
   *iter = std::move(doc_iter);
   return Status::OK();
 }
@@ -125,31 +127,35 @@ Status QLRocksDBStorage::InitIterator(YQLRowwiseIteratorIf* iter,
   return Status::OK();
 }
 
-Status QLRocksDBStorage::GetIterator(uint64 stmt_id,
-                                     const Schema& projection,
-                                     const Schema& schema,
-                                     const TransactionOperationContext& txn_op_context,
-                                     CoarseTimePoint deadline,
-                                     const ReadHybridTime& read_time,
-                                     const QLValuePB& ybctid,
-                                     YQLRowwiseIteratorIf::UniPtr* iter) const {
-  DocKey range_doc_key(schema);
+Status QLRocksDBStorage::GetIterator(
+    uint64 stmt_id,
+    const Schema& projection,
+    std::reference_wrapper<const DocReadContext> doc_read_context,
+    const TransactionOperationContext& txn_op_context,
+    CoarseTimePoint deadline,
+    const ReadHybridTime& read_time,
+    const QLValuePB& ybctid,
+    YQLRowwiseIteratorIf::UniPtr* iter) const {
+  DocKey range_doc_key(doc_read_context.get().schema);
   RETURN_NOT_OK(range_doc_key.DecodeFrom(ybctid.binary_value()));
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, schema, txn_op_context, doc_db_, deadline, read_time);
-  RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(schema, stmt_id, range_doc_key)));
+      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time);
+  RETURN_NOT_OK(doc_iter->Init(
+      DocPgsqlScanSpec(doc_read_context.get().schema, stmt_id, range_doc_key)));
   *iter = std::move(doc_iter);
   return Status::OK();
 }
 
-Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
-                                     const Schema& projection,
-                                     const Schema& schema,
-                                     const TransactionOperationContext& txn_op_context,
-                                     CoarseTimePoint deadline,
-                                     const ReadHybridTime& read_time,
-                                     const DocKey& start_doc_key,
-                                     YQLRowwiseIteratorIf::UniPtr* iter) const {
+Status QLRocksDBStorage::GetIterator(
+    const PgsqlReadRequestPB& request,
+    const Schema& projection,
+    std::reference_wrapper<const DocReadContext> doc_read_context,
+    const TransactionOperationContext& txn_op_context,
+    CoarseTimePoint deadline,
+    const ReadHybridTime& read_time,
+    const DocKey& start_doc_key,
+    YQLRowwiseIteratorIf::UniPtr* iter) const {
+  const auto& schema = doc_read_context.get().schema;
   // Populate dockey from QL key columns.
   auto hashed_components = VERIFY_RESULT(InitKeyColumnPrimitiveValues(
       request.partition_column_values(), schema, 0 /* start_idx */));
@@ -158,8 +164,7 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
       request.range_column_values(), schema, schema.num_hash_key_columns()));
 
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, schema, txn_op_context, doc_db_, deadline, read_time);
-
+      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time);
 
   if (range_components.size() == schema.num_range_key_columns()) {
     // Construct the scan spec basing on the RANGE condition as all range columns are specified.
@@ -183,30 +188,26 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
     // Construct the scan spec basing on the HASH condition.
 
     DocKey lower_doc_key(schema);
-    if (request.has_lower_bound()
-        && schema.num_hash_key_columns() == 0) {
+    if (request.has_lower_bound() && schema.num_hash_key_columns() == 0) {
         Slice lower_key_slice = request.lower_bound().key();
         RETURN_NOT_OK(lower_doc_key.DecodeFrom(&lower_key_slice,
                             DocKeyPart::kWholeDocKey,
                             AllowSpecial::kTrue));
         if (request.lower_bound().has_is_inclusive()
             && !request.lower_bound().is_inclusive()) {
-            lower_doc_key.AddRangeComponent(
-                PrimitiveValue(docdb::ValueType::kHighest));
+            lower_doc_key.AddRangeComponent(KeyEntryValue(KeyEntryType::kHighest));
         }
     }
 
     DocKey upper_doc_key(schema);
-    if (request.has_upper_bound()
-        && schema.num_hash_key_columns() == 0) {
+    if (request.has_upper_bound() && schema.num_hash_key_columns() == 0) {
         Slice upper_key_slice = request.upper_bound().key();
         RETURN_NOT_OK(upper_doc_key.DecodeFrom(&upper_key_slice,
                             DocKeyPart::kWholeDocKey,
                             AllowSpecial::kTrue));
         if (request.upper_bound().has_is_inclusive()
             && request.upper_bound().is_inclusive()) {
-            upper_doc_key.AddRangeComponent(
-                PrimitiveValue(docdb::ValueType::kHighest));
+            upper_doc_key.AddRangeComponent(KeyEntryValue(KeyEntryType::kHighest));
         }
     }
 

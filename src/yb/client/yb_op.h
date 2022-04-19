@@ -137,10 +137,6 @@ class YBOperation {
   // Returns the partition key of the operation.
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const = 0;
 
-  // Returns whether this operation is being performed on a table where distributed transactions
-  // are enabled.
-  virtual bool IsTransactional() const;
-
   // Whether this is an operation on one of the YSQL system catalog tables.
   bool IsYsqlCatalogOp() const;
 
@@ -484,8 +480,6 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
 
   void SetHashCode(uint16_t hash_code) override;
 
-  bool IsTransactional() const override;
-
   void set_is_single_row_txn(bool is_single_row_txn) {
     is_single_row_txn_ = is_single_row_txn;
   }
@@ -589,20 +583,22 @@ class YBNoOp {
 
 CHECKED_STATUS InitPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema,
-    const std::string& last_partition, PgsqlReadRequestPB* request);
+    const std::string& last_partition, LWPgsqlReadRequestPB* request);
 
 CHECKED_STATUS InitPartitionKey(
-    const Schema& schema, const PartitionSchema& partition_schema, PgsqlWriteRequestPB* request);
-
-Result<std::vector<docdb::PrimitiveValue>> GetRangeComponents(
-    const Schema& schema, const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& range_cols,
-    bool lower_bound);
+    const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request);
 
 CHECKED_STATUS GetRangePartitionBounds(
     const Schema& schema,
     const PgsqlReadRequestPB& request,
-    std::vector<docdb::PrimitiveValue>* lower_bound,
-    std::vector<docdb::PrimitiveValue>* upper_bound);
+    std::vector<docdb::KeyEntryValue>* lower_bound,
+    std::vector<docdb::KeyEntryValue>* upper_bound);
+
+CHECKED_STATUS GetRangePartitionBounds(
+    const Schema& schema,
+    const LWPgsqlReadRequestPB& request,
+    std::vector<docdb::KeyEntryValue>* lower_bound,
+    std::vector<docdb::KeyEntryValue>* upper_bound);
 
 }  // namespace client
 }  // namespace yb

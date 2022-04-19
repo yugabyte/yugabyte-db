@@ -44,13 +44,19 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
   // Perform one round of tablet splitting. This method is not thread-safe.
   void MaybeDoSplitting(const TableInfoMap& table_info_map);
 
-  void ProcessSplitTabletResult(const Status& status,
-                                const TableId& split_table_id,
+  void ProcessSplitTabletResult(const TableId& split_table_id,
                                 const SplitTabletIds& split_tablet_ids);
 
-  CHECKED_STATUS ValidateSplitCandidateTable(const TableInfo& table);
+  // Validate whether a candidate table is eligible for a split.
+  // Any temporarily disabled tablets are assumed ineligible by default.
+  CHECKED_STATUS ValidateSplitCandidateTable(
+      const TableInfo& table, bool ignore_disabled_list = false);
 
-  CHECKED_STATUS ValidateSplitCandidateTablet(const TabletInfo& tablet);
+  // Validate whether a candidate tablet is eligible for a split.
+  // Any tablets with default TTL and a max file size for compaction limit are assumed
+  // ineligible by default.
+  CHECKED_STATUS ValidateSplitCandidateTablet(
+      const TabletInfo& tablet, bool ignore_ttl_validation = false);
 
   void MarkTtlTableForSplitIgnore(const TableId& table_id);
 
