@@ -21,7 +21,7 @@ You can configure Amazon S3 as your backup target, as follows:
 
 2. Click **Create S3 Backup** to access the configuration form shown in the following illustration:<br><br>
 
-   ![AWS Backup](/images/yp/cloud-provider-configuration-backup-aws.png)<br><br>
+   ![S3 Backup](/images/yp/cloud-provider-configuration-backup-aws.png)<br><br>
 
 3. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
 
@@ -38,7 +38,7 @@ You can configure Amazon S3 as your backup target, as follows:
 You can configure access control for the S3 bucket as follows:
 
 - Provide the required access control list (ACL), and then define **List, Write** permissions to access **Objects**, as well as **Read, Write** permissions for the bucket, as shown in the following illustration: <br><br>
-  ![img](/images/yp/backup-aws-access-control.png)
+  ![S3](/images/yp/backup-aws-access-control.png)
 - Create Bucket policy to enable access to the objects stored in the bucket.
 
 ## Network File System
@@ -49,7 +49,7 @@ You can configure Network File System (NFS) as your backup target, as follows:
 
 2. Click **Create NFS Backup** to access the configuration form shown in the following illustration:<br><br><br>
 
-   ![NFS Cloud Provider Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)<br><br>
+   ![NFS Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)<br><br>
 
 3. Use the **Configuration Name** field to provide a meaning name for you backup configuration.
 
@@ -65,7 +65,7 @@ You can configure Google Cloud Storage (GCS) as your backup target, as follows:
 
 2. Click **Create GCS Backup** to access the configuration form shown in the following illustration:<br><br><br>
 
-   ![GCS Cloud Provider Configuration](/images/yp/cloud-provider-configuration-backup-gcs.png)<br><br>
+   ![GCS Configuration](/images/yp/cloud-provider-configuration-backup-gcs.png)<br><br>
 
 3. Use the **Configuration Name** field to provide a meaning name for you backup configuration.
 
@@ -75,7 +75,7 @@ You can configure Google Cloud Storage (GCS) as your backup target, as follows:
 
 5. Click **Save**.
 
-You can configure access control for the S3 bucket as follows:
+You can configure access control for the GCS bucket as follows:
 
 - Provide the required access control list (ACL) and set it as either uniform or fine-grained (for object-level access).
 - Add permissions, such as roles and members.
@@ -131,7 +131,7 @@ You can configure Azure as your backup target, as follows:
     * Navigate to **Configs** > **Backup** > **Azure Storage**.
     * Click **Create AZ Backup** to access the configuration form shown in the following illustration:<br><br><br>
 
-    ![GCS Cloud Provider Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)<br><br>
+    ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)<br><br>
     
     * Use the **Configuration Name** field to provide a meaning name for you backup configuration.
     * Enter values for the **Container URL** and **SAS Token** fields, and then click **Save**.
