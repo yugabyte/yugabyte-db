@@ -605,6 +605,8 @@ class CatalogManager :
                                          const TSDescriptorVector& ts_descs,
                                          ValidateReplicationInfoResponsePB* resp);
 
+  CHECKED_STATUS CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info) const;
+
   // Loops through the table's placement infos and populates the corresponding config from
   // each placement.
   virtual CHECKED_STATUS HandlePlacementUsingReplicationInfo(

@@ -1910,24 +1910,16 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
   if (!IsReplicationInfoSet(replication_info)) {
     return STATUS(InvalidArgument, "No replication info set.");
   }
-  // We don't support setting any other fields other than live replica placements for now.
-  if (!replication_info.read_replicas().empty() ||
-      !replication_info.affinitized_leaders().empty()) {
-
-      return STATUS(InvalidArgument, "Only live placement info can be set for table "
-          "level replication info.");
+  // We don't support read replica placements for now.
+  if (!replication_info.read_replicas().empty()) {
+    return STATUS(
+        InvalidArgument,
+        "Read replica placement info cannot be set for table level replication info.");
   }
-  // Today we support setting table level replication info only in clusters where read replica
-  // placements is not set. Return error if the cluster has read replica placements set.
+
   auto l = ClusterConfig()->LockForRead();
   const ReplicationInfoPB& cluster_replication_info = l->pb.replication_info();
-  // TODO(bogdan): figure this out when we expand on geopartition support.
-  // if (!cluster_replication_info.read_replicas().empty() ||
-  //     !cluster_replication_info.affinitized_leaders().empty()) {
 
-  //     return STATUS(InvalidArgument, "Setting table level replication info is not supported "
-  //         "for clusters with read replica placements");
-  // }
   // If the replication info has placement_uuid set, verify that it matches the cluster
   // placement_uuid.
   if (replication_info.live_replicas().placement_uuid().empty()) {
@@ -3672,6 +3664,21 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       // Verify that there are enough TServers to match the total required replication factor (which
       // could be more than the sum of the minimums).
       RETURN_NOT_OK(FindTServersForPlacementInfo(placement_info, ts_descs));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info) const {
+  auto& placement_info = replication_info.live_replicas();
+  if (!placement_info.placement_blocks().empty()) {
+    for (const auto& cloud_info : replication_info.affinitized_leaders()) {
+      if (!CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(placement_info, cloud_info)) {
+        return STATUS_FORMAT(
+            InvalidArgument, "Placement info $0 does not contain preferred zone cloud info $1",
+            placement_info, TSDescriptor::generate_placement_id(cloud_info));
+      }
     }
   }
 
@@ -9971,6 +9978,11 @@ Status CatalogManager::ValidateReplicationInfo(
   TSDescriptorVector all_ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
   Status s = CheckValidPlacementInfo(req->replication_info().live_replicas(), all_ts_descs, resp);
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
+  }
+
+  s = CheckValidLeaderAffinity(req->replication_info());
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }

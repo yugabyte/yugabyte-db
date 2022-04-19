@@ -299,6 +299,13 @@ class PgClientServiceImpl::Impl {
       pb->mutable_cloud_info()->set_placement_region(block.region());
       pb->mutable_cloud_info()->set_placement_zone(block.zone());
       pb->set_min_num_replicas(block.min_num_replicas());
+
+      if (block.leader_preference() == 1) {
+        auto new_ci = replication_info.add_affinitized_leaders();
+        new_ci->set_placement_cloud(block.cloud());
+        new_ci->set_placement_region(block.region());
+        new_ci->set_placement_zone(block.zone());
+      }
     }
     live_replicas->set_num_replicas(req.num_replicas());
 

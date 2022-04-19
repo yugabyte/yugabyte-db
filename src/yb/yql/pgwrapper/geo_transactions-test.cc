@@ -24,7 +24,9 @@
 #include "yb/gutil/strings/join.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -34,6 +36,8 @@
 DECLARE_int32(TEST_nodes_per_cloud);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(TEST_track_last_transaction);
+DECLARE_bool(TEST_name_transaction_tables_with_tablespace_id);
+DECLARE_bool(transaction_tables_use_preferred_zones);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
@@ -51,6 +55,7 @@ YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionSessionVar);
 constexpr auto kDatabaseName = "yugabyte";
 constexpr auto kTablePrefix = "test";
 const auto kStatusTabletCacheRefreshTimeout = MonoDelta::FromMilliseconds(10000);
+const auto kWaitLoadBalancerTimeout = MonoDelta::FromMilliseconds(30000);
 
 } // namespace
 
@@ -96,8 +101,10 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
         strings::Substitute("$0$1", kTablePrefix, region));
   }
 
+  uint64_t GetCurrentVersion() { return transaction_manager_->GetLoadedStatusTabletsVersion(); }
+
   void CreateTransactionTable(int region) {
-    int current_version = transaction_manager_->GetLoadedStatusTabletsVersion();
+    auto current_version = GetCurrentVersion();
     LOG(ERROR) << "TXN" << current_version;
 
     std::string name = strings::Substitute("transactions_$0", region);
@@ -136,6 +143,17 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
         )#", i));
         ASSERT_OK(conn.ExecuteFormat(
             "CREATE TABLE $0$1(value int) TABLESPACE region$1", kTablePrefix, i));
+    }
+  }
+
+  void ValidateAllTabletLeaderinZone(std::vector<TabletId> tablet_uuids, int region) {
+    std::string region_str = yb::Format("rack$0", region);
+    auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    for (const auto& tablet_id : tablet_uuids) {
+      auto table_info = ASSERT_RESULT(catalog_manager.GetTabletInfo(tablet_id));
+      auto leader = ASSERT_RESULT(table_info->GetLeader());
+      auto server_reg_pb = leader->GetRegistration();
+      ASSERT_EQ(server_reg_pb.common().cloud_info().placement_region(), region_str);
     }
   }
 
@@ -195,11 +213,22 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
     constexpr auto error =
         "Timed out waiting for transaction manager to update status tablet cache version to $0";
     ASSERT_OK(WaitFor(
-        [this, version] {
-            return transaction_manager_->GetLoadedStatusTabletsVersion() == version;
-        },
+        [this, version] { return GetCurrentVersion() == version; },
         kStatusTabletCacheRefreshTimeout,
         strings::Substitute(error, version)));
+  }
+
+  void WaitForLoadBalanceCompletion() {
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          bool is_idle = VERIFY_RESULT(client_->IsLoadBalancerIdle());
+          return !is_idle;
+        },
+        kWaitLoadBalancerTimeout, "Timeout waiting for load balancer to start"));
+
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> { return client_->IsLoadBalancerIdle(); }, kWaitLoadBalancerTimeout,
+        "Timeout waiting for load balancer to go idle"));
   }
 
  private:
@@ -314,5 +343,73 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestNonlocalAbort)) {
       2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse, kNumAborts);
 }
 
-} // namespace client
-} // namespace yb
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_tables_use_preferred_zones) = true;
+
+  // Create tablespaces and tables.
+  auto conn = ASSERT_RESULT(Connect());
+  string table_name = kTablePrefix;
+
+  std::string placement_blocks1;
+  for (size_t i = 1; i <= NumTabletServers(); ++i) {
+    placement_blocks1 += strings::Substitute(
+        R"#($0{
+              "cloud": "cloud0",
+              "region": "rack$1",
+              "zone": "zone",
+              "min_num_replicas": 1,
+              "leader_preference":$1
+            })#",
+        i > 1 ? "," : "", i);
+  }
+
+  std::string tablespace1_sql = strings::Substitute(
+      R"#(
+          CREATE TABLESPACE tablespace1 WITH (replica_placement='{
+            "num_replicas": $0,
+            "placement_blocks":[$1]}')
+            )#",
+      NumTabletServers(), placement_blocks1);
+
+  std::string placement_blocks2;
+  for (size_t i = 1; i <= NumTabletServers(); ++i) {
+    placement_blocks2 += strings::Substitute(
+        R"#($0{
+              "cloud": "cloud0",
+              "region": "rack$1",
+              "zone": "zone",
+              "min_num_replicas": 1,
+              "leader_preference":$2
+            })#",
+        i > 1 ? "," : "", i, i == NumTabletServers() ? 1 : (i + 1));
+  }
+
+  std::string tablespace2_sql = strings::Substitute(
+      R"#(
+          CREATE TABLESPACE tablespace2 WITH (replica_placement='{
+            "num_replicas": $0,
+            "placement_blocks":[$1]}')
+            )#",
+      NumTabletServers(), placement_blocks2);
+
+  ASSERT_OK(conn.Execute(tablespace1_sql));
+  ASSERT_OK(conn.Execute(tablespace2_sql));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(value int) TABLESPACE tablespace1", table_name));
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
+  auto tablet_uuid_set = ListTabletIdsForTable(cluster_.get(), table_id);
+  auto table_uuids = std::vector<TabletId>(tablet_uuid_set.begin(), tablet_uuid_set.end());
+
+  WaitForLoadBalanceCompletion();
+
+  ValidateAllTabletLeaderinZone(table_uuids, 1);
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 SET TABLESPACE tablespace2", table_name));
+
+  WaitForLoadBalanceCompletion();
+
+  ValidateAllTabletLeaderinZone(table_uuids, 3);
+}
+}  // namespace client
+}  // namespace yb

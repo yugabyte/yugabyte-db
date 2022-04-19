@@ -243,6 +243,11 @@ class TestLoadBalancerBase {
  protected:
   Status AnalyzeTablets() NO_THREAD_SAFETY_ANALYSIS /* don't need locks for mock class  */ {
     cb_->GetAllReportedDescriptors(&cb_->global_state_->ts_descs_);
+
+    const auto& replication_info =
+        VERIFY_RESULT(cb_->GetTableReplicationInfo(table_map_[cur_table_uuid_]));
+    RETURN_NOT_OK(cb_->PopulateReplicationInfo(table_map_[cur_table_uuid_], replication_info));
+
     cb_->InitializeTSDescriptors();
     return cb_->AnalyzeTabletsUnlocked(cur_table_uuid_);
   }
