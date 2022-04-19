@@ -14,7 +14,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
-import com.yugabyte.yw.common.ShellResponse;
 import java.io.File;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -89,8 +88,8 @@ public class TransferXClusterCerts extends NodeTaskBase {
       throw new IllegalArgumentException("taskParams().replicationConfigName must have a value");
     }
 
-    ShellResponse response =
-        getNodeManager().nodeCommand(NodeCommandType.Transfer_XCluster_Certs, taskParams());
-    processShellResponse(response);
+    getNodeManager()
+        .nodeCommand(NodeCommandType.Transfer_XCluster_Certs, taskParams())
+        .processErrors();
   }
 }

@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import javax.inject.Inject;
@@ -62,9 +61,9 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       taskParams().useSystemd =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
-      ShellResponse response =
-          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Control, taskParams());
-      processShellResponse(response);
+      getNodeManager()
+          .nodeCommand(NodeManager.NodeCommandType.Control, taskParams())
+          .processErrors();
     } catch (Exception e) {
       if (!taskParams().isForceDelete) {
         throw e;

@@ -37,15 +37,6 @@ public class ShellKubernetesManager extends KubernetesManager {
     return shellProcessHandler.run(command, config, description);
   }
 
-  public void processShellResponse(ShellResponse response) {
-    if (response.code == ShellResponse.ERROR_CODE_EXECUTION_CANCELLED) {
-      throw new CancellationException((response.message != null) ? response.message : "error");
-    }
-    if (response.code != ShellResponse.ERROR_CODE_SUCCESS) {
-      throw new RuntimeException((response.message != null) ? response.message : "error");
-    }
-  }
-
   private <T> T deserialize(String json, Class<T> type) {
     try {
       return new ObjectMapper().readValue(json, type);
@@ -57,7 +48,7 @@ public class ShellKubernetesManager extends KubernetesManager {
   @Override
   public void createNamespace(Map<String, String> config, String namespace) {
     List<String> commandList = ImmutableList.of("kubectl", "create", "namespace", namespace);
-    processShellResponse(execCommand(config, commandList));
+    execCommand(config, commandList).processErrors();
   }
 
   // TODO(bhavin192): modify the pullSecret on the fly while applying
@@ -70,7 +61,7 @@ public class ShellKubernetesManager extends KubernetesManager {
   public void applySecret(Map<String, String> config, String namespace, String pullSecret) {
     List<String> commandList =
         ImmutableList.of("kubectl", "apply", "-f", pullSecret, "--namespace", namespace);
-    processShellResponse(execCommand(config, commandList));
+    execCommand(config, commandList).processErrors();
   }
 
   @Override
@@ -89,8 +80,8 @@ public class ShellKubernetesManager extends KubernetesManager {
             "json",
             "-l",
             "release=" + helmReleaseName);
-    String response = execCommand(config, commandList).message;
-    return deserialize(response, PodList.class).getItems();
+    ShellResponse response = execCommand(config, commandList).processErrors();
+    return deserialize(response.message, PodList.class).getItems();
   }
 
   @Override
@@ -109,16 +100,16 @@ public class ShellKubernetesManager extends KubernetesManager {
             "json",
             "-l",
             "release=" + helmReleaseName);
-    String response = execCommand(config, commandList).message;
-    return deserialize(response, ServiceList.class).getItems();
+    ShellResponse response = execCommand(config, commandList).processErrors();
+    return deserialize(response.message, ServiceList.class).getItems();
   }
 
   @Override
   public PodStatus getPodStatus(Map<String, String> config, String namespace, String podName) {
     List<String> commandList =
         ImmutableList.of("kubectl", "get", "pod", "--namespace", namespace, "-o", "json", podName);
-    String response = execCommand(config, commandList).message;
-    return deserialize(response, Pod.class).getStatus();
+    ShellResponse response = execCommand(config, commandList).processErrors();
+    return deserialize(response.message, Pod.class).getStatus();
   }
 
   @Override
@@ -128,22 +119,16 @@ public class ShellKubernetesManager extends KubernetesManager {
     List<String> commandList =
         ImmutableList.of(
             "kubectl", "get", "svc", serviceName, "--namespace", namespace, "-o", "json");
-    String response = execCommand(config, commandList).message;
-    Service service = deserialize(response, Service.class);
+    ShellResponse response = execCommand(config, commandList).processErrors();
+    Service service = deserialize(response.message, Service.class);
     return getIp(service);
   }
 
   @Override
   public List<Node> getNodeInfos(Map<String, String> config) {
     List<String> commandList = ImmutableList.of("kubectl", "get", "nodes", "-o", "json");
-    ShellResponse response = execCommand(config, commandList);
-    if (response.code != 0) {
-      String msg = "Unable to get node information";
-      if (!response.message.isEmpty()) {
-        msg = String.format("%s: %s", msg, response.message);
-      }
-      throw new RuntimeException(msg);
-    }
+    ShellResponse response =
+        execCommand(config, commandList).processErrors("Unable to get node information");
     return deserialize(response.message, NodeList.class).getItems();
   }
 
@@ -157,7 +142,7 @@ public class ShellKubernetesManager extends KubernetesManager {
       commandList.add("--namespace");
       commandList.add(namespace);
     }
-    ShellResponse response = execCommand(config, commandList);
+    ShellResponse response = execCommand(config, commandList).processErrors();
     if (response.code != 0) {
       String msg = "Unable to get secret";
       if (!response.message.isEmpty()) {
@@ -179,7 +164,7 @@ public class ShellKubernetesManager extends KubernetesManager {
             "statefulset",
             "yb-tserver",
             "--replicas=" + numNodes);
-    processShellResponse(execCommand(config, commandList));
+    execCommand(config, commandList).processErrors();
   }
 
   @Override
