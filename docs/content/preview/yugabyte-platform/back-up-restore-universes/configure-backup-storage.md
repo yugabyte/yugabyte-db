@@ -133,6 +133,6 @@ You can configure Azure as your backup target, as follows:
 
     ![GCS Cloud Provider Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)<br><br>
     
-    * Use the **Configuration Name** field to provide a meaning name for you backup configuration.
+    * Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
     * Enter values for the **Container URL** and **SAS Token** fields, and then click **Save**.
     
