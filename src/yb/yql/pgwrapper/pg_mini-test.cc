@@ -55,34 +55,36 @@
 
 using namespace std::literals;
 
-DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(rocksdb_use_logging_iterator);
+
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
+
+DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_int32(txn_max_apply_batch_records);
-DECLARE_int64(apply_intents_task_injected_delay_ms);
-DECLARE_uint64(max_clock_skew_usec);
-DECLARE_int64(db_write_buffer_size);
-DECLARE_bool(rocksdb_use_logging_iterator);
-DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(yb_num_shards_per_tserver);
-DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
-DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
-DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
-DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
-
-DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
-DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_int32(yb_num_shards_per_tserver);
 
+DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
+DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_filter_block_size_bytes);
 DECLARE_int64(db_index_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
 DECLARE_int64(tablet_force_split_threshold_bytes);
-DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
+DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 namespace pgwrapper {
@@ -134,6 +136,16 @@ std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type) {
 }
 
 YB_DEFINE_ENUM(TestStatement, (kInsert)(kDelete));
+
+Result<int64_t> GetCatalogVersion(PGConn* conn) {
+  return conn->FetchValue<int64_t>("SELECT current_version FROM pg_yb_catalog_version");
+}
+
+Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
+  const auto initial_version = VERIFY_RESULT(GetCatalogVersion(conn));
+  RETURN_NOT_OK(conn->Execute(ddl_query));
+  return initial_version != VERIFY_RESULT(GetCatalogVersion(conn));
+}
 
 } // namespace
 
@@ -1453,6 +1465,34 @@ TEST_F_EX(PgMiniTest,
   TestDuplicateNonUniqueIndexInsert();
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentSingleRowUpdate)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, counter INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 0)"));
+  const size_t thread_count = 10;
+  const size_t increment_per_thread = 5;
+  {
+    CountDownLatch latch(thread_count);
+    TestThreadHolder thread_holder;
+    for (size_t i = 0; i < thread_count; ++i) {
+      thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &latch] {
+        auto thread_conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(thread_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+        latch.CountDown();
+        latch.Wait();
+        for (size_t j = 0; j < increment_per_thread; ++j) {
+          ASSERT_OK(thread_conn.Execute("UPDATE t SET counter = counter + 1 WHERE k = 1"));
+        }
+      });
+    }
+  }
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT counter FROM t WHERE k = 1"));
+  ASSERT_EQ(1, PQnfields(res.get()));
+  ASSERT_EQ(1, PQntuples(res.get()));
+  auto counter = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  ASSERT_EQ(thread_count * increment_per_thread, counter);
+}
+
 // ------------------------------------------------------------------------------------------------
 // A test performing manual transaction control on system tables.
 // ------------------------------------------------------------------------------------------------
@@ -2136,6 +2176,26 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumn)) 
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumnWithSelect)) {
   TestConcurrentDeleteRowAndUpdateColumn(/* select_before_update= */ true);
+}
+
+// The test checks catalog version is updated only in case of changes in sys catalog.
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CatalogVersionUpdateIfNeeded)) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto schema_ddl = "CREATE SCHEMA IF NOT EXISTS test";
+  const auto first_create_schema = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, schema_ddl));
+  ASSERT_TRUE(first_create_schema);
+  const auto second_create_schema = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, schema_ddl));
+  ASSERT_FALSE(second_create_schema);
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  const auto add_column_ddl = "ALTER TABLE t ADD COLUMN IF NOT EXISTS v INT";
+  const auto first_add_column = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, add_column_ddl));
+  ASSERT_TRUE(first_add_column);
+  const auto second_add_column = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, add_column_ddl));
+  ASSERT_FALSE(second_add_column);
 }
 
 // Test that we don't sequential restart read on the same table if intents were written

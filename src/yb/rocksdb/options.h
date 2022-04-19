@@ -32,10 +32,12 @@
 #include <limits>
 #include <unordered_map>
 
+#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/listener.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/universal_compaction.h"
+
+#include "yb/util/slice.h"
 
 #ifdef max
 #undef max
@@ -831,6 +833,9 @@ typedef std::function<yb::Result<bool>(const MemTable&)> MemTableFilter;
 using IteratorReplacer =
     std::function<InternalIterator*(InternalIterator*, Arena*, const Slice&)>;
 
+using CompactionContextFactory = std::function<CompactionContextPtr(
+    CompactionFeed* feed, const CompactionContextOptions& options)>;
+
 struct DBOptions {
   // Some functions that make it easier to optimize RocksDB
 
@@ -1333,6 +1338,8 @@ struct DBOptions {
   // Also it decodes those values during load of metafile.
   std::shared_ptr<BoundaryValuesExtractor> boundary_extractor;
 
+  std::shared_ptr<CompactionContextFactory> compaction_context_factory;
+
   // Function that returns max file size for compaction.
   // Supported only for level0 of universal style compactions.
   std::shared_ptr<std::function<uint64_t()>> max_file_size_for_compaction;
@@ -1358,6 +1365,10 @@ struct DBOptions {
   // The filters are currently used to expire files in time-series DBs that have
   // completely expired based on their table and/or column TTL.
   std::shared_ptr<CompactionFileFilterFactory> compaction_file_filter_factory;
+
+  // Used for identifying disk in priorty pool. This corresponds to the hashed
+  // data root directory for the rocksdb instance.
+  uint64_t disk_group_no;
 };
 
 // Options to control the behavior of a database (passed to DB::Open)

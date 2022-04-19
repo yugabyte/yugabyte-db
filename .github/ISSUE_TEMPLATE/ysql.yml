@@ -1,7 +1,7 @@
 name: Core-YSQL
 description: Create a YSQL issue.
 title: "[YSQL] Title"
-labels: ["area/ysql"]
+labels: ["area/ysql", "status/awaiting-triage"]
 body:
 - type: textarea
   id: ysql

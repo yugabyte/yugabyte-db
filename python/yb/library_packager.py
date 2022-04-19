@@ -29,19 +29,18 @@ Run doctest tests as follows:
 import argparse
 import collections
 import glob
-import json
 import logging
 import os
 import re
 import shutil
 import subprocess
-import sys
 
 from functools import total_ordering
 
-from yb.command_util import run_program, mkdir_p, copy_deep, ProgramResult
-from yb.linuxbrew import get_linuxbrew_dir
-from yb.common_util import get_thirdparty_dir, YB_SRC_ROOT, sorted_grouped_by, shlex_join
+from yb.command_util import run_program, mkdir_p, copy_deep
+from yb.common_util import get_thirdparty_dir, YB_SRC_ROOT, sorted_grouped_by
+from yb.rpath import set_rpath, remove_rpath
+from yb.linuxbrew import get_linuxbrew_home, using_linuxbrew, LinuxbrewHome
 
 from typing import List, Optional, Any, Set, Tuple
 
@@ -71,7 +70,7 @@ LIBRARY_PATH_RE = re.compile('^(.*[.]so)(?:$|[.].*$)')
 LIBRARY_CATEGORIES_NO_LINUXBREW = ['system', 'yb', 'yb-thirdparty', 'postgres']
 LIBRARY_CATEGORIES = LIBRARY_CATEGORIES_NO_LINUXBREW + ['linuxbrew']
 
-linuxbrew_home = None
+EXTENSIONS_TO_SKIP_FOR_RPATH = ('.h', '.sql', '.example')
 
 
 # This is an alternative to global variables, bundling a few commonly used things.
@@ -132,6 +131,7 @@ class Dependency:
         if self.category:
             return self.category
 
+        linuxbrew_home = get_linuxbrew_home()
         if linuxbrew_home is not None and linuxbrew_home.path_is_in_linuxbrew_dir(self.target):
             self.category = 'linuxbrew'
         elif self.target.startswith(get_thirdparty_dir() + '/'):
@@ -191,24 +191,6 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
                         action='store_true')
 
 
-def run_patchelf(args: List[str]) -> ProgramResult:
-    patchelf_path = None
-    if linuxbrew_home:
-        patchelf_path = linuxbrew_home.patchelf_path
-    if not patchelf_path:
-        patchelf_path = 'patchelf'
-    patchelf_cmd_line = [patchelf_path] + args
-    logging.debug(f"Running patchelf: {shlex_join(patchelf_cmd_line)}")
-    patchelf_result = run_program(patchelf_cmd_line, error_ok=True)
-    if patchelf_result.returncode != 0 and not any(msg in patchelf_result.stderr for msg in [
-            'cannot find section .interp',
-            'cannot find section .dynamic',
-            PATCHELF_NOT_AN_ELF_EXECUTABLE,
-            'missing ELF header']):
-        raise RuntimeError(patchelf_result.error_msg)
-    return patchelf_result
-
-
 def symlink(source: str, link_path: str) -> None:
     if os.path.exists(link_path):
         if not source.startswith('/') or os.path.realpath(link_path) != os.path.realpath(source):
@@ -219,10 +201,6 @@ def symlink(source: str, link_path: str) -> None:
         # no error.
     else:
         os.symlink(source, link_path)
-
-
-def using_linuxbrew() -> bool:
-    return linuxbrew_home is not None and linuxbrew_home.is_enabled()
 
 
 class LibraryPackager:
@@ -279,13 +257,12 @@ class LibraryPackager:
     def set_rpath(dest_root_dir: str, file_path: str) -> None:
         if using_linuxbrew():
             return
+        if file_path.endswith(EXTENSIONS_TO_SKIP_FOR_RPATH):
+            return
         file_abs_path = os.path.abspath(file_path)
-        run_patchelf([
-                file_abs_path,
-                '--set-rpath',
-                ':'.join(LibraryPackager.get_relative_rpath_items(
+        new_rpath = ':'.join(LibraryPackager.get_relative_rpath_items(
                     dest_root_dir, os.path.dirname(file_abs_path)))
-        ])
+        set_rpath(file_path, new_rpath)
 
     def install_dyn_linked_binary(self, src_path: str, dest_dir: str) -> str:
         logging.debug(f"Installing dynamically-linked executable {src_path} to {dest_dir}")
@@ -293,7 +270,6 @@ class LibraryPackager:
             raise RuntimeError("Not a directory: '{}'".format(dest_dir))
         shutil.copy(src_path, dest_dir)
         installed_binary_path = os.path.join(dest_dir, os.path.basename(src_path))
-        dest_abs_dir = os.path.abspath(dest_dir)
         LibraryPackager.set_rpath(self.dest_dir, installed_binary_path)
         self.installed_dyn_linked_binaries.append(installed_binary_path)
         return installed_binary_path
@@ -306,11 +282,13 @@ class LibraryPackager:
         @param elf_file_path: ELF file (executable/library) path
         """
 
+        linuxbrew_home: Optional[LinuxbrewHome] = get_linuxbrew_home()
         elf_file_path = os.path.realpath(elf_file_path)
         if SYSTEM_LIBRARY_PATH_RE.match(elf_file_path) or not using_linuxbrew():
             ldd_path = '/usr/bin/ldd'
         else:
             assert linuxbrew_home is not None
+            assert linuxbrew_home.ldd_path is not None
             ldd_path = linuxbrew_home.ldd_path
 
         ldd_result = run_program([ldd_path, elf_file_path], error_ok=True)
@@ -368,6 +346,8 @@ class LibraryPackager:
         the executables can find all of their dependencies.
         """
 
+        linuxbrew_home = get_linuxbrew_home()
+
         all_deps: List[Dependency] = []
 
         dest_lib_dir = os.path.join(self.dest_dir, 'lib')
@@ -403,6 +383,8 @@ class LibraryPackager:
             # Not using the install_dyn_linked_binary method for copying patchelf and ld.so as we
             # won't need to do any post-processing on these two later.
             assert linuxbrew_home is not None
+            assert linuxbrew_home.patchelf_path is not None
+            assert linuxbrew_home.ld_so_path is not None
             shutil.copy(linuxbrew_home.patchelf_path, self.main_dest_bin_dir)
             shutil.copy(linuxbrew_home.ld_so_path, dest_lib_dir)
 
@@ -424,16 +406,19 @@ class LibraryPackager:
         linuxbrew_lib_dest_dir = os.path.join(linuxbrew_dest_dir, 'lib')
 
         # Add libresolv and libnss_* libs explicitly because they are loaded by glibc at runtime.
-        additional_libs = set()
+        additional_libs: Set[str] = set()
         if using_linuxbrew():
             for additional_lib_name_glob in ADDITIONAL_LIB_NAME_GLOBS:
                 assert linuxbrew_home is not None
-                additional_libs.update(lib_path for lib_path in
-                                       glob.glob(os.path.join(linuxbrew_home.cellar_glibc_dir,
-                                                              '*',
-                                                              'lib',
-                                                              additional_lib_name_glob))
-                                       if not lib_path.endswith('.a'))
+                assert linuxbrew_home.cellar_glibc_dir is not None
+                additional_libs.update(
+                    lib_path for lib_path in
+                    glob.glob(os.path.join(
+                        linuxbrew_home.cellar_glibc_dir,
+                        '*',
+                        'lib',
+                        additional_lib_name_glob))
+                    if not lib_path.endswith('.a'))
 
         for category, deps_in_category in sorted_grouped_by(all_deps,
                                                             lambda dep: dep.get_category()):
@@ -490,19 +475,24 @@ class LibraryPackager:
             subprocess.check_call(['chmod', 'u+w', installed_binary])
             if using_linuxbrew():
                 # Remove rpath (we will set it appropriately in post_install.sh).
-                run_patchelf(['--remove-rpath', installed_binary])
+                remove_rpath(installed_binary)
 
         post_install_path = os.path.join(self.main_dest_bin_dir, 'post_install.sh')
 
         if using_linuxbrew():
             # Add other files used by glibc at runtime.
             assert linuxbrew_home is not None
+
+            linuxbrew_dir = linuxbrew_home.linuxbrew_dir
+            assert linuxbrew_dir is not None
+            assert linuxbrew_home.ldd_path is not None
+
             linuxbrew_glibc_real_path = os.path.normpath(
                 os.path.join(os.path.realpath(linuxbrew_home.ldd_path), '..', '..'))
 
             assert linuxbrew_home is not None
             linuxbrew_glibc_rel_path = os.path.relpath(
-                linuxbrew_glibc_real_path, os.path.realpath(linuxbrew_home.linuxbrew_dir))
+                linuxbrew_glibc_real_path, os.path.realpath(linuxbrew_dir))
 
             # We expect glibc to live under a path like "Cellar/glibc/3.23" in
             # the Linuxbrew directory.
@@ -524,17 +514,17 @@ class LibraryPackager:
                 rel_paths.append(os.path.join(linuxbrew_glibc_rel_path, glibc_rel_path))
 
             terminfo_glob_pattern = os.path.join(
-                    linuxbrew_home.linuxbrew_dir, 'Cellar/ncurses/*/share/terminfo')
+                    linuxbrew_dir, 'Cellar/ncurses/*/share/terminfo')
             terminfo_paths = glob.glob(terminfo_glob_pattern)
             if len(terminfo_paths) != 1:
                 raise ValueError(
                     "Failed to find the terminfo directory using glob pattern %s. "
                     "Found: %s" % (terminfo_glob_pattern, terminfo_paths))
-            terminfo_rel_path = os.path.relpath(terminfo_paths[0], linuxbrew_home.linuxbrew_dir)
+            terminfo_rel_path = os.path.relpath(terminfo_paths[0], linuxbrew_dir)
             rel_paths.append(terminfo_rel_path)
 
             for rel_path in rel_paths:
-                src = os.path.join(linuxbrew_home.linuxbrew_dir, rel_path)
+                src = os.path.join(linuxbrew_dir, rel_path)
                 dst = os.path.join(linuxbrew_dest_dir, rel_path)
                 copy_deep(src, dst, create_dst_dir=True)
 
@@ -543,8 +533,8 @@ class LibraryPackager:
 
             new_post_install_script = post_install_script
             replacements = [
-                ("original_linuxbrew_path_to_patch", linuxbrew_home.linuxbrew_dir),
-                ("original_linuxbrew_path_length", len(linuxbrew_home.linuxbrew_dir)),
+                ("original_linuxbrew_path_to_patch", linuxbrew_dir),
+                ("original_linuxbrew_path_length", len(linuxbrew_dir)),
             ]
             for macro_var_name, list_of_binary_names in [
                 ("main_elf_names_to_patch", main_elf_names_to_patch),
@@ -578,9 +568,3 @@ class LibraryPackager:
             for file_name in files:
                 file_path = os.path.join(root, file_name)
                 LibraryPackager.set_rpath(build_target, file_path)
-
-
-def set_build_root(build_root: str) -> None:
-    global linuxbrew_home
-    from yb import linuxbrew
-    linuxbrew_home = linuxbrew.LinuxbrewHome(build_root)

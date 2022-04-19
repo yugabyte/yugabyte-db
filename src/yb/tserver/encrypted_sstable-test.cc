@@ -116,8 +116,8 @@ void EncryptedSSTableTest::CounterOverflow(
       /* suspender */ nullptr);
 
   rocksdb::BlockBasedTableFactory blk_based_tbl_factory;
-  auto table_builder = std::unique_ptr<rocksdb::TableBuilder>(
-      blk_based_tbl_factory.NewTableBuilder(table_builder_options, 0, &base_writer, &data_writer));
+  auto table_builder = blk_based_tbl_factory.NewTableBuilder(
+      table_builder_options, 0, &base_writer, &data_writer);
 
   for (int i = 0; i < num_keys; ++i) {
     string key = GetKey(i);

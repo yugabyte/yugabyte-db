@@ -3,18 +3,18 @@
   [
     {
       "series": "v2.13",
-      "display": "v2.13 (Latest)",
+      "display": "v2.13 (Preview)",
       "version": "2.13.0.1",
       "versionShort": "2.13.0",
       "appVersion": "2.13.0.1-b2",
-      "alias": "latest"
+      "alias": "preview"
     },
     {
       "series": "v2.12",
       "display": "v2.12 (Stable)",
-      "version": "2.12.2.0",
-      "versionShort": "2.12.2",
-      "appVersion": "2.12.2.0-b58",
+      "version": "2.12.3.0",
+      "versionShort": "2.12.3",
+      "appVersion": "2.12.3.0-b19",
       "alias": "stable"
     },
     {

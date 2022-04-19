@@ -58,6 +58,7 @@ service CDCService {
   rpc SetCDCCheckpoint (SetCDCCheckpointRequestPB) returns (SetCDCCheckpointResponsePB) {
     option (yb.rpc.trivial) = true;
   };
+  rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
 }
 
 message CDCErrorPB {
@@ -397,12 +398,17 @@ message GetCheckpointResponsePB {
 }
 
 message UpdateCdcReplicatedIndexRequestPB {
-  // Tablet being updated.
+  // Old API. Deprecated.
   optional bytes tablet_id = 1;
-
-  // Minimum replicated index across all the streams for this tablet.
   optional int64 replicated_index = 2;
   optional int64 replicated_term = 3;
+
+  // Batch API.
+  // Tablets being updated.
+  repeated bytes tablet_ids = 4;
+  // Minimum replicated index for each tablet across all the streams.
+  repeated int64 replicated_indices = 5;
+  repeated int64 replicated_terms = 6;
 }
 
 message UpdateCdcReplicatedIndexResponsePB {
@@ -419,12 +425,15 @@ message BootstrapProducerResponsePB {
 }
 
 message GetLatestEntryOpIdRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1; // Deprecated.
+  repeated bytes tablet_ids = 2; // Batch param.
 }
 
 message GetLatestEntryOpIdResponsePB {
   optional CDCErrorPB error = 1;
-  optional OpIdPB op_id = 2;
+
+  optional OpIdPB op_id = 2; // Deprecated.
+  repeated OpIdPB op_ids = 3; // Batch param.
 }
 
 message TableInfo {
@@ -450,4 +459,14 @@ message SetCDCCheckpointRequestPB {
 
 message SetCDCCheckpointResponsePB {
   optional CDCErrorPB error = 1;
+}
+
+message IsBootstrapRequiredRequestPB {
+  repeated string tablet_ids = 1;
+  optional string stream_id = 2;
+}
+
+message IsBootstrapRequiredResponsePB {
+  optional CDCErrorPB error = 1;
+  optional bool bootstrap_required = 2 [default = false];
 }

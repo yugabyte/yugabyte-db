@@ -27,6 +27,7 @@
 
 #include "yb/rpc/outbound_call.h"
 
+#include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
@@ -46,18 +47,79 @@ using std::move;
 
 namespace yb {
 namespace pggate {
+namespace {
 
-PgDocResult::PgDocResult(rpc::SidecarHolder&& data) : data_(std::move(data)) {
+struct PgDocReadOpCachedHelper {
+  PgTable dummy_table;
+};
+
+class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
+ public:
+  PgDocReadOpCached(const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data)
+      : PgDocOp(pg_session, &dummy_table), data_(move(data)) {
+  }
+
+  CHECKED_STATUS GetResult(std::list<PgDocResult> *rowsets) override {
+    if (data_) {
+      for (const auto& d : *data_) {
+        rowsets->emplace_back(d);
+      }
+      data_.reset();
+    }
+    return Status::OK();
+  }
+
+  CHECKED_STATUS ExecuteInit(const PgExecParameters* exec_params) override {
+    return Status::OK();
+  }
+
+  Result<RequestSent> Execute(bool force_non_bufferable) override {
+    return RequestSent::kTrue;
+  }
+
+  bool IsWrite() const override {
+    return false;
+  }
+
+ protected:
+  CHECKED_STATUS DoPopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) override {
+    return Status::OK();
+  }
+
+  Result<bool> DoCreateRequests() override {
+    return STATUS(InternalError, "DoCreateRequests is not defined for PgDocReadOpCached");
+  }
+
+  PgsqlOpPtr CloneFromTemplate() override {
+    CHECK(false) << "CloneFromTemplate is not defined for PgDocReadOpCached";
+    return nullptr;
+  }
+
+ private:
+  CHECKED_STATUS SendRequestImpl(bool force_non_bufferable) override {
+    return STATUS(InternalError, "SendRequestImpl is not defined for PgDocReadOpCached");
+  }
+
+  Result<std::list<PgDocResult>> ProcessResponseImpl(
+      const rpc::CallResponsePtr& response) override {
+    return STATUS(InternalError, "ProcessResponseImpl is not defined for PgDocReadOpCached");
+  }
+
+  PrefetchedDataHolder data_;
+};
+
+} // namespace
+
+PgDocResult::PgDocResult(rpc::SidecarHolder data) : data_(std::move(data)) {
   PgDocData::LoadCache(data_.second, &row_count_, &row_iterator_);
 }
 
-PgDocResult::PgDocResult(rpc::SidecarHolder&& data, std::list<int64_t>&& row_orders)
+PgDocResult::PgDocResult(rpc::SidecarHolder data, std::list<int64_t> row_orders)
     : data_(std::move(data)), row_orders_(std::move(row_orders)) {
   PgDocData::LoadCache(data_.second, &row_count_, &row_iterator_);
 }
 
-PgDocResult::~PgDocResult() {
-}
+PgDocResult::~PgDocResult() = default;
 
 int64_t PgDocResult::NextRowOrder() {
   return row_orders_.size() > 0 ? row_orders_.front() : -1;
@@ -738,7 +800,7 @@ Result<bool> PgDocReadOp::PopulateSamplingOps() {
   VLOG(1) << "Number of partitions to sample: " << active_op_count_;
   // If we have big enough sample after processing some partitions we skip the rest.
   // By shuffling partitions we randomly select the partition(s) to sample.
-  std::random_shuffle(pgsql_ops_.begin(), pgsql_ops_.end());
+  std::shuffle(pgsql_ops_.begin(), pgsql_ops_.end(), ThreadLocalRandom());
 
   return true;
 }
@@ -803,35 +865,8 @@ Status PgDocReadOp::ProcessResponseReadStates() {
     // Save the backfill_spec if tablet server wants to return it.
     if (res.is_backfill_batch_done()) {
       out_param_backfill_spec_ = res.backfill_spec().ToBuffer();
-    } else if (res.has_paging_state()) {
+    } else if (PrepareNextRequest(&read_op)) {
       has_more_arg = true;
-
-      // Set up paging state for next request.
-      // A query request can be nested, and paging state belong to the innermost query which is
-      // the read operator that is operated first and feeds data to other queries.
-      // Recursive Proto Message:
-      //     PgsqlReadRequestPB { PgsqlReadRequestPB index_request; }
-      LWPgsqlReadRequestPB *innermost_req = &req;
-      while (innermost_req->has_index_request()) {
-        innermost_req = innermost_req->mutable_index_request();
-      }
-      innermost_req->ref_paging_state(res.mutable_paging_state());
-      res.clear_paging_state();
-      if (innermost_req->paging_state().has_read_time()) {
-        read_op.set_read_time(ReadHybridTime::FromPB(innermost_req->paging_state().read_time()));
-      }
-
-      // Setup backfill_spec for the next request.
-      if (res.has_backfill_spec()) {
-        innermost_req->ref_backfill_spec(res.backfill_spec());
-        res.clear_backfill_spec();
-      }
-
-      // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
-      // The docdb layer will check the target table's schema version is compatible.
-      // This allows long-running queries to continue in the presence of other DDL statements
-      // as long as they do not affect the table(s) being queried.
-      req.clear_ysql_catalog_version();
     }
 
     // Check for batch execution.
@@ -1060,6 +1095,11 @@ void PgDocWriteOp::SetWriteTime(const HybridTime& write_time) {
 
 LWPgsqlWriteRequestPB& PgDocWriteOp::GetWriteOp(int op_index) {
   return down_cast<PgsqlWriteOp&>(*pgsql_ops_[op_index]).write_request();
+}
+
+PgDocOp::SharedPtr MakeDocReadOpWithData(
+    const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data) {
+  return std::make_shared<PgDocReadOpCached>(pg_session, std::move(data));
 }
 
 }  // namespace pggate

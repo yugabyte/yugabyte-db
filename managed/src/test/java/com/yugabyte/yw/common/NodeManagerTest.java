@@ -49,6 +49,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -1036,6 +1037,21 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.add("--instance_type");
         expectedCommand.add(citTaskParams.instanceType);
         break;
+      case Transfer_XCluster_Certs:
+        TransferXClusterCerts.Params txccTaskParams = (TransferXClusterCerts.Params) params;
+        expectedCommand.add("--action");
+        expectedCommand.add(txccTaskParams.action.toString());
+        if (txccTaskParams.action == TransferXClusterCerts.Params.Action.COPY) {
+          expectedCommand.add("--root_cert_path");
+          expectedCommand.add(txccTaskParams.rootCertPath.toString());
+        }
+        expectedCommand.add("--replication_config_name");
+        expectedCommand.add(txccTaskParams.replicationConfigName);
+        if (txccTaskParams.producerCertsDirOnTarget != null) {
+          expectedCommand.add("--producer_certs_dir");
+          expectedCommand.add(txccTaskParams.producerCertsDirOnTarget.toString());
+        }
+        break;
       case Delete_Root_Volumes:
         if (Provider.InstanceTagsEnabledProviders.contains(cloud)) {
           addInstanceTags(testData, params, null, expectedCommand);
@@ -1116,6 +1132,36 @@ public class NodeManagerTest extends FakeDBApplication {
           nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params);
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+    }
+  }
+
+  @Test
+  @Parameters({"true, false", "false, false", "true, true", "false, true"})
+  @TestCaseName("{method}(isCopy:{0},isCustomProducerCertsDir:{1}) [{index}]")
+  public void testTransferXClusterCertsCommand(boolean isCopy, boolean isCustomProducerCertsDir) {
+    for (TestData t : testData) {
+      TransferXClusterCerts.Params params = new TransferXClusterCerts.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      List<String> expectedCommand = t.baseCommand;
+      if (isCopy) {
+        params.action = TransferXClusterCerts.Params.Action.COPY;
+        params.rootCertPath = new File("rootCertPath");
+      } else {
+        params.action = TransferXClusterCerts.Params.Action.REMOVE;
+      }
+      params.replicationConfigName = "universe-uuid_MyRepl1";
+      if (isCustomProducerCertsDir) {
+        params.producerCertsDirOnTarget = new File("custom-producer-dir");
+      }
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Transfer_XCluster_Certs, params, t));
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Transfer_XCluster_Certs, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
@@ -1296,7 +1342,7 @@ public class NodeManagerTest extends FakeDBApplication {
   private void runAndTestProvisionWithAccessKeyAndSG(String sgId) {
     for (TestData t : testData) {
       t.region.setSecurityGroupId(sgId);
-      t.region.save();
+      t.region.update();
       // Create AccessKey
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       keyInfo.privateKey = "/path/to/private.key";
@@ -1494,7 +1540,7 @@ public class NodeManagerTest extends FakeDBApplication {
   private void runAndTestCreateWithAccessKeyAndSG(String sgId) {
     for (TestData t : testData) {
       t.region.setSecurityGroupId(sgId);
-      t.region.save();
+      t.region.update();
       // Create AccessKey
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       keyInfo.privateKey = "/path/to/private.key";

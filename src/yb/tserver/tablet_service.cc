@@ -104,6 +104,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
@@ -811,7 +812,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   } else {
     table_info = tablet.peer->tablet_metadata()->primary_table_info();
   }
-  const Schema& tablet_schema = *table_info->schema;
+  const Schema& tablet_schema = table_info->schema();
   uint32_t schema_version = table_info->schema_version;
   // Sanity check, to verify that the tablet should have the same schema
   // specified in the request.
@@ -1505,13 +1506,25 @@ void TabletServiceAdminImpl::SplitTablet(
     }
   }
 
-  auto state = std::make_unique<tablet::SplitOperation>(
-      leader_tablet_peer.peer->tablet(), server_->tablet_manager(), req);
+  const auto consensus = leader_tablet_peer.peer->shared_consensus();
+  if (consensus == nullptr) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_FORMAT(InvalidArgument, "Tablet $0 has no consensus", req->tablet_id()),
+        TabletServerErrorPB::TABLET_NOT_RUNNING, &context);
+    return;
+  }
 
-  state->set_completion_callback(
+  auto operation = std::make_unique<tablet::SplitOperation>(
+      leader_tablet_peer.peer->tablet(), server_->tablet_manager(), req);
+  *operation->AllocateRequest() = *req;
+  operation->mutable_request()->set_split_parent_leader_uuid(
+      leader_tablet_peer.peer->permanent_uuid());
+
+  operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 
-  leader_tablet_peer.peer->Submit(std::move(state), leader_tablet_peer.leader_term);
+  leader_tablet_peer.peer->Submit(std::move(operation), leader_tablet_peer.leader_term);
 }
 
 void TabletServiceAdminImpl::UpgradeYsql(
@@ -1866,7 +1879,7 @@ void ConsensusServiceImpl::GetNodeInstance(const GetNodeInstanceRequestPB* req,
 
 namespace {
 
-class RpcScope {
+class NODISCARD_CLASS RpcScope {
  public:
   template<class Req, class Resp>
   RpcScope(TabletPeerLookupIf* tablet_manager,
@@ -2045,16 +2058,25 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
     // split_parent_tablet_id. However, our local tablet manager should only know about the parent
     // if it was part of the raft group which committed the split to the parent, and if the parent
     // tablet has yet to be deleted across the cluster.
-    TabletPeerTablet result;
-    if (tablet_manager_->GetTabletPeer(req->split_parent_tablet_id(), &result.tablet_peer).ok()) {
-      YB_LOG_EVERY_N_SECS(WARNING, 30)
-          << "Start remote bootstrap rejected: parent tablet not yet split.";
-      SetupErrorAndRespond(
-          resp->mutable_error(),
-          STATUS(Incomplete, "Rejecting bootstrap request while parent tablet is present."),
-          TabletServerErrorPB::TABLET_SPLIT_PARENT_STILL_LIVE,
-          &context);
-      return;
+    TabletPeerPtr tablet_peer;
+    if (tablet_manager_->GetTabletPeer(req->split_parent_tablet_id(), &tablet_peer).ok()) {
+      auto tablet = tablet_peer->shared_tablet();
+      // If local parent tablet replica has been already split or remote bootstrapped from remote
+      // replica that has been already split - allow RBS of child tablets.
+      // In this case we can't rely on local parent tablet replica split to create child tablet
+      // replicas on the current node, because local bootstrap is not replaying already applied
+      // SPLIT_OP (it has op_id <= flushed_op_id).
+      if (!tablet || tablet->metadata()->tablet_data_state() !=
+                         tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+        YB_LOG_EVERY_N_SECS(WARNING, 30)
+            << "Start remote bootstrap rejected: parent tablet not yet split.";
+        SetupErrorAndRespond(
+            resp->mutable_error(),
+            STATUS(Incomplete, "Rejecting bootstrap request while parent tablet is present."),
+            TabletServerErrorPB::TABLET_SPLIT_PARENT_STILL_LIVE,
+            &context);
+        return;
+      }
     }
   }
 
@@ -2254,9 +2276,10 @@ void TabletServiceImpl::GetSplitKey(
     const GetSplitKeyRequestPB* req, GetSplitKeyResponsePB* resp, RpcContext context) {
   TEST_PAUSE_IF_FLAG(TEST_pause_tserver_get_split_key);
   PerformAtLeader(req, resp, &context,
-      [resp](const LeaderTabletPeer& leader_tablet_peer) -> Status {
+      [req, resp](const LeaderTabletPeer& leader_tablet_peer) -> Status {
         const auto& tablet = leader_tablet_peer.tablet;
-        if (FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
+        if (!req->is_manual_split() &&
+            FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
             tablet->schema()->table_properties().HasDefaultTimeToLive()) {
           auto s = STATUS(NotSupported, "Tablet splitting not supported for TTL tables.");
           return s.CloneAndAddErrorCode(

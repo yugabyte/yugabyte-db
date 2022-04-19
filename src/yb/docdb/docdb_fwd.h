@@ -40,19 +40,24 @@ class PgsqlWriteOperation;
 class PrimitiveValue;
 class QLWriteOperation;
 class RedisWriteOperation;
+class SchemaPacking;
+class SchemaPackingStorage;
 class SharedLockManager;
 class SubDocKey;
 class YQLRowwiseIteratorIf;
 class YQLStorageIf;
 
 struct ApplyTransactionState;
-struct IntentKeyValueForCDC;
+struct CompactionSchemaPacking;
 struct DocDB;
+struct DocReadContext;
+struct IntentKeyValueForCDC;
 struct KeyBounds;
 struct LockBatchEntry;
 
 using DocKeyHash = uint16_t;
 using LockBatchEntries = std::vector<LockBatchEntry>;
+using DocReadContextPtr = std::shared_ptr<DocReadContext>;
 
 enum class KeyEntryType;
 enum class ValueEntryType;

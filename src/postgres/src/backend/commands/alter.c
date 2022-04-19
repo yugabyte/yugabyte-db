@@ -371,6 +371,9 @@ ExecRenameStmt(RenameStmt *stmt)
 		case OBJECT_DOMAIN:
 		case OBJECT_TYPE:
 			return RenameType(stmt);
+		
+		case OBJECT_FUNCTION:
+			return RenameFunction(stmt, stmt->newname);
 
 		case OBJECT_AGGREGATE:
 		case OBJECT_COLLATION:
@@ -378,7 +381,6 @@ ExecRenameStmt(RenameStmt *stmt)
 		case OBJECT_EVENT_TRIGGER:
 		case OBJECT_FDW:
 		case OBJECT_FOREIGN_SERVER:
-		case OBJECT_FUNCTION:
 		case OBJECT_OPCLASS:
 		case OBJECT_OPFAMILY:
 		case OBJECT_LANGUAGE:
@@ -844,12 +846,14 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 		case OBJECT_YBTABLEGROUP:
 			return AlterTablegroupOwner(strVal((Value *) stmt->object),
 										newowner);
+		
+		case OBJECT_FUNCTION:
+			return AlterFunctionOwner(stmt,  newowner);
 
 			/* Generic cases */
 		case OBJECT_AGGREGATE:
 		case OBJECT_COLLATION:
 		case OBJECT_CONVERSION:
-		case OBJECT_FUNCTION:
 		case OBJECT_LANGUAGE:
 		case OBJECT_LARGEOBJECT:
 		case OBJECT_OPERATOR:

@@ -319,7 +319,9 @@ To create a Yugabyte Platform instance, perform the following:
   ```shell
   helm install yw-test yugabytedb/yugaware -n yb-platform \
      --set image.repository=quay.io/yugabyte/yugaware-ubi \
-     --set ocpCompatibility.enabled=true --set rbac.create=false --wait
+     --set ocpCompatibility.enabled=true --set rbac.create=false \
+     --version {{<yb-version version="stable" format="short">}} \
+     --wait
   ```
 
   Expect to see a message notifying you whether or not the deployment is successful.

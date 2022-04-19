@@ -15,14 +15,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/build-apps/cpp/ysql" class="nav-link">
+    <a href="/preview/quick-start/build-apps/cpp/ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li>
-    <a href="/latest/quick-start/build-apps/cpp/ycql" class="nav-link active">
+    <a href="/preview/quick-start/build-apps/cpp/ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -55,7 +55,7 @@ The YugabyteDB C++ Driver for YCQL depends on the following:
 - libuv 1.x
 - OpenSSL v1.0.x or v1.1.x
 
-More detailed instructions for installing the dependencies are 
+More detailed instructions for installing the dependencies are
 given [here](https://docs.datastax.com/en/developer/cpp-driver/2.9/topics/building/#dependencies).
 
 ### Build and install
@@ -132,7 +132,7 @@ CassError execute_query(CassSession* session, const char* query) {
   return rc;
 }
 
-CassError execute_and_log_select(CassSession* session, const char* stmt) { 
+CassError execute_and_log_select(CassSession* session, const char* stmt) {
   CassError rc = CASS_OK;
   CassFuture* future = NULL;
   CassStatement* statement = cass_statement_new(stmt, 0);
@@ -141,7 +141,7 @@ CassError execute_and_log_select(CassSession* session, const char* stmt) {
   rc = cass_future_error_code(future);
   if (rc != CASS_OK) {
     print_error(future);
-  } else { 
+  } else {
     const CassResult* result = cass_future_get_result(future);
     CassIterator* iterator = cass_iterator_from_result(result);
     if (cass_iterator_next(iterator)) {
@@ -152,7 +152,7 @@ CassError execute_and_log_select(CassSession* session, const char* stmt) {
       cass_value_get_string(cass_row_get_column(row, 0), &name, &name_length);
       cass_value_get_int32(cass_row_get_column(row, 1), &age);
       cass_value_get_string(cass_row_get_column(row, 2), &language, &language_length);
-      printf ("Select statement returned: Row[%.*s, %d, %.*s]\n", (int)name_length, name, 
+      printf ("Select statement returned: Row[%.*s, %d, %.*s]\n", (int)name_length, name,
           age, (int)language_length, language);
     } else {
       printf("Unable to fetch row!\n");

@@ -1732,6 +1732,9 @@ SELECT * FROM single_row_check_constraints2 ORDER BY k;
 -- Test table with decimal.
 --
 CREATE TABLE single_row_decimal (k int PRIMARY KEY, v1 decimal, v2 decimal(10,2), v3 int);
+CREATE FUNCTION next_v3(int) returns int language sql as $$
+  SELECT v3 + 1 FROM single_row_decimal WHERE k = $1;
+$$;
 -- Below statements should all USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = 1.555 WHERE k = 1;
           QUERY PLAN
@@ -1800,6 +1803,22 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = v3 + 1 WHERE k = 1;
          Index Cond: (k = 1)
 (3 rows)
 
+EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = 3 WHERE k = 1;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Update on single_row_decimal
+   ->  Index Scan using single_row_decimal_pkey on single_row_decimal
+         Index Cond: (k = 1)
+(3 rows)
+
+EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = next_v3(1) WHERE k = 1;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Update on single_row_decimal
+   ->  Index Scan using single_row_decimal_pkey on single_row_decimal
+         Index Cond: (k = 1)
+(3 rows)
+
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = v3 + 1 WHERE k = 1;
                               QUERY PLAN
 ----------------------------------------------------------------------
@@ -1852,6 +1871,24 @@ SELECT * FROM single_row_decimal ORDER BY k;
  3 |       |      |
 (3 rows)
 
+UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = 3 WHERE k = 1;
+SELECT * FROM single_row_decimal ORDER BY k;
+ k |  v1  |  v2  | v3
+---+------+------+----
+ 1 | 4.61 | 4.62 |  3
+ 2 |  2.5 | 2.50 |  2
+ 3 |      |      |
+(3 rows)
+
+UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = next_v3(1) WHERE k = 1;
+SELECT * FROM single_row_decimal ORDER BY k;
+ k |  v1   |  v2  | v3
+---+-------+------+----
+ 1 | 6.165 | 6.18 |  4
+ 2 |   2.5 | 2.50 |  2
+ 3 |       |      |
+(3 rows)
+
 -- Test null arguments, all expressions should evaluate to null.
 UPDATE single_row_decimal SET v1 = v1 + null WHERE k = 2;
 UPDATE single_row_decimal SET v2 = null + v2 WHERE k = 2;
@@ -1859,7 +1896,7 @@ UPDATE single_row_decimal SET v3 = v3 + 4 * (null - 5) WHERE k = 2;
 SELECT * FROM single_row_decimal ORDER BY k;
  k |  v1   |  v2  | v3
 ---+-------+------+----
- 1 | 3.055 | 3.06 |  2
+ 1 | 6.165 | 6.18 |  4
  2 |       |      |
  3 |       |      |
 (3 rows)
@@ -1871,7 +1908,7 @@ UPDATE single_row_decimal SET v3 = v3 + 1 WHERE k = 3;
 SELECT * FROM single_row_decimal ORDER BY k;
  k |  v1   |  v2  | v3
 ---+-------+------+----
- 1 | 3.055 | 3.06 |  2
+ 1 | 6.165 | 6.18 |  4
  2 |       |      |
  3 |       |      |
 (3 rows)
@@ -1960,7 +1997,7 @@ INSERT INTO single_row_decimal(k, v1, v2, v3) values (4,4.5,4.5,4);
 SELECT * FROM single_row_decimal ORDER BY k;
  k |  v1   |  v2  | v3
 ---+-------+------+----
- 1 | 3.055 | 3.06 |  2
+ 1 | 6.165 | 6.18 |  4
  2 |       |      |
  3 |       |      |
  4 |   4.5 | 4.50 |  4
@@ -1975,7 +2012,7 @@ DETAIL:  Key (v3)=(8) is not present in table "single_row_decimal_fk".
 SELECT * FROM single_row_decimal ORDER BY k;
  k |  v1   |  v2  | v3
 ---+-------+------+----
- 1 | 3.055 | 3.06 |  2
+ 1 | 6.165 | 6.18 |  4
  2 |       |      |
  3 |       |      |
  4 | 9.055 | 9.06 |  4
@@ -2685,6 +2722,7 @@ SELECT * FROM multi_row;
 (0 rows)
 
 -- Cleanup.
+DROP FUNCTION next_v3;
 DROP FUNCTION assign_one_plus_param_to_v1;
 DROP FUNCTION assign_one_plus_param_to_v1_hard;
 DROP TABLE single_row;
