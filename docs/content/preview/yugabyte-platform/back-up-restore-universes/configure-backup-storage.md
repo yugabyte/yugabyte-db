@@ -23,7 +23,7 @@ You can configure Amazon S3 as your backup target, as follows:
 
    ![AWS Backup](/images/yp/cloud-provider-configuration-backup-aws.png)<br><br>
 
-3. Use the **Configuration Name** field to provide a meaning name for you backup configuration.
+3. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
 
 4. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the S3 backup.
 
