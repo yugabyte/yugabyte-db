@@ -1,8 +1,8 @@
 ---
-title: READ COMMITTED isolation level
-headerTitle: READ COMMITTED isolation level
+title: Read Committed isolation level
+headerTitle: Read Committed isolation level
 linkTitle: Read Committed
-description: Details about READ COMMITTED isolation level
+description: Details about the Read Committed isolation level
 menu:
   preview:
     identifier: architecture-read-committed
