@@ -66,5 +66,5 @@ extern text *json_get_denormalized_value(text *json, char *key);
 
 extern text *json_get_value(text *json, char *key);
 
-extern void validate_json_object_keys(text *json, char **expected_keys, int num_expected_keys);
+extern void validate_json_object_keys(text *json, char **required_keys, int num_required_keys, char **optional_keys, int num_optional_keys);
 #endif

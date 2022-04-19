@@ -33,6 +33,7 @@ class PlacementInfoConverter {
     string region = "";
     string zone = "";
     int min_num_replicas = 0;
+    int leader_preference = 0;
   };
 
   struct Placement {
