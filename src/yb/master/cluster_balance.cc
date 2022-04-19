@@ -225,34 +225,47 @@ void ClusterLoadBalancer::InitTablespaceManager() {
   tablespace_manager_ = catalog_manager_->GetTablespaceManager();
 }
 
-Status ClusterLoadBalancer::PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb) {
-  const auto& replication_info = VERIFY_RESULT(GetTableReplicationInfo(tablet->table()));
+Status ClusterLoadBalancer::PopulateReplicationInfo(
+    const scoped_refptr<TableInfo>& table, const ReplicationInfoPB& replication_info) {
+  PlacementInfoPB pb;
+
   if (state_->options_->type == LIVE) {
-    pb->CopyFrom(replication_info.live_replicas());
-  }
-  if (state_->options_->type == READ_ONLY) {
+    pb.CopyFrom(replication_info.live_replicas());
+  } else if (state_->options_->type == READ_ONLY) {
     if (replication_info.read_replicas_size() == 0) {
       // Should not reach here as tables that should not have read replicas should
       // have already been skipped before reaching here.
-      return STATUS(IllegalState,
-                    Format("Encountered a table $0 with no read replicas. Placement info $1",
-                      tablet->table()->name(),
-                      replication_info.DebugString()));
+      return STATUS_FORMAT(
+          IllegalState, "Encountered a table $0 with no read replicas. Placement info $1",
+          table->id(), replication_info);
     }
-    pb->CopyFrom(GetReadOnlyPlacementFromUuid(replication_info));
+    pb.CopyFrom(GetReadOnlyPlacementFromUuid(replication_info));
   }
+
+  state_->placement_by_table_[table->id()] = std::move(pb);
+
+  bool is_txn_table = table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
+  state_->use_preferred_zones_ = !is_txn_table || FLAGS_transaction_tables_use_preferred_zones;
+  if (state_->use_preferred_zones_) {
+    GetAllAffinitizedZones(replication_info, &state_->affinitized_zones_);
+  }
+
   return Status::OK();
 }
 
+void ClusterLoadBalancer::GetAllAffinitizedZones(
+    const ReplicationInfoPB& replication_info, AffinitizedZonesSet* affinitized_zones) const {
+  affinitized_zones->clear();
+  for (const auto& ci : replication_info.affinitized_leaders()) {
+    affinitized_zones->insert(ci);
+  }
+}
+
 Status ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
-  const auto& table_id = tablet->table()->id();
-  // Set the placement information on a per-table basis, only once.
-  if (!state_->placement_by_table_.count(table_id)) {
-    PlacementInfoPB pb;
-    {
-      RETURN_NOT_OK(PopulatePlacementInfo(tablet, &pb));
-    }
-    state_->placement_by_table_[table_id] = std::move(pb);
+  // The placement information should already be set.
+  if (!state_->placement_by_table_.count(tablet->table()->id())) {
+    return STATUS_FORMAT(
+        IllegalState, "Encountered a table $0 with no Placement info.", tablet->table()->name());
   }
 
   return state_->UpdateTablet(tablet);
@@ -362,39 +375,50 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       continue;
     }
     const TableId& table_id = table.first;
-    if (tablespace_manager_->NeedsRefreshToFindTablePlacement(table.second)) {
+    const auto& table_info = table.second;
+
+    if (tablespace_manager_->NeedsRefreshToFindTablePlacement(table_info)) {
       // Placement information was not present in catalog manager cache. This is probably a
       // recently created table, skip load balancing for now, hopefully by the next run,
       // the background task in the catalog manager will pick up the placement information
       // for this table from the PG catalog tables.
       // TODO(deepthi) Keep track of the number of times this happens, take appropriate action
       // if placement stays missing over period of time.
-      YB_LOG_EVERY_N(INFO, 10) << "Skipping load balancing for table " << table.second->name()
+      YB_LOG_EVERY_N(INFO, 10) << "Skipping load balancing for table " << table_id
                                << " as its placement information is not available yet";
       master_errors++;
       continue;
     }
 
+    const auto& replication_info = GetTableReplicationInfo(table_info);
+    if (!replication_info) {
+      YB_LOG_EVERY_N(WARNING, 10) << "Skipping load balancing for table " << table_id << ": "
+                                  << "as fetching replication info failed with error "
+                                  << StatusToString(replication_info.status());
+      master_errors++;
+      continue;
+    }
+
     if (options->type == READ_ONLY) {
-      const auto& result = GetTableReplicationInfo(table.second);
-      if (!result) {
-        YB_LOG_EVERY_N(WARNING, 10) << "Skipping load balancing for " << table.first << ": "
-                                    << "as fetching replication info failed with error "
-                                    << StatusToString(result.status());
-        master_errors++;
-        continue;
-      }
-      if (result.get().read_replicas_size() == 0) {
+      if (replication_info->read_replicas_size() == 0) {
         // The table has a replication policy without any read replicas present.
         // The LoadBalancer is handling read replicas in this run, so this
         // table can be skipped.
         continue;
       }
     }
+
     ResetTableStatePtr(table_id, options);
 
-    bool is_txn_table = table.second->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
-    state_->use_preferred_zones_ = !is_txn_table || FLAGS_transaction_tables_use_preferred_zones;
+    auto populate_ri_status = PopulateReplicationInfo(table_info, *replication_info);
+    if (!populate_ri_status.ok()) {
+      YB_LOG_EVERY_N(WARNING, 10) << "Skipping load balancing for table " << table_id << ": "
+                                  << "as populating replication info failed with error "
+                                  << StatusToString(populate_ri_status);
+      master_errors++;
+      continue;
+    }
+
     InitializeTSDescriptors();
 
     Status s = CountPendingTasksUnlocked(table_id,
@@ -403,7 +427,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
                                          &pending_stepdown_leader_tasks);
     if (!s.ok()) {
       // Found uninitialized ts_meta, so don't load balance this table yet.
-      LOG(WARNING) << "Skipping load balancing " << table.first << ": " << StatusToString(s);
+      LOG(WARNING) << "Skipping load balancing for table " << table_id << ": " << StatusToString(s);
       per_table_states_.erase(table_id);
       master_errors++;
       continue;
@@ -1389,20 +1413,7 @@ Status ClusterLoadBalancer::MoveLeader(const TabletId& tablet_id,
   return state_->MoveLeader(tablet_id, from_ts, to_ts, to_ts_path);
 }
 
-void ClusterLoadBalancer::GetAllAffinitizedZones(AffinitizedZonesSet* affinitized_zones) const {
-  SysClusterConfigEntryPB config;
-  CHECK_OK(catalog_manager_->GetClusterConfig(&config));
-  const int num_zones = config.replication_info().affinitized_leaders_size();
-  for (int i = 0; i < num_zones; i++) {
-    CloudInfoPB ci = config.replication_info().affinitized_leaders(i);
-    affinitized_zones->insert(ci);
-  }
-}
-
 void ClusterLoadBalancer::InitializeTSDescriptors() {
-  if (state_->use_preferred_zones_) {
-    GetAllAffinitizedZones(&state_->affinitized_zones_);
-  }
   // Set the blacklist so we can also mark the tablet servers as we add them up.
   state_->SetBlacklist(GetServerBlacklist());
 

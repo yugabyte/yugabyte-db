@@ -315,6 +315,7 @@ GET     /customers/:cUUID/backups/:backupUUID                                  c
 POST    /customers/:cUUID/backups/delete                                       com.yugabyte.yw.controllers.BackupsController.deleteYb(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/backups/:backupUUID                                  com.yugabyte.yw.controllers.BackupsController.editBackup(cUUID: java.util.UUID, backupUUID: java.util.UUID)
 PUT     /customers/:cUUID/schedules/:sUUID                                     com.yugabyte.yw.controllers.ScheduleController.editBackupSchedule(cUUID: java.util.UUID, sUUID: java.util.UUID)
++ forceNoAudit
 POST    /customers/:cUUID/schedules/page                                       com.yugabyte.yw.controllers.ScheduleController.pageScheduleList(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/schedules/:sUUID/delete                              com.yugabyte.yw.controllers.ScheduleController.deleteYb(cUUID: java.util.UUID, sUUID: java.util.UUID)
 
