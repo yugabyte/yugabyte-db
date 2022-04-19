@@ -27,7 +27,7 @@ You can configure Amazon S3 as your backup target, as follows:
 
 4. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the S3 backup.
 
-5. If **IAM Role** is disabled, enter values for **Access Key** and **Access Secret** fields.
+5. If **IAM Role** is disabled, enter values for the **Access Key** and **Access Secret** fields.
 
 6. Enter values for the **S3 Bucket** and **S3 Bucket Host Base** fields.
 
