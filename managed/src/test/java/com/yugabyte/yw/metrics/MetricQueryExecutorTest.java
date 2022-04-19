@@ -37,6 +37,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
   @Mock YBMetricQueryComponent mockYBMetricQueryComponent;
 
   private MetricConfig validMetric;
+  private MetricConfig validRangeMetric;
 
   @Before
   public void setUp() {
@@ -50,6 +51,16 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
                 + "\"xaxis\": { \"type\": \"date\" }}}");
     validMetric = MetricConfig.create("valid_metric", configJson);
     validMetric.save();
+
+    JsonNode rangeConfigJson =
+        Json.parse(
+            "{\"metric\": \"our_valid_range_metric\", "
+                + "\"function\": \"avg_over_time|avg\", \"range\": true,"
+                + "\"filters\": {\"filter\": \"awesome\"},"
+                + "\"layout\": {\"title\": \"Awesome Metric\", "
+                + "\"xaxis\": { \"type\": \"date\" }}}");
+    validRangeMetric = MetricConfig.create("valid_range_metric", rangeConfigJson);
+    validRangeMetric.save();
   }
 
   @Test
@@ -104,6 +115,32 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     assertThat(
         layout.get("xaxis").get("type").asText(),
         AllOf.allOf(IsNull.notNullValue(), IsEqual.equalTo("date")));
+  }
+
+  @Test
+  public void testWithValidRangeMetric() throws Exception {
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", "1479281737");
+    params.put("queryKey", "valid_range_metric");
+    MetricQueryExecutor qe =
+        new MetricQueryExecutor(
+            mockAppConfig,
+            mockApiHelper,
+            params,
+            new HashMap<>(),
+            mockYBMetricQueryComponent,
+            new MetricSettings()
+                .setMetric("valid_range_metric")
+                .setAggregation(MetricAggregation.MAX),
+            false);
+
+    JsonNode result = qe.call();
+    String directUrl = result.get("directURL").asText();
+    assertEquals(
+        directUrl,
+        "foo://bar/graph?g0.expr=max%28max_over_time%28"
+            + "our_valid_range_metric%7Bfilter%3D%22awesome%22%7D%5B0s%5D%29%29&g0.tab=0"
+            + "&g0.range_input=3600s&g0.end_input=");
   }
 
   @Test

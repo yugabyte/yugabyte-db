@@ -6,6 +6,8 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.metrics.MetricAggregation;
+import com.yugabyte.yw.metrics.MetricSettings;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -25,6 +27,9 @@ import play.libs.Json;
 @ApiModel(description = "Metric configuration key and value for Prometheus")
 @Entity
 public class MetricConfig extends Model {
+
+  public static final String METRICS_CONFIG_PATH = "metric/metrics.yml";
+
   public static class Layout {
     public static class Axis {
       public String type;
@@ -87,6 +92,12 @@ public class MetricConfig extends Model {
   }
 
   public Map<String, String> getQueries(Map<String, String> additionalFilters, int queryRangeSecs) {
+    MetricSettings metricSettings = MetricSettings.defaultSettings(getConfig().metric);
+    return getQueries(metricSettings, additionalFilters, queryRangeSecs);
+  }
+
+  public Map<String, String> getQueries(
+      MetricSettings metricSettings, Map<String, String> additionalFilters, int queryRangeSecs) {
     MetricConfig metricConfig = getConfig();
     if (metricConfig.metric == null) {
       throw new RuntimeException("Invalid MetricConfig: metric attribute is required");
@@ -97,17 +108,22 @@ public class MetricConfig extends Model {
     // Note: contains takes actual chars, while split takes a regex, hence the escape \\ there.
     if (metricConfig.metric.contains("|")) {
       for (String m : metricConfig.metric.split("\\|")) {
-        output.put(m, getQuery(m, additionalFilters, queryRangeSecs));
+        output.put(m, getQuery(metricSettings.cloneWithName(m), additionalFilters, queryRangeSecs));
       }
     } else {
       output.put(
-          metricConfig.metric, getQuery(metricConfig.metric, additionalFilters, queryRangeSecs));
+          metricConfig.metric,
+          getQuery(
+              metricSettings.cloneWithName(metricConfig.metric),
+              additionalFilters,
+              queryRangeSecs));
     }
     return output;
   }
 
   public String getQuery(Map<String, String> additionalFilters, int queryRangeSecs) {
-    return getQuery(this.getConfig().metric, additionalFilters, queryRangeSecs);
+    MetricSettings metricSettings = MetricSettings.defaultSettings(this.getConfig().metric);
+    return getQuery(metricSettings, additionalFilters, queryRangeSecs);
   }
 
   /**
@@ -119,22 +135,38 @@ public class MetricConfig extends Model {
    *
    * @return, a valid prometheus query string
    */
-  public String getQuery(String metric, Map<String, String> additionalFilters, int queryRangeSecs) {
+  public String getQuery(
+      MetricSettings metricSettings, Map<String, String> additionalFilters, int queryRangeSecs) {
     // Special case searchs for .avg to convert into the respective ratio of
     // avg(irate(metric_sum)) / avg(irate(metric_count))
+    String metric = metricSettings.getMetric();
     if (metric.endsWith(".avg")) {
       String metricPrefix = metric.substring(0, metric.length() - 4);
-      String sumQuery = getQuery(metricPrefix + "_sum", additionalFilters, queryRangeSecs);
-      String countQuery = getQuery(metricPrefix + "_count", additionalFilters, queryRangeSecs);
+      String sumQuery =
+          getQuery(
+              MetricSettings.defaultSettings(metricPrefix + "_sum"),
+              additionalFilters,
+              queryRangeSecs);
+      String countQuery =
+          getQuery(
+              MetricSettings.defaultSettings(metricPrefix + "_count"),
+              additionalFilters,
+              queryRangeSecs);
       return "(" + sumQuery + ") / (" + countQuery + ")";
     } else if (metric.contains("/")) {
       String[] metricNames = metric.split("/");
       MetricConfig numerator = get(metricNames[0]);
       MetricConfig denominator = get(metricNames[1]);
       String numQuery =
-          numerator.getQuery(numerator.getConfig().metric, additionalFilters, queryRangeSecs);
+          numerator.getQuery(
+              MetricSettings.defaultSettings(numerator.getConfig().metric),
+              additionalFilters,
+              queryRangeSecs);
       String denomQuery =
-          denominator.getQuery(denominator.getConfig().metric, additionalFilters, queryRangeSecs);
+          denominator.getQuery(
+              MetricSettings.defaultSettings(denominator.getConfig().metric),
+              additionalFilters,
+              queryRangeSecs);
       return String.format("((%s)/(%s))*100", numQuery, denomQuery);
     }
 
@@ -173,6 +205,7 @@ public class MetricConfig extends Model {
     queryStr = query.toString();
 
     if (metricConfig.function != null) {
+      String[] functions = metricConfig.function.split("\\|");
       /* We have added special way to represent multiple functions that we want to
       do, we pipe delimit those, but they follow an order.
       Scenario 1:
@@ -181,9 +214,17 @@ public class MetricConfig extends Model {
       Scenario 2:
         function: rate
         query str: rate(metric{memory="used"}[30m]). */
-      if (metricConfig.function.contains("|")) {
+      if (metricSettings.getAggregation() != MetricAggregation.DEFAULT) {
+        if (MetricAggregation.TIME_AGGREGATIONS.contains(functions[0])) {
+          functions[0] = metricSettings.getAggregation().getTimeAggregationFunc();
+        }
+        if (MetricAggregation.NODE_AGGREGATIONS.contains(functions[functions.length - 1])) {
+          functions[functions.length - 1] =
+              metricSettings.getAggregation().getNodeAggregationFunc();
+        }
+      }
+      if (functions.length > 1) {
         // We need to split the multiple functions and form the query string
-        String[] functions = metricConfig.function.split("\\|");
         for (String functionName : functions) {
           queryStr = String.format("%s(%s)", functionName, queryStr);
         }
