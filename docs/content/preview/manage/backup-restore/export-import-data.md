@@ -1,13 +1,17 @@
 ---
-title: Export and Import Data for YSQL
-headerTitle: Export and Import Data
-linkTitle: Export and Import Data
-description: Export and Import Data for YSQL
+title: Export and import data for YSQL
+headerTitle: Export and import data
+linkTitle: Export and import data
+description: Export and import data for YSQL
+aliases:
+  - /preview/manage/backup-restore/back-up-data/
+  - /preview/manage/backup-restore/restore-data/
 menu:
-  latest:
+  preview:
     identifier: export-import-data
     parent: backup-restore
     weight: 703
+type: page
 isTocNested: true
 showAsideToc: true
 ---
@@ -29,13 +33,13 @@ showAsideToc: true
 
 YugabyteDB comes with two utilities – `ysql_dump` and `ysql_dumpall` – that provide functionality to export the data into a SQL script. These utilities derive from PostgreSQL `pg_dump` and `pg_dumpall`.
 
-Note that generally it’s recommended to use other ways to take backups, like the Distributed Backup and Recovery capability. However, it does make sense to use `ysql_dump` and `ysql_dumpall` if you intend to restore the data on a database other than YugabyteDB, or if having data in SQL format is a requirement for other external reasons (e.g., regulations).
+In general, you should use other ways to take backups, such as the [distributed backup and recovery](../snapshot-ysql/) capability. However, it makes sense to use `ysql_dump` and `ysql_dumpall` if you intend to restore the data on a database other than YugabyteDB, or if having data in SQL format is a requirement for other reasons, such as regulations.
 
-Both tools are thread-safe, so they will always give you a consistent cut of the database even if run concurrently with other applications that read and update the data.
+Both YSQL dump tools are thread-safe, so they will always give you a consistent version of the database even if run concurrently with other applications that read and update the data.
 
-## Export a Single Database
+## Export a single database
 
-To export a single database with all its tables, indexes, etc., use the `ysql_dump` utility.
+To export a single database with all its tables, indexes, and so on, use the `ysql_dump` utility.
 
 {{< note title="Note" >}}
 
@@ -50,20 +54,21 @@ $ ./postgres/bin/ysql_dump -d <db-name> > <file>
 ```
 
 Where:
-- `<db-name>` – the name of the database to be exported
-- `<file>` – the path to the resulting SQL script file
 
-For example, if you’re exporting `mydb` database into `mydb-dump.sql` file located in `backup` folder, the command will look like this:
+* `<db-name>` is the name of the database to be exported.
+* `<file>` is the path to the resulting SQL script file.
+
+For example, to export the `mydb` database into a file called `mydb-dump.sql` located in the `backup` folder, the command would be as follows:
 
 ```sh
 $ ./postgres/bin/ysql_dump -d mydb > backup/mydb-dump.sql
 ```
 
-For more details and the list of optional parameters, see the [`ysql_dump` reference](../../../admin/ysql-dump/).
+For more details, and a list of all available options, see the [`ysql_dump` reference](../../../admin/ysql-dump/).
 
-## Export All Databases
+## Export all databases
 
-To export all databases, along with the global entities (users, roles, permissions, etc.), use the `ysql_dumpall` utility.
+To export all databases, along with the global entities (users, roles, permissions, and so on), use the `ysql_dumpall` utility.
 
 To do the export, run the following command:
 
@@ -71,14 +76,18 @@ To do the export, run the following command:
 $ ./postgres/bin/ysql_dumpall > <file>
 ```
 
-Where:
-- `<file>` – the path to the resulting SQL script file
+Where `<file>` is the path to the resulting SQL script file.
 
-You can also use the `ysql_dumpall` to export roles only (`--roles-only` option), all database objects without the data (`--schema-only` option), as well as other cases. For more details and a list of available options, see the [`ysql_dumpall` reference](../../../admin/ysql-dumpall/).
+Two of the script's common command-line options are:
+
+* `--roles-only` exports just the roles.
+* `--schema-only` exports all database objects, _without_ the data.
+
+For more details, and a list of all available options, see the [`ysql_dumpall` reference](../../../admin/ysql-dumpall/).
 
 ## Import
 
-YugabyteDB allows importing schemas and objects from a SQL script. Such a script can be either created by the `ysql_dump` or `ysql_dumpall` tool as described above, or provided by an external database that supports PostgreSQL syntax.
+You can import schemas and objects into YugabyteDB from an SQL script. You can create such a script using the `ysql_dump` or `ysql_dumpall` tool as described above, or obtain one from an external database that supports PostgreSQL syntax.
 
 To do the import, use the `ysqlsh` command line tool:
 
@@ -86,15 +95,10 @@ To do the import, use the `ysqlsh` command line tool:
 $ ./bin/ysqlsh -f <sql-script>
 ```
 
-Where:
-- `<sql-script>` - path to the SQL script for importing
+Where `<sql-script>` is the path to the SQL script to be imported.
 
-You can also achieve the same result with the `\i` command if running inside the `ysqlsh` shell:
+You can also use the `\i` command in the `ysqlsh` shell to import an SQL script:
 
-```sh
-$ ./bin/ysqlsh
-ysqlsh (11.2-YB-2.11.2.0-b0)
-Type "help" for help.
-
+```sql
 yugabyte=# \i <sql-script>
 ```

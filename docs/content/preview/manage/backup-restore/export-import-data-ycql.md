@@ -1,13 +1,17 @@
 ---
-title: Export and Import Data for YCQL
-headerTitle: Export and Import Data
-linkTitle: Export and Import Data
-description: Export and Import Data for YCQL
+title: Export and import data for YCQL
+headerTitle: Export and import data
+linkTitle: Export and import data
+description: Export and import data for YCQL
+aliases:
+  - /preview/manage/backup-restore/back-up-data-ycql/
+  - /preview/manage/backup-restore/restore-data-ycql/
 menu:
-  latest:
+  preview:
     identifier: export-import-data-ycql
     parent: backup-restore
     weight: 703
+type: page
 isTocNested: true
 showAsideToc: true
 ---
@@ -27,92 +31,93 @@ showAsideToc: true
   </li>
 </ul>
 
-Export and import of the YCQL data is performed by various commands of the `ycqlsh` script. For details on how to use the script to connect to a YugabyteDB cluster, as well as the full list of available parameters, refer to the [ycqlsh reference](../../../admin/ycqlsh/).
+You use the `ycqlsh` script to export and import YCQL data. For details on how to use the script to connect to a YugabyteDB cluster, as well as the full list of available options, refer to the [ycqlsh reference](../../../admin/ycqlsh/).
 
-### Export Schema
+### Export schema
 
-To export the schema, use the `DESCRIBE` command (you can also use `DESC`, which is its shorter alias).
+You use the `DESCRIBE` command (abbreviated to `DESC` here) to export the schema.
 
-In particular, if you want to export the schema of a particular keyspace, run the following command:
+To export the schema of a _single keyspace_, run the following command:
 
 ```sh
 ./bin/ycqlsh -e "DESC KEYSPACE <keyspace-name>" > <file>
 ```
 
 Where:
-- `<keyspace-name>` – the name of the keyspace to be exported
-- `<file>` – the path to the resulting SQL script file
 
-Alternatively, to export the schema across all available keyspaces, run the following command:
+* `<keyspace-name>` is the name of the keyspace to be exported.
+* `<file>` is the path to the resulting CQL script file.
+
+To export the schema of _every keyspace_, run the following command:
 
 ```sh
 ycqlsh -e "DESC SCHEMA" > <file>
 ```
 
-Where:
-- `<file>` – the path to the resulting CQL script file
+Where `<file>` is the path to the resulting CQL script file.
 
-### Export Data
+### Export data
 
-To export the data, use the `COPY TO` command. It will query all rows of the specified table and write into a CSV (comma-separated values) file.
+To export your data, use the `COPY TO` command. It will query all rows of the specified table and write into a CSV (comma-separated values) file.
 
-The full syntax of the `COPY TO` command is the following:
+The full syntax of the `COPY TO` command is as follows:
 
-```sql
+```output.sql
 COPY table_name [( column_list )]
 TO 'file_name'[, 'file2_name', ...] | STDIN
 [WITH option = 'value' [AND ...]]
 ```
 
 Where:
-- `table_name` - name of the table to be exported
-- `column-list` - optional comma-separated list of column names
-- `file-name` - name of the file to export the data to
+
+* `table_name` is the name of the table to be exported.
+* `column-list` is an optional comma-separated list of column names.
+* `file-name` is the name of the file to which to export the data.
 
 The command also supports multiple options. The following table outlines some of the more commonly used ones.
 
-| Option  | Description | Default |
-| :--------------- | :---------------- | :---------------- |
-| DELIMITER | Character used to separate fields. | , (comma) |
-| HEADER | Boolean value (`true` or `false`). If true, inserts the column names in the first row of data on exports. | false |
+| Option | Description | Default |
+| :----- | :---------- | :------ |
+| DELIMITER | Field separator character. | `,` (comma) |
+| HEADER | If true, output column names as the first row of data. | `false` |
 | PAGESIZE | Page size for fetching results. | 1000 |
 | PAGETIMEOUT | Page timeout for fetching results. | 10 |
-| MAXREQUESTS | Maximum number of requests each worker can process in parallel. | 6 |
-| MAXOUTPUTSIZE | Maximum size of the output file, measured in number of lines. When set, the output file is split into segments when the value is exceeded. Use `-1` for no maximum. | -1 |
+| MAXREQUESTS | Maximum number of requests each worker processes in parallel. | 6 |
+| MAXOUTPUTSIZE | Maximum number of lines in the output file. <br/>When set, the output file is split into segments no larger than this value. <br/>Use `-1` for no maximum. | -1 |
 
-### Import Schema
+### Import schema
 
-To import the schema, use the SOURCE command as shown below:
+To import a schema, use the `SOURCE` command:
 
 ```sh
 ycqlsh -e "SOURCE '<file>'"
 ```
 
-Where:
-- `<file>` – the path to the CQL script file to import the schema from
+Where: `<file>` is the path to the CQL script file from which to import the schema.
 
-### Import Data
+### Import data
 
-After the schema is imported, you can import the actual data by using the `COPY FROM` command that loads the data from one or more CSV files.
+After you import the schema, use the `COPY FROM` command to import the actual data from one or more CSV files.
 
-Here is the full syntax of the `COPY FROM` command:
+The full syntax of the `COPY FROM` command is as follows:
 
-```sql
+```output.sql
 COPY table_name [( column_list )]
 FROM 'file_name'[, 'file2_name', ...] | STDIN
 [WITH option = 'value' [AND ...]]
 ```
 
 Where:
-- `table_name` - name of the table import the data to
-- `column-list` - optional comma-separated list of column names
-- `file-name` - name of the file to import the data from
 
-Some of the commonly used options are:
+* `table_name` is the name of the _destination_ table.
+* `column-list` is an optional comma-separated list of column names.
+* `file-name` is the name of the file from which to import the data.
 
-| Option  | Description | Default |
-| :--------------- | :---------------- | :---------------- |
-| DELIMITER | Character used to separate fields. | `,` (comma) |
-| HEADER    | Boolean value (`true` or `false`). If true, the first row of data contains column names. | false |
-| CHUNKSIZE | The chunk size for each insert. | 1000 |
-| INGESTRATE | Desired ingest rate in rows per second. Must be greater than CHUNKSIZE. | 100000 |
+Some commonly-used options are:
+
+| Option | Description | Default |
+| :----- | :---------- | :------ |
+| DELIMITER | Field separator character. | `,` (comma) |
+| HEADER | If true, the first row of data contains column names. | `false` |
+| CHUNKSIZE | Maximum number of rows each insert. | 1000 |
+| INGESTRATE | Desired ingestion rate in rows per second. <br/>Must be greater than `CHUNKSIZE`. | 100000 |
