@@ -780,7 +780,7 @@ commit;
    <td>
    </td>
   </tr>
-</thead>
+</tbody>
 </table>
 
 ### INSERT behavior
@@ -889,7 +889,7 @@ rollback;
    <td>
    </td>
   </tr>
-</thead>
+</tbody>
 </table>
 
 **Same as previous, but with ON CONFLICT**
@@ -1014,7 +1014,7 @@ commit;
    <td>
    </td>
   </tr>
-</thead>
+</tbody>
 </table>
 
 **INSERT old key that is removed by other transaction**
@@ -1025,24 +1025,27 @@ insert into test values (1, 1);
 ```
 
 <table>
+  <thead>
+    <tr>
+    <th>
+    Client 1
+    </th>
+    <th>
+    Client 2
+    </th>
+    </tr>
+  </thead>
+  <tbody>
   <tr>
-   <td>
-   Client 1
-   </td>
-   <td>
-   Client 2
-   </td>
-  </tr>
-  <tr>
-   <td>
+    <td>
 
 ```sql
 begin transaction isolation level read committed;
 ```
 
-   </td>
-   <td>
-   </td>
+  </td>
+  <td>
+  </td>
   </tr>
   <tr>
    <td>
@@ -1137,7 +1140,7 @@ commit;
    <td>
    </td>
   </tr>
-</thead>
+</tbody>
 </table>
 
 **Same as previous, but with ON CONFLICT**
@@ -1148,14 +1151,17 @@ insert into test values (1, 1);
 ```
 
 <table>
+<thead>
   <tr>
-   <td>
+   <th>
    Client 1
-   </td>
-   <td>
+   </th>
+   <th>
    Client 2
-   </td>
+   </th>
   </tr>
+</thead>
+<tbody>
   <tr>
    <td>
 
@@ -1260,7 +1266,7 @@ commit;
    <td>
    </td>
   </tr>
-</thead>
+</tbody>
 </table>
 
 ## Cross feature interaction
