@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -14,6 +15,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.metrics.MetricSettings;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -31,7 +33,7 @@ public class MetricConfigTest extends FakeDBApplication {
     Map<String, Object> map = new HashMap();
     when(mockYamlWrapper.load(any())).thenReturn(map);
     // Make sure all the configs inside of metrics yaml are valid.
-    Map<String, Object> configs = (HashMap<String, Object>) mockYamlWrapper.load("metrics.yml");
+    Map<String, Object> configs = mockYamlWrapper.load(METRICS_CONFIG_PATH);
     MetricConfig.loadConfig(configs);
     for (MetricConfig config : MetricConfig.find.all()) {
       assertThat(
@@ -119,7 +121,12 @@ public class MetricConfigTest extends FakeDBApplication {
     for (Map.Entry<String, String> e : queries.entrySet()) {
       assertThat(
           e.getValue(),
-          allOf(equalTo(metricConfig.getQuery(e.getKey(), new HashMap<>(), DEFAULT_RANGE_SECS))));
+          allOf(
+              equalTo(
+                  metricConfig.getQuery(
+                      MetricSettings.defaultSettings(e.getKey()),
+                      new HashMap<>(),
+                      DEFAULT_RANGE_SECS))));
     }
   }
 
@@ -158,7 +165,12 @@ public class MetricConfigTest extends FakeDBApplication {
     for (Map.Entry<String, String> e : queries.entrySet()) {
       assertThat(
           e.getValue(),
-          allOf(equalTo(metricConfig.getQuery(e.getKey(), new HashMap<>(), DEFAULT_RANGE_SECS))));
+          allOf(
+              equalTo(
+                  metricConfig.getQuery(
+                      MetricSettings.defaultSettings(e.getKey()),
+                      new HashMap<>(),
+                      DEFAULT_RANGE_SECS))));
     }
   }
 

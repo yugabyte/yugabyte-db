@@ -141,6 +141,7 @@ components:
                       monitor: 'swamper'
               rule_files:
                 - '/opt/yugabyte/prometheus/rules/yugaware.ad.*.yml'
+                - '/opt/yugabyte/prometheus/rules/yugaware.recording-rules.yml'
               scrape_configs:
                 - job_name: 'prometheus'
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}

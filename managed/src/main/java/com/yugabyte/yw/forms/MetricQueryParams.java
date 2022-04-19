@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.metrics.MetricSettings;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
@@ -28,6 +29,9 @@ public class MetricQueryParams {
 
   @ApiModelProperty(value = "Is Recharts")
   private boolean isRecharts;
+
+  @ApiModelProperty(value = "List of metrics with custom settings")
+  private List<MetricSettings> metricsWithSettings;
 
   public List<String> getMetrics() {
     return metrics;
@@ -75,5 +79,13 @@ public class MetricQueryParams {
 
   public void setIsRecharts(boolean isRecharts) {
     this.isRecharts = isRecharts;
+  }
+
+  public List<MetricSettings> getMetricsWithSettings() {
+    return metricsWithSettings;
+  }
+
+  public void setMetricsWithSettings(List<MetricSettings> metricsWithSettings) {
+    this.metricsWithSettings = metricsWithSettings;
   }
 }
