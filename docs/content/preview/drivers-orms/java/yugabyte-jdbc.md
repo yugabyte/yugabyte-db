@@ -64,7 +64,7 @@ implementation 'com.yugabyte:jdbc-yugabytedb:42.3.0'
 implementation 'com.zaxxer:HikariCP:4.0.3'
 ```
 
-## Step 2: Set up the database connection
+## Step 2: Setup the database connection
 
 After setting up the dependencies, we implement the Java client application that uses the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run query on the sample data.
 
