@@ -121,7 +121,7 @@ Upload the Yugabyte license file that you received from [Yugabyte](https://www.y
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
-Two options to install Yugabyte Platform are presentedas, shown in the following illustrations:
+Two options to install Yugabyte Platform are presented as shown in the following illustrations:
 
 ![Replicated License Air-gapped Install](/images/replicated/replicated-license-airgapped-install-option.png)
 
