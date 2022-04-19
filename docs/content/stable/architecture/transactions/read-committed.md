@@ -4,7 +4,7 @@ headerTitle: Read Committed isolation level
 linkTitle: Read Committed
 description: Details about the Read Committed isolation level
 menu:
-  preview:
+  stable:
     identifier: architecture-read-committed
     parent: architecture-acid-transactions
     weight: 1153
