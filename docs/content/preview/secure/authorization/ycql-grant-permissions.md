@@ -28,21 +28,21 @@ showAsideToc: true
   </li>
 </ul>
 
-In this tutorial, you shall run through a scenario. Assume a company has an engineering organization, with three sub-teams - developers, qa and DB admins. We are going to create a role for each of these entities.
+This tutorial demonstrates how to grant privileges in YCQL using the scenario of a company with an engineering organization that has three sub-teams: developers, QA, and DB admins.
 
-Here is what you want to achieve from a role-based access control (RBAC) perspective.
+Here is what you want to achieve from a role-based access control (RBAC) perspective:
 
 - All members of engineering should be able to read data from any keyspace and table.
-- Both developers and qa should be able to modify data in existing tables in the keyspace `dev_keyspace`.
+- Developers and QA should be able to modify data in existing tables in the keyspace `dev_keyspace`.
 - QA should be able to alter the `integration_tests` table in the keyspace `dev_keyspace`.
 - DB admins should be able to perform all operations on any keyspace.
 
 ## 1. Create role hierarchy
 
-Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../enable-authentication/ycql/) in YugabyteDB clusters for YCQL. For this article, we are using the default `cassandra` user and connect to the cluster using `ycqlsh` as follows:
+Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../enable-authentication/ycql/) in YugabyteDB clusters for YCQL. For this article, use the default `cassandra` user and connect to the cluster using `ycqlsh` as follows:
 
 ```sh
-$ ycqlsh -u cassandra -p cassandra
+$ ./bin/ycqlsh -u cassandra -p cassandra
 ```
 
 Create a keyspace `dev_keyspace`.
@@ -62,7 +62,7 @@ CREATE TABLE dev_keyspace.integration_tests (
 );
 ```
 
-Next, create roles `engineering`, `developer`, `qa` and `db_admin`.
+Next, create roles `engineering`, `developer`, `qa`, and `db_admin`.
 
 ```sql
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS engineering;
@@ -71,7 +71,7 @@ cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS engineering;
                  CREATE ROLE IF NOT EXISTS db_admin;
 ```
 
-Grant the `engineering` role to `developer`, `qa` and `db_admin` roles since they are all a part of the engineering organization.
+Grant the `engineering` role to `developer`, `qa`, and `db_admin` roles, as they are all a part of the engineering organization.
 
 ```sql
 cassandra@ycqlsh> GRANT engineering TO developer;
@@ -87,7 +87,7 @@ cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_au
 
 You should see the following output:
 
-```
+```output
  role        | can_login | is_superuser | member_of
 -------------+-----------+--------------+-----------------
           qa |     False |        False | ['engineering']
@@ -107,9 +107,9 @@ You can list all permissions granted to the various roles with the following com
 cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
 ```
 
-You should see something like the following output.
+You should see something like the following output:
 
-```
+```output
  role      | resource          | permissions
 -----------+-------------------+--------------------------------------------------------------
  cassandra | roles/engineering |                               ['ALTER', 'AUTHORIZE', 'DROP']
@@ -121,40 +121,35 @@ You should see something like the following output.
 (5 rows)
 ```
 
-The above shows the various permissions the `cassandra` role has. Since `cassandra` is a superuser, it has all permissions on all keyspaces, including `ALTER`, `AUTHORIZE` and `DROP` on the roles you created (`engineering`, `developer`, `qa` and `db_admin`).
+This shows the various permissions the `cassandra` role has. Because `cassandra` is a superuser, it has all permissions on all keyspaces, including `ALTER`, `AUTHORIZE`, and `DROP` on the roles you created (`engineering`, `developer`, `qa`, and `db_admin`).
 
 {{< note title="Note" >}}
 
-For the sake of brevity, you will drop the `cassandra` role related entries in the remainder of this article.
+For the sake of brevity, the `cassandra` role related entries are not included in the remainder of this article.
 
 {{< /note >}}
 
 ## 3. Grant permissions to roles
 
-In this section, you will grant permissions to achieve the following as mentioned in the beginning of this tutorial:
-
-- All members of engineering should be able to read data from any keyspace and table.
-- Both developers and qa should be able to modify data in existing tables in the keyspace `dev_keyspace`.
-- Developers should be able to create, alter and drop tables in the keyspace `dev_keyspace`.
-- DB admins should be able to perform all operations on any keyspace.
+In this section, you grant permissions to each role.
 
 ### Grant read access
 
-All members of engineering should be able to read data from any keyspace and table. Use the `GRANT SELECT` command to grant `SELECT` (or read) access on `ALL KEYSPACES` to the `engineering` role. This can be done as follows:
+All members of engineering need to able to read data from any keyspace and table. Use the `GRANT SELECT` command to grant `SELECT` (or read) access on `ALL KEYSPACES` to the `engineering` role. This can be done as follows:
 
 ```sql
 cassandra@ycqlsh> GRANT SELECT ON ALL KEYSPACES TO engineering;
 ```
 
-We can now verify that the `engineering` role has `SELECT` permission as follows:
+Verify that the `engineering` role has `SELECT` permission as follows:
 
 ```sql
 cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
 ```
 
-The output should look similar to below, where you see that the `engineering` role has `SELECT` permission on the `data` resource.
+The output should look similar to below, where the `engineering` role has `SELECT` permission on the `data` resource.
 
-```
+```output
  role        | resource          | permissions
 -------------+-------------------+--------------------------------------------------------------
  engineering |              data |                                                   ['SELECT']
@@ -167,26 +162,26 @@ The resource "data" represents *all keyspaces and tables*.
 
 {{< /note >}}
 
-Granting the role `engineering` to any other role will cause all those roles to inherit the `SELECT` permissions. Thus, `developer`, `qa` and `db_admin` will all inherit the `SELECT` permission.
+Granting the role `engineering` to any other role causes all those roles to inherit the `SELECT` permissions. Thus, `developer`, `qa`, and `db_admin` all inherit the `SELECT` permission.
 
 ### Grant data modify access
 
-Both developers and qa should be able to modify data existing tables in the keyspace `dev_keyspace`. They should be able to execute statements such as `INSERT`, `UPDATE`, `DELETE` or `TRUNCATE` in order to modify data on existing tables. This can be done as follows:
+Both developers and QA should be able to modify data in existing tables in the keyspace `dev_keyspace`. They should be able to execute statements such as `INSERT`, `UPDATE`, `DELETE`, or `TRUNCATE` to modify data on existing tables. This can be done as follows:
 
 ```sql
 cassandra@ycqlsh> GRANT MODIFY ON KEYSPACE dev_keyspace TO developer;
                  GRANT MODIFY ON KEYSPACE dev_keyspace TO qa;
 ```
 
-We can now verify that the `developer` and `qa` roles have the appropriate `MODIFY` permission by running the following command.
+Verify that the `developer` and `qa` roles have the appropriate `MODIFY` permission by running the following command.
 
 ```sql
 cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
 ```
 
-We should see that the `developer` and `qa` roles have `MODIFY` permissions on the keyspace `data/dev_keyspace`.
+The `developer` and `qa` roles have `MODIFY` permissions on the keyspace `data/dev_keyspace`.
 
-```
+```output
  role        | resource          | permissions
 -------------+-------------------+--------------------------------------------------------------
           qa | data/dev_keyspace |                                                   ['MODIFY']
@@ -209,15 +204,15 @@ QA should be able to alter the table `integration_tests` in the keyspace `dev_ke
 cassandra@ycqlsh> GRANT ALTER ON TABLE dev_keyspace.integration_tests TO qa;
 ```
 
-Once again, run the following command to verify the permissions.
+Run the following command to verify the permissions.
 
 ```sql
 cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
 ```
 
-We should see a new row added, which grants the `ALTER` permission on the resource `data/dev_keyspace/integration_tests` to the role `qa`.
+The `ALTER` permission on the resource `data/dev_keyspace/integration_tests` is granted to the role `qa`.
 
-```
+```output
  role        | resource                            | permissions
 -------------+-------------------------------------+--------------------------------------------------------------
           qa |                   data/dev_keyspace |                                                   ['MODIFY']
@@ -238,36 +233,36 @@ All Keyspaces (data) > keyspace (dev_keyspace) > table (integration_tests)
 
 DB admins should be able to perform all operations on any keyspace. There are two ways to achieve this:
 
-1. The DB admins can be granted the superuser permission. Read more about [granting the superuser permission to roles](../../enable-authentication/ycql/). Note that doing this will give the DB admin all the permissions over all the roles as well.
+1. The DB admins can be granted the superuser permission. Read more about [granting the superuser permission to roles](../../enable-authentication/ycql/). Doing this gives the DB admin all the permissions over all the roles as well.
 
 2. Grant ALL permissions to the "db_admin" role. This can be achieved as follows.
 
-```sql
-cassandra@ycqlsh> GRANT ALL ON ALL KEYSPACES TO db_admin;
-```
+    ```sql
+    cassandra@ycqlsh> GRANT ALL ON ALL KEYSPACES TO db_admin;
+    ```
 
-Run the following command to verify the permissions:
+    Run the following command to verify the permissions:
 
-```sql
-cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
-```
+    ```sql
+    cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
+    ```
 
-We should see the following, which grants the all permissions on the resource `data` to the role `db_admin`.
+    All permissions on the resource `data` are granted to the role `db_admin`.
 
-```
- role        | resource                            | permissions
--------------+-------------------------------------+--------------------------------------------------------------
-          qa |                   data/dev_keyspace |                                                   ['MODIFY']
-          qa | data/dev_keyspace/integration_tests |                                                    ['ALTER']
-   developer |                   data/dev_keyspace |                                                   ['MODIFY']
- engineering |                                data |                                                   ['SELECT']
-    db_admin |                                data | ['ALTER', 'AUTHORIZE', 'CREATE', 'DROP', 'MODIFY', 'SELECT']
-    ...
-```
+    ```output
+    role        | resource                            | permissions
+    -------------+-------------------------------------+--------------------------------------------------------------
+              qa |                   data/dev_keyspace |                                                   ['MODIFY']
+              qa | data/dev_keyspace/integration_tests |                                                    ['ALTER']
+      developer |                   data/dev_keyspace |                                                   ['MODIFY']
+    engineering |                                data |                                                   ['SELECT']
+        db_admin |                                data | ['ALTER', 'AUTHORIZE', 'CREATE', 'DROP', 'MODIFY', 'SELECT']
+        ...
+    ```
 
 ## 4. Revoke permissions from roles
 
-Let us say you want to revoke the `AUTHORIZE` permission from the DB admins so that they can no longer change permissions for other roles. This can be done as follows.
+Suppose you want to revoke the `AUTHORIZE` permission from the DB admins so that they can no longer change permissions for other roles. This can be done as follows.
 
 ```sql
 cassandra@ycqlsh> REVOKE AUTHORIZE ON ALL KEYSPACES FROM db_admin;
@@ -281,7 +276,7 @@ cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
 
 We should see the following output.
 
-```
+```output
  role        | resource                            | permissions
 -------------+-------------------------------------+--------------------------------------------------------------
           qa |                   data/dev_keyspace |                                                   ['MODIFY']

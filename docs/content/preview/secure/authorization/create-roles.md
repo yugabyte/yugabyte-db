@@ -35,15 +35,15 @@ showAsideToc: true
 
 Create a role with a password. You can do this with the [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role/) statement.
 
-As an example, let us create a role `engineering` for an engineering team in an organization.
+For example, to create a role `engineering` for an engineering team in an organization, do the following:
 
-```plpgsql
+```sql
 yugabyte=# CREATE ROLE engineering;
 ```
 
-Roles that have `LOGIN` privileges are users. As an example, you can create a user `john` as follows:
+Roles that have `LOGIN` privileges are users. For example, create a user `john` as follows:
 
-```plpgsql
+```sql
 yugabyte=# CREATE ROLE john LOGIN PASSWORD 'PasswdForJohn';
 ```
 
@@ -65,17 +65,17 @@ Read more about [granting roles](../../../api/ysql/the-sql-language/statements/d
 
 In YSQL, you can create a hierarchy of roles. The privileges of any role in the hierarchy flows downward.
 
-As an example, let us say that in the above example, you want to create a `developer` role that inherits all the privileges from the `engineering` role. You can achieve this as follows.
+For example, you can create a `developer` role that inherits all the privileges from the `engineering` role.
 
 First, create the `developer` role.
 
-```plpgsql
+```sql
 yugabyte=# CREATE ROLE developer;
 ```
 
 Next, `GRANT` the `engineering` role to the `developer` role.
 
-```plpgsql
+```sql
 yugabyte=# GRANT engineering TO developer;
 ```
 

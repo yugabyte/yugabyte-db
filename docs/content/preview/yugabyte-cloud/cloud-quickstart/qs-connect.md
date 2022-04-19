@@ -36,7 +36,7 @@ To connect to your cluster, do the following:
     Cloud Shell opens in a separate browser window. Cloud Shell can take up to 30 seconds to be ready.
 
     ```output
-    Enter the password for your database user:
+    Enter your DB password:
     ```
 
 1. Enter the password for the admin user credentials that you saved when you created the cluster.\
