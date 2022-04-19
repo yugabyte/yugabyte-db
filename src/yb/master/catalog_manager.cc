@@ -1941,24 +1941,16 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
   if (!IsReplicationInfoSet(replication_info)) {
     return STATUS(InvalidArgument, "No replication info set.");
   }
-  // We don't support setting any other fields other than live replica placements for now.
-  if (!replication_info.read_replicas().empty() ||
-      !replication_info.affinitized_leaders().empty()) {
-
-      return STATUS(InvalidArgument, "Only live placement info can be set for table "
-          "level replication info.");
+  // We don't support read replica placements for now.
+  if (!replication_info.read_replicas().empty()) {
+    return STATUS(
+        InvalidArgument,
+        "Read replica placement info cannot be set for table level replication info.");
   }
-  // Today we support setting table level replication info only in clusters where read replica
-  // placements is not set. Return error if the cluster has read replica placements set.
+
   auto l = ClusterConfig()->LockForRead();
   const ReplicationInfoPB& cluster_replication_info = l->pb.replication_info();
-  // TODO(bogdan): figure this out when we expand on geopartition support.
-  // if (!cluster_replication_info.read_replicas().empty() ||
-  //     !cluster_replication_info.affinitized_leaders().empty()) {
 
-  //     return STATUS(InvalidArgument, "Setting table level replication info is not supported "
-  //         "for clusters with read replica placements");
-  // }
   // If the replication info has placement_uuid set, verify that it matches the cluster
   // placement_uuid.
   if (replication_info.live_replicas().placement_uuid().empty()) {
@@ -3926,6 +3918,21 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       s = STATUS(InvalidArgument, msg);
       LOG(WARNING) << msg;
       return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
+    }
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info) const {
+  auto& placement_info = replication_info.live_replicas();
+  if (!placement_info.placement_blocks().empty()) {
+    for (const auto& cloud_info : replication_info.affinitized_leaders()) {
+      if (!CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(placement_info, cloud_info)) {
+        return STATUS_FORMAT(
+            InvalidArgument, "Placement info $0 does not contain preferred zone cloud info $1",
+            placement_info, TSDescriptor::generate_placement_id(cloud_info));
+      }
     }
   }
 
@@ -10439,12 +10446,19 @@ Status CatalogManager::ValidateReplicationInfo(
   // because they aren't a part of any raft quorum underneath.
   // Technically, it is ok to have even 0 read replica nodes for them upfront.
   // We only need it for the primary cluster replicas.
+  const auto& placement_info = req->replication_info().live_replicas();
   TSDescriptorVector ts_descs;
-  GetTsDescsFromPlacementInfo(req->replication_info().live_replicas(), all_ts_descs, &ts_descs);
-  Status s = CheckValidPlacementInfo(req->replication_info().live_replicas(), all_ts_descs, resp);
+  GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
+  Status s = CheckValidPlacementInfo(placement_info, ts_descs, resp);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }
+
+  s = CheckValidLeaderAffinity(req->replication_info());
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
+  }
+
   return Status::OK();
 }
 

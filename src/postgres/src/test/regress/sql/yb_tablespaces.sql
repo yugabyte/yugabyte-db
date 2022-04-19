@@ -349,3 +349,34 @@ DROP TABLE tbl_other;
 DROP TABLESPACE tblspace;
 DROP TABLESPACE tblspace_other;
 
+-- Test leader_preference
+-- Empty leader_preference
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":}]}');
+
+-- Negative leader_preference
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":-1}]}');
+
+-- Zero as leader_preference
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":0}]}');
+
+-- No leader_preference 1
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":2}]}');
+
+-- No leader_preference 2
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1,"leader_preference":3}]}');
+
+-- No leader_preference 2 and no preference set
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1,"leader_preference":3}]}');
+
+-- Positive case
+-- Some zones with no leader_preference set
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1}]}');
+-- Valid case
+CREATE TABLESPACE valid_tablespace WITH (replica_placement='{"num_replicas":2,"placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1,"leader_preference":2}]}');
+CREATE TABLE foo (i int) TABLESPACE valid_tablespace;
+CREATE TABLE bar(i int);
+ALTER TABLE bar SET TABLESPACE valid_tablespace;
+DROP TABLE foo;
+DROP TABLE bar;
+DROP TABLESPACE valid_tablespace;
+DROP TABLESPACE LP;

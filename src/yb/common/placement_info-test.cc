@@ -137,7 +137,107 @@ TEST(PlacementInfoTest, TestTablespaceJsonProcessing) {
     ASSERT_EQ(placement_block.zone, "z2");
     ASSERT_EQ(placement_block.min_num_replicas, 1);
   }
+}
 
+// Test the tablespace preferred zone info parsing.
+TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
+  // Variables to be used throughout the test.
+  const string& zone1 = R"#("cloud":"c1","region":"r1","zone":"z1","min_num_replicas":1)#";
+  const string& zone2 = R"#("cloud":"c1","region":"r1","zone":"z2","min_num_replicas":1)#";
+  const string& zone3 = R"#("cloud":"c1","region":"r1","zone":"z3","min_num_replicas":1)#";
+  const string format =
+      R"#(replica_placement={"num_replicas":3,"placement_blocks": [{$0},{$1},{$2}]})#";
+
+  // Valid option with no preferred zones.
+  {
+    auto no_preferred_zone = strings::Substitute(format, zone1, zone2, zone3);
+    PlacementInfoConverter::Placement result =
+        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{no_preferred_zone}));
+    for (auto& info : result.placement_infos) {
+      ASSERT_EQ(info.leader_preference, 0);
+    }
+  }
+
+  // Negative priority.
+  {
+    auto negative_priority =
+        strings::Substitute(format, zone1 + R"#(,"leader_preference":-1)#", zone2, zone3);
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{negative_priority}));
+  }
+
+  // Zero priority.
+  {
+    auto zero_priority =
+        strings::Substitute(format, zone1 + R"#(,"leader_preference":0)#", zone2, zone3);
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{zero_priority}));
+  }
+
+  // No priority 1.
+  {
+    auto no_priority_1 =
+        strings::Substitute(format, zone1 + R"#(,"leader_preference":2)#", zone2, zone3);
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{no_priority_1}));
+  }
+
+  // Non contiguous priority.
+  {
+    auto non_cont_priority_1 = strings::Substitute(
+        format,
+        zone1 + R"#(,"leader_preference":1)#",
+        zone2 + R"#(,"leader_preference":1)#",
+        zone3 + R"#(,"leader_preference":3)#");
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{non_cont_priority_1}));
+  }
+
+  // Non contiguous priority3.
+  {
+    auto non_cont_priority_3 = strings::Substitute(
+        format,
+        zone1 + R"#(,"leader_preference":1)#",
+        zone2 + R"#(,"leader_preference":3)#",
+        zone3 + R"#(,"leader_preference":3)#");
+
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{non_cont_priority_3}));
+  }
+
+  // Only 1 zone has priority
+  {
+    auto one_zone_priority =
+        strings::Substitute(format, zone1 + R"#(,"leader_preference":1)#", zone2, zone3);
+    auto result =
+        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{one_zone_priority}));
+    for (auto& info : result.placement_infos) {
+      ASSERT_EQ(info.leader_preference, info.zone == "z1" ? 1 : 0);
+    }
+  }
+
+  // Two zones have priority 1
+  {
+    auto two_zone_priority = strings::Substitute(
+        format,
+        zone1 + R"#(,"leader_preference":1)#",
+        zone2 + R"#(,"leader_preference":1)#",
+        zone3);
+    auto result =
+        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{two_zone_priority}));
+    for (auto& info : result.placement_infos) {
+      ASSERT_EQ(info.leader_preference, info.zone == "z3" ? 0 : 1);
+    }
+  }
+
+  // All unique priority
+  {
+    auto teo_zone_priority = strings::Substitute(
+        format,
+        zone1 + R"#(,"leader_preference":1)#",
+        zone2 + R"#(,"leader_preference":2)#",
+        zone3 + R"#(,"leader_preference":3)#");
+    auto result =
+        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{teo_zone_priority}));
+    for (auto& info : result.placement_infos) {
+      ASSERT_EQ(info.leader_preference, info.zone[1] - '0');
+    }
+  }
 }
 
 } // namespace yb
