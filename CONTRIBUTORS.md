@@ -148,3 +148,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [def-](https://github.com/def-)
 * [hari90](https://github.com/hari90)
 * [tverona1](https://github.com/tverona1)
+* [vaibhav-yb](https://github.com/vaibhav-yb)
