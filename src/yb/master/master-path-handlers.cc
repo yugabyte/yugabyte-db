@@ -1197,11 +1197,17 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
                 << GetPgsqlTablespaceOid(tablespace_id)
                 << "  </td></tr>\n";
       }
-      auto replication_info = CHECK_RESULT(master_->catalog_manager()->GetTableReplicationInfo(
-            l->pb.replication_info(), tablespace_id));
-      *output << "  <tr><td>Replication Info:</td><td>"
-              << "    <pre class=\"prettyprint\">" << replication_info.DebugString() << "</pre>"
-              << "  </td></tr>\n </table>\n";
+      *output << "  <tr><td>Replication Info:</td><td>";
+      auto replication_info = master_->catalog_manager()->GetTableReplicationInfo(
+          l->pb.replication_info(), tablespace_id);
+      if (replication_info.ok()) {
+        *output << "    <pre class=\"prettyprint\">" << replication_info->DebugString() << "</pre>";
+      } else {
+        LOG(WARNING) << replication_info.status().CloneAndPrepend(
+            "Unable to determine Tablespace information.");
+        *output << "  Unable to determine Tablespace information.";
+      }
+      *output << "  </td></tr>\n </table>\n";
     } else {
       // The table was associated with a tablespace, but that tablespace was not found.
       *output << "  <tr><td>Replication Info:</td><td>";

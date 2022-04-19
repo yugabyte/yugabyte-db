@@ -912,6 +912,13 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
       pb->mutable_cloud_info()->set_placement_region(block.region);
       pb->mutable_cloud_info()->set_placement_zone(block.zone);
       pb->set_min_num_replicas(block.min_num_replicas);
+
+      if (block.leader_preference == 1) {
+        auto new_zone = replication_info.add_affinitized_leaders();
+        new_zone->set_placement_cloud(block.cloud);
+        new_zone->set_placement_region(block.region);
+        new_zone->set_placement_zone(block.zone);
+      }
     }
     live_replicas->set_num_replicas(placement.num_replicas);
 

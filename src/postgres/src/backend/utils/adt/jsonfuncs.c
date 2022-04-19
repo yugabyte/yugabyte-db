@@ -141,7 +141,7 @@ typedef struct ValidateOkeysState
 {
 	JsonLexContext *lex;
 	/* The set of keys the json object should contain */
-	char	**expected_keys;
+	char	**required_keys;
 
 	/*
 	 * For 'i' such that 'expected_keys' was found in the
@@ -150,8 +150,14 @@ typedef struct ValidateOkeysState
 	 */
 	bool	*found_key;
 
-	/* Number of keys in 'expected_keys' */
-	int	 num_expected_keys;
+	/* Number of keys in 'required_keys' */
+	int	 num_required_keys;
+
+	/* The set of keys the json object can contain */
+	char	**optional_keys;
+
+	/* Number of keys in 'optional_keys' */
+	int	 num_optional_keys;
 
 	/* The actual json being processed, convenience object
 	 * for printing descriptive error messages */
@@ -852,13 +858,23 @@ validate_okeys_object_field_start(void *state, char *fname, bool isnull)
 	if (_state->lex->lex_level != 1)
 		return;
 
-	/* Verify whether fname matches a key in expected_keys */
-	for (int i = 0; i < _state->num_expected_keys; i++)
+	/* Verify whether fname matches a key in required_keys */
+	for (int i = 0; i < _state->num_required_keys; i++)
 	{
-		if (strcmp(fname, _state->expected_keys[i]) == 0)
+		if (strcmp(fname, _state->required_keys[i]) == 0)
 		{
 			/* This is a valid key. Mark that this key is found */
 			_state->found_key[i] = true;
+			return;
+		}
+	}
+
+	/* Verify whether fname matches a key in optional_keys */
+	for (int i = 0; i < _state->num_optional_keys; i++)
+	{
+		if (strcmp(fname, _state->optional_keys[i]) == 0)
+		{
+			/* This is a valid key*/
 			return;
 		}
 	}
@@ -879,13 +895,13 @@ validate_okeys_object_end(void *state)
 
 	/* Since the entire object has been processed, check whether
 	 * all required keys have been found */
-	for (int i = 0; i < _state->num_expected_keys; i++)
+	for (int i = 0; i < _state->num_required_keys; i++)
 	{
 		if (!_state->found_key[i])
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("Required key \"%s\" not specified in json object: %s",
-					_state->expected_keys[i],
+					_state->required_keys[i],
 					_state->json_text)));
 	}
 }
@@ -5608,7 +5624,7 @@ int get_json_array_length(text *json)
 	return DatumGetInt32(result);
 }
 
-void validate_json_object_keys(text *json, char **expected_keys, int num_expected_keys)
+void validate_json_object_keys(text *json, char **required_keys, int num_required_keys, char **optional_keys, int num_optional_keys)
 {
 	ValidateOkeysState  *state;
 	JsonLexContext *lex;
@@ -5619,9 +5635,11 @@ void validate_json_object_keys(text *json, char **expected_keys, int num_expecte
 	sem = palloc0(sizeof(JsonSemAction));
 
 	state->lex = lex;
-	state->expected_keys = expected_keys;
-	state->found_key = (bool *) palloc0(num_expected_keys * sizeof(bool));
-	state->num_expected_keys = num_expected_keys;
+	state->required_keys = required_keys;
+	state->found_key = (bool *) palloc0(num_required_keys * sizeof(bool));
+	state->num_required_keys = num_required_keys;
+	state->optional_keys = optional_keys;
+	state->num_optional_keys = num_optional_keys;
 	state->json_text = text_to_cstring(json);
 
 	sem->semstate = (void *) state;
@@ -5655,4 +5673,3 @@ void validate_json_object_keys(text *json, char **expected_keys, int num_expecte
 	pfree(state->found_key);
 	pfree(state);
 }
-

@@ -758,6 +758,7 @@ Status PgSession::ValidatePlacement(const string& placement_info) {
     pb->set_region(block.region);
     pb->set_zone(block.zone);
     pb->set_min_num_replicas(block.min_num_replicas);
+    pb->set_leader_preference(block.leader_preference);
   }
   req.set_num_replicas(placement.num_replicas);
 

@@ -34,6 +34,7 @@ bool IsReplicaPlacementOption(const string& option) {
 Result<PlacementInfoConverter::Placement> PlacementInfoConverter::FromJson(
     const string& placement_str, const rapidjson::Document& placement) {
   std::vector<PlacementInfo> placement_infos;
+  std::set<int> visited_priorities;
 
   // Parse the number of replicas
   if (!placement.HasMember("num_replicas") || !placement["num_replicas"].IsInt()) {
@@ -67,27 +68,52 @@ Result<PlacementInfoConverter::Placement> PlacementInfoConverter::FromJson(
                            "Missing keys in replica placement option: $0", placement_str);
     }
     if (!placement["cloud"].IsString() || !placement["region"].IsString() ||
-        !placement["zone"].IsString() || !placement["min_num_replicas"].IsInt()) {
+        !placement["zone"].IsString() || !placement["min_num_replicas"].IsInt() ||
+        placement["min_num_replicas"].GetInt() <= 0) {
       return STATUS_FORMAT(Corruption,
                            "Invalid value for replica_placement option: $0", placement_str);
     }
+
     const int min_rf = placement["min_num_replicas"].GetInt();
-    placement_infos.emplace_back(PlacementInfo {
-      .cloud = placement["cloud"].GetString(),
-      .region = placement["region"].GetString(),
-      .zone = placement["zone"].GetString(),
-      .min_num_replicas = min_rf,
-    });
+    PlacementInfo info{
+        .cloud = placement["cloud"].GetString(),
+        .region = placement["region"].GetString(),
+        .zone = placement["zone"].GetString(),
+        .min_num_replicas = min_rf,
+    };
+
+    if (placement.HasMember("leader_preference")) {
+      if (!placement["leader_preference"].IsInt() || placement["leader_preference"].GetInt() <= 0) {
+        return STATUS_FORMAT(
+            Corruption, "Invalid value for leader_preference option: $0", placement_str);
+      }
+
+      const int priority = placement["leader_preference"].GetInt();
+      visited_priorities.insert(priority);
+      info.leader_preference = priority;
+    }
+
+    placement_infos.emplace_back(std::move(info));
     total_min_replicas += min_rf;
   }
+
   if (total_min_replicas > num_replicas) {
-    return STATUS_FORMAT(Corruption,
-                         "Sum of min_num_replicas fields exceeds the total replication factor "
-                         "in the placement policy: $0", placement_str);
+    return STATUS_FORMAT(
+        Corruption,
+        "Sum of min_num_replicas fields exceeds the total replication factor "
+        "in the placement policy: $0",
+        placement_str);
   }
+
+  int size = static_cast<int>(visited_priorities.size());
+  if (size > 0 && (*(visited_priorities.rbegin()) != size)) {
+    return STATUS_FORMAT(
+        Corruption, "Values for leader_preference is non-contiguous in option: $0", placement_str);
+  }
+
   return PlacementInfoConverter::Placement{
-    .placement_infos = std::move(placement_infos),
-    .num_replicas = num_replicas,
+      .placement_infos = std::move(placement_infos),
+      .num_replicas = num_replicas,
   };
 }
 
@@ -99,8 +125,10 @@ Result<PlacementInfoConverter::Placement> PlacementInfoConverter::FromString(
   // The only tablespace option supported today is "replica_placement" that allows specification
   // of placement policies encoded as a JSON array. Example value:
   // replica_placement=
-  //   '{"num_replicas":3, "placement_blocks": [
-  //         {"cloud":"c1", "region":"r1", "zone":"z1", "min_num_replicas":1},
+  //   '{"num_replicas":3,
+  //     "placement_blocks": [
+  //         {"cloud":"c1", "region":"r1", "zone":"z1", "min_num_replicas":1,
+  //            "leader_preference":1},
   //         {"cloud":"c2", "region":"r2", "zone":"z2", "min_num_replicas":1},
   //         {"cloud":"c3", "region":"r3", "zone":"z3", "min_num_replicas":1}]}'
   if (!IsReplicaPlacementOption(placement)) {

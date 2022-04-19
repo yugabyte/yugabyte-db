@@ -34,7 +34,9 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     *ts_descs = ts_descs_;
   }
 
-  void GetAllAffinitizedZones(AffinitizedZonesSet* affinitized_zones) const override {
+  void GetAllAffinitizedZones(
+      const ReplicationInfoPB& replication_info,
+      AffinitizedZonesSet* affinitized_zones) const override {
     *affinitized_zones = affinitized_zones_;
   }
 
