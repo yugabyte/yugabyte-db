@@ -102,24 +102,24 @@ showAsideToc: true
     ```xml
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-        <dict>
-          <key>Label</key>
-            <string>limit.maxfiles</string>
-          <key>ProgramArguments</key>
-            <array>
-              <string>launchctl</string>
-              <string>limit</string>
-              <string>maxfiles</string>
-              <string>1048576</string>
-              <string>1048576</string>
-            </array>
-          <key>RunAtLoad</key>
-            <true/>
-          <key>ServiceIPC</key>
-            <false/>
-        </dict>
-      </plist>
+    <plist version="1.0">
+      <dict>
+        <key>Label</key>
+          <string>limit.maxfiles</string>
+        <key>ProgramArguments</key>
+          <array>
+            <string>launchctl</string>
+            <string>limit</string>
+            <string>maxfiles</string>
+            <string>1048576</string>
+            <string>1048576</string>
+          </array>
+        <key>RunAtLoad</key>
+          <true/>
+        <key>ServiceIPC</key>
+          <false/>
+      </dict>
+    </plist>
     ```
 
     \
@@ -128,34 +128,35 @@ showAsideToc: true
     ```xml
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-        <dict>
-          <key>Label</key>
-            <string>limit.maxproc</string>
-          <key>ProgramArguments</key>
-            <array>
-              <string>launchctl</string>
-              <string>limit</string>
-              <string>maxproc</string>
-              <string>2500</string>
-              <string>2500</string>
-            </array>
-          <key>RunAtLoad</key>
-            <true/>
-          <key>ServiceIPC</key>
-            <false/>
-        </dict>
-      </plist>
+    <plist version="1.0">
+      <dict>
+        <key>Label</key>
+          <string>limit.maxproc</string>
+        <key>ProgramArguments</key>
+          <array>
+            <string>launchctl</string>
+            <string>limit</string>
+            <string>maxproc</string>
+            <string>2500</string>
+            <string>2500</string>
+          </array>
+        <key>RunAtLoad</key>
+          <true/>
+        <key>ServiceIPC</key>
+          <false/>
+      </dict>
+    </plist>
     ```
 
     \
-    Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run these command:
+    Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run the following commands:
 
     ```sh
     $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
     $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
     ```
 
+    \
     You might have to `unload` the service before loading it.
 
 ## Download YugabyteDB
