@@ -468,7 +468,7 @@ To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` 
 
 Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file.
 
-If a setting includes a comma (`,`) or double quotes (`"`), the setting should be enclosed in double quotes, and double quotes inside the quoted text should be doubled (`""`).
+If a setting includes a comma (`,`) or double quotes (`"`), the setting should be enclosed in double quotes. In addition, double quotes inside the quoted text should be doubled (`""`).
 
 Suppose you have two fields: `host all all 127.0.0.1/0 password` and `host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd="*****"`.
 
@@ -492,7 +492,7 @@ To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` 
 
 ##### --ysql_pg_conf_csv
 
-Comma-separated list of PostgreSQL setting assignments that is appended to the `postgresql.conf` file.
+Comma-separated list of PostgreSQL server configuration parameters that is appended to the `postgresql.conf` file.
 
 For example:
 
@@ -500,7 +500,9 @@ For example:
 --ysql_pg_conf_csv="suppress_nonpg_logs=true"
 ```
 
-For details on using `postgresql.conf` with YugabyteDB, refer to [Using postgresql.conf](#using-postgresql-conf).
+For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
+
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the exception of some logging options. Refer to [PostgreSQL logging options](#postgresql-logging-options).
 
 ##### --ysql_timezone
 
@@ -664,13 +666,13 @@ Default: `256MB`
 
 ##### --rocksdb_universal_compaction_min_merge_width
 
-Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is in `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `4`
 
 ##### --rocksdb_universal_compaction_size_ratio
 
-Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is in `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `20`
 
@@ -870,17 +872,17 @@ Use of this flag can potentially result in expiration of live data - use at your
 
 Default: `false`
 
-## Using postgresql.conf
+## PostgreSQL logging options
 
-Like PostgreSQL, YugabyteDB uses the `postgresql.conf` file to apply server configuration settings to new server instances.
+YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters using the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
 
-For information on using `postgresql.conf` to configure servers, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
+For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
-The server settings options for YugabyteDB are the same as for PostgreSQL, with the following exceptions.
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions.
 
 ### log_line_prefix
 
-YugabyteDB supports the following additional options for the `log_line_prefix` setting:
+YugabyteDB supports the following additional options for the `log_line_prefix` parameter:
 
 - %C = cloud name
 - %R = region / data center name
