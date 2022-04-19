@@ -57,28 +57,28 @@ The Yugabyte Psycopg2 driver has the following load balancing features:
 
 The Yugabyte Psycopg2 driver can be configured with pooling as well.
 
-## Quick Start
+## Quick start
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
 
-## Download the Driver Dependency
+## Download the driver dependency
 
-Building Psycopg requires a few prerequisites (a C compiler, some development packages): please check the [install](https://www.psycopg.org/docs/install.html#build-prerequisites) and the [faq](https://www.psycopg.org/docs/faq.html#faq-compile) documents in the doc dir or online for the details.
+Building Psycopg requires a few prerequisites (a C compiler and some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#build-prerequisites) and [the FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
 
-If prerequisites are met, you can install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
+The YugabyteDB Psycopg2 requires PostgreSQL version 11 or above (preferably 14).
 
-```
+Once you've installed the prerequisites, you install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
+
+```sh
 $ pip install psycopg2-yugabytedb
 ```
 
-or using setup.py if you have downloaded the source package locally:
+Or, you can use the setup.py script if you've downloaded the source package locally:
 
-```
+```sh
 $ python setup.py build
 $ sudo python setup.py install
 ```
-
-Note - The YugabyteDB Psycopg2 requires Postgresql version 11 or above (preferrably 14). 
 
 ## Fundamentals
 
@@ -112,7 +112,7 @@ To use the driver, do the following:
     ```
 
     Connection Dictionary
-    
+
     ```python
     conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True')
     ```
@@ -152,7 +152,7 @@ Next, you’ll use Python shell terminal, to demonstrate the driver's load balan
 The driver requires YugabyteDB version 2.7.2.0 or higher
 {{< /note>}}
 
-### Install YugabyteDB and create a local Cluster
+### Install YugabyteDB and create a local cluster
 
 Create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned. The placement values used are just tokens and have nothing to do with actual AWS cloud regions and zones.
 
@@ -162,7 +162,7 @@ $ cd <path-to-yugabytedb-installation>
 ./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
 ```
 
-### Check Uniform load balancing 
+### Check uniform load balancing
 
 Log into your Python terminal and run the following script:
 
@@ -188,7 +188,7 @@ obj.printHostToConnMap()
 This displays a key value pair map where the keys are the host and the values are the number of connections on them (This is the client side perspective of the number of connections).
 ![Load balancing with host connections](/images/develop/ecosystem-integrations/jdbc-load-balancing.png)
 
-### Check Topology-aware load balancing using yb-sample-apps
+### Check topology-aware load balancing using yb-sample-apps
 
 For topology-aware load balancing, run the following script in your new Python terminal with the `topology_keys` property set to `aws.us-west.us-west-2a`; only two nodes will be used in this case.
 
@@ -211,6 +211,6 @@ When you're done experimenting, run the following command to destroy the local c
 ./bin/yb-ctl destroy
 ```
 
-## Further Reading
+## Further reading
 
 To learn more about the driver, you can read the [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).
