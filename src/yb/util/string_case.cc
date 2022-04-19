@@ -40,26 +40,24 @@ namespace yb {
 
 using std::string;
 
-void SnakeToCamelCase(const std::string &snake_case,
-                      std::string *camel_case) {
-  DCHECK_NE(camel_case, &snake_case) << "Does not support in-place operation";
-  camel_case->clear();
-  camel_case->reserve(snake_case.size());
+std::string SnakeToCamelCase(const std::string &snake_case) {
+  std::string result;
+  result.reserve(snake_case.size());
 
   bool uppercase_next = true;
   for (char c : snake_case) {
-    if ((c == '_') ||
-        (c == '-')) {
+    if ((c == '_') || (c == '-')) {
       uppercase_next = true;
       continue;
     }
     if (uppercase_next) {
-      camel_case->push_back(toupper(c));
+      result.push_back(toupper(c));
     } else {
-      camel_case->push_back(c);
+      result.push_back(c);
     }
     uppercase_next = false;
   }
+  return result;
 }
 
 void AllCapsToCamelCase(const std::string &all_caps,
@@ -113,14 +111,14 @@ void ToUpperCase(const std::string &string,
 }
 
 void Capitalize(string *word) {
-  uint32_t size = word->size();
+  auto size = word->size();
   if (size == 0) {
     return;
   }
 
   (*word)[0] = toupper((*word)[0]);
 
-  for (int i = 1; i < size; i++) {
+  for (size_t i = 1; i < size; i++) {
     (*word)[i] = tolower((*word)[i]);
   }
 }

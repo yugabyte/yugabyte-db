@@ -326,7 +326,6 @@ struct DropRelationCallbackState
 #define child_dependency_type(child_is_partition)	\
 	((child_is_partition) ? DEPENDENCY_AUTO : DEPENDENCY_NORMAL)
 
-static Oid GetTablegroupOidFromCommand(OptTableGroup *tablegroup);
 static Oid GetTablegroupOidFromCreateStmt(CreateStmt *stmt);
 static void truncate_check_rel(Relation rel);
 static List *MergeAttributes(List *schema, List *supers, char relpersistence,
@@ -371,7 +370,7 @@ static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		  bool recurse, bool recursing, LOCKMODE lockmode);
 static void ATRewriteCatalogs(List **wqueue,
 							  LOCKMODE lockmode,
-							  YBCPgStatement *rollbackHandle);
+							  List **rollbackHandles);
 static void ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 		  AlterTableCmd *cmd, LOCKMODE lockmode);
 static void ATRewriteTables(AlterTableStmt *parsetree,
@@ -518,6 +517,7 @@ static void QueuePartitionConstraintValidation(List **wqueue, Relation scanrel,
 								   List *partConstraint,
 								   bool validate_default);
 static void CloneRowTriggersToPartition(Relation parent, Relation partition);
+static void DropClonedTriggersFromPartition(Oid partitionId);
 static ObjectAddress ATExecDetachPartition(Relation rel, RangeVar *name);
 static ObjectAddress ATExecAttachPartitionIdx(List **wqueue, Relation rel,
 						 RangeVar *name);
@@ -772,6 +772,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 	Oid tablegroupId = GetTablegroupOidFromCreateStmt(stmt);
 
+	Oid colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
+
 	/* Identify user ID that will own the table */
 	if (!OidIsValid(ownerId))
 		ownerId = (IsYugaByteEnabled() && IsYsqlUpgrade && IsSystemNamespace(namespaceId))
@@ -781,13 +783,15 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	/*
 	 * Parse and validate reloptions, if any.
 	 */
-	reloptions = ybTransformRelOptions((Datum) 0, stmt->options, NULL, validnsps,
-									   true, false, IsYsqlUpgrade);
+	reloptions = transformRelOptions((Datum) 0, stmt->options, NULL, validnsps,
+									 true, false);
 
 	if (relkind == RELKIND_VIEW)
 		(void) view_reloptions(reloptions, true);
 	else
 		(void) heap_reloptions(relkind, reloptions, true);
+
+	reloptions = ybExcludeNonPersistentReloptions(reloptions);
 
 	if (stmt->ofTypename)
 	{
@@ -933,6 +937,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	relationId = heap_create_with_catalog(relname,
 										  namespaceId,
 										  tablespaceId,
+										  tablegroupId,
 										  relationId,
 										  rowTypeId,
 										  ofTypeId,
@@ -964,7 +969,9 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	if (IsYugaByteEnabled())
 	{
 		CheckIsYBSupportedRelationByKind(relkind);
-		YBCCreateTable(stmt, relkind, descriptor, relationId, namespaceId, tablegroupId, tablespaceId);
+		YBCCreateTable(stmt, relkind, descriptor, relationId, namespaceId,
+					   tablegroupId, colocation_id, tablespaceId,
+					   InvalidOid /* matviewPgTableId */);
 	}
 
 	/* For testing purposes, user might ask us to fail a DLL. */
@@ -1192,40 +1199,22 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 /*
  * Select tablegroup to use. If not specified, InvalidOid.
  * Will produce an error if the pg_tablegroup system table has not been created.
- * Checks both
- *  - the reloptions array (for syntax `CREATE TABLE (...) WITH (tablegroup=###);`)
- *  - the tablegroup syntax (for syntax `CREATE TABLE (...) TABLEGROUP grp;`)
- * Disallows
- *  - mixing the two tablegroup syntaxes
- *  - supplying an invalid tablegroup oid
- *  - creating a table within a tablegroup without the correct permissions
+ * Disallows creating a table within a tablegroup without the correct permissions.
  */
 static Oid
 GetTablegroupOidFromCreateStmt(CreateStmt *stmt)
 {
-	Oid tablegroupId = InvalidOid;
+	if (!stmt->tablegroup)
+		return InvalidOid;
 
-	Oid tablegroupIdFromOptions = GetTablegroupOidFromRelOptions(stmt->options);
-	Oid tablegroupIdFromCommand = GetTablegroupOidFromCommand(stmt->tablegroup);
-
-	if (tablegroupIdFromOptions != InvalidOid && tablegroupIdFromCommand != InvalidOid)
+	if (!stmt->tablegroup->has_tablegroup)
 		ereport(ERROR,
-		        (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-		         errmsg("cannot specify both tablegroup and tablegroup oid")));
-	else if (tablegroupIdFromOptions != InvalidOid)
-	{
-		/* Check that this OID corresponds to a tablegroup */
-		char *name = get_tablegroup_name(tablegroupIdFromOptions);
-		if (name == NULL)
-			ereport(ERROR,
-			        (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			         errmsg("tablegroup with oid %d does not exist", tablegroupIdFromOptions)));
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("Cannot use NO TABLEGROUP in CREATE TABLE statement.")));
 
-		tablegroupId = tablegroupIdFromOptions;
-	}
-	else if (tablegroupIdFromCommand != InvalidOid)
-		tablegroupId = tablegroupIdFromCommand;
-	else
+	Oid tablegroupId = get_tablegroup_oid(stmt->tablegroup->tablegroup_name, false);
+
+	if (!OidIsValid(tablegroupId))
 		return InvalidOid;
 
 	/*
@@ -1242,37 +1231,16 @@ GetTablegroupOidFromCreateStmt(CreateStmt *stmt)
 						   get_tablegroup_name(tablegroupId));
 	}
 
-	if (tablegroupIdFromCommand != InvalidOid)
-	{
-		/*
-		 * Prepend to stmt->options to be parsed for reloptions if tablegroupId is valid. We need
-		 * to do the preprocessing and RBAC checks first. This still happens before
-		 * transformReloptions so this option is included in the reloptions text array.
-		 */
-		stmt->options = lcons(makeDefElem("tablegroup",
-										  (Node *) makeInteger(tablegroupIdFromCommand), -1),
-										  stmt->options);
-	}
+	/*
+	 * Prepend to stmt->options to be parsed for reloptions if tablegroupId is valid. We need
+	 * to do the preprocessing and RBAC checks first. This still happens before
+	 * transformReloptions so this option is included in the reloptions text array.
+	 */
+	stmt->options = lcons(makeDefElem("tablegroup_oid",
+									  (Node *) makeInteger(tablegroupId), -1),
+									  stmt->options);
 
 	return tablegroupId;
-}
-
-/*
- * Returns the Oid of the tablegroup from the CREATE TABLE ... TABLEGROUP grp; syntax
- * Returns InvalidOid if no tablegroup was specified.
- */
-static Oid
-GetTablegroupOidFromCommand(OptTableGroup *tablegroup)
-{
-	if (!tablegroup)
-		return InvalidOid;
-
-	if (!tablegroup->has_tablegroup)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("Cannot use NO TABLEGROUP in CREATE TABLE statement.")));
-
-	return get_tablegroup_oid(tablegroup->tablegroup_name, false);
 }
 
 /*
@@ -1545,7 +1513,8 @@ RangeVarCallbackForDropRelation(const RangeVar *rel, Oid relOid, Oid oldRelOid,
 
 	/* Allow DROP to either table owner or schema owner */
 	if (!pg_class_ownercheck(relOid, GetUserId()) &&
-		!pg_namespace_ownercheck(classform->relnamespace, GetUserId()))
+		!pg_namespace_ownercheck(classform->relnamespace, GetUserId()) &&
+		!IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(get_rel_relkind(relOid)),
 					   rel->relname);
 
@@ -3197,6 +3166,17 @@ renameatt(RenameStmt *stmt)
 	if (IsYugaByteEnabled())
 	{
 		YBCRename(stmt, relid);
+		if (stmt->renameType == OBJECT_COLUMN)
+		{
+			ListCell *child;
+			List *children = find_all_inheritors(relid, NoLock, NULL);
+			foreach(child, children)
+			{
+				Oid childrelid = lfirst_oid(child);
+				if (childrelid != relid)
+					YBCRename(stmt, childrelid);
+			}
+		}
 	}
 
 	ObjectAddressSubSet(address, RelationRelationId, relid, attnum);
@@ -3929,13 +3909,13 @@ ATController(AlterTableStmt *parsetree,
 	relation_close(rel, NoLock);
 
 	/* Phase 2: update system catalogs */
-	YBCPgStatement rollbackHandle = NULL;
+	List *rollbackHandles = NIL;
 	/*
 	 * ATRewriteCatalogs also executes changes to DocDB.
 	 * If Phase 3 fails, rollbackHandle will specify how to rollback the
 	 * changes done to DocDB.
 	*/
-	ATRewriteCatalogs(&wqueue, lockmode, &rollbackHandle);
+	ATRewriteCatalogs(&wqueue, lockmode, &rollbackHandles);
 
 	/* Phase 3: scan/rewrite tables as needed */
 	PG_TRY();
@@ -3945,9 +3925,11 @@ ATController(AlterTableStmt *parsetree,
 	PG_CATCH();
 	{
 		/* Rollback the DocDB changes. */
-		if (rollbackHandle)
+		ListCell *lc = NULL;
+		foreach(lc, rollbackHandles)
 		{
-			YBCExecAlterTable(rollbackHandle, RelationGetRelid(rel));
+			YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
+			YBCExecAlterTable(handle, RelationGetRelid(rel));
 		}
 		PG_RE_THROW();
 	}
@@ -4270,7 +4252,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 static void
 ATRewriteCatalogs(List **wqueue,
 				  LOCKMODE lockmode,
-				  YBCPgStatement *rollbackHandle)
+				  List **rollbackHandles)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -4286,10 +4268,42 @@ ATRewriteCatalogs(List **wqueue,
 	 */
 	AlteredTableInfo* info       = (AlteredTableInfo *) linitial(*wqueue);
 	Oid               main_relid = info->relid;
-	YBCPgStatement    handle     = YBCPrepareAlterTable(info->subcmds,
-														AT_NUM_PASSES,
-														main_relid,
-														rollbackHandle);
+	YBCPgStatement rollbackHandle = NULL;
+	List *handles = NIL;
+	YBCPgStatement handle = YBCPrepareAlterTable(info->subcmds,
+												AT_NUM_PASSES,
+												main_relid,
+												&rollbackHandle,
+												false /* isPartitionOfAlteredTable */);
+	handles = lappend(handles, handle);
+	if (rollbackHandle)
+		*rollbackHandles = lappend(*rollbackHandles, rollbackHandle);
+
+	/*
+	 * If this is a partitioned table, prepare alter table handles for all
+	 * the partitions as well.
+	 */
+	List *children = find_all_inheritors(main_relid, NoLock, NULL);
+	ListCell   *child;
+	foreach(child, children)
+	{
+		Oid childrelid = lfirst_oid(child);
+		/*
+		 * find_all_inheritors also returns the oid of the table itself.
+		 * Skip it, as we have already added handles for it.
+		 */
+		if (childrelid == main_relid)
+			continue;
+		YBCPgStatement childRollbackHandle = NULL;
+		YBCPgStatement child_handle = YBCPrepareAlterTable(info->subcmds,
+														   AT_NUM_PASSES,
+														   childrelid,
+														   &childRollbackHandle,
+														   true /*isPartitionOfAlteredTable */);
+		handles = lappend(handles, child_handle);
+		if (childRollbackHandle)
+			*rollbackHandles = lappend(*rollbackHandles, childRollbackHandle);
+	}
 
 	/*
 	 * We process all the tables "in parallel", one pass at a time.  This is
@@ -4298,6 +4312,7 @@ ATRewriteCatalogs(List **wqueue,
 	 * re-adding of the foreign key constraint to the other table).  Work can
 	 * only be propagated into later passes, however.
 	 */
+	ListCell *lc = NULL;
 	for (pass = 0; pass < AT_NUM_PASSES; pass++)
 	{
 		/*
@@ -4309,9 +4324,13 @@ ATRewriteCatalogs(List **wqueue,
 		 * However, we must also do this before we start adding indexes because
 		 * the column in question might not be there yet.
 		 */
-		if (pass == AT_PASS_ADD_INDEX && handle)
+		if (pass == AT_PASS_ADD_INDEX)
 		{
-			YBCExecAlterTable(handle, main_relid);
+			foreach(lc, handles)
+			{
+				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
+				YBCExecAlterTable(handle, main_relid);
+			}
 		}
 
 		/* Go through each table that needs to be processed */
@@ -5312,7 +5331,7 @@ ATSimplePermissions(Relation rel, int allowed_targets)
 		ATWrongRelkindError(rel, allowed_targets);
 
 	/* Permissions checks */
-	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))
+	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()) && !IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(rel->rd_rel->relkind),
 					   RelationGetRelationName(rel));
 
@@ -7130,6 +7149,23 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 
 	attnum = targetatt->attnum;
 
+	/* 
+	 * In YB, a table cannot drop key columns. 
+	 * This check makes sure a consistent state after attempting to drop
+	 * key columns by preventing dropping key columns on postgres side.
+	 */
+	if (IsYBRelation(rel))
+	{
+		Bitmapset  *pkey   = YBGetTablePrimaryKeyBms(rel);
+
+		/* Can't drop primary-key columns */
+		if (bms_is_member(attnum - YBGetFirstLowInvalidAttributeNumber(rel), pkey))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot drop key column \"%s\"",
+							colName)));
+	}
+
 	/* Can't drop a system attribute, except OID */
 	if (attnum <= 0 && attnum != ObjectIdAttributeNumber)
 		ereport(ERROR,
@@ -7650,6 +7686,39 @@ YBMoveRelDependencies(Relation old_rel, Relation new_rel,
 }
 
 /*
+ * Filter the DefElem list, removing all reloptions that should not be
+ * carried over when cloning the relation.
+ */
+static List *
+YBExcludeNonCopyableOptions(List *options)
+{
+	if (options)
+	{
+		ListCell   *prev = NULL;
+		ListCell   *next;
+
+		for (ListCell *curr = list_head(options); curr != NULL; curr = next)
+		{
+			next = lnext(curr);
+			DefElem *elem = lfirst_node(DefElem, curr);
+
+			/*
+			 * Tablegroup is stored as a reloption but should not be copied
+			 * as such, there's a separate mechanism for it.
+			 */
+			if (strcmp(elem->defname, "tablegroup_oid") == 0)
+			{
+				options = list_delete_cell(options, curr, prev);
+				break; /* since we only have one case so far, we can stop early. */
+			}
+			else
+				prev = curr;
+		}
+	}
+	return options;
+}
+
+/*
  * Primary key is an inherent part of a DocDB table, we can't literally "add"
  * a primary key to an existing table.
  * As a workaround, we create a new table with the desired schema and replace
@@ -7669,6 +7738,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	AttrNumber*  new2old_attmap;
 	Oid          old_relid, new_relid;
 	bool         is_range_pk = false;
+	bool         is_null;
 
 	Relation     pg_constraint, pg_trigger, pg_depend;
 	ScanKeyData  key;
@@ -7700,8 +7770,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		elog(ERROR, "adding primary key to a table with rules "
 		            "is not yet implemented");
 
-	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, old_relid, &yb_table_desc));
-	HandleYBStatus(YBCPgGetTableProperties(yb_table_desc, &yb_table_props));
+	YbGetTableDescAndProps(old_relid, false, &yb_table_desc, &yb_table_props);
 
 	/*
 	 * TODO: This works as a sanity check for now, but after we support inheritance
@@ -7716,7 +7785,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 
 	/*
 	 * At this point we're already sure that the table has no explicit PK -
-	 * meaning it's PK has to be (ybctid HASH).
+	 * meaning it's PK has to be (ybctid HASH), or (ybctid ASC) for colocated table.
 	 */
 	Assert(yb_table_props.is_colocated || yb_table_props.num_hash_key_columns == 1);
 
@@ -7771,20 +7840,26 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	create_stmt->tablegroup     = NULL;
 
 	/*
-	 * Colocation support is further complicated by the fact that we can't
-	 * verify it via pure SQL, see #6159.
+	 * Initialize reloptions.
+	 * Note that we're not allowed to look for reloptions in rd_rel, we have to look up
+	 * the real HeapTuple.
 	 */
-	const Oid tablegroup_id = RelationGetTablegroup(*mutable_rel);
-	if (OidIsValid(tablegroup_id))
+
+	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(old_relid));
+	Datum datum = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions, &is_null);
+	if (!is_null)
+		create_stmt->options = untransformRelOptions(datum);
+	ReleaseSysCache(tuple);
+
+	create_stmt->options = YBExcludeNonCopyableOptions(create_stmt->options);
+
+	const Oid tablegroup_oid = RelationGetTablegroupOid(*mutable_rel);
+	if (OidIsValid(tablegroup_oid))
 	{
 		create_stmt->tablegroup = makeNode(OptTableGroup);
 		create_stmt->tablegroup->has_tablegroup = true;
-		create_stmt->tablegroup->tablegroup_name = get_tablegroup_name(tablegroup_id);
+		create_stmt->tablegroup->tablegroup_name = get_tablegroup_name(tablegroup_oid);
 		Assert(create_stmt->tablegroup->tablegroup_name);
-	} else if ((*mutable_rel)->rd_options && MyDatabaseColocated) {
-		const bool colocated = RelationGetColocated(*mutable_rel);
-		create_stmt->options = lappend(create_stmt->options,
-			makeDefElem("colocated", (Node *) makeInteger(colocated), -1));
 	}
 
 	/* The only constraint we care about here is the PK constraint needed for YB. */
@@ -8102,42 +8177,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		RenameRelation(rename_stmt);
 		CommandCounterIncrement();
 
-		/* The tablegroup attribute of a table is not a reloption at syntax level
-		 * but it is recorded as a reloption by DefineIndex (which makes a special
-		 * case only for "tablegroup" to convert it to a reloption). As a result,
-		 * if the old table has a tablegroup, then every index on the old table
-		 * including the dummy pkey index has also stored a reloption for the
-		 * tablegroup when DefineIndex was called for it.
-		 *
-		 * When generateClonedIndexStmt is called to make a new index statement, it
-		 * will have cloned the old index's reloptions, which includes the special
-		 * reloption for "tablegroup".
-		 *
-		 * Next we will call DefineIndex for each cloned index statement. DefineIndex
-		 * will again make a special case for "tablegroup" and convert "tablegroup"
-		 * to another reloption. This means that the new index statement gets two
-		 * "tablegroup" reloption instances and caused postgres error:
-		 *   ERROR: parameter "tablegroup" specified more than once
-		 * To prevent this error, remove "tablegroup" reloption if there is one.
-		 */
-		if (idx_stmt->options)
-		{
-			ListCell   *option;
-			ListCell   *prev;
-
-			prev = NULL;
-			foreach(option, idx_stmt->options)
-			{
-				DefElem *elem = lfirst_node(DefElem, option);
-				if (strcmp(elem->defname, "tablegroup") == 0)
-				{
-					idx_stmt->options = list_delete_cell(idx_stmt->options, option, prev);
-					break;
-				}
-				else
-					prev = option;
-			}
-		}
+		idx_stmt->options = YBExcludeNonCopyableOptions(idx_stmt->options);
 
 		/* Create a new index taking up the freed name. */
 		idx_stmt->idxname = pstrdup(idx_orig_name);
@@ -8370,6 +8410,9 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
 	{
 		/* Table will be re-created, along with the dummy PK index. */
 		address = YBCloneRelationSetPrimaryKey(mutable_rel, stmt);
+
+		/* Update the table relid so that further passes will operate on the new table. */
+		tab->relid = (*mutable_rel)->rd_id;
 	}
 
 	/*
@@ -10308,6 +10351,154 @@ validateCheckConstraint(Relation rel, HeapTuple constrtup)
 }
 
 /*
+ * Helper structure to emulate virtual functions for YbFKTriggerScan.
+ * This scan works as regular heap_scan in non-YB mode and has some extra
+ * functionality in YB mode.
+ */
+typedef struct YbFKTriggerVTable
+{
+	HeapTuple (*get_next)();
+	Buffer (*get_buffer)();
+} YbFKTriggerVTable;
+
+/*
+ * YbFKTriggerScanDescData holds the state of the YbFKTriggerScan which reads multiple
+ * tuples and preload FK for them. After preloading FK in a batch it returns each tuple one
+ * after another like regular heap_scan.
+ */
+typedef struct YbFKTriggerScanDescData
+{
+	HeapScanDesc scan;
+	ScanDirection scan_direction;
+	MemoryContext cxt;
+	MemoryContext old_cxt;
+	YbFKTriggerVTable* vptr;
+	Trigger* trigger;
+	Relation pkrel;
+	int buffered_tuples_capacity;
+	int buffered_tuples_size;
+	int current_tuple_idx;
+	bool all_tuples_processed;
+	HeapTuple buffered_tuples[];
+} YbFKTriggerScanDescData;
+
+typedef struct YbFKTriggerScanDescData *YbFKTriggerScanDesc;
+
+static HeapTuple
+YbPgGetNext(YbFKTriggerScanDesc desc)
+{
+	/* Clear per-tuple context */
+	MemoryContextReset(desc->cxt);
+	return heap_getnext(desc->scan, desc->scan_direction);
+}
+
+static Buffer
+YbPgGetBuffer(YbFKTriggerScanDesc desc)
+{
+	return desc->scan->rs_cbuf;
+}
+
+static HeapTuple
+YbGetNext(YbFKTriggerScanDesc desc)
+{
+	if (desc->current_tuple_idx >= desc->buffered_tuples_size && !desc->all_tuples_processed)
+	{
+		/* Clear context of previously buffered tuples */
+		MemoryContextReset(desc->cxt);
+		desc->current_tuple_idx = 0;
+		desc->buffered_tuples_size = 0;
+		while (desc->buffered_tuples_size < desc->buffered_tuples_capacity)
+		{
+			HeapTuple tuple = heap_getnext(desc->scan, desc->scan_direction);
+			if (tuple == NULL)
+			{
+				desc->all_tuples_processed = true;
+				break;
+			}
+			YbAddTriggerFKReferenceIntent(desc->trigger, desc->pkrel, tuple);
+			desc->buffered_tuples[desc->buffered_tuples_size++] = tuple;
+		}
+	}
+	return desc->current_tuple_idx < desc->buffered_tuples_size
+		? desc->buffered_tuples[desc->current_tuple_idx++]
+		: NULL;
+}
+
+static Buffer
+YbGetBuffer(YbFKTriggerScanDesc desc)
+{
+	/*
+	 * In YB mode data from trigdata.tg_trigtuplebuf is not used.
+	 * It is safe to return InvalidBuffer.
+	 */
+	return InvalidBuffer;
+}
+
+static YbFKTriggerVTable YbFKTriggerScanVTableNotYugaByteEnabled =
+	{
+		.get_next = &YbPgGetNext,
+		.get_buffer = &YbPgGetBuffer
+	};
+
+static YbFKTriggerVTable YbFKTriggerScanVTableIsYugaByteEnabled =
+	{
+		.get_next = &YbGetNext,
+		.get_buffer = &YbGetBuffer
+	};
+
+static YbFKTriggerScanDesc
+YbFKTriggerScanBegin(HeapScanDesc scan,
+                     ScanDirection direction,
+                     Trigger* trigger,
+                     Relation pkrel,
+                     int buffer_capacity)
+{
+	YbFKTriggerScanDesc descr = (YbFKTriggerScanDesc) palloc(
+		sizeof(YbFKTriggerScanDescData) + buffer_capacity * sizeof(HeapTuple));
+	MemSet(descr, 0, sizeof(YbFKTriggerScanDescData));
+	descr->scan = scan;
+	descr->scan_direction = direction;
+	descr->trigger = trigger;
+	descr->pkrel = pkrel;
+	descr->buffered_tuples_capacity = buffer_capacity;
+	if (IsYBRelation(scan->rs_rd))
+	{
+		descr->vptr = &YbFKTriggerScanVTableIsYugaByteEnabled;
+		descr->cxt = AllocSetContextCreate(
+			CurrentMemoryContext, "validateForeignKeyConstraint", ALLOCSET_DEFAULT_SIZES);
+	}
+	else
+	{
+		descr->vptr = &YbFKTriggerScanVTableNotYugaByteEnabled;
+		descr->cxt = AllocSetContextCreate(
+			CurrentMemoryContext, "validateForeignKeyConstraint", ALLOCSET_SMALL_SIZES);
+	}
+	descr->old_cxt = MemoryContextSwitchTo(descr->cxt);
+	return descr;
+}
+
+static void
+YbFKTriggerScanEnd(YbFKTriggerScanDesc descr)
+{
+	MemoryContextSwitchTo(descr->old_cxt);
+	MemoryContextDelete(descr->cxt);
+	heap_endscan(descr->scan);
+	pfree(descr);
+}
+
+static HeapTuple
+YbFKTriggerScanGetNext(YbFKTriggerScanDesc descr)
+{
+	return descr->vptr->get_next(descr);
+}
+
+static Buffer
+YbFKTriggerScanGetBuffer(YbFKTriggerScanDesc descr)
+{
+	return descr->vptr->get_buffer(descr);
+}
+
+/*
  * Scan the existing rows in a table to verify they meet a proposed FK
  * constraint.
  *
@@ -10320,12 +10511,9 @@ validateForeignKeyConstraint(char *conname,
 							 Oid pkindOid,
 							 Oid constraintOid)
 {
-	HeapScanDesc scan;
 	HeapTuple	tuple;
 	Trigger		trig;
 	Snapshot	snapshot;
-	MemoryContext oldcxt;
-	MemoryContext perTupCxt;
 
 	ereport(DEBUG1,
 			(errmsg("validating foreign key constraint \"%s\"", conname)));
@@ -10348,8 +10536,10 @@ validateForeignKeyConstraint(char *conname,
 	/*
 	 * See if we can do it with a single LEFT JOIN query.  A false result
 	 * indicates we must proceed with the fire-the-trigger method.
+	 * Note: YB handles LEFT JOIN inefficiently. So skip this approach and
+	 * call trigger on each row instead. As triggers can buffer the FK check.
 	 */
-	if (RI_Initial_Check(&trig, rel, pkrel))
+	if (!IsYBRelation(rel) && RI_Initial_Check(&trig, rel, pkrel))
 		return;
 
 	/*
@@ -10358,14 +10548,13 @@ validateForeignKeyConstraint(char *conname,
 	 * ereport(ERROR) and that's that.
 	 */
 	snapshot = RegisterSnapshot(GetLatestSnapshot());
-	scan = heap_beginscan(rel, snapshot, 0, NULL);
-
-	perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
-									  "validateForeignKeyConstraint",
-									  ALLOCSET_SMALL_SIZES);
-	oldcxt = MemoryContextSwitchTo(perTupCxt);
-
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	YbFKTriggerScanDesc fk_scan = YbFKTriggerScanBegin(
+		heap_beginscan(rel, snapshot, 0, NULL),
+		ForwardScanDirection,
+		&trig,
+		pkrel,
+		*YBCGetGFlags()->ysql_session_max_batch_size);
+	while ((tuple = YbFKTriggerScanGetNext(fk_scan)) != NULL)
 	{
 		FunctionCallInfoData fcinfo;
 		TriggerData trigdata;
@@ -10388,19 +10577,15 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.tg_trigtuple = tuple;
 		trigdata.tg_newtuple = NULL;
 		trigdata.tg_trigger = &trig;
-		trigdata.tg_trigtuplebuf = scan->rs_cbuf;
+		trigdata.tg_trigtuplebuf = YbFKTriggerScanGetBuffer(fk_scan);
 		trigdata.tg_newtuplebuf = InvalidBuffer;
 
 		fcinfo.context = (Node *) &trigdata;
 
 		RI_FKey_check_ins(&fcinfo);
-
-		MemoryContextReset(perTupCxt);
 	}
 
-	MemoryContextSwitchTo(oldcxt);
-	MemoryContextDelete(perTupCxt);
-	heap_endscan(scan);
+	YbFKTriggerScanEnd(fk_scan);
 	UnregisterSnapshot(snapshot);
 }
 
@@ -12286,7 +12471,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing, LOCKMODE lock
 		if (!recursing)
 		{
 			/* Superusers can always do it */
-			if (!superuser())
+			if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 			{
 				Oid			namespaceOid = tuple_class->relnamespace;
 				AclResult	aclresult;
@@ -13032,6 +13217,20 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 	{
 		InvokeObjectPostAlterHook(RelationRelationId, reloid, 0);
 		return;
+	}
+
+	if (IsYBRelation(rel)) {
+		Datum *options;
+		int num_options;
+		yb_get_tablespace_options(&options, &num_options, newTableSpace);
+		/*
+		 * Validation should only happen on tablespaces that have a defined
+		 * replica placement
+		 */
+		for (int i = 0; i < num_options; i++) {
+			char *option = VARDATA(options[i]);
+			YBCValidatePlacement(option);
+		}
 	}
 
 	/* Get a modifiable copy of the relation's pg_class row */
@@ -15449,7 +15648,7 @@ RangeVarCallbackOwnsRelation(const RangeVar *relation,
 	if (!HeapTupleIsValid(tuple))	/* should not happen */
 		elog(ERROR, "cache lookup failed for relation %u", relId);
 
-	if (!pg_class_ownercheck(relId, GetUserId()))
+	if (!pg_class_ownercheck(relId, GetUserId()) && !IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(get_rel_relkind(relId)),
 					   relation->relname);
 
@@ -15484,8 +15683,8 @@ RangeVarCallbackForAlterRelation(const RangeVar *rv, Oid relid, Oid oldrelid,
 	classform = (Form_pg_class) GETSTRUCT(tuple);
 	relkind = classform->relkind;
 
-	/* Must own relation. */
-	if (!pg_class_ownercheck(relid, GetUserId()))
+	/* Must own relation or be yb_db_admin user. */
+	if (!pg_class_ownercheck(relid, GetUserId()) && !IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(get_rel_relkind(relid)), rv->relname);
 
 	/* No system table modifications unless explicitly allowed. */
@@ -16815,6 +17014,9 @@ ATExecDetachPartition(Relation rel, RangeVar *name)
 	}
 	heap_close(classRel, RowExclusiveLock);
 
+	/* Drop any triggers that were cloned on creation/attach. */
+	DropClonedTriggersFromPartition(RelationGetRelid(partRel));
+
 	/*
 	 * Detach any foreign keys that are inherited.  This includes creating
 	 * additional action triggers.
@@ -16894,6 +17096,66 @@ ATExecDetachPartition(Relation rel, RangeVar *name)
 	heap_close(partRel, NoLock);
 
 	return address;
+}
+
+/*
+ * DropClonedTriggersFromPartition
+ *		subroutine for ATExecDetachPartition to remove any triggers that were
+ *		cloned to the partition when it was created-as-partition or attached.
+ *		This undoes what CloneRowTriggersToPartition did.
+ */
+static void
+DropClonedTriggersFromPartition(Oid partitionId)
+{
+	ScanKeyData skey;
+	SysScanDesc	scan;
+	HeapTuple	trigtup;
+	Relation	tgrel;
+	ObjectAddresses *objects;
+
+	objects = new_object_addresses();
+
+	/*
+	 * Scan pg_trigger to search for all triggers on this rel.
+	 */
+	ScanKeyInit(&skey, Anum_pg_trigger_tgrelid, BTEqualStrategyNumber,
+				F_OIDEQ, ObjectIdGetDatum(partitionId));
+	tgrel = heap_open(TriggerRelationId, RowExclusiveLock);
+	scan = systable_beginscan(tgrel, TriggerRelidNameIndexId,
+							  true, NULL, 1, &skey);
+	while (HeapTupleIsValid(trigtup = systable_getnext(scan)))
+	{
+		Oid			trigoid = HeapTupleGetOid(trigtup);
+		ObjectAddress trig;
+
+		/* Ignore triggers that weren't cloned */
+		if (!isPartitionTrigger(trigoid))
+			continue;
+
+		/*
+		 * This is ugly, but necessary: remove the dependency markings on the
+		 * trigger so that it can be removed.
+		 */
+		deleteDependencyRecordsForClass(TriggerRelationId, trigoid,
+										TriggerRelationId,
+										DEPENDENCY_INTERNAL_AUTO);
+		deleteDependencyRecordsForClass(TriggerRelationId, trigoid,
+										RelationRelationId,
+										DEPENDENCY_INTERNAL_AUTO);
+
+		/* remember this trigger to remove it below */
+		ObjectAddressSet(trig, TriggerRelationId, trigoid);
+		add_exact_object_address(&trig, objects);
+	}
+
+	/* make the dependency removal visible to the deletion below */
+	CommandCounterIncrement();
+	performMultipleDeletions(objects, DROP_RESTRICT, PERFORM_DELETION_INTERNAL);
+
+	/* done */
+	free_object_addresses(objects);
+	systable_endscan(scan);
+	heap_close(tgrel, RowExclusiveLock);
 }
 
 /*

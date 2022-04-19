@@ -11,7 +11,6 @@ import { Col, Row } from 'react-bootstrap';
 import { YBPanelItem } from '../../panels';
 import _ from 'lodash';
 import { Highlighter } from '../../../helpers/Highlighter';
-import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import 'highlight.js/styles/github.css';
 import { toast } from 'react-toastify';
@@ -33,10 +32,11 @@ class TaskDetail extends Component {
 
   retryTaskClicked = (currentTaskUUID) => {
     this.props.retryCurrentTask(currentTaskUUID).then((response) => {
-      const taskResponse = response?.payload?.response;
-      if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {
+      const status = response?.payload?.response?.status || response?.payload?.status;
+      if (status === 200 || status === 201) {
         browserHistory.push('/tasks');
       } else {
+        const taskResponse = response?.payload?.response;
         const toastMessage = taskResponse?.data?.error
           ? taskResponse?.data?.error
           : taskResponse?.statusText;
@@ -99,7 +99,6 @@ class TaskDetail extends Component {
         displayMessage = 'View Less';
         displayIcon = <i className="fa fa-compress"></i>;
       }
-
       return (
         <div className="clearfix">
           <div className="onprem-config__json">{errorElement}</div>
@@ -110,8 +109,9 @@ class TaskDetail extends Component {
             {displayIcon}
             {displayMessage}
           </div>
-          {isNonEmptyString(currentTaskData.title) &&
-            currentTaskData.title.includes('Created Universe') && (
+          {/* TODO use API response to check retryable. */}
+          {allowRetry && isNonEmptyString(currentTaskData.title) &&
+            currentTaskData.retryable && (
               <div
                 className="btn btn-orange text-center pull-right task-detail-button"
                 onClick={() => self.retryTaskClicked(taskUUID)}
@@ -138,11 +138,14 @@ class TaskDetail extends Component {
     if (isNonEmptyArray(failedTasks.data.failedSubTasks)) {
       taskFailureDetails = failedTasks.data.failedSubTasks.map((subTask) => {
         let errorString = <span />;
-        if (subTask.errorString !== 'null') {
+        // Show retry only for the last failed task.
+        if (subTask.subTaskState === 'Failure' || subTask.subTaskState === 'Aborted') {
+          if (subTask.errorString === 'null') {
+            subTask.errorString = "Task failed";
+          }
           let allowRetry = false;
           if (universe) {
-            const primaryCluster = getPrimaryCluster(universe.universeDetails.clusters);
-            allowRetry = primaryCluster.userIntent.providerType === 'onprem';
+            allowRetry = (taskUUID === universe.universeDetails.updatingTaskUUID);
           }
           errorString = getErrorMessageDisplay(subTask.errorString, taskUUID, allowRetry);
         }

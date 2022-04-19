@@ -45,13 +45,16 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_peers.h"
+#include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
@@ -69,13 +72,19 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
 
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
 
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/server_base.pb.h"
+#include "yb/server/server_base.proxy.h"
+
+#include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/oid_generator.h"
 #include "yb/util/opid.pb.h"
@@ -90,9 +99,9 @@ using namespace std::literals;
 
 DEFINE_int32(num_client_threads, 8,
              "Number of client threads to launch");
-DEFINE_int64(client_inserts_per_thread, 50,
+DEFINE_int32(client_inserts_per_thread, 50,
              "Number of rows inserted by each client thread");
-DEFINE_int64(client_num_batches_per_thread, 5,
+DEFINE_int32(client_num_batches_per_thread, 5,
              "In how many batches to group the rows, for each client");
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int32(leader_lease_duration_ms);
@@ -121,6 +130,7 @@ using consensus::ConsensusResponsePB;
 using consensus::ConsensusServiceProxy;
 using consensus::MajoritySize;
 using consensus::MakeOpId;
+using consensus::PeerMemberType;
 using consensus::RaftPeerPB;
 using consensus::ReplicateMsg;
 using consensus::LeaderLeaseCheckMode;
@@ -219,7 +229,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   // is 'expected_count'. If it takes more than 10 seconds, then
   // fails the test.
   void WaitForRowCount(TabletServerServiceProxy* replica_proxy,
-                       int expected_count,
+                       size_t expected_count,
                        vector<string>* results) {
     LOG(INFO) << "Waiting for row count " << expected_count << "...";
     MonoTime start = MonoTime::Now();
@@ -272,9 +282,9 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     return ret;
   }
 
-  void InsertTestRowsRemoteThread(uint64_t first_row,
-                                  uint64_t count,
-                                  uint64_t num_batches,
+  void InsertTestRowsRemoteThread(int32_t first_row,
+                                  int32_t count,
+                                  int num_batches,
                                   const vector<CountDownLatch*>& latches) {
     client::TableHandle table;
     ASSERT_OK(table.Open(kTableName, client_.get()));
@@ -285,8 +295,8 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     for (int i = 0; i < num_batches; i++) {
       SCOPED_TRACE(Format("Batch: $0", i));
 
-      uint64_t first_row_in_batch = first_row + (i * count / num_batches);
-      uint64_t last_row_in_batch = first_row_in_batch + count / num_batches;
+      auto first_row_in_batch = first_row + (i * count / num_batches);
+      auto last_row_in_batch = first_row_in_batch + count / num_batches;
 
       for (int j = first_row_in_batch; j < last_row_in_batch; j++) {
         auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
@@ -304,7 +314,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
       int inserted = last_row_in_batch - first_row_in_batch;
 
-      const auto flush_status = session->FlushAndGetOpsErrors();
+      const auto flush_status = session->TEST_FlushAndGetOpsErrors();
       const auto& s = flush_status.status;
       if (PREDICT_FALSE(!s.ok())) {
         for (const auto& e : flush_status.errors) {
@@ -395,7 +405,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     if (kill) {
       CHECK_OK(old_leader_ets->Restart());
       // Wait until we have the same number of followers.
-      int initial_followers = followers.size();
+      auto initial_followers = followers.size();
       do {
         GetOnlyLiveFollowerReplicas(tablet_id_, &followers);
       } while (followers.size() < initial_followers);
@@ -464,9 +474,9 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
                                       int64_t* orig_term,
                                       string* fell_behind_uuid);
 
-  void TestAddRemoveServer(RaftPeerPB::MemberType member_type);
-  void TestRemoveTserverFailsWhenServerInTransition(RaftPeerPB::MemberType member_type);
-  void TestRemoveTserverInTransitionSucceeds(RaftPeerPB::MemberType member_type);
+  void TestAddRemoveServer(PeerMemberType member_type);
+  void TestRemoveTserverFailsWhenServerInTransition(PeerMemberType member_type);
+  void TestRemoveTserverInTransitionSucceeds(PeerMemberType member_type);
 
   std::vector<scoped_refptr<yb::Thread> > threads_;
   CountDownLatch inserters_;
@@ -506,7 +516,7 @@ TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
   // Set a decent timeout for allowing the masters to find eachother.
   const auto kTimeout = 30s;
   std::vector<HostPort> endpoints;
-  for (const auto& hp : leader->registration.common().private_rpc_addresses()) {
+  for (const auto& hp : leader->registration->common().private_rpc_addresses()) {
     endpoints.push_back(HostPortFromPB(hp));
   }
   RaftPeerPB peer;
@@ -1026,7 +1036,7 @@ TEST_F(RaftConsensusITest, TestAddRemoveNonVoter) {
   ASSERT_OK(DeleteTablet(tserver_to_add, tablet_id_, tablet::TABLET_DATA_TOMBSTONED, boost::none,
                          kTimeout));
 
-  ASSERT_OK(AddServer(leader_tserver, tablet_id_, tserver_to_add, RaftPeerPB::PRE_OBSERVER,
+  ASSERT_OK(AddServer(leader_tserver, tablet_id_, tserver_to_add, PeerMemberType::PRE_OBSERVER,
                       boost::none, kTimeout));
 
   consensus::ConsensusStatePB cstate;
@@ -1036,7 +1046,7 @@ TEST_F(RaftConsensusITest, TestAddRemoveNonVoter) {
   // Verify that this tserver member type was set correctly.
   for (const auto& peer : cstate.config().peers()) {
     if (peer.permanent_uuid() == tserver_to_add->uuid()) {
-      ASSERT_EQ(RaftPeerPB::PRE_OBSERVER, peer.member_type());
+      ASSERT_EQ(PeerMemberType::PRE_OBSERVER, peer.member_type());
     }
   }
 
@@ -1045,7 +1055,7 @@ TEST_F(RaftConsensusITest, TestAddRemoveNonVoter) {
                                                 tablet_id_, MonoDelta::FromSeconds(10)));
   ASSERT_OK(WaitUntilCommittedConfigMemberTypeIs(1, leader_tserver, tablet_id_,
                                                  MonoDelta::FromSeconds(10),
-                                                 RaftPeerPB::OBSERVER));
+                                                 PeerMemberType::OBSERVER));
 
   ASSERT_OK(WaitForServersToAgree(kTimeout, active_tablet_servers, tablet_id_, ++cur_log_index));
 
@@ -1053,7 +1063,7 @@ TEST_F(RaftConsensusITest, TestAddRemoveNonVoter) {
   ASSERT_OK(cluster_->tablet_server_by_uuid(tserver_to_add->uuid())->Pause());
   ASSERT_OK(WaitUntilCommittedConfigMemberTypeIs(0, leader_tserver, tablet_id_,
                                                  MonoDelta::FromSeconds(20),
-                                                 RaftPeerPB::OBSERVER));
+                                                 PeerMemberType::OBSERVER));
 }
 
 void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
@@ -1127,7 +1137,7 @@ void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
   ASSERT_OK(replica_ets->Resume());
 
   // Ensure that none of the tablet servers crashed.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     // Make sure it didn't crash.
     ASSERT_TRUE(cluster_->tablet_server(i)->IsProcessAlive())
       << "Tablet server " << i << " crashed";
@@ -1135,8 +1145,9 @@ void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
   *fell_behind_uuid = replica->uuid();
 }
 
-void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type) {
-  ASSERT_TRUE(member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER);
+void RaftConsensusITest::TestAddRemoveServer(PeerMemberType member_type) {
+  ASSERT_TRUE(member_type == PeerMemberType::PRE_VOTER ||
+              member_type == PeerMemberType::PRE_OBSERVER);
 
   MonoDelta kTimeout = MonoDelta::FromSeconds(30);
   FLAGS_num_tablet_servers = 3;
@@ -1183,7 +1194,7 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
   // Go from 3 tablet servers down to 1 in the configuration.
   vector<int> remove_list = { 2, 1 };
   for (int to_remove_idx : remove_list) {
-    int num_servers = active_tablet_servers.size();
+    auto num_servers = active_tablet_servers.size();
     LOG(INFO) << "Remove: Going from " << num_servers << " to " << num_servers - 1 << " replicas";
 
     TServerDetails* tserver_to_remove = tservers[to_remove_idx];
@@ -1203,8 +1214,8 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
   // Add the tablet servers back, in reverse order, going from 1 to 3 servers in the configuration.
   vector<int> add_list = { 1, 2 };
   for (int to_add_idx : add_list) {
-    int num_servers = active_tablet_servers.size();
-    if (RaftPeerPB::PRE_VOTER == member_type) {
+    auto num_servers = active_tablet_servers.size();
+    if (PeerMemberType::PRE_VOTER == member_type) {
       LOG(INFO) << "Add: Going from " << num_servers << " to " << num_servers + 1 << " replicas";
     } else {
       LOG(INFO) << "Add: Going from " << num_observers<< " to " << num_observers + 1
@@ -1229,11 +1240,11 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
       if (peer.permanent_uuid() == tserver_to_add->uuid()) {
         ASSERT_EQ(member_type, peer.member_type());
         LOG(INFO) << "tserver with uuid " << tserver_to_add->uuid() << " was added as a "
-                  << RaftPeerPB::MemberType_Name(peer.member_type());
+                  << PeerMemberType_Name(peer.member_type());
       }
     }
 
-    if (RaftPeerPB::PRE_VOTER == member_type) {
+    if (PeerMemberType::PRE_VOTER == member_type) {
       InsertOrDie(&active_tablet_servers, tserver_to_add->uuid(), tserver_to_add);
     } else {
       num_observers++;
@@ -1244,7 +1255,7 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
                                                     tablet_id_, MonoDelta::FromSeconds(10)));
     ASSERT_OK(WaitUntilCommittedConfigMemberTypeIs(num_observers, leader_tserver, tablet_id_,
                                                    MonoDelta::FromSeconds(10),
-                                                   RaftPeerPB::OBSERVER));
+                                                   PeerMemberType::OBSERVER));
 
     ASSERT_OK(WaitForServersToAgree(kTimeout, active_tablet_servers, tablet_id_, ++cur_log_index));
 
@@ -1256,10 +1267,10 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
   }
 }
 
-void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(
-    RaftPeerPB::MemberType member_type) {
+void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(PeerMemberType member_type) {
+  ASSERT_TRUE(member_type == PeerMemberType::PRE_VOTER ||
+              member_type == PeerMemberType::PRE_OBSERVER);
 
-  ASSERT_TRUE(member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER);
   FLAGS_num_tablet_servers = 3;
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
@@ -1324,8 +1335,10 @@ void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(
 // mode. In this test we are testing that a REMOVE_SERVER operation succeeds whenever the committed
 // config contains a PRE_VOTER or PRE_OBSERVER mode and it's the same server we are trying to
 // remove.
-void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(RaftPeerPB::MemberType member_type) {
-  ASSERT_TRUE(member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER);
+void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(PeerMemberType member_type) {
+  ASSERT_TRUE(member_type == PeerMemberType::PRE_VOTER ||
+              member_type == PeerMemberType::PRE_OBSERVER);
+
   FLAGS_num_tablet_servers = 3;
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
@@ -1432,7 +1445,7 @@ TEST_F(RaftConsensusITest, TestFollowerFallsBehindLeaderGC) {
 
 int RaftConsensusITest::RestartAnyCrashedTabletServers() {
   int restarted = 0;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     if (!cluster_->tablet_server(i)->IsProcessAlive()) {
       LOG(INFO) << "TS " << i << " appears to have crashed. Restarting.";
       cluster_->tablet_server(i)->Shutdown();
@@ -1444,7 +1457,7 @@ int RaftConsensusITest::RestartAnyCrashedTabletServers() {
 }
 
 void RaftConsensusITest::AssertNoTabletServersCrashed() {
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     if (cluster_->tablet_server(i)->IsShutdown()) continue;
 
     ASSERT_TRUE(cluster_->tablet_server(i)->IsProcessAlive())
@@ -1497,6 +1510,7 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   workload.set_write_timeout_millis(1000);
   workload.set_num_write_threads(10);
   workload.set_write_batch_size(1);
+  workload.set_sequential_write(true);
   workload.Setup(client::YBTableType::YQL_TABLE_TYPE);
   workload.Start();
 
@@ -1511,7 +1525,7 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
 
   // After we stop the writes, we can still get crashes because heartbeats could
   // trigger the fault path. So, disable the faults and restart one more time.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
     vector<string>* flags = ts->mutable_flags();
     bool removed_flag = false;
@@ -1571,6 +1585,7 @@ void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
   workload.set_write_timeout_millis(100);
   workload.set_num_write_threads(2);
   workload.set_write_batch_size(1);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -1794,8 +1809,7 @@ void RaftConsensusITest::AddOp(const OpIdPB& id, ConsensusRequestPB* req) {
   msg->mutable_id()->CopyFrom(id);
   msg->set_hybrid_time(clock_->Now().ToUint64());
   msg->set_op_type(consensus::WRITE_OP);
-  WriteRequestPB* write_req = msg->mutable_write_request();
-  write_req->set_tablet_id(tablet_id_);
+  auto* write_req = msg->mutable_write();
   int32_t key = static_cast<int32_t>(id.index() * 10000 + id.term());
   string str_val = Substitute("term: $0 index: $1", id.term(), id.index());
   AddKVToPB(key, key + 10, str_val, write_req->mutable_write_batch());
@@ -2085,8 +2099,8 @@ TEST_F(RaftConsensusITest, TestStepDownWithSlowFollower) {
   }
 
   // Wait until the paused tservers have stopped heartbeating.
-  ASSERT_OK(WaitUntilNumberOfAliveTServersEqual(1, cluster_->master_proxy().get(),
-                                                MonoDelta::FromSeconds(20)));
+  ASSERT_OK(WaitUntilNumberOfAliveTServersEqual(
+      1, cluster_->GetMasterProxy<master::MasterClusterProxy>(), MonoDelta::FromSeconds(20)));
 
   // Step down should respond quickly despite the hung requests.
   ASSERT_OK(LeaderStepDown(tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(3)));
@@ -2100,14 +2114,14 @@ void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
   // Calculate number of servers to leave unpaused (minority).
   // This math is a little unintuitive but works for cluster sizes including 2 and 1.
   // Note: We assume all of these TSes are voters.
-  int config_size = tablet_servers.size();
-  int minority_to_retain = MajoritySize(config_size) - 1;
+  auto config_size = tablet_servers.size();
+  auto minority_to_retain = MajoritySize(config_size) - 1;
 
   // Only perform this part of the test if we have some servers to pause, else
   // the failure assertions will throw.
   if (config_size > 1) {
     // Pause enough replicas to prevent a majority.
-    int num_to_pause = config_size - minority_to_retain;
+    auto num_to_pause = config_size - minority_to_retain;
     LOG(INFO) << "Pausing " << num_to_pause << " tablet servers in config of size " << config_size;
     vector<string> paused_uuids;
     for (const auto& entry : tablet_servers) {
@@ -2169,7 +2183,8 @@ Status RaftConsensusITest::GetTabletLocations(const string& tablet_id, const Mon
   GetTabletLocationsRequestPB req;
   *req.add_tablet_ids() = tablet_id;
   GetTabletLocationsResponsePB resp;
-  RETURN_NOT_OK(cluster_->master_proxy()->GetTabletLocations(req, &resp, &rpc));
+  RETURN_NOT_OK(cluster_->GetMasterProxy<master::MasterClientProxy>().GetTabletLocations(
+      req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -2197,7 +2212,7 @@ void RaftConsensusITest::WaitForReplicasReportedToMaster(
     if (tablet_locations->replicas_size() == num_replicas) {
       for (const master::TabletLocationsPB_ReplicaPB& replica :
                     tablet_locations->replicas()) {
-        if (replica.role() == RaftPeerPB::LEADER) {
+        if (replica.role() == PeerRole::LEADER) {
           *has_leader = true;
         }
       }
@@ -2217,11 +2232,11 @@ void RaftConsensusITest::WaitForReplicasReportedToMaster(
 
 // Basic tests of adding and removing servers from a configuration.
 TEST_F(RaftConsensusITest, TestAddRemoveVoter) {
-  TestAddRemoveServer(RaftPeerPB::PRE_VOTER);
+  TestAddRemoveServer(PeerMemberType::PRE_VOTER);
 }
 
 TEST_F(RaftConsensusITest, TestAddRemoveObserver) {
-  TestAddRemoveServer(RaftPeerPB::PRE_OBSERVER);
+  TestAddRemoveServer(PeerMemberType::PRE_OBSERVER);
 }
 
 // Regression test for KUDU-1169: a crash when a Config Change operation is replaced
@@ -2330,7 +2345,7 @@ TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
   // Now, add the server back. Again, specifying something other than the
   // latest committed_opid_index should fail.
   invalid_committed_opid_index = -1;  // The old one is no longer valid.
-  s = AddServer(leader_tserver, tablet_id_, follower_ts, RaftPeerPB::VOTER,
+  s = AddServer(leader_tserver, tablet_id_, follower_ts, PeerMemberType::VOTER,
                 invalid_committed_opid_index, MonoDelta::FromSeconds(10),
                 &error_code, false /* retry */);
   ASSERT_EQ(TabletServerErrorPB::CAS_FAILED, error_code);
@@ -2339,7 +2354,7 @@ TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
   // Specifying the correct committed opid index should work.
   // The previous config change op is the latest entry in the log.
   committed_opid_index = cur_log_index;
-  ASSERT_OK(AddServer(leader_tserver, tablet_id_, follower_ts, RaftPeerPB::PRE_VOTER,
+  ASSERT_OK(AddServer(leader_tserver, tablet_id_, follower_ts, PeerMemberType::PRE_VOTER,
                       committed_opid_index, MonoDelta::FromSeconds(10)));
 
   InsertOrDie(&active_tablet_servers, follower_ts->uuid(), follower_ts);
@@ -2416,8 +2431,9 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
 
   // Now add server 4 back as a learner to the peers.
   LOG(INFO) << "Adding back Peer " << final_leader->uuid() << " and expecting timeout...";
-  ASSERT_OK(AddServer(initial_leader, tablet_id_, final_leader, RaftPeerPB::PRE_VOTER, boost::none,
-                       MonoDelta::FromSeconds(10)));
+  ASSERT_OK(AddServer(
+      initial_leader, tablet_id_, final_leader, PeerMemberType::PRE_VOTER, boost::none,
+      MonoDelta::FromSeconds(10)));
 
   // Pause tablet servers 1 through 3, so they won't see the operation to change server 4 from
   // learner to voter which will happen automatically once remote bootstrap for server 4 is
@@ -2573,7 +2589,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
     // Go from 3 tablet servers down to 1 in the configuration.
     vector<int> remove_list = {2, 1};
     for (int to_remove_idx : remove_list) {
-      int num_servers = active_tablet_servers.size();
+      auto num_servers = active_tablet_servers.size();
       LOG(INFO) << "Remove: Going from " << num_servers << " to " << num_servers - 1 << " replicas";
 
       TServerDetails *tserver_to_remove = tservers[to_remove_idx];
@@ -2591,12 +2607,12 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
     // configuration.
     vector<int> add_list = {1, 2};
     for (int to_add_idx : add_list) {
-      int num_servers = active_tablet_servers.size();
+      auto num_servers = active_tablet_servers.size();
       LOG(INFO) << "Add: Going from " << num_servers << " to " << num_servers + 1 << " replicas";
 
       TServerDetails *tserver_to_add = tservers[to_add_idx];
       LOG(INFO) << "Adding tserver with uuid " << tserver_to_add->uuid();
-      ASSERT_OK(AddServer(leader_tserver, tablet_id_, tserver_to_add, RaftPeerPB::PRE_VOTER,
+      ASSERT_OK(AddServer(leader_tserver, tablet_id_, tserver_to_add, PeerMemberType::PRE_VOTER,
           boost::none, MonoDelta::FromSeconds(10)));
       InsertOrDie(&active_tablet_servers, tserver_to_add->uuid(), tserver_to_add);
       ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
@@ -2667,7 +2683,7 @@ TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
   // Change the config.
   TServerDetails* tserver_to_add = tablet_servers_[uuid_to_add].get();
   LOG(INFO) << "Adding tserver with uuid " << tserver_to_add->uuid();
-  ASSERT_OK(AddServer(leader_ts, tablet_id_, tserver_to_add, RaftPeerPB::PRE_VOTER, boost::none,
+  ASSERT_OK(AddServer(leader_ts, tablet_id_, tserver_to_add, PeerMemberType::PRE_VOTER, boost::none,
                       timeout));
   ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, expected_index));
   ++expected_index;
@@ -2750,13 +2766,14 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
   workload.set_table_name(kTableName);
   workload.set_num_write_threads(10);
   workload.set_write_batch_size(100);
+  workload.set_sequential_write(true);
   workload.Setup();
 
   LOG(INFO) << "Starting write workload...";
   workload.Start();
 
   while (true) {
-    int rows_inserted = workload.rows_inserted();
+    auto rows_inserted = workload.rows_inserted();
     if (rows_inserted >= num_rows_to_write) {
       break;
     }
@@ -2765,7 +2782,7 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
   }
 
   LOG(INFO) << "Adding tserver with uuid " << new_node->uuid() << " as VOTER...";
-  ASSERT_OK(AddServer(leader, tablet_id_, new_node, RaftPeerPB::PRE_VOTER, boost::none,
+  ASSERT_OK(AddServer(leader, tablet_id_, new_node, PeerMemberType::PRE_VOTER, boost::none,
                       MonoDelta::FromSeconds(10)));
   InsertOrDie(&active_tablet_servers, new_node->uuid(), new_node);
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(
@@ -2773,19 +2790,19 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
       MonoDelta::FromSeconds(NonTsanVsTsan(20, 60))));
 
   workload.StopAndJoin();
-  int num_batches = workload.batches_completed();
+  auto num_batches = workload.batches_completed();
 
   LOG(INFO) << "Waiting for replicas to agree...";
   // Wait for all servers to replicate everything up through the last write op.
   // Since we don't batch, there should be at least # rows inserted log entries,
   // plus the initial leader's no-op, plus 1 for
   // the added replica for a total == #rows + 2.
-  int min_log_index = num_batches + 2;
+  auto min_log_index = num_batches + 2;
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(120),
                                   active_tablet_servers, tablet_id_,
                                   min_log_index));
 
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
   ASSERT_ALL_REPLICAS_AGREE(rows_inserted);
 }
@@ -2806,8 +2823,8 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   TServerDetails* details;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &details));
   int num_shutdown = 0;
-  int leader_ts_idx = -1;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  ssize_t leader_ts_idx = -1;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
     if (ts->instance_id().permanent_uuid() != details->uuid()) {
       ts->Shutdown();
@@ -2922,7 +2939,7 @@ TEST_F(RaftConsensusITest, TestSlowFollower) {
   TServerDetails* leader;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
   int num_reconfigured = 0;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
     if (ts->instance_id().permanent_uuid() != leader->uuid()) {
       TServerDetails* follower;
@@ -2948,7 +2965,7 @@ TEST_F(RaftConsensusITest, TestHammerOneRow) {
   if (!AllowSlowTests()) return;
   ASSERT_NO_FATALS(BuildAndStart(vector<string>()));
 
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
     TServerDetails* follower;
     follower = GetReplicaWithUuidOrNull(tablet_id_, ts->instance_id().permanent_uuid());
@@ -3114,7 +3131,7 @@ TEST_F(RaftConsensusITest, TestChangeConfigBasedOnJepsen) {
   Status s = itest::AddServer(leader_ts,
                               tablet_id_,
                               tablet_servers_[cluster_->tablet_server(new_node_idx)->uuid()].get(),
-                              RaftPeerPB::PRE_VOTER,
+                              PeerMemberType::PRE_VOTER,
                               boost::none,
                               timeout,
                               nullptr /* error_code */,
@@ -3194,19 +3211,19 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
 }
 
 TEST_F(RaftConsensusITest, TestRemoveTserverFailsWhenVoterInTransition) {
-  TestRemoveTserverFailsWhenServerInTransition(RaftPeerPB::PRE_VOTER);
+  TestRemoveTserverFailsWhenServerInTransition(PeerMemberType::PRE_VOTER);
 }
 
 TEST_F(RaftConsensusITest, TestRemoveTserverFailsWhenObserverInTransition) {
-  TestRemoveTserverFailsWhenServerInTransition(RaftPeerPB::PRE_OBSERVER);
+  TestRemoveTserverFailsWhenServerInTransition(PeerMemberType::PRE_OBSERVER);
 }
 
 TEST_F(RaftConsensusITest, TestRemovePreObserverServerSucceeds) {
-  TestRemoveTserverInTransitionSucceeds(RaftPeerPB::PRE_VOTER);
+  TestRemoveTserverInTransitionSucceeds(PeerMemberType::PRE_VOTER);
 }
 
 TEST_F(RaftConsensusITest, TestRemovePreVoterServerSucceeds) {
-  TestRemoveTserverInTransitionSucceeds(RaftPeerPB::PRE_OBSERVER);
+  TestRemoveTserverInTransitionSucceeds(PeerMemberType::PRE_OBSERVER);
 }
 
 // A test scenario to verify that a disruptive server doesn't start needless
@@ -3259,7 +3276,7 @@ TEST_F(RaftConsensusITest, DisruptiveServerAndSlowWAL) {
         ASSERT_OK(ts->Restart());
       }
     }
-    for (auto idx = 0; idx < cluster_->num_tablet_servers(); ++idx) {
+    for (size_t idx = 0; idx < cluster_->num_tablet_servers(); ++idx) {
       auto* ts = cluster_->tablet_server(idx);
       ASSERT_OK(cluster_->SetFlag(ts, "log_inject_latency", "false"));
     }
@@ -3395,7 +3412,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
   }
 
   // Add SPLIT_OP to the leader.
-  tserver::SplitTabletRequestPB req;
+  tablet::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id_);
   req.set_new_tablet1_id(GenerateObjectId());
   req.set_new_tablet2_id(GenerateObjectId());
@@ -3406,7 +3423,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
     const auto partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
     docdb::KeyBytes encoded_doc_key;
     docdb::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
-        split_hash_code, std::vector<docdb::PrimitiveValue>());
+        split_hash_code, std::vector<docdb::KeyEntryValue>());
     req.set_split_encoded_key(encoded_doc_key.ToStringBuffer());
     req.set_split_partition_key(partition_key);
   }
@@ -3424,7 +3441,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
   std::vector<OpId> split_op_ids;
   auto get_split_op_ids = [&]() -> Status {
     split_op_ids = VERIFY_RESULT(GetLastOpIdForEachReplica(
-        tablet_id_, tservers, OpIdType::RECEIVED_OPID, kTimeout,
+        tablet_id_, tservers, consensus::OpIdType::RECEIVED_OPID, kTimeout,
         consensus::OperationType::SPLIT_OP));
     return Status::OK();
   };
@@ -3476,7 +3493,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
 
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     RETURN_NOT_OK(get_split_op_ids());
-    for (int i = 0; i < tservers.size(); ++i) {
+    for (size_t i = 0; i < tservers.size(); ++i) {
       if (tservers[i]->uuid() == new_leader->uuid() && split_op_ids[i].index > 0) {
         return true;
       }
@@ -3486,7 +3503,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
   LOG(INFO) << "split_op_ids: " << AsString(split_op_ids);
 
   // Make sure followers have split_op_id not yet set.
-  for (int i = 0; i < tservers.size(); ++i) {
+  for (size_t i = 0; i < tservers.size(); ++i) {
     if (tservers[i]->uuid() != new_leader->uuid()) {
       ASSERT_EQ(split_op_ids[i], OpId());
     }

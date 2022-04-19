@@ -6,7 +6,7 @@ import './stylesheets/StepProgressBar.scss';
 export default class StepProgressBar extends Component {
   isFailedIndex = (taskDetails) => {
     return taskDetails.findIndex((element) => {
-      return element.state === 'Failure';
+      return element.state === 'Failure' || element.state === 'Aborted';
     });
   };
 
@@ -16,7 +16,7 @@ export default class StepProgressBar extends Component {
     });
   };
 
-  normalizeTasks = (taskDetails) => {
+  normalizeTasks = (taskDetails , taskStatus) => {
     const taskDetailsNormalized = [
       ...taskDetails,
       {
@@ -25,6 +25,11 @@ export default class StepProgressBar extends Component {
         title: 'Done'
       }
     ];
+    // if the task is failed and all sub task is in unknown state, then show failure
+    if(taskStatus === 'Failure' && this.isFailedIndex(taskDetailsNormalized) === -1){
+      taskDetailsNormalized[taskDetailsNormalized.length -1]['state'] = 'Failure';
+    }
+
     if (this.isFailedIndex(taskDetailsNormalized) > -1) {
       for (let i = 0; i < this.isFailedIndex(taskDetailsNormalized); i++) {
         taskDetailsNormalized[i].class = 'to-be-failed';
@@ -42,7 +47,8 @@ export default class StepProgressBar extends Component {
 
   render() {
     const {
-      details: { taskDetails }
+      details: { taskDetails },
+      status
     } = this.props.progressData;
     let taskClassName = '';
     const getTaskClass = function (type) {
@@ -54,23 +60,27 @@ export default class StepProgressBar extends Component {
         return 'running';
       } else if (type === 'Failure') {
         return 'failed';
+      } else if (type === 'Aborted') {
+        return 'failed';
       }
       return null;
     };
 
-    const taskDetailsNormalized = this.normalizeTasks(taskDetails);
+    const taskDetailsNormalized = this.normalizeTasks(taskDetails, status);
 
     const tasksTotal = taskDetailsNormalized.length;
     const taskIndex = taskDetailsNormalized.findIndex((element) => {
-      return element.state === 'Running' || element.state === 'Failure';
+      return (
+        element.state === 'Running' || element.state === 'Failure' || element.state === 'Aborted'
+      );
     });
 
     const progressbarClass =
       this.isFailedIndex(taskDetailsNormalized) > -1
         ? 'failed'
         : this.isRunningIndex(taskDetailsNormalized) > -1
-          ? 'running'
-          : 'finished';
+        ? 'running'
+        : 'finished';
     const barWidth =
       taskIndex === -1
         ? '100%'

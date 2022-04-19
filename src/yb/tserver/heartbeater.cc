@@ -44,6 +44,7 @@
 #include <boost/function.hpp>
 #include <glog/logging.h>
 
+#include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
@@ -58,9 +59,9 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_rpc.h"
+#include "yb/master/master_types.pb.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/options.h"
@@ -111,10 +112,8 @@ DEFINE_int32(heartbeat_max_failures_before_backoff, 3,
              "rather than retrying.");
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
 
-DEFINE_bool(tserver_disable_heartbeat_test_only, false, "Should heartbeat be disabled");
-TAG_FLAG(tserver_disable_heartbeat_test_only, unsafe);
-TAG_FLAG(tserver_disable_heartbeat_test_only, hidden);
-TAG_FLAG(tserver_disable_heartbeat_test_only, runtime);
+DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be disabled");
+TAG_FLAG(TEST_tserver_disable_heartbeat, runtime);
 
 DEFINE_CAPABILITY(TabletReportLimit, 0xb1a2a020);
 
@@ -122,7 +121,6 @@ using google::protobuf::RepeatedPtrField;
 using yb::HostPortPB;
 using yb::consensus::RaftPeerPB;
 using yb::master::GetLeaderMasterRpc;
-using yb::master::MasterServiceProxy;
 using yb::rpc::RpcController;
 using std::shared_ptr;
 using std::vector;
@@ -198,7 +196,7 @@ class Heartbeater::Thread {
   HostPort leader_master_hostport_;
 
   // Current RPC proxy to the leader master.
-  std::unique_ptr<master::MasterServiceProxy> proxy_;
+  std::unique_ptr<master::MasterHeartbeatProxy> proxy_;
 
   // The most recent response from a heartbeat.
   master::TSHeartbeatResponsePB last_hb_response_;
@@ -340,7 +338,8 @@ Status Heartbeater::Thread::ConnectToMaster() {
   LOG_WITH_PREFIX(INFO) << "Connected to a leader master server at " << leader_master_hostport_;
 
   // Save state in the instance.
-  proxy_.reset(new MasterServiceProxy(&server_->proxy_cache(), leader_master_hostport_));
+  proxy_ = std::make_unique<master::MasterHeartbeatProxy>(
+      &server_->proxy_cache(), leader_master_hostport_);
   return Status::OK();
 }
 
@@ -527,6 +526,14 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
   if (last_hb_response_.has_ysql_catalog_version()) {
+    if (FLAGS_log_ysql_catalog_versions) {
+      VLOG_WITH_FUNC(1) << "got master catalog version: "
+                        << last_hb_response_.ysql_catalog_version()
+                        << ", breaking version: "
+                        << (last_hb_response_.has_ysql_last_breaking_catalog_version()
+                            ? Format("$1", last_hb_response_.ysql_last_breaking_catalog_version())
+                            : "(none)");
+    }
     if (last_hb_response_.has_ysql_last_breaking_catalog_version()) {
       server_->SetYSQLCatalogVersion(last_hb_response_.ysql_catalog_version(),
                                      last_hb_response_.ysql_last_breaking_catalog_version());
@@ -539,8 +546,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   RETURN_NOT_OK(server_->tablet_manager()->UpdateSnapshotsInfo(last_hb_response_.snapshots_info()));
 
-  if (last_hb_response_.has_txn_table_versions_hash()) {
-    server_->UpdateTxnTableVersionsHash(last_hb_response_.txn_table_versions_hash());
+  if (last_hb_response_.has_transaction_tables_version()) {
+    server_->UpdateTransactionTablesVersion(last_hb_response_.transaction_tables_version());
   }
 
   // Update the live tserver list.
@@ -552,8 +559,8 @@ Status Heartbeater::Thread::DoHeartbeat() {
     return STATUS(IOError, "failing all heartbeats for tests");
   }
 
-  if (PREDICT_FALSE(FLAGS_tserver_disable_heartbeat_test_only)) {
-    LOG_WITH_PREFIX(INFO) << "Heartbeat disabled for testing.";
+  if (PREDICT_FALSE(FLAGS_TEST_tserver_disable_heartbeat)) {
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "Heartbeat disabled for testing.";
     return Status::OK();
   }
 

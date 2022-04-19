@@ -113,7 +113,7 @@ void TrackedSharedPtr<T>::Dump() {
               << " stack_trace: " << entry.first.stack_trace->Symbolize();
   }
   LOG(INFO) << "<<<";
-  CHECK(num_instances_ == instances_.size());
+  CHECK_EQ(num_instances_, instances_.size());
 }
 
 template <class T>

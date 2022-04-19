@@ -10,20 +10,24 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.RuntimeConfigFormData;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ConfigEntry;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Model;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -48,6 +52,8 @@ public class RuntimeConfController extends AuthenticatedController {
   private final SettableRuntimeConfigFactory settableRuntimeConfigFactory;
   private final Result mutableKeysResult;
   private final Set<String> mutableKeys;
+  private static final Set<String> sensitiveKeys =
+      ImmutableSet.of("yb.security.ldap.ldap_service_account_password", "yb.security.secret");
 
   @Inject
   public RuntimeConfController(SettableRuntimeConfigFactory settableRuntimeConfigFactory) {
@@ -137,12 +143,17 @@ public class RuntimeConfController extends AuthenticatedController {
       LOG.trace(
           "key: {} overriddenInScope: {} includeInherited: {}", k, isOverridden, includeInherited);
 
+      String value = fullConfig.getString(k);
+      if (sensitiveKeys.contains(k)) {
+        value = CommonUtils.getMaskedValue(k, value);
+      }
+
       if (isOverridden) {
-        scopedConfig.configEntries.add(new ConfigEntry(false, k, fullConfig.getString(k)));
+        scopedConfig.configEntries.add(new ConfigEntry(false, k, value));
       } else if (includeInherited) {
         // Show entries even if not overridden in this scope. We will lookup value from fullConfig
         // for this scope
-        scopedConfig.configEntries.add(new ConfigEntry(true, k, fullConfig.getString(k)));
+        scopedConfig.configEntries.add(new ConfigEntry(true, k, value));
       }
     }
 
@@ -152,6 +163,7 @@ public class RuntimeConfController extends AuthenticatedController {
   @ApiOperation(
       value = "Get a configuration key",
       nickname = "getConfigurationKey",
+      response = String.class,
       produces = "text/plain")
   public Result getKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
@@ -165,10 +177,18 @@ public class RuntimeConfController extends AuthenticatedController {
     }
 
     RuntimeConfigEntry runtimeConfigEntry = RuntimeConfigEntry.getOrBadRequest(scopeUUID, path);
-    return ok(runtimeConfigEntry.getValue());
+
+    String value = runtimeConfigEntry.getValue();
+    if (sensitiveKeys.contains(path)) {
+      value = CommonUtils.getMaskedValue(path, value);
+    }
+    return ok(value);
   }
 
-  @ApiOperation(value = "Update a configuration key", consumes = "text/plain")
+  @ApiOperation(
+      value = "Update a configuration key",
+      consumes = "text/plain",
+      response = YBPSuccess.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "newValue",
@@ -190,24 +210,41 @@ public class RuntimeConfController extends AuthenticatedController {
     if (!mutableKeys.contains(path)) {
       throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
     }
+
+    String logValue = newValue;
+    if (sensitiveKeys.contains(path)) {
+      logValue = CommonUtils.getMaskedValue(path, logValue);
+    }
     LOG.info(
         "Setting runtime conf for key '{}' on scope {} to value '{}' of length {}",
         path,
         scopeUUID,
-        (newValue.length() < 50 ? newValue : "[long value hidden]"),
-        newValue.length());
+        (logValue.length() < 50 ? logValue : "[long value hidden]"),
+        logValue.length());
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).setValue(path, newValue);
-
-    return ok();
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.RuntimeConfigKey,
+            scopeUUID.toString() + ":" + path,
+            Audit.ActionType.Update,
+            request().body().asJson());
+    return YBPSuccess.empty();
   }
 
-  @ApiOperation(value = "Delete a configuration key")
+  @ApiOperation(value = "Delete a configuration key", response = YBPSuccess.class)
   public Result deleteKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
       throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
 
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).deleteEntry(path);
-    return ok();
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.RuntimeConfigKey,
+            scopeUUID.toString() + ":" + path,
+            Audit.ActionType.Delete);
+    return YBPSuccess.empty();
   }
 
   private RuntimeConfig<? extends Model> getMutableRuntimeConfigForScopeOrFail(

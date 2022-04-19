@@ -71,6 +71,7 @@
 
 // YB includes
 #include "catalog/catalog.h"
+#include "utils/guc.h"
 #include "pg_yb_utils.h"
 
 /* State shared by transformCreateStmt and its subroutines */
@@ -386,8 +387,12 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("users cannot create system catalog tables")));
 		}
-		else if (strcmp(def->defname, "tablegroup") == 0)
-			(void) strtol(defGetString(def), NULL, 10);
+		else if (strcmp(def->defname, "tablegroup_oid") == 0)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot supply tablegroup_oid through WITH clause")));
+		}
 		else if (strcmp(def->defname, "colocated") == 0)
 			(void) defGetBoolean(def);
 		else if (strcmp(def->defname, "table_oid") == 0)
@@ -398,23 +403,37 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 					errmsg("create table with table_oid is not allowed"),
 					errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
 			}
-			cxt.relOid = strtol(defGetString(def), NULL, 10);
+
+			const char* hintmsg;
+			if (!parse_oid(defGetString(def), &cxt.relOid, &hintmsg))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid value for OID option \"table_oid\""),
+						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
+
 			Oid max_system_relid = (yb_test_system_catalogs_creation
 									? FirstNormalObjectId : YB_MIN_UNUSED_OID) - 1;
 			if (!cxt.isSystem && cxt.relOid < FirstNormalObjectId)
 			{
 				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("user tables must have an OID >= %d", FirstNormalObjectId)));
 			}
 			else if (cxt.isSystem && cxt.relOid > max_system_relid)
 			{
 				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("system tables must have an OID <= %d "
 								"(exactly as defined in the relevant BKI header file!)",
 								max_system_relid)));
 			}
+		}
+		else if (strcmp(def->defname, "colocation_id") == 0)
+		{
+			/*
+			 * Acknowledge we recognize the reloption.
+			 * reloptions parsing will do the bounds check for us.
+			 */
 		}
 		else if (strcmp(def->defname, "row_type_oid") == 0)
 		{
@@ -1768,6 +1787,16 @@ generateClonedIndexStmt(RangeVar *heapRel, Oid heapRelid, Relation source_idx,
 			{
 				if (opt & INDOPTION_NULLS_FIRST)
 					iparam->nulls_ordering = SORTBY_NULLS_FIRST;
+
+				/*
+				 * If the index supports ordering and it is neither
+				 * SORTBY_HASH nor SORTBY_DESC, then the source index must have
+				 * been SORTBY_ASC. If we do not set it here, during index
+				 * creation, the ordering for the first attribute will wrongly
+				 * default to SORTBY_HASH.
+				 */
+				if (iparam->ordering == SORTBY_DEFAULT)
+					iparam->ordering = SORTBY_ASC;
 			}
 		}
 
@@ -2103,7 +2132,7 @@ transformIndexConstraints(CreateStmtContext *cxt)
 					 max_system_relid);
 
 			if (bms_is_member(oid, oids_used))
-				elog(ERROR, "table OID %d is used multiple times", oid);
+				elog(ERROR, "table OID %u is used multiple times", oid);
 
 			oids_used = bms_add_member(oids_used, oid);
 		}
@@ -2366,8 +2395,9 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 				 */
 				defopclass = GetDefaultOpClass(attform->atttypid,
 											   index_rel->rd_rel->relam);
+				int16 opt = index_rel->rd_indoption[i];
 				if (indclass->values[i] != defopclass ||
-					index_rel->rd_indoption[i] != 0)
+					(opt != 0 && (!(INDOPTION_HASH & opt) || !IsYBRelation(heap_rel))))
 					ereport(ERROR,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 							 errmsg("index \"%s\" does not have default sorting behavior", index_name),
@@ -2825,7 +2855,7 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 	foreach(cell, stmt->options)
 	{
 		DefElem *def = (DefElem*) lfirst(cell);
-		if (strcmp(def->defname, "tablegroup") == 0)
+		if (strcmp(def->defname, "tablegroup_oid") == 0)
 		{
 			/*
 			 * We must ensure that no tablegroup option was supplied in the
@@ -2837,7 +2867,7 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 			 */
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot supply tablegroup through WITH clause")));
+					 errmsg("cannot supply tablegroup_oid through WITH clause")));
 		}
 		else if (strcmp(def->defname, "table_oid") == 0)
 		{

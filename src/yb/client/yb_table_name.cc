@@ -20,12 +20,13 @@
 #include "yb/common/redis_constants_common.h"
 
 #include "yb/master/master_util.h"
-#include "yb/master/master.pb.h"
+#include "yb/util/flag_tags.h"
 
 namespace yb {
 namespace client {
 
 DEFINE_bool(yb_system_namespace_readonly, true, "Set system keyspace read-only.");
+TAG_FLAG(yb_system_namespace_readonly, runtime);
 
 using std::string;
 
@@ -124,6 +125,10 @@ void YBTableName::set_table_name(const std::string& table_name) {
 void YBTableName::set_table_id(const std::string& table_id) {
   DCHECK(!table_id.empty());
   table_id_ = table_id;
+}
+
+void YBTableName::set_pgschema_name(const std::string& pgschema_name) {
+  pgschema_name_ = pgschema_name;
 }
 
 } // namespace client

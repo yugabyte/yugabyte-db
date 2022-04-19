@@ -37,6 +37,8 @@
 #include <google/protobuf/message.h>
 #include <rapidjson/prettywriter.h>
 
+#include "yb/gutil/casts.h"
+
 using google::protobuf::FieldDescriptor;
 using google::protobuf::Message;
 using google::protobuf::Reflection;
@@ -318,12 +320,16 @@ template<class T>
 void JsonWriterImpl<T>::Uint64(uint64_t u64) { writer_.Uint64(u64); }
 template<class T>
 void JsonWriterImpl<T>::Double(double d) { writer_.Double(d); }
+
 template<class T>
-void JsonWriterImpl<T>::String(const char* str, size_t length) { writer_.String(str, length); }
+void JsonWriterImpl<T>::String(const char* str, size_t length) {
+  writer_.String(str, narrow_cast<rapidjson::SizeType>(length));
+}
+
 template<class T>
 void JsonWriterImpl<T>::String(const char* str) { writer_.String(str); }
 template<class T>
-void JsonWriterImpl<T>::String(const string& str) { writer_.String(str.c_str(), str.length()); }
+void JsonWriterImpl<T>::String(const string& str) { String(str.c_str(), str.length()); }
 template<class T>
 void JsonWriterImpl<T>::StartObject() { writer_.StartObject(); }
 template<class T>

@@ -55,6 +55,7 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
@@ -74,6 +75,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet_splitter.h"
@@ -128,6 +130,14 @@ DEFINE_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
 DEFINE_test_flag(int32, tablet_bootstrap_delay_ms, 0,
                  "Time (in ms) to delay tablet bootstrap by.");
 
+DEFINE_test_flag(bool, dump_docdb_before_tablet_bootstrap, false,
+                 "Dump the contents of DocDB before tablet bootstrap. Should only be used when "
+                 "data is small.")
+
+DEFINE_test_flag(bool, dump_docdb_after_tablet_bootstrap, false,
+                 "Dump the contents of DocDB after tablet bootstrap. Should only be used when "
+                 "data is small.")
+
 namespace yb {
 namespace tablet {
 
@@ -154,14 +164,12 @@ using consensus::OpIdToString;
 using consensus::ReplicateMsg;
 using consensus::MakeOpIdPB;
 using strings::Substitute;
-using tserver::ChangeMetadataRequestPB;
-using tserver::TruncateRequestPB;
 using tserver::WriteRequestPB;
 using tserver::TabletSnapshotOpRequestPB;
 
 static string DebugInfo(const string& tablet_id,
-                        int segment_seqno,
-                        int entry_idx,
+                        uint64_t segment_seqno,
+                        size_t entry_idx,
                         const string& segment_path,
                         const LogEntryPB* entry) {
   // Truncate the debug string to a reasonable length for logging.  Otherwise, glog will truncate
@@ -210,7 +218,7 @@ struct ReplayState {
 
   // half_limit is half the limit on the number of entries added
   void AddEntriesToStrings(
-      const OpIndexToEntryMap& entries, std::vector<std::string>* strings, int half_limit) const;
+      const OpIndexToEntryMap& entries, std::vector<std::string>* strings, size_t half_limit) const;
 
   // half_limit is half the limit on the number of entries to be dumped
   void DumpReplayStateToStrings(std::vector<std::string>* strings, int half_limit) const;
@@ -314,7 +322,7 @@ void ReplayState::UpdateCommittedOpId(const OpId& id) {
 
 void ReplayState::AddEntriesToStrings(const OpIndexToEntryMap& entries,
                                       std::vector<std::string>* strings,
-                                      int half_limit) const {
+                                      size_t half_limit) const {
   const auto n = entries.size();
   const bool overflow = n > 2 * half_limit;
   size_t index = 0;
@@ -326,7 +334,7 @@ void ReplayState::AddEntriesToStrings(const OpIndexToEntryMap& entries,
           index + 1,
           OpId::FromPB(replicate.id()),
           replicate.hybrid_time(),
-          replicate.op_type(),
+          consensus::OperationType_Name(replicate.op_type()),
           OpId::FromPB(replicate.committed_op_id())));
     }
     if (overflow && index == half_limit - 1) {
@@ -443,10 +451,10 @@ ReplayDecision ShouldReplayOperation(
 }
 
 bool WriteOpHasTransaction(const ReplicateMsg& replicate) {
-  if (!replicate.has_write_request()) {
+  if (!replicate.has_write()) {
     return false;
   }
-  const auto& write_request = replicate.write_request();
+  const auto& write_request = replicate.write();
   if (!write_request.has_write_batch()) {
     return false;
   }
@@ -455,7 +463,7 @@ bool WriteOpHasTransaction(const ReplicateMsg& replicate) {
     return true;
   }
   for (const auto& pair : write_batch.write_pairs()) {
-    if (!pair.key().empty() && pair.key()[0] == docdb::ValueTypeAsChar::kExternalTransactionId) {
+    if (!pair.key().empty() && pair.key()[0] == docdb::KeyEntryTypeAsChar::kExternalTransactionId) {
       return true;
     }
   }
@@ -523,6 +531,11 @@ class TabletBootstrap {
     }
 
     const bool has_blocks = VERIFY_RESULT(OpenTablet());
+
+    if (FLAGS_TEST_dump_docdb_before_tablet_bootstrap) {
+      LOG_WITH_PREFIX(INFO) << "DEBUG: DocDB dump before tablet bootstrap:";
+      tablet_->TEST_DocDBDumpToLog(IncludeIntents::kTrue);
+    }
 
     const auto needs_recovery = VERIFY_RESULT(PrepareToReplay());
     if (needs_recovery && !skip_wal_rewrite_) {
@@ -594,6 +607,11 @@ class TabletBootstrap {
       TabletPtr* rebuilt_tablet) {
     tablet_->MarkFinishedBootstrapping();
     listener_->StatusMessage(message);
+    if (FLAGS_TEST_dump_docdb_after_tablet_bootstrap) {
+      LOG_WITH_PREFIX(INFO) << "DEBUG: DocDB debug dump after tablet bootstrap:\n";
+      tablet_->TEST_DocDBDumpToLog(IncludeIntents::kTrue);
+    }
+
     *rebuilt_tablet = std::move(tablet_);
     RETURN_NOT_OK(log_->EnsureInitialNewSegmentAllocated());
     rebuilt_log->swap(log_);
@@ -725,9 +743,8 @@ class TabletBootstrap {
         LogReader::Open(
             GetEnv(),
             index,
-            tablet_->metadata()->raft_group_id(),
+            LogPrefix(),
             wal_path,
-            tablet_->metadata()->fs_manager()->uuid(),
             tablet_->GetTableMetricsEntity().get(),
             tablet_->GetTabletMetricsEntity().get(),
             &log_reader_),
@@ -823,7 +840,7 @@ class TabletBootstrap {
   //     encountering an entry with an index lower than or equal to the index of an operation that
   //     is already present in pending_replicates.
   //   - Ignores entries that have already been flushed into regular and intents RocksDBs.
-  //   - Updates committed OpId based on the commmited OpId from the entry and calls
+  //   - Updates committed OpId based on the committed OpId from the entry and calls
   //     ApplyCommittedPendingReplicates.
   //   - Updates the "monotonic counter" used for assigning internal keys in YCQL arrays.
   CHECKED_STATUS HandleReplicateMessage(
@@ -944,6 +961,7 @@ class TabletBootstrap {
 
     SnapshotOperation operation(tablet_.get(), snapshot);
     operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
 
     return operation.Replicated(/* leader_term= */ yb::OpId::kUnknownTerm);
   }
@@ -956,7 +974,7 @@ class TabletBootstrap {
   }
 
   CHECKED_STATUS PlaySplitOpRequest(ReplicateMsg* replicate_msg) {
-    tserver::SplitTabletRequestPB* const split_request = replicate_msg->mutable_split_request();
+    SplitTabletRequestPB* const split_request = replicate_msg->mutable_split_request();
     // We might be asked to replay SPLIT_OP even if it was applied and flushed when
     // FLAGS_force_recover_flushed_frontier is set.
     if (split_request->tablet_id() != tablet_->tablet_id()) {
@@ -971,6 +989,7 @@ class TabletBootstrap {
     }
 
     SplitOperation operation(tablet_.get(), data_.tablet_init_data.tablet_splitter, split_request);
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
     operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
     return data_.tablet_init_data.tablet_splitter->ApplyTabletSplit(&operation, log_.get());
 
@@ -985,7 +1004,7 @@ class TabletBootstrap {
 
   void HandleRetryableRequest(
       const ReplicateMsg& replicate, RestartSafeCoarseTimePoint entry_time) {
-    if (!replicate.has_write_request())
+    if (!replicate.has_write())
       return;
 
     if (data_.retryable_requests) {
@@ -1145,8 +1164,10 @@ class TabletBootstrap {
         test_hooks_->FirstOpIdOfSegment(segment_path, op_id);
       }
       const RestartSafeCoarseTimePoint first_op_time = first_op_metadata.entry_time;
+      const auto replay_from_this_or_earlier_time_was_initialized =
+          replay_from_this_or_earlier_time.is_initialized();
 
-      if (!replay_from_this_or_earlier_time.is_initialized()) {
+      if (!replay_from_this_or_earlier_time_was_initialized) {
         replay_from_this_or_earlier_time = first_op_time - min_seconds_to_retain_logs;
       }
 
@@ -1155,8 +1176,10 @@ class TabletBootstrap {
 
       const auto common_details_str = [&]() {
         std::ostringstream ss;
-        ss << EXPR_VALUE_FOR_LOG(first_op_time) << ", "
+        ss << EXPR_VALUE_FOR_LOG(op_id_replay_lowest) << ", "
+           << EXPR_VALUE_FOR_LOG(first_op_time) << ", "
            << EXPR_VALUE_FOR_LOG(min_seconds_to_retain_logs) << ", "
+           << EXPR_VALUE_FOR_LOG(replay_from_this_or_earlier_time_was_initialized) << ", "
            << EXPR_VALUE_FOR_LOG(*replay_from_this_or_earlier_time);
         return ss.str();
       };
@@ -1368,12 +1391,11 @@ class TabletBootstrap {
     SCHECK(replicate_msg->has_hybrid_time(), IllegalState,
            "A write operation with no hybrid time");
 
-    WriteRequestPB* write = replicate_msg->mutable_write_request();
+    auto* write = replicate_msg->mutable_write();
 
     SCHECK(write->has_write_batch(), Corruption, "A write request must have a write batch");
 
-    WriteOperation operation(OpId::kUnknownTerm, CoarseTimePoint::max(), /* context */ nullptr);
-    *operation.AllocateRequest() = *write;
+    WriteOperation operation(tablet_.get(), write);
     operation.set_op_id(OpId::FromPB(replicate_msg->id()));
     HybridTime hybrid_time(replicate_msg->hybrid_time());
     operation.set_hybrid_time(hybrid_time);
@@ -1382,9 +1404,9 @@ class TabletBootstrap {
     tablet_->mvcc_manager()->AddFollowerPending(hybrid_time, op_id);
 
     if (test_hooks_ &&
-        replicate_msg->has_write_request() &&
-        replicate_msg->write_request().has_write_batch() &&
-        replicate_msg->write_request().write_batch().has_transaction() &&
+        replicate_msg->has_write() &&
+        replicate_msg->write().has_write_batch() &&
+        replicate_msg->write().write_batch().has_transaction() &&
         test_hooks_->ShouldSkipWritingIntents()) {
       // Used in unit tests to avoid instantiating the entire transactional subsystem.
       tablet_->mvcc_manager()->Replicated(hybrid_time, op_id);
@@ -1470,7 +1492,7 @@ class TabletBootstrap {
   }
 
   CHECKED_STATUS PlayTruncateRequest(ReplicateMsg* replicate_msg) {
-    TruncateRequestPB* req = replicate_msg->mutable_truncate_request();
+    auto* req = replicate_msg->mutable_truncate();
 
     TruncateOperation operation(tablet_.get(), req);
 

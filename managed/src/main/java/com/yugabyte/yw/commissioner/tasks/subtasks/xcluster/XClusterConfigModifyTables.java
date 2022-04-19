@@ -6,6 +6,7 @@ import com.google.common.collect.Sets.SetView;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.Set;
@@ -31,7 +32,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    XClusterConfig xClusterConfig = refreshXClusterConfig();
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
 
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
@@ -50,12 +51,23 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
         log.info("Adding tables to XClusterConfig({}): {}", xClusterConfig.uuid, tablesToAdd);
         AlterUniverseReplicationResponse resp =
             client.alterUniverseReplicationAddTables(
-                xClusterConfig.sourceUniverseUUID, tablesToAdd);
+                xClusterConfig.getReplicationGroupName(), tablesToAdd);
         if (resp.hasError()) {
-          throw new RuntimeException(resp.errorMessage());
+          String errMsg =
+              String.format(
+                  "Failed to add tables to XClusterConfig(%s): %s",
+                  xClusterConfig.uuid, resp.errorMessage());
+          throw new RuntimeException(errMsg);
         }
 
         waitForXClusterOperation(client::isAlterUniverseReplicationDone);
+
+        if (HighAvailabilityConfig.get().isPresent()) {
+          // Note: We increment version twice for adding tables: once for setting up the .ALTER
+          // replication group, and once for merging the .ALTER replication group
+          getUniverse(true).incrementVersion();
+          getUniverse(true).incrementVersion();
+        }
       }
 
       if (tablesToRemove.size() > 0) {
@@ -63,9 +75,17 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
             "Removing tables from XClusterConfig({}): {}", xClusterConfig.uuid, tablesToRemove);
         AlterUniverseReplicationResponse resp =
             client.alterUniverseReplicationRemoveTables(
-                xClusterConfig.sourceUniverseUUID, tablesToRemove);
+                xClusterConfig.getReplicationGroupName(), tablesToRemove);
         if (resp.hasError()) {
-          throw new RuntimeException(resp.errorMessage());
+          String errMsg =
+              String.format(
+                  "Failed to remove tables from XClusterConfig(%s): %s",
+                  xClusterConfig.uuid, resp.errorMessage());
+          throw new RuntimeException(errMsg);
+        }
+
+        if (HighAvailabilityConfig.get().isPresent()) {
+          getUniverse(true).incrementVersion();
         }
       }
 

@@ -405,9 +405,7 @@ rpc::ThreadPool& Messenger::ThreadPool(ServicePriority priority) {
 Status Messenger::RegisterService(
     const std::string& service_name, const scoped_refptr<RpcService>& service) {
   DCHECK(service);
-  if (!rpc_services_.emplace(service_name, service).second) {
-    return STATUS_FORMAT(IllegalState, "Duplicate service: $0", service_name);
-  }
+  rpc_services_.emplace(service_name, service);
   return Status::OK();
 }
 
@@ -477,8 +475,7 @@ void Messenger::Handle(InboundCallPtr call, Queue queue) {
   }
   auto it = rpc_endpoints_.find(call->serialized_remote_method());
   if (it == rpc_endpoints_.end()) {
-    auto remote_method = serialization::ParseRemoteMethod(
-        call->serialized_remote_method());
+    auto remote_method = ParseRemoteMethod(call->serialized_remote_method());
     Status s;
     ErrorStatusPB::RpcErrorCodePB error_code = ErrorStatusPB::ERROR_NO_SUCH_SERVICE;
     if (remote_method.ok()) {
@@ -556,7 +553,7 @@ Messenger::Messenger(const MessengerBuilder &bld)
       scheduler_(&io_thread_pool_.io_service()),
       normal_thread_pool_(new rpc::ThreadPool(name_, bld.queue_limit_, bld.workers_limit_)),
       resolver_(new DnsResolver(&io_thread_pool_.io_service())),
-      rpc_metrics_(new RpcMetrics(bld.metric_entity_)),
+      rpc_metrics_(std::make_shared<RpcMetrics>(bld.metric_entity_)),
       num_connections_to_server_(bld.num_connections_to_server_) {
 #ifndef NDEBUG
   creation_stack_trace_.Collect(/* skip_frames */ 1);
@@ -589,8 +586,8 @@ size_t Messenger::max_concurrent_requests() const {
 }
 
 Reactor* Messenger::RemoteToReactor(const Endpoint& remote, uint32_t idx) {
-  uint32_t hashCode = hash_value(remote);
-  int reactor_idx = (hashCode + idx) % reactors_.size();
+  auto hash_code = hash_value(remote);
+  auto reactor_idx = (hash_code + idx) % reactors_.size();
   // This is just a static partitioning; where each connection
   // to a remote is assigned to a particular reactor. We could
   // get a lot fancier with assigning Sockaddrs to Reactors,

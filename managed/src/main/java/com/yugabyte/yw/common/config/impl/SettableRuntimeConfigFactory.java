@@ -16,6 +16,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
@@ -27,6 +28,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.db.ebean.EbeanDynamicEvolutions;
 
 /** Factory to create RuntimeConfig for various scopes */
 @Singleton
@@ -36,7 +38,8 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   private final Config appConfig;
 
   @Inject
-  public SettableRuntimeConfigFactory(Config appConfig) {
+  public SettableRuntimeConfigFactory(
+      Config appConfig, EbeanDynamicEvolutions ebeanDynamicEvolutions, YBFlywayInit ybFlywayInit) {
     this.appConfig = appConfig;
   }
 

@@ -6,6 +6,8 @@ import { fetchCustomerConfigs, fetchCustomerConfigsResponse } from '../../../act
 import {
   createKMSProviderConfig,
   createKMSProviderConfigResponse,
+  editKMSProviderConfig,
+  editKMSProviderConfigResponse,
   fetchAuthConfigList,
   fetchAuthConfigListResponse,
   deleteKMSProviderConfig,
@@ -21,7 +23,8 @@ const mapStateToProps = (state) => {
     visibleModal: state.modal.visibleModal,
     deleteConfig: state.customer.deleteConfig,
     modal: state.modal,
-    featureFlags: state.featureFlags
+    featureFlags: state.featureFlags,
+    currentUserInfo: state.customer.currentUser.data
   };
 };
 
@@ -45,13 +48,28 @@ const mapDispatchToProps = (dispatch) => {
           if (response.error) {
             const errorMessage =
               response.payload?.response?.data?.error || response.payload.message;
-            toast.error(errorMessage);
+            toast.error(errorMessage, { autoClose: 2500 });
           } else {
             toast.warn('Please wait. KMS configuration is being added', { autoClose: 2500 });
             return dispatch(createKMSProviderConfigResponse(response.payload));
           }
         })
         .catch((err) => toast.error(`Error submitting KMS configuration: ${err}`));
+    },
+
+    updateKMSConfig: (configUUID, body) => {
+      return dispatch(editKMSProviderConfig(configUUID, body))
+        .then?.((response) => {
+          if (response.error) {
+            const errorMessage =
+              response.payload?.response?.data?.error || response.payload.message;
+            toast.error(errorMessage, { autoClose: 2500 });
+          } else {
+            toast.warn('Please wait. KMS configuration is being updated', { autoClose: 2500 });
+            return dispatch(editKMSProviderConfigResponse(response.payload));
+          }
+        })
+        .catch((err) => toast.error(`Error updating KMS configuration: ${err}`));
     },
 
     getCurrentTaskData: (taskUUID) => {
@@ -64,7 +82,7 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(deleteKMSProviderConfig(configUUID))
         .then((response) => {
           if (response.payload.status === 200) {
-            toast.success('Successfully deleted KMS configuration');
+            toast.success('Successfully deleted KMS configuration', { autoClose: 2500 });
             return dispatch(deleteKMSProviderConfigResponse(configUUID));
           }
           toast.warn('Warning: Deleting configuration returned unsuccessful response.');

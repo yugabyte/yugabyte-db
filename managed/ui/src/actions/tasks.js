@@ -16,6 +16,9 @@ export const FETCH_FAILED_TASK_DETAIL_RESPONSE = 'FETCH_TASK_DETAIL_RESPONSE';
 export const RETRY_TASK = 'RETRY_TASK';
 export const RETRY_TASK_RESPONSE = 'RETRY_TASK_RESPONSE';
 
+export const ABORT_TASK = 'ABORT_TASK';
+export const ABORT_TASK_RESPONSE = 'ABORT_TASK_RESPONSE';
+
 export function fetchTaskProgress(taskUUID) {
   const request = axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
   return {
@@ -91,6 +94,21 @@ export function retryTask(taskUUID) {
 export function retryTaskResponse(response) {
   return {
     type: RETRY_TASK_RESPONSE,
+    payload: response
+  };
+}
+
+export function abortTask(taskUUID) {
+  const request = axios.post(`${getCustomerEndpoint()}/tasks/${taskUUID}/abort`);
+  return {
+    type: ABORT_TASK,
+    payload: request
+  };
+}
+
+export function abortTaskResponse(response) {
+  return {
+    type: ABORT_TASK_RESPONSE,
     payload: response
   };
 }

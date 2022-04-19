@@ -15,12 +15,17 @@
 #define YB_MASTER_CATALOG_MANAGER_IF_H
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
 
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/master/master_admin.fwd.h"
+#include "yb/master/master_client.fwd.h"
+#include "yb/master/master_cluster.fwd.h"
+#include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_replication.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -29,6 +34,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace google {
@@ -83,10 +89,10 @@ class CatalogManagerIf {
       std::vector<scoped_refptr<NamespaceInfo>>* namespaces,
       bool include_only_running_namespaces = false) = 0;
 
-  virtual CHECKED_STATUS GetReplicationFactor(int* num_replicas) = 0;
-  CHECKED_STATUS GetReplicationFactor(NamespaceName namespace_name, int* num_replicas) {
+  virtual Result<size_t> GetReplicationFactor() = 0;
+  Result<size_t> GetReplicationFactor(NamespaceName namespace_name) {
     // TODO ENG-282 We currently don't support per-namespace replication factor.
-    return GetReplicationFactor(num_replicas);
+    return GetReplicationFactor();
   }
 
   virtual const NodeInstancePB& NodeInstance() const = 0;
@@ -109,17 +115,11 @@ class CatalogManagerIf {
 
   virtual bool IsUserTable(const TableInfo& table) const = 0;
 
-  virtual bool IsColocatedParentTable(const TableInfo& table) const = 0;
-
   virtual bool HasTablegroups() = 0;
 
   virtual NamespaceName GetNamespaceName(const NamespaceId& id) const = 0;
 
   virtual bool IsUserIndex(const TableInfo& table) const = 0;
-
-  virtual bool IsTablegroupParentTable(const TableInfo& table) const = 0;
-
-  virtual bool IsColocatedUserTable(const TableInfo& table) const = 0;
 
   virtual TableInfoPtr GetTableInfo(const TableId& table_id) = 0;
 
@@ -150,7 +150,7 @@ class CatalogManagerIf {
 
   virtual bool IsUserCreatedTable(const TableInfo& table) const = 0;
 
-  virtual BlacklistSet BlacklistSetFromPB() const = 0;
+  virtual Result<BlacklistSet> BlacklistSetFromPB() const = 0;
 
   virtual void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo>>* types) = 0;
 
@@ -201,6 +201,9 @@ class CatalogManagerIf {
   virtual CHECKED_STATUS ListCDCStreams(
       const ListCDCStreamsRequestPB* req, ListCDCStreamsResponsePB* resp) = 0;
 
+  virtual CHECKED_STATUS GetCDCDBStreamInfo(
+    const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) = 0;
+
   virtual Result<scoped_refptr<TableInfo>> FindTable(
       const TableIdentifierPB& table_identifier) const = 0;
 
@@ -213,7 +216,9 @@ class CatalogManagerIf {
 
   virtual scoped_refptr<TableInfo> NewTableInfo(TableId id) = 0;
 
-  virtual CHECKED_STATUS SplitTablet(const TabletId& tablet_id) = 0;
+  // If is_manual_split is true, we will not call ShouldSplitValidCandidate.
+  virtual CHECKED_STATUS SplitTablet(
+      const TabletId& tablet_id, bool is_manual_split) = 0;
 
   virtual CHECKED_STATUS TEST_SplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) = 0;
@@ -222,7 +227,7 @@ class CatalogManagerIf {
       const TabletId& tablet_id, const std::string& split_encoded_key,
       const std::string& split_partition_key) = 0;
 
-  virtual uint64_t GetTxnTableVersionsHash() = 0;
+  virtual uint64_t GetTransactionTablesVersion() = 0;
 
   virtual Result<scoped_refptr<TableInfo>> FindTableById(const TableId& table_id) const = 0;
 
@@ -234,11 +239,13 @@ class CatalogManagerIf {
 
   virtual ClusterLoadBalancer* load_balancer() = 0;
 
+  virtual TabletSplitManager* tablet_split_manager() = 0;
+
   virtual std::shared_ptr<tablet::TabletPeer> tablet_peer() const = 0;
 
-  virtual uintptr_t tablets_version() const = 0;
+  virtual intptr_t tablets_version() const = 0;
 
-  virtual uintptr_t tablet_locations_version() const = 0;
+  virtual intptr_t tablet_locations_version() const = 0;
 
   virtual tablet::SnapshotCoordinator& snapshot_coordinator() = 0;
 

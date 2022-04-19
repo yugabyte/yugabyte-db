@@ -13,7 +13,10 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/constants.h"
 #include "yb/common/ybc-internal.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/util/status_log.h"
 
@@ -40,7 +43,9 @@ TEST_F(PggateTestDelete, TestDelete) {
                                        false /* is_shared_table */, true /* if_not_exist */,
                                        false /* add_primary_key */, true /* colocated */,
                                        kInvalidOid /* tablegroup_id */,
+                                       kColocationIdNotSet /* colocation_id */,
                                        kInvalidOid /* tablespace_id */,
+                                       kInvalidOid /* matview_pg_table_id */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
                                                DataType::INT64, true, true));
@@ -208,8 +213,8 @@ TEST_F(PggateTestDelete, TestDelete) {
 
     // Check result.
     int col_index = 0;
-    int32_t hash_id = values[col_index++];  // id : int32
-    int32_t id = values[col_index++];  // id : int32
+    int32_t hash_id = narrow_cast<int32_t>(values[col_index++]);  // id : int32
+    int32_t id = narrow_cast<int32_t>(values[col_index++]);  // id : int32
     CHECK_EQ(hash_id, id) << "Expect hash and range key share the same value";
     if (id%2 == 0) {
       // Check if EVEN rows stays the same as inserted.

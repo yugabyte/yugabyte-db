@@ -64,8 +64,7 @@ TEST(DocKVUtilTest, EncodeAndDecodeHybridTimeInKey) {
         const auto htw = DocHybridTime(HybridTime(cur_ht_value), write_id);
         htw.AppendEncodedInDocDbFormat(&buf);
         rocksdb::Slice slice(buf);
-        DocHybridTime decoded_ht;
-        ASSERT_OK(DecodeHybridTimeFromEndOfKey(slice, &decoded_ht));
+        DocHybridTime decoded_ht = ASSERT_RESULT(DocHybridTime::DecodeFromEnd(slice));
         ASSERT_EQ(htw, decoded_ht);
       }
       cur_ht_value += std::numeric_limits<uint64_t>::max() / kNumHTValuesToTry;
@@ -120,7 +119,7 @@ TEST(DocKVUtilTest, ZeroEncodingAndDecoding) {
 
 TEST(DocKVUtilTest, TableTTL) {
   Schema schema;
-  EXPECT_TRUE(TableTTL(schema).Equals(Value::kMaxTtl));
+  EXPECT_TRUE(TableTTL(schema).Equals(ValueControlFields::kMaxTtl));
 
   schema.SetDefaultTimeToLive(1000);
   EXPECT_TRUE(MonoDelta::FromMilliseconds(1000).Equals(TableTTL(schema)));
@@ -133,19 +132,20 @@ TEST(DocKVUtilTest, ComputeTTL) {
   MonoDelta value_ttl = MonoDelta::FromMilliseconds(2000);
 
   EXPECT_TRUE(MonoDelta::FromMilliseconds(2000).Equals(ComputeTTL(value_ttl, schema)));
-  EXPECT_TRUE(MonoDelta::FromMilliseconds(1000).Equals(ComputeTTL(Value::kMaxTtl, schema)));
+  EXPECT_TRUE(MonoDelta::FromMilliseconds(1000).Equals(
+      ComputeTTL(ValueControlFields::kMaxTtl, schema)));
 
   MonoDelta reset_ttl = MonoDelta::FromMilliseconds(0);
-  EXPECT_TRUE(ComputeTTL(reset_ttl, schema).Equals(Value::kMaxTtl));
+  EXPECT_TRUE(ComputeTTL(reset_ttl, schema).Equals(ValueControlFields::kMaxTtl));
 }
 
 TEST(DocKVUtilTest, FileExpirationFromValueTTL) {
   HybridTime key_hybrid_time = 1000_usec_ht;
 
-  MonoDelta value_ttl = Value::kMaxTtl;
+  MonoDelta value_ttl = ValueControlFields::kMaxTtl;
   EXPECT_EQ(FileExpirationFromValueTTL(key_hybrid_time, value_ttl), kUseDefaultTTL);
 
-  value_ttl = Value::kResetTtl;
+  value_ttl = ValueControlFields::kResetTtl;
   EXPECT_EQ(FileExpirationFromValueTTL(key_hybrid_time, value_ttl), kNoExpiration);
 
   value_ttl = MonoDelta::FromMicroseconds(1000);
@@ -164,7 +164,7 @@ TEST(DocKVUtilTest, MaxExpirationFromValueAndTableTTL) {
   HybridTime val_expiry_ht;
 
   val_expiry_ht = 2000_usec_ht;
-  table_ttl = Value::kMaxTtl;
+  table_ttl = ValueControlFields::kMaxTtl;
   EXPECT_EQ(MaxExpirationFromValueAndTableTTL(key_ht, table_ttl, val_expiry_ht), val_expiry_ht);
   val_expiry_ht = kUseDefaultTTL;
   EXPECT_EQ(MaxExpirationFromValueAndTableTTL(key_ht, table_ttl, val_expiry_ht), kNoExpiration);
@@ -191,13 +191,13 @@ TEST(DocKVUtilTest, MaxExpirationFromValueAndTableTTL) {
 TEST(DocKVUtilTest, FloatEncoding) {
   vector<float> numbers = {-123.45f, -0.00123f, -0.0f, 0.0f, 0.00123f, 123.45f};
   vector<string> strings;
-  for (int i = 0; i < numbers.size(); i++) {
+  for (size_t i = 0; i < numbers.size(); i++) {
     string s;
     util::AppendFloatToKey(numbers[i], &s);
     strings.push_back(s);
     EXPECT_EQ(numbers[i], util::DecodeFloatFromKey(rocksdb::Slice(s)));
   }
-  for (int i = 1; i < numbers.size(); i++) {
+  for (size_t i = 1; i < numbers.size(); i++) {
     EXPECT_LT(strings[i-1], strings[i]);
   }
 }
@@ -205,13 +205,13 @@ TEST(DocKVUtilTest, FloatEncoding) {
 TEST(DocKVUtilTest, DoubleEncoding) {
   vector<double> numbers = {-123.45f, -0.00123f, -0.0f, 0.0f, 0.00123f, 123.45f};
   vector<string> strings;
-  for (int i = 0; i < numbers.size(); i++) {
+  for (size_t i = 0; i < numbers.size(); i++) {
     string s;
     util::AppendDoubleToKey(numbers[i], &s);
     strings.push_back(s);
     EXPECT_EQ(numbers[i], util::DecodeDoubleFromKey(rocksdb::Slice(s)));
   }
-  for (int i = 1; i < numbers.size(); i++) {
+  for (size_t i = 1; i < numbers.size(); i++) {
     EXPECT_LT(strings[i-1], strings[i]);
   }
 }
@@ -219,13 +219,13 @@ TEST(DocKVUtilTest, DoubleEncoding) {
 TEST(DocKVUtilTest, UInt64Encoding) {
   vector<uint64_t> numbers = {0, 1, 100, 9223372036854775807ULL, 18446744073709551615ULL};
   vector<string> strings;
-  for (int i = 0; i < numbers.size(); i++) {
+  for (size_t i = 0; i < numbers.size(); i++) {
     string s;
     AppendUInt64ToKey(numbers[i], &s);
     strings.push_back(s);
     EXPECT_EQ(numbers[i], BigEndian::Load64(s.c_str()));
   }
-  for (int i = 1; i < numbers.size(); i++) {
+  for (size_t i = 1; i < numbers.size(); i++) {
     EXPECT_LT(strings[i-1], strings[i]);
   }
 }

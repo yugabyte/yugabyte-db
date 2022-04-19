@@ -17,14 +17,13 @@
 #include <memory>
 
 #include "yb/client/client_fwd.h"
-#include "yb/common/common.pb.h"
 #include "yb/docdb/docdb.h"
 
 #include "yb/tablet/apply_intents_task.h"
 #include "yb/tablet/remove_intents_task.h"
 #include "yb/tablet/transaction_participant.h"
 
-#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/bitmap.h"
 #include "yb/util/operation_counter.h"
@@ -110,6 +109,12 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
                     const TransactionApplyData* data = nullptr,
                     ScopedRWOperation* operation = nullptr);
 
+  void SetOpId(const OpId& id);
+
+  OpId GetOpId() {
+    return opId;
+  }
+
   // Whether this transactions is currently applying intents.
   bool ProcessingApply() const;
 
@@ -168,6 +173,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   std::vector<TransactionStatusCallback> abort_waiters_;
 
   TransactionApplyData apply_data_;
+  OpId opId;
   docdb::ApplyTransactionState apply_state_;
   // Atomic that reflects active state, required to provide concurrent access to ProcessingApply.
   std::atomic<bool> processing_apply_{false};

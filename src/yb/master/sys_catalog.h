@@ -41,6 +41,8 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/gutil/callback.h"
 
 #include "yb/master/master_fwd.h"
@@ -159,8 +161,14 @@ class SysCatalogTable {
   // Read the pg_class catalog table. There is a separate pg_class table in each
   // YSQL database, read the information in the pg_class table for the database
   // 'database_oid' and load this information into 'table_to_tablespace_map'.
+  // 'is_colocated' indicates whether this database is colocated or not.
   CHECKED_STATUS ReadPgClassInfo(const uint32_t database_oid,
+                                 const bool is_colocated,
                                  TableToTablespaceIdMap* table_to_tablespace_map);
+
+  CHECKED_STATUS ReadTablespaceInfoFromPgYbTablegroup(
+    const uint32_t database_oid,
+    TableToTablespaceIdMap *table_tablespace_map);
 
   // Read relnamespace OID from the pg_class catalog table.
   Result<uint32_t> ReadPgClassRelnamespace(const uint32_t database_oid,
@@ -174,11 +182,6 @@ class SysCatalogTable {
   // respective placement information.
   Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> ReadPgTablespaceInfo();
 
-  // Parse the binary value present in ql_value into ReplicationInfoPB.
-  Result<boost::optional<ReplicationInfoPB>> ParseReplicationInfo(
-      const TablespaceId& tablespace_id,
-      const vector<QLValuePB>& options);
-
   // Copy the content of co-located tables in sys catalog as a batch.
   CHECKED_STATUS CopyPgsqlTables(const std::vector<TableId>& source_table_ids,
                                  const std::vector<TableId>& target_table_ids,
@@ -189,12 +192,15 @@ class SysCatalogTable {
 
   const Schema& schema();
 
+  const docdb::DocReadContext& doc_read_context();
+
   const scoped_refptr<MetricEntity>& GetMetricEntity() const { return metric_entity_; }
 
   CHECKED_STATUS FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries);
 
  private:
   friend class CatalogManager;
+  friend class enterprise::CatalogManager;
 
   inline std::unique_ptr<SysCatalogWriter> NewWriter(int64_t leader_term);
 
@@ -241,7 +247,7 @@ class SysCatalogTable {
   void InitLocalRaftPeerPB();
 
   // Table schema, with IDs, used for the YQL write path.
-  std::unique_ptr<Schema> schema_;
+  std::unique_ptr<docdb::DocReadContext> doc_read_context_;
 
   MetricRegistry* metric_registry_;
 
@@ -275,6 +281,8 @@ class SysCatalogTable {
   std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_;
 
   std::shared_ptr<tserver::TabletMemoryManager> mem_manager_;
+
+  std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 };

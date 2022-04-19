@@ -135,7 +135,7 @@ order by class;
 It produces this result:
 
 ```
- class | array_agg(v) | string_agg(v) |    jsonb_agg    |  jsonb_object_agg(v, k)  
+ class | array_agg(v) | string_agg(v) |    jsonb_agg    |  jsonb_object_agg(v, k)
 -------+--------------+---------------+-----------------+--------------------------
      1 | {c,b,a}      | c ~ b ~ a     | ["c", "b", "a"] | {"a": 1, "b": 2, "c": 3}
      2 | {f,e,d}      | f ~ e ~ d     | ["f", "e", "d"] | {"d": 4, "e": 5, "f": 6}
@@ -158,7 +158,7 @@ from t;
 This is the result:
 
 ```
- string_agg(v) without f | string_agg(v) without a 
+ string_agg(v) without f | string_agg(v) without a
 -------------------------+-------------------------
  a ~ b ~ c ~ d ~ e       | f ~ e ~ d ~ c ~ b
 ```
@@ -197,7 +197,7 @@ select k, class, v from t order by class, v nulls last, k;
 This is the result:
 
 ```
- k  | class |   v    
+ k  | class |   v
 ----+-------+--------
   1 |     1 | a
   2 |     1 | b
@@ -231,7 +231,7 @@ order by class;
 This is the result:
 
 ```
- class | k mode | v mode 
+ class | k mode | v mode
 -------+--------+--------
      1 |     11 | e
      2 |     15 | f
@@ -253,14 +253,14 @@ from t;
 This is the result:
 
 ```
- expr-1 mode | expr-2 mode 
+ expr-1 mode | expr-2 mode
 -------------+-------------
  ex          | <null>
 ```
 
 The parameterization story for the other two "within-group ordered-set" aggregate functions, [`percentile_disc()`](../function-syntax-semantics/mode-percentile-disc-percentile-cont/#percentile-disc-percentile-cont) and [`percentile_cont()`](../function-syntax-semantics/mode-percentile-disc-percentile-cont/#percentile-disc-percentile-cont), is more subtle. Each has two overloads. One takes a scalar, and the other takes an array. These arguments specify _how_ the functions should determine their result. The expression, for which the result is produced, is specified as the argument of the `ORDER BY` clause.
 
-The syntax rules for the four [within-group hypothetical-set](../function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/) aggregate functions, [`rank()`](../function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#rank), [`dense_rank()`](../function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#dense-rank), [`percent_rank()`](../function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#percent-rank), and [`cume_dist()`](../function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#cume-dist), are, as stated, the same as for the the [within-group ordered-set](../function-syntax-semantics/mode-percentile-disc-percentile-cont/) aggregate functions. But the semantics are importantly different—and this difference is reflected in how the invocations are parameterized. This is best understood by reading the accounts of the four functions and the general introduction to the section that describes these. Briefly, the argument to the function specifies the value that is to be hypothetically inserted. And the `ORDER BY` argument specifies the expression to which that value will be assigned as a result of the hypothetical insert.
+The syntax rules for the four [within-group hypothetical-set](../function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/) aggregate functions, [`rank()`](../function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#rank), [`dense_rank()`](../function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#dense-rank), [`percent_rank()`](../function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#percent-rank), and [`cume_dist()`](../function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#cume-dist), are, as stated, the same as for the [within-group ordered-set](../function-syntax-semantics/mode-percentile-disc-percentile-cont/) aggregate functions. But the semantics are importantly different—and this difference is reflected in how the invocations are parameterized. This is best understood by reading the accounts of the four functions and the general introduction to the section that describes these. Briefly, the argument to the function specifies the value that is to be hypothetically inserted. And the `ORDER BY` argument specifies the expression to which that value will be assigned as a result of the hypothetical insert.
 
 ### The GROUP BY clause
 
@@ -297,7 +297,7 @@ as a;
 This is the result:
 
 ```
- number of resulting rows 
+ number of resulting rows
 --------------------------
                      1536
 ```
@@ -370,7 +370,7 @@ select k, class, v from t order by k;
 This is the result:
 
 ```
- k  | class |   v    
+ k  | class |   v
 ----+-------+--------
   1 |     1 |    100
   2 |     1 |    101
@@ -411,7 +411,7 @@ order by class;
 This is the result:
 
 ```
- class | count 
+ class | count
 -------+-------
      2 |     5
 ```
@@ -453,7 +453,7 @@ with a as (
   group by class)
 select class, count
 from a
-where count > 4  
+where count > 4
 order by class;
 ```
 

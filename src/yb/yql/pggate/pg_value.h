@@ -16,7 +16,6 @@
 #define YB_YQL_PGGATE_PG_VALUE_H_
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common.pb.h"
 
 #include "yb/util/status_fwd.h"
 
@@ -40,7 +39,7 @@ Status PgValueFromPB(const YBCPgTypeEntity *type_entity,
 Status PgValueToPB(const YBCPgTypeEntity *type_entity,
                    uint64_t datum,
                    bool is_null,
-                   QLValue* ql_value);
+                   QLValuePB* ql_value);
 
 }  // namespace pggate
 }  // namespace yb

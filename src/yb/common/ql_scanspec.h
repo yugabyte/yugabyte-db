@@ -23,7 +23,8 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.pb.h"
 
 namespace yb {
 
@@ -64,10 +65,19 @@ class QLScanRange {
 
   QLScanRange(const Schema& schema, const QLConditionPB& condition);
   QLScanRange(const Schema& schema, const PgsqlConditionPB& condition);
+  QLScanRange(const Schema& schema, const LWPgsqlConditionPB& condition);
 
   QLRange RangeFor(ColumnId col_id) const {
     const auto& iter = ranges_.find(col_id);
     return (iter == ranges_.end() ? QLRange() : iter->second);
+  }
+
+  std::vector<ColumnId> GetColIds() const {
+    std::vector<ColumnId> col_id_list;
+    for (auto &it : ranges_) {
+      col_id_list.push_back(it.first);
+    }
+    return col_id_list;
   }
 
   bool has_in_range_options() const {
@@ -82,6 +92,8 @@ class QLScanRange {
   QLScanRange& operator=(QLScanRange&& other);
 
  private:
+  template <class Cond>
+  void Init(const Cond& cond);
 
   // Table schema being scanned.
   const Schema& schema_;

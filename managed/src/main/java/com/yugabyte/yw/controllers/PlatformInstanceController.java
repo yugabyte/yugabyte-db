@@ -17,10 +17,12 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.PlatformInstanceFormData;
 import com.yugabyte.yw.forms.RestorePlatformBackupFormData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import java.io.File;
 import java.net.URL;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
@@ -63,7 +65,7 @@ public class PlatformInstanceController extends AuthenticatedController {
     PlatformInstance instance =
         PlatformInstance.create(
             config.get(),
-            formData.get().address,
+            formData.get().getCleanAddress(),
             formData.get().is_leader,
             formData.get().is_local);
 
@@ -71,7 +73,12 @@ public class PlatformInstanceController extends AuthenticatedController {
     if (instance.getIsLeader()) {
       config.get().updateLastFailover();
     }
-
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.PlatformInstance,
+            Objects.toString(instance.getUUID(), null),
+            Audit.ActionType.Create);
     return PlatformResults.withData(instance);
   }
 
@@ -97,6 +104,12 @@ public class PlatformInstanceController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot delete local instance");
     }
 
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.PlatformInstance,
+            instanceUUID.toString(),
+            Audit.ActionType.Delete);
     PlatformInstance.delete(instanceUUID);
 
     return ok();
@@ -176,7 +189,12 @@ public class PlatformInstanceController extends AuthenticatedController {
 
     // Finally, switch the prometheus configuration to read from swamper targets directly.
     replicationManager.switchPrometheusToStandalone();
-
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.PlatformInstance,
+            instanceUUID.toString(),
+            Audit.ActionType.Promote);
     return ok();
   }
 }

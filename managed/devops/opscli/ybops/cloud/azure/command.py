@@ -13,10 +13,10 @@ from ybops.cloud.azure.method import AzureNetworkBootstrapMethod, AzureProvision
     AzureQueryRegionsMethod, AzureQueryZonesMethod, AzureDestroyInstancesMethod, \
     AzureQueryInstanceTypesMethod, AzureQueryVnetMethod, AzureNetworkCleanupMethod, \
     AzureQueryUltraMethod, AzureCreateDnsEntryMethod, AzureEditDnsEntryMethod, \
-    AzureDeleteDnsEntryMethod, AzureListDnsEntryMethod
+    AzureDeleteDnsEntryMethod, AzureListDnsEntryMethod, AzureDeleteRootVolumesMethod
 from ybops.cloud.common.method import AccessCreateVaultMethod, ConfigureInstancesMethod, \
     ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
-    AccessEditVaultMethod, AccessDeleteKeyMethod
+    AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts
 
 
 class AzureNetworkCommand(NetworkCommand):
@@ -41,6 +41,8 @@ class AzureInstanceCommand(InstanceCommand):
         self.add_method(InitYSQLMethod(self))
         self.add_method(UpdateDiskMethod(self))
         self.add_method(CronCheckMethod(self))
+        self.add_method(AzureDeleteRootVolumesMethod(self))
+        self.add_method(TransferXClusterCerts(self))
 
 
 class AzureAccessCommand(AccessCommand):

@@ -249,6 +249,8 @@
 #include <boost/preprocessor/stringize.hpp>
 #include <gflags/gflags_declare.h>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/integral_types.h"
 
@@ -421,6 +423,7 @@ struct MetricUnit {
     kTasks,
     kMessages,
     kContextSwitches,
+    kFiles,
   };
   static const char* Name(Type unit);
 };
@@ -897,6 +900,7 @@ class Counter : public Metric {
   friend class MetricEntity;
 
   explicit Counter(const CounterPrototype* proto);
+  explicit Counter(std::unique_ptr<CounterPrototype> proto);
 
   LongAdder value_;
   DISALLOW_COPY_AND_ASSIGN(Counter);
@@ -1168,6 +1172,16 @@ class OwningMetricCtorArgs {
   uint32_t flags_;
 };
 
+class OwningCounterPrototype : public OwningMetricCtorArgs, public CounterPrototype {
+ public:
+  template <class... Args>
+  explicit OwningCounterPrototype(Args&&... args)
+      : OwningMetricCtorArgs(std::forward<Args>(args)...),
+        CounterPrototype(MetricPrototype::CtorArgs(
+            entity_type_.c_str(), name_.c_str(), label_.c_str(), unit_, description_.c_str(),
+            level_, flags_)) {}
+};
+
 template <class T>
 class OwningGaugePrototype : public OwningMetricCtorArgs, public GaugePrototype<T> {
  public:
@@ -1175,9 +1189,8 @@ class OwningGaugePrototype : public OwningMetricCtorArgs, public GaugePrototype<
   explicit OwningGaugePrototype(Args&&... args)
       : OwningMetricCtorArgs(std::forward<Args>(args)...),
         GaugePrototype<T>(MetricPrototype::CtorArgs(
-            OwningMetricCtorArgs::entity_type_.c_str(), OwningMetricCtorArgs::name_.c_str(),
-            OwningMetricCtorArgs::label_.c_str(), unit_, OwningMetricCtorArgs::description_.c_str(),
-            OwningMetricCtorArgs::level_, flags_)) {}
+            entity_type_.c_str(), name_.c_str(), label_.c_str(), unit_, description_.c_str(),
+            level_, flags_)) {}
 };
 
 class OwningHistogramPrototype : public OwningMetricCtorArgs, public HistogramPrototype {

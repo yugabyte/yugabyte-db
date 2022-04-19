@@ -708,3 +708,5 @@ SELECT * FROM parted ORDER BY a;
  6 | 6
  8 | 6
 (5 rows)
+
+DROP TABLE parted;

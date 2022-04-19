@@ -22,6 +22,7 @@
 #include "yb/common/transaction-test-util.h"
 
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -44,6 +45,7 @@
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 
 using namespace std::literals; // NOLINT
 
@@ -82,7 +84,8 @@ class DiscardUntilFileFilter : public rocksdb::CompactionFileFilter {
   // Setting last_discard_ to the kAlwaysDiscard constant will result in every
   // incoming file being filtered.
   rocksdb::FilterDecision Filter(const rocksdb::FileMetaData* file) override {
-    if (last_discard_ == kAlwaysDiscard || file->fd.GetNumber() <= last_discard_) {
+    if (last_discard_ == kAlwaysDiscard ||
+        file->fd.GetNumber() <= implicit_cast<uint64_t>(last_discard_)) {
       LOG(INFO) << "Filtering file: " << file->fd.GetNumber() << ", size: "
           << file->fd.GetBaseFileSize() << ", total file size: " << file->fd.GetTotalFileSize();
       return rocksdb::FilterDecision::kDiscard;
@@ -162,22 +165,23 @@ class DocOperationTest : public DocDBTestBase {
                        const vector<int32_t>& column_values,
                        yb::QLWriteRequestPB* ql_writereq_pb) {
     ASSERT_EQ(schema.num_columns() - schema.num_key_columns(), column_values.size());
-    for (int i = 0; i < column_values.size(); i++) {
+    for (size_t i = 0; i < column_values.size(); i++) {
       auto column = ql_writereq_pb->add_column_values();
-      column->set_column_id(schema.num_key_columns() + i);
+      column->set_column_id(narrow_cast<int32_t>(schema.num_key_columns() + i));
       column->mutable_expr()->mutable_value()->set_int32_value(column_values[i]);
     }
   }
 
-  void WriteQL(QLWriteRequestPB* ql_writereq_pb, const Schema& schema,
+  void WriteQL(const QLWriteRequestPB& ql_writereq_pb, const Schema& schema,
                QLResponsePB* ql_writeresp_pb,
                const HybridTime& hybrid_time = HybridTime::kMax,
                const TransactionOperationContext& txn_op_context =
                    kNonTransactionalOperationContext) {
     IndexMap index_map;
-    QLWriteOperation ql_write_op(std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
+    QLWriteOperation ql_write_op(ql_writereq_pb,
+                                 std::make_shared<DocReadContext>(schema, 1),
                                  index_map, nullptr /* unique_index_key_schema */, txn_op_context);
-    ASSERT_OK(ql_write_op.Init(ql_writereq_pb, ql_writeresp_pb));
+    ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;
     ASSERT_OK(ql_write_op.Apply(
@@ -239,7 +243,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     }
 
     // Write to docdb.
-    WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb);
+    WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb);
 
     if (ttl == -1) {
       AssertWithoutTTL(stmt_type);
@@ -279,7 +283,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     ql_writereq_pb.set_ttl(ttl);
     yb::QLResponsePB ql_writeresp_pb;
     // Write to docdb.
-    WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
+    WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
   }
 
   void WriteQLRow(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
@@ -290,7 +294,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
         stmt_type, schema, column_values, hybrid_time, txn_op_content);
     yb::QLResponsePB ql_writeresp_pb;
     // Write to docdb.
-    WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
+    WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
   }
 
   QLRowBlock ReadQLRow(const Schema& schema, int32_t primary_key, const HybridTime& read_time) {
@@ -320,9 +324,10 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     faststring rows_data;
     QLResultSet resultset(&rsrow_desc, &rows_data);
     HybridTime read_restart_ht;
+    DocReadContext doc_read_context(schema, 1);
     EXPECT_OK(read_op.Execute(
         ql_storage, CoarseTimePoint::max() /* deadline */, ReadHybridTime::SingleTime(read_time),
-        schema, projection, &resultset, &read_restart_ht));
+        doc_read_context, projection, &resultset, &read_restart_ht));
     EXPECT_FALSE(read_restart_ht.is_valid());
 
     // Transfer the column values from result set to rowblock.
@@ -349,7 +354,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   redis_write_operation_pb.mutable_key_value()->set_type(REDIS_TYPE_STRING);
   redis_write_operation_pb.mutable_key_value()->set_hash_code(123);
   redis_write_operation_pb.mutable_key_value()->add_value("xyz");
-  RedisWriteOperation redis_write_operation(&redis_write_operation_pb);
+  RedisWriteOperation redis_write_operation(redis_write_operation_pb);
   auto doc_write_batch = MakeDocWriteBatch();
   ASSERT_OK(redis_write_operation.Apply(
       {&doc_write_batch, CoarseTimePoint::max() /* deadline */, ReadHybridTime()}));
@@ -364,9 +369,8 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   ASSERT_TRUE(iter->Valid());
 
   // Verify correct ttl.
-  MonoDelta ttl;
   auto value = iter->value();
-  ASSERT_OK(Value::DecodeTTL(&value, &ttl));
+  auto ttl = ASSERT_RESULT(ValueControlFields::Decode(&value)).ttl;
   EXPECT_EQ(2000, ttl.ToMilliseconds());
 }
 
@@ -407,7 +411,7 @@ TEST_F(DocOperationTest, TestQLWriteNulls) {
   }
 
   // Write to docdb.
-  WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb);
+  WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb);
 
   // Null columns are converted to tombstones.
   AssertDocDbDebugDumpStrEq(R"#(
@@ -488,7 +492,7 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
   QLAddInt32Condition(where_clause_and, 1, QL_OP_LESS_THAN_EQUAL, kDeleteRangeHigh);
   ql_writereq_pb.set_hash_code(0);
 
-  WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb,
+  WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb,
           HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(2000, 0),
           kNonTransactionalOperationContext);
 
@@ -506,15 +510,14 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
 }
 
 TEST_F(DocOperationTest, TestQLReadWithoutLivenessColumn) {
-  const DocKey doc_key(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(100)),
-                       PrimitiveValues());
+  const DocKey doc_key(kFixedHashCode, KeyEntryValues(100), KeyEntryValues());
   KeyBytes encoded_doc_key(doc_key.Encode());
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
-                         Value(PrimitiveValue::Int32(2)), HybridTime(1000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
-                         Value(PrimitiveValue::Int32(3)), HybridTime(2000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
-                         Value(PrimitiveValue::Int32(4)), HybridTime(3000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
+                         QLValue::Primitive(2), HybridTime(1000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
+                         QLValue::Primitive(3), HybridTime(2000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
+                         QLValue::Primitive(4), HybridTime(3000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1000 }]) -> 2
@@ -534,14 +537,14 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
 }
 
 TEST_F(DocOperationTest, TestQLReadWithTombstone) {
-  DocKey doc_key(0, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
+  DocKey doc_key(0, KeyEntryValues(100), KeyEntryValues());
   KeyBytes encoded_doc_key(doc_key.Encode());
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
-                         Value(PrimitiveValue::kTombstone), HybridTime(1000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
-                         Value(PrimitiveValue::kTombstone), HybridTime(2000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
-                         Value(PrimitiveValue::kTombstone), HybridTime(3000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
+                         ValueRef(ValueEntryType::kTombstone), HybridTime(1000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
+                         ValueRef(ValueEntryType::kTombstone), HybridTime(2000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
+                         ValueRef(ValueEntryType::kTombstone), HybridTime(3000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1000 }]) -> DEL
@@ -550,22 +553,24 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       )#");
 
   Schema schema = CreateSchema();
-  DocRowwiseIterator iter(schema, schema, kNonTransactionalOperationContext,
+  DocReadContext doc_read_context(schema, 1);
+  DocRowwiseIterator iter(schema, doc_read_context, kNonTransactionalOperationContext,
                           doc_db(), CoarseTimePoint::max() /* deadline */,
                           ReadHybridTime::FromUint64(3000));
   ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
   ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
 
   // Now verify row exists even with one valid column.
-  doc_key = DocKey(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
+  doc_key = DocKey(kFixedHashCode, KeyEntryValues(100), KeyEntryValues());
   encoded_doc_key = doc_key.Encode();
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
-                         Value(PrimitiveValue::kTombstone), HybridTime(1001)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
-                         Value(PrimitiveValue::Int32(2),
-                               MonoDelta::FromMilliseconds(1)), HybridTime(2001)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
-                         Value(PrimitiveValue::Int32(101)), HybridTime(3001)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
+                         ValueRef(ValueEntryType::kTombstone), HybridTime(1001)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
+                         ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
+                         ValueRef(QLValue::Primitive(2)),
+                         HybridTime(2001)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
+                         QLValue::Primitive(101), HybridTime(3001)));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1001 }]) -> DEL
@@ -577,12 +582,12 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3001
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000 }]) -> DEL
       )#");
 
-  vector<PrimitiveValue> hashed_components({PrimitiveValue::Int32(100)});
+  std::vector<KeyEntryValue> hashed_components({KeyEntryValue::Int32(100)});
   DocQLScanSpec ql_scan_spec(schema, kFixedHashCode, kFixedHashCode, hashed_components,
       /* req */ nullptr, /* if_req */ nullptr, rocksdb::kDefaultQueryId);
 
   DocRowwiseIterator ql_iter(
-      schema, schema, kNonTransactionalOperationContext, doc_db(),
+      schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter.Init(ql_scan_spec));
   ASSERT_TRUE(ASSERT_RESULT(ql_iter.HasNext()));
@@ -595,18 +600,19 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   EXPECT_EQ(101, value_map.TestValue(3).value.int32_value());
 
   // Now verify row exists as long as liveness system column exists.
-  doc_key = DocKey(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(101)), PrimitiveValues());
+  doc_key = DocKey(kFixedHashCode, KeyEntryValues(101), KeyEntryValues());
   encoded_doc_key = doc_key.Encode();
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue::kLivenessColumn),
-                         Value(PrimitiveValue(ValueType::kNullLow)),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::kLivenessColumn),
+                         ValueRef(ValueEntryType::kNullLow),
                          HybridTime(1000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
-                         Value(PrimitiveValue::kTombstone), HybridTime(1000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
-                         Value(PrimitiveValue::Int32(2),
-                               MonoDelta::FromMilliseconds(1)), HybridTime(2000)));
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
-                         Value(PrimitiveValue::kTombstone), HybridTime(3000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
+                         ValueRef(ValueEntryType::kTombstone), HybridTime(1000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
+                         ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
+                         ValueRef(QLValue::Primitive(2)),
+                         HybridTime(2000)));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
+                         ValueRef(ValueEntryType::kTombstone), HybridTime(3000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1001 }]) -> DEL
@@ -623,13 +629,13 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(2); HT{ physical: 0 logical: 2000
 SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000 }]) -> DEL
       )#");
 
-  vector<PrimitiveValue> hashed_components_system({PrimitiveValue::Int32(101)});
+  vector<KeyEntryValue> hashed_components_system({KeyEntryValue::Int32(101)});
   DocQLScanSpec ql_scan_spec_system(schema, kFixedHashCode, kFixedHashCode,
       hashed_components_system, /* req */ nullptr,  /* if_req */ nullptr,
       rocksdb::kDefaultQueryId);
 
   DocRowwiseIterator ql_iter_system(
-      schema, schema, kNonTransactionalOperationContext, doc_db(),
+      schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter_system.Init(ql_scan_spec_system));
   ASSERT_TRUE(ASSERT_RESULT(ql_iter_system.HasNext()));
@@ -769,7 +775,7 @@ class DocOperationScanTest : public DocOperationTest {
     ColumnSchema range_column("r", INT32, false, false, false, false, 1, range_column_sorting);
     ColumnSchema value_column("v", INT32, false, false);
     auto columns = { hash_column, range_column, value_column };
-    schema_ = Schema(columns, CreateColumnIds(columns.size()), 2);
+    doc_read_context_ = DocReadContext(Schema(columns, CreateColumnIds(columns.size()), 2), 1);
   }
 
   void InsertRows(const size_t num_rows_per_key,
@@ -782,7 +788,7 @@ class DocOperationScanTest : public DocOperationTest {
     rows_.clear();
     for (int32_t i = 0; i != kNumKeys; ++i) {
       int32_t r_key = NewInt(&rng_, &used_ints);
-      for (int32_t j = 0; j < num_rows_per_key; ++j) {
+      for (size_t j = 0; j < num_rows_per_key; ++j) {
         RowData row_data = {h_key_, r_key, NewInt(&rng_, &used_ints)};
         auto ht = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
             NewInt(&rng_, &used_ints, kMinTime, kMaxTime), 0);
@@ -802,7 +808,7 @@ class DocOperationScanTest : public DocOperationTest {
           }
         }
         WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT,
-                   schema_,
+                   doc_read_context_.schema,
                    { row_data.k, row_data.r, row_data.v },
                    1000,
                    ht,
@@ -815,14 +821,14 @@ class DocOperationScanTest : public DocOperationTest {
       ASSERT_OK(FlushRocksDbAndWait());
     }
 
-    DumpRocksDBToLog(rocksdb(), StorageDbType::kRegular);
-    DumpRocksDBToLog(intents_db(), StorageDbType::kIntents);
+    DumpRocksDBToLog(rocksdb(), docdb::SchemaPackingStorage(), StorageDbType::kRegular);
+    DumpRocksDBToLog(intents_db(), docdb::SchemaPackingStorage(), StorageDbType::kIntents);
   }
 
   void PerformScans(const bool is_forward_scan,
       const TransactionOperationContext& txn_op_context,
       boost::function<void(const size_t keys_in_scan_range)> after_scan_callback) {
-    std::vector <PrimitiveValue> hashed_components = {PrimitiveValue::Int32(h_key_)};
+    std::vector <KeyEntryValue> hashed_components = {KeyEntryValue::Int32(h_key_)};
     std::vector <QLOperator> operators = {
         QL_OP_EQUAL,
         QL_OP_LESS_THAN_EQUAL,
@@ -874,11 +880,11 @@ class DocOperationScanTest : public DocOperationTest {
             std::reverse(expected_rows.begin(), expected_rows.end());
           }
           DocQLScanSpec ql_scan_spec(
-              schema_, kFixedHashCode, kFixedHashCode, hashed_components,
+              doc_read_context_.schema, kFixedHashCode, kFixedHashCode, hashed_components,
               &condition, nullptr /* if_ req */, rocksdb::kDefaultQueryId, is_forward_scan);
           DocRowwiseIterator ql_iter(
-              schema_, schema_, txn_op_context, doc_db(), CoarseTimePoint::max() /* deadline */,
-              read_ht);
+              doc_read_context_.schema, doc_read_context_, txn_op_context, doc_db(),
+              CoarseTimePoint::max() /* deadline */, read_ht);
           ASSERT_OK(ql_iter.Init(ql_scan_spec));
           LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);
           it = expected_rows.begin();
@@ -919,7 +925,7 @@ class DocOperationScanTest : public DocOperationTest {
 
   std::mt19937_64 rng_;
   SortingType range_column_sorting_type_;
-  Schema schema_;
+  DocReadContext doc_read_context_{Schema(), 1};
   int32_t h_key_;
   std::vector<RowDataWithHt> rows_;
 };
@@ -1057,7 +1063,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 
   ql_writereq_pb.set_ttl(2000);
 
   // Write to docdb at the same physical time and a bumped-up logical time.
-  WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb, t0prime);
+  WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb, t0prime);
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) -> \
@@ -1232,6 +1238,8 @@ TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
 }
 
 TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
+  // Ensure that any number of files can trigger a compaction.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
   ASSERT_OK(DisableCompactions());
   const size_t kMaxFileSize = 100_KB;
   const int kNumFilesToWrite = 20;
@@ -1248,18 +1256,21 @@ TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
   auto files = rocksdb()->GetLiveFilesMetaData();
   ASSERT_EQ(kNumFilesToWrite, files.size());
   ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
+
   // Files will be ordered from latest to earliest, so select the nth file from the back.
   auto last_to_discard =
       rocksdb::TableFileNameToNumber(files[files.size() - kNumFilesToExpire].name);
 
   SetMaxFileSizeForCompaction(kMaxFileSize);
 
-  // Use a filter factory that will expire every three files.
+  // Use a filter factory that will expire exactly three files.
   compaction_file_filter_factory_ =
       std::make_shared<DiscardUntilFileFilterFactory>(last_to_discard);
 
+  // Reinitialize the DB options with the file filter factory.
   ASSERT_OK(ReinitDBOptions());
 
+  // Compactions will be kicked off as part of options reinitialization.
   WaitCompactionsDone(rocksdb());
 
   files = rocksdb()->GetLiveFilesMetaData();

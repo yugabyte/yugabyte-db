@@ -14,12 +14,14 @@
 #include "yb/tablet/tablet-harness.h"
 
 #include "yb/common/index.h"
+#include "yb/common/partition.h"
 
 #include "yb/consensus/log_anchor_registry.h"
 
 #include "yb/server/logical_clock.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/result.h"
 
@@ -46,7 +48,7 @@ CHECKED_STATUS TabletHarness::Create(bool first_time) {
   if (first_time) {
     RETURN_NOT_OK(fs_manager_->CreateInitialFileSystemLayout());
   }
-  RETURN_NOT_OK(fs_manager_->Open());
+  RETURN_NOT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
 
   auto table_info = std::make_shared<TableInfo>(
       "YBTableTest", "test", "YBTableTest", options_.table_type, schema_, IndexMap(), boost::none,

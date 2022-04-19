@@ -33,6 +33,12 @@ const auto kStepTime = 100ms;
 const auto kStepTime = 25ms;
 #endif
 const auto kWaitTime = kStepTime * 3;
+const int kNoDrive = 0;
+const int kDrive1 = 1;
+const int kDrive2 = 2;
+const int kTopDiskCompactionPriority = 100;
+const int kTopDiskFlushPriority = 200;
+
 
 class Share {
  public:
@@ -65,7 +71,7 @@ class Share {
     std::this_thread::sleep_for(kWaitTime);
     auto running_mask = running();
     out->clear();
-    size_t i = 0;
+    int i = 0;
     while (running_mask != 0) {
       if (running_mask & 1) {
         out->push_back(i / divisor);
@@ -84,14 +90,20 @@ class Share {
 
 class Task : public PriorityThreadPoolTask {
  public:
-  Task(int index, Share* share) : index_(index), share_(share) {}
+  Task(int index, Share* share, uint64_t drive, bool pause = true, bool compaction = false)
+      : index_(index),
+        share_(share),
+        pause_(pause),
+        compaction_(compaction) {}
 
   void Run(const Status& status, PriorityThreadPoolSuspender* suspender) override {
     if (!status.ok()) {
       return;
     }
     while (share_->Step(index_)) {
-      suspender->PauseIfNecessary();
+      if (pause_) {
+        suspender->PauseIfNecessary();
+      }
       std::this_thread::sleep_for(kStepTime);
     }
   }
@@ -108,9 +120,17 @@ class Task : public PriorityThreadPoolTask {
     return YB_CLASS_TO_STRING(index);
   }
 
+  int CalculateGroupNoPriority(int active_tasks) const override {
+    return compaction_
+        ? kTopDiskCompactionPriority - active_tasks
+        : kTopDiskFlushPriority - active_tasks;
+  }
+
  private:
   const int index_;
   Share* const share_;
+  const bool pause_;
+  const bool compaction_;
 };
 
 // Test randomly submits and stops task to priority thread pool.
@@ -126,7 +146,7 @@ void TestRandom(int divisor) {
   tasks.reserve(kTasks);
   Share share;
   for (int i = 0; i != kTasks; ++i) {
-    tasks.emplace_back(std::make_unique<Task>(i, &share));
+    tasks.emplace_back(std::make_unique<Task>(i, &share, kNoDrive));
   }
   std::shuffle(tasks.begin(), tasks.end(), ThreadLocalRandom());
   std::set<int> scheduled;
@@ -142,7 +162,7 @@ void TestRandom(int divisor) {
   });
 
   while (stopped.size() != kTasks) {
-    if (schedule_idx < kTasks && RandomUniformInt<int>(0, 2 + scheduled.size()) == 0) {
+    if (schedule_idx < kTasks && RandomUniformInt<size_t>(0, 2 + scheduled.size()) == 0) {
       auto& task = tasks[schedule_idx];
       auto index = task->Index();
       scheduled.insert(index);
@@ -152,10 +172,10 @@ void TestRandom(int divisor) {
       ASSERT_TRUE(task == nullptr);
       LOG(INFO) << "Submitted: " << index << ", scheduled: " << yb::ToString(scheduled);
     } else if (!scheduled.empty() &&
-               RandomUniformInt<int>(0, std::max<int>(0, 13 - scheduled.size())) == 0) {
+               RandomUniformInt<size_t>(0, std::max<size_t>(0, 13 - scheduled.size())) == 0) {
       auto it = scheduled.end();
       std::advance(
-          it, -RandomUniformInt<int>(1, std::min<int>(scheduled.size(), kMaxRunningTasks)));
+          it, -RandomUniformInt<ssize_t>(1, std::min<ssize_t>(scheduled.size(), kMaxRunningTasks)));
       auto idx = *it;
       stopped.insert(idx);
       share.Stop(idx);
@@ -208,6 +228,10 @@ class RandomTask : public PriorityThreadPoolTask {
   std::string ToString() const override {
     return "RandomTask";
   }
+
+  int CalculateGroupNoPriority(int active_tasks) const override {
+    return kTopDiskFlushPriority - active_tasks;
+  }
 };
 
 TEST(PriorityThreadPoolTest, RandomTasks) {
@@ -233,10 +257,12 @@ TEST(PriorityThreadPoolTest, RandomTasks) {
 
 namespace {
 
-size_t SubmitTask(int index, Share* share, PriorityThreadPool* thread_pool) {
-  auto task = std::make_unique<Task>(index, share);
+size_t SubmitTask(
+    int index, Share* share, PriorityThreadPool* thread_pool, int drive = kNoDrive,
+    bool pause = true, bool compaction = false) {
+  auto task = std::make_unique<Task>(index, share, drive, pause, compaction);
   size_t serial_no = task->SerialNo();
-  EXPECT_OK(thread_pool->Submit(index /* priority */, &task));
+  EXPECT_OK(thread_pool->Submit(index /* priority */, &task, drive));
   EXPECT_TRUE(task == nullptr);
   LOG(INFO) << "Started " << index << ", serial no: " << serial_no;
   return serial_no;
@@ -288,6 +314,120 @@ TEST(PriorityThreadPoolTest, ChangePriority) {
   ASSERT_TRUE(thread_pool.ChangeTaskPriority(task5, 6));
   share.FillRunningTaskPriorities(&running);
   ASSERT_EQ(running, std::vector<int>({2, 5, 6}));
+}
+
+TEST(PriorityThreadPoolTest, ActiveIORebalancing) {
+  const int kMaxRunningTasks = 5;
+  PriorityThreadPool thread_pool(kMaxRunningTasks);
+  Share share;
+  std::vector<int> running;
+
+  auto se = ScopeExit([&share, &thread_pool] {
+    thread_pool.StartShutdown();
+    share.StopAll();
+    thread_pool.CompleteShutdown();
+  });
+  // Intially the integer passed into SubmitTask becomes the priority.
+  // This number also serves as an index.
+  // All submitted tasks in this set, have pause_ set to true, and have compaction_ set to true
+  // indicating pausing is enabled, and they are simulating compaction tasks.
+  SubmitTask(
+    10 /* priority */, &share, &thread_pool, kDrive1, true /* pause */, true /* compaction */);
+  SubmitTask(
+    9 /* priority */, &share, &thread_pool, kDrive1, true /* pause */, true /* compaction */);
+  SubmitTask(
+    8 /* priority */, &share, &thread_pool, kDrive1, true /* pause */, true /* compaction */);
+  SubmitTask(
+    7 /* priority */, &share, &thread_pool, kDrive1, true /* pause */, true /* compaction */);
+  SubmitTask(
+    6 /* priority */, &share, &thread_pool, kDrive1, true /* pause */, true /* compaction */);
+  SubmitTask(
+    3 /* priority */, &share, &thread_pool, kDrive2, true /* pause */, true /* compaction */);
+  SubmitTask(
+    2 /* priority */, &share, &thread_pool, kDrive2, true /* pause */, true /* compaction */);
+
+  // We are submitting 9 tasks that belong to different drives.
+  // Since the unit tests check for pausing repeatedly, we should see
+  // the running tasks include the 2 tasks belonging to Drive2,
+  // even though they were submitted later, with a lower size priority.
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({2, 3, 8, 9, 10}));
+}
+
+TEST(PriorityThreadPoolTest, PicksTaskOnLessBusyDrive) {
+  const int kMaxRunningTasks = 2;
+  PriorityThreadPool thread_pool(kMaxRunningTasks);
+  Share share;
+  std::vector<int> running;
+
+  auto se = ScopeExit([&share, &thread_pool] {
+    thread_pool.StartShutdown();
+    share.StopAll();
+    thread_pool.CompleteShutdown();
+  });
+  // Intially the integer passed into SubmitTask becomes the priority.
+  // This number also serves as an index.
+  // All submitted tasks in this set, have pause_ set to false, and have compaction_ set to true
+  // indicating pausing is disabled, and they are simulating compaction tasks.
+  SubmitTask(
+    10 /* priority */, &share, &thread_pool, kDrive1, false /* pause */, true /* compaction */);
+  SubmitTask(
+    9 /* priority */, &share, &thread_pool, kDrive1, false /* pause */, true /* compaction */);
+  SubmitTask(
+    8 /* priority */, &share, &thread_pool, kDrive1, false /* pause */, true /* compaction */);
+  SubmitTask(
+    7 /* priority */, &share, &thread_pool, kDrive2, false /* pause */, true /* compaction */);
+
+  // Since we turned the ability to pause off,
+  // we should see tasks 10 and 9 running, as they were submitted first.
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({9, 10}));
+  share.Stop(10);
+
+  // Although task 8 has a higher size priority than task 7, since task 7 is alone on disk 2,
+  // it should run first.
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({7, 9}));
+}
+
+TEST(PriorityThreadPoolTest, OtherTasksRunBeforeCompactionTasks) {
+  const int kMaxRunningTasks = 2;
+  PriorityThreadPool thread_pool(kMaxRunningTasks);
+  Share share;
+  std::vector<int> running;
+
+  auto se = ScopeExit([&share, &thread_pool] {
+    thread_pool.StartShutdown();
+    share.StopAll();
+    thread_pool.CompleteShutdown();
+  });
+
+  // For this test, note that tasks 10 and 9 generates a dummy compaction task
+  // while the other tasks represent other dummy tasks (in particular flushes)
+  SubmitTask(
+    10 /* priority */, &share, &thread_pool, kDrive1, true /* pause */, true /* compaction */);
+  SubmitTask(
+    9 /* priority */, &share, &thread_pool, kDrive1, true /* pause */, true /* compaction */);
+  SubmitTask(
+    7 /* priority */, &share, &thread_pool, kDrive1, true /* pause */, false /* compaction */);
+  SubmitTask(
+    6 /* priority */, &share, &thread_pool, kDrive1, true /* pause */, false /* compaction */);
+  SubmitTask(
+    5 /* priority */, &share, &thread_pool, kDrive1, true /* pause */, false /* compaction */);
+
+  // Although tasks 10 and 9 have a higher size priority, the other_task's
+  // should run first as they always have a higher disk priority
+  // Since pausing is enabled, even though they were submitted later, they should run first.
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({6, 7}));
+
+  share.Stop(7);
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({5, 6}));
+
+  share.Stop(5);
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({6, 10}));
 }
 
 TEST(PriorityThreadPoolTest, FailureToCreateThread) {

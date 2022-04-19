@@ -40,6 +40,8 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/log.pb.h"
@@ -115,7 +117,7 @@ struct LogOptions {
 struct LogEntryMetadata {
   RestartSafeCoarseTimePoint entry_time;
   int64_t offset;
-  uint64_t active_segment_sequence_number;
+  int64_t active_segment_sequence_number;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(entry_time, offset, active_segment_sequence_number);
@@ -127,7 +129,6 @@ struct LogEntryMetadata {
 };
 
 // A sequence of segments, ordered by increasing sequence number.
-typedef std::vector<ReadableLogSegmentPtr> SegmentSequence;
 typedef std::vector<std::unique_ptr<LogEntryPB>> LogEntries;
 
 struct ReadEntriesResult {
@@ -210,6 +211,11 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // so it should be only used in the case of a crash, where the footer is
   // missing because we didn't have the time to write it out.
   CHECKED_STATUS RebuildFooterByScanning();
+
+  // Copies log segment up to up_to_op_id into dest_file at dest_path and updates
+  // log_index_to_rebuild.
+  CHECKED_STATUS CopyTo(const OpId& up_to_op_id, const std::string& dest_path,
+      const std::shared_ptr<WritableFile>& dest_file, LogIndex* log_index_to_rebuild);
 
   bool IsInitialized() const {
     return is_initialized_;
@@ -308,10 +314,9 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   CHECKED_STATUS ScanForValidEntryHeaders(int64_t offset, bool* has_valid_entries);
 
   // Format a nice error message to report on a corruption in a log file.
-  CHECKED_STATUS MakeCorruptionStatus(int batch_number, int64_t batch_offset,
-                              std::vector<int64_t>* recent_offsets,
-                              const std::vector<std::unique_ptr<LogEntryPB>>& entries,
-                              const Status& status) const;
+  CHECKED_STATUS MakeCorruptionStatus(
+      size_t batch_number, int64_t batch_offset, std::vector<int64_t>* recent_offsets,
+      const std::vector<std::unique_ptr<LogEntryPB>>& entries, const Status& status) const;
 
   CHECKED_STATUS ReadEntryHeaderAndBatch(int64_t* offset,
                                          faststring* tmp_buf,
@@ -336,6 +341,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
                                 LogEntryBatchPB* entry_batch);
 
   void UpdateReadableToOffset(int64_t readable_to_offset);
+
+  int64_t GetOffsetReadUpTo();
 
   const std::string path_;
 
@@ -479,6 +486,9 @@ CHECKED_STATUS CheckRelevantPathsAreODirectWritable();
 
 // Modify durable wal write flag depending on the value of FLAGS_require_durable_wal_write.
 CHECKED_STATUS ModifyDurableWriteFlagIfNotODirect();
+
+void UpdateSegmentFooterIndexes(
+    const consensus::ReplicateMsg& replicate, LogSegmentFooterPB* footer);
 
 }  // namespace log
 }  // namespace yb

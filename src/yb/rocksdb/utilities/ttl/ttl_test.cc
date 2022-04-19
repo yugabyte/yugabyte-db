@@ -29,6 +29,7 @@
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/logging.h"
 
 #include "yb/util/test_util.h"
@@ -58,7 +59,7 @@ class SpecialTimeEnv : public EnvWrapper {
   int64_t current_time_;
 };
 
-class TtlTest : public testing::Test {
+class TtlTest : public RocksDBTest {
  public:
   TtlTest() {
     env_.reset(new SpecialTimeEnv(Env::Default()));

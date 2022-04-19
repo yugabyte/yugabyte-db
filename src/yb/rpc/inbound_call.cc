@@ -32,8 +32,6 @@
 
 #include "yb/rpc/inbound_call.h"
 
-#include "yb/common/redis_protocol.pb.h"
-
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/connection.h"
@@ -51,7 +49,6 @@
 using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
-using yb::RedisResponsePB;
 
 DEFINE_bool(rpc_dump_all_traces, false,
             "If true, dump all RPC traces at INFO level");
@@ -79,11 +76,11 @@ namespace yb {
 namespace rpc {
 
 InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
-                         CallProcessedListener call_processed_listener)
+                         CallProcessedListener* call_processed_listener)
     : trace_(new Trace),
       conn_(std::move(conn)),
       rpc_metrics_(rpc_metrics ? rpc_metrics : &conn_->rpc_metrics()),
-      call_processed_listener_(std::move(call_processed_listener)) {
+      call_processed_listener_(call_processed_listener) {
   TRACE_TO(trace_, "Created InboundCall");
   IncrementCounter(rpc_metrics_->inbound_calls_created);
   IncrementGauge(rpc_metrics_->inbound_calls_alive);
@@ -91,12 +88,8 @@ InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
 
 InboundCall::~InboundCall() {
   TRACE_TO(trace_, "Destroying InboundCall");
-  if (trace_->must_print()) {
-    LOG(INFO) << "Tracing op: \n " << trace_->DumpToString(true);
-  } else {
-    YB_LOG_IF_EVERY_N(INFO, FLAGS_print_trace_every > 0, FLAGS_print_trace_every)
-        << "Tracing op: \n " << trace_->DumpToString(true);
-  }
+  YB_LOG_IF_EVERY_N(INFO, FLAGS_print_trace_every > 0, FLAGS_print_trace_every)
+      << "Tracing op: \n " << trace_->DumpToString(true);
   DecrementGauge(rpc_metrics_->inbound_calls_alive);
 }
 
@@ -108,7 +101,7 @@ void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
                                      << " could send its response: " << status.ToString();
   }
   if (call_processed_listener_) {
-    call_processed_listener_(this);
+    call_processed_listener_->CallProcessed(this);
   }
 }
 
@@ -156,11 +149,13 @@ MonoDelta InboundCall::GetTimeInQueue() const {
   return timing_.time_handled.GetDeltaSince(timing_.time_received);
 }
 
-ThreadPoolTask* InboundCall::BindTask(InboundCallHandler* handler) {
+ThreadPoolTask* InboundCall::BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit) {
   auto shared_this = shared_from(this);
-  if (!handler->CallQueued()) {
+  boost::optional<int64_t> rpc_queue_position = handler->CallQueued(rpc_queue_limit);
+  if (!rpc_queue_position) {
     return nullptr;
   }
+  rpc_queue_position_ = *rpc_queue_position;
   tracker_ = handler;
   task_.Bind(handler, shared_this);
   return &task_;
@@ -171,8 +166,8 @@ void InboundCall::RecordHandlingCompleted() {
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_completed.Initialized()) << "Already marked as completed";
   timing_.time_completed = MonoTime::Now();
   VLOG_WITH_PREFIX(4) << "Completed handling";
-  if (rpc_method_metrics_ && rpc_method_metrics_->handler_latency) {
-    rpc_method_metrics_->handler_latency->Increment(
+  if (rpc_method_handler_latency_) {
+    rpc_method_handler_latency_->Increment(
         (timing_.time_completed - timing_.time_handled).ToMicroseconds());
   }
 }
@@ -235,11 +230,13 @@ void InboundCall::InboundCallTask::Done(const Status& status) {
 }
 
 void InboundCall::SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value) {
-  rpc_method_metrics_ = &value.get();
-  if (rpc_method_metrics_ && rpc_method_metrics_->request_bytes) {
+  const auto& metrics = value.get();
+  rpc_method_response_bytes_ = metrics.response_bytes;
+  rpc_method_handler_latency_ = metrics.handler_latency;
+  if (metrics.request_bytes) {
     auto request_size = request_data_.size();
     if (request_size) {
-      rpc_method_metrics_->request_bytes->IncrementBy(request_size);
+      metrics.request_bytes->IncrementBy(request_size);
     }
   }
 }
@@ -247,13 +244,13 @@ void InboundCall::SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetr
 void InboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   size_t old_size = output->size();
   DoSerialize(output);
-  if (rpc_method_metrics_ && rpc_method_metrics_->response_bytes) {
+  if (rpc_method_response_bytes_) {
     auto response_size = 0;
     for (size_t i = old_size; i != output->size(); ++i) {
       response_size += (*output)[i].size();
     }
     if (response_size) {
-      rpc_method_metrics_->response_bytes->IncrementBy(response_size);
+      rpc_method_response_bytes_->IncrementBy(response_size);
     }
   }
 }

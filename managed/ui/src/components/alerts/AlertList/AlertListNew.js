@@ -17,7 +17,7 @@ const SOURCE_NAME_FILTER_KEY = 'sourceName';
 
 const FILTER_TYPES = {
   [STATUS_FILTER_KEY]: {
-    label: 'Target Status',
+    label: 'Status',
     values: ['Active', 'Acknowledged', 'Resolved']
   },
 

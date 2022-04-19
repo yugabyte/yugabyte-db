@@ -29,7 +29,8 @@
 #include <boost/functional/hash/hash.hpp>
 #include <boost/optional/optional.hpp>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/transaction.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 
@@ -37,6 +38,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/uint_set.h"
 
@@ -178,7 +180,7 @@ class TransactionStatusManager {
 };
 
 // Utility class that invokes RegisterRequest on creation and UnregisterRequest on deletion.
-class RequestScope {
+class NODISCARD_CLASS RequestScope {
  public:
   RequestScope() noexcept : status_manager_(nullptr), request_id_(0) {}
 
@@ -319,7 +321,7 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
 MonoDelta TransactionRpcTimeout();
 CoarseTimePoint TransactionRpcDeadline();
 
-extern const std::string kGlobalTransactionsTableName;
+extern const char* kGlobalTransactionsTableName;
 extern const std::string kMetricsSnapshotsTableName;
 extern const std::string kTransactionTablePrefix;
 

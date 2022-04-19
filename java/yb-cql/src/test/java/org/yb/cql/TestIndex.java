@@ -54,6 +54,11 @@ public class TestIndex extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestIndex.class);
 
   @Override
+  protected int getNumShardsPerTServer() {
+    return 1;
+  }
+
+  @Override
   public int getTestMethodTimeoutSec() {
     // Usual time for a test ~90 seconds. But can be much more on Jenkins.
     return super.getTestMethodTimeoutSec()*10;
@@ -584,6 +589,7 @@ public class TestIndex extends BaseCQLTest {
     createTable("create table test_update (h1 int, r1 int, v1 int, v2 int, v3 int, " +
       "primary key(h1, r1)) ", strongConsistency);
     createIndex("create index i1 on test_update (v3)", strongConsistency);
+    waitForReadPermsOnAllIndexes("test_update");
 
     Map<String, String> tableColumnMap = new HashMap<String, String>() {{put("i1", "v3, h1, r1");}};
     Map<String, String> indexColumnMap = new HashMap<String, String>() {{
@@ -608,6 +614,7 @@ public class TestIndex extends BaseCQLTest {
     createTable("create table test_update (h1 int, r1 int, s1 int static, v2 int, v3 int, " +
       "primary key(h1, r1)) ", strongConsistency);
     createIndex("create index i1 on test_update (v3)", strongConsistency);
+    waitForReadPermsOnAllIndexes("test_update");
 
     // Create row without liveness column. Assert that index entry is created.
     assertIndexUpdate(tableColumnMap, indexColumnMap,
@@ -631,6 +638,7 @@ public class TestIndex extends BaseCQLTest {
 
     session.execute(create_table_stmt);
     createIndex("CREATE INDEX i1 ON test_update (v2, h1)", strongConsistency);
+    waitForReadPermsOnAllIndexes("test_update");
 
     tableColumnMap = new HashMap<String, String>() {{put("i1", "v2, h1");}};
     indexColumnMap = new HashMap<String, String>() {{put("i1", "\"C$_v2\", \"C$_h1\"");}};
@@ -648,6 +656,7 @@ public class TestIndex extends BaseCQLTest {
     //   in cql_operation.cc if there is an index on that column. This is to ensure that the old
     //   index entry for that column is removed.
     createIndex("CREATE INDEX i1 ON test_update (v3)", strongConsistency);
+    waitForReadPermsOnAllIndexes("test_update");
     tableColumnMap = new HashMap<String, String>() {{put("i1", "v3, h1");}};
     indexColumnMap = new HashMap<String, String>() {{put("i1", "\"C$_v3\", \"C$_h1\"");}};
 
@@ -766,6 +775,7 @@ public class TestIndex extends BaseCQLTest {
     // Insert a row.
     session.execute("insert into test_prepare (h1, h2, r1, r2, c1, c2) " +
                     "values (1, 'a', 2, 'b', 3, 'c');");
+    waitForReadPermsOnAllIndexes("test_prepare");
 
     // Select using index i1.
     assertRoutingVariables("select h1, h2, r1, r2 from test_prepare where h1 = ?;",
@@ -1070,6 +1080,9 @@ public class TestIndex extends BaseCQLTest {
                     "  insert into test_txn2 (k, v) values ('k1', 'v101');" +
                     "end transaction;");
 
+    waitForReadPermsOnAllIndexes("test_txn1");
+    waitForReadPermsOnAllIndexes("test_txn2");
+
     // Verify the rows.
     assertQuery("select k, v from test_txn1;", "Row[1, 101]");
     assertQuery("select k, v from test_txn2;", "Row[k1, v101]");
@@ -1100,6 +1113,7 @@ public class TestIndex extends BaseCQLTest {
                     "  insert into test_txn1 (k, v) values (1, 101);" +
                     "  insert into test_txn2 (k, v) values ('k1', 'v101');" +
                     "end transaction;");
+
     // Verify the rows.
     assertQuery("select * from test_txn1", "Row[1, 101]");
     assertQuery("select * from test_txn1_by_v", "Row[1, 101]");
@@ -1119,6 +1133,9 @@ public class TestIndex extends BaseCQLTest {
                     "  insert into test_txn (k, v1) values (1, 101);" +
                     "  insert into test_txn (k, v2) values (1, 201);" +
                     "end transaction;");
+
+    waitForReadPermsOnAllIndexes("test_txn");
+
     // Verify the rows.
     assertQuery("select * from test_txn;", "Row[1, 101, 201]");
     assertQuery("select * from test_txn_by_v1;", "Row[1, 101]");
@@ -1162,6 +1179,10 @@ public class TestIndex extends BaseCQLTest {
         "      VALUES ('222', 'TP3', 'V', NULL, 1616617181129) " +
         "      IF ver=null OR ver<=1616617181129 ELSE ERROR;" +
         "END TRANSACTION;");
+
+    waitForReadPermsOnAllIndexes("tbl_many_to_one");
+    waitForReadPermsOnAllIndexes("tbl_one_to_one");
+
     // Verify the rows in the indexes.
     assertQuery("SELECT * FROM inx_many_to_one;",
                 "Row[000, TP1, V]Row[111, TP2, V]");
@@ -1172,6 +1193,7 @@ public class TestIndex extends BaseCQLTest {
                 "Row[111, TP2, V, NULL, 1616617181129]Row[000, TP1, V, NULL, 1616617181129]");
     assertQuery("SELECT * FROM tbl_one_to_one;",
                 "Row[222, TP3, V, NULL, 1616617181129]");
+
     // Verify rows can be selected by the index columns.
     assertQuery("SELECT * FROM tbl_many_to_one WHERE value = 'V' AND type = 'TP1' AND id = '000';",
                 "Row[000, TP1, V, NULL, 1616617181129]");
@@ -1256,6 +1278,7 @@ public class TestIndex extends BaseCQLTest {
                     "with transactions = { 'enabled' : true };");
     session.execute("create index test_all_by_v1 on test_all (v1) include (v2);");
     session.execute("insert into test_all (k, v1, v2) values (1, 2, 3);");
+    waitForReadPermsOnAllIndexes("test_all");
 
     // Select all columns using index and verify the selected columns are returned in the same order
     // as the table columns.
@@ -1283,6 +1306,7 @@ public class TestIndex extends BaseCQLTest {
     RocksDBMetrics tableMetrics = getRocksDBMetric("test_uncovered");
     RocksDBMetrics indexMetrics = getRocksDBMetric("test_uncovered_by_v1");
     LOG.info("Initial: table {}, index {}", tableMetrics, indexMetrics);
+    waitForReadPermsOnAllIndexes("test_uncovered");
 
     assertQuery("select * from test_uncovered where v1 = 'v333';",
                 new HashSet<String>(Arrays.asList("Row[1, 3, v333, 333]",
@@ -1434,6 +1458,8 @@ public class TestIndex extends BaseCQLTest {
     session.execute("insert into test_paging (h, r, v1, v2) values (3, 1, 5, 'e');");
     session.execute("insert into test_paging (h, r, v1, v2) values (3, 2, 6, 'f');");
 
+    waitForReadPermsOnAllIndexes("test_paging");
+
     // Execute uncovered select by index column with small page size.
     assertQuery(new SimpleStatement("select * from test_paging where v1 in (3, 4, 5);")
                 .setFetchSize(1),
@@ -1532,6 +1558,8 @@ public class TestIndex extends BaseCQLTest {
                                     a, b, cDesc));
     }
 
+    waitForReadPermsOnAllIndexes("test_order");
+
     // Asserting query result.
     assertQuery("SELECT * FROM test_order WHERE b = 'index_hash';", rowDesc);
     assertQuery("SELECT * FROM test_order WHERE b = 'index_hash' ORDER BY c DESC;", rowDesc);
@@ -1618,6 +1646,8 @@ public class TestIndex extends BaseCQLTest {
                     "  WITH TRANSACTIONS = {'enabled' : true};");
     session.execute("CREATE INDEX test_order_by_idx ON test_order_by(b, c)" +
                     "  INCLUDE (non_index_cluster_column);");
+    waitForReadPermsOnAllIndexes("test_order_by");
+
     // Run one valid query to make sure the setup is correct.
     runValidSelect("SELECT * FROM test_order_by WHERE b = 3 ORDER BY c;");
     // Test invalid ORDER BY for non-existing column.
@@ -1631,6 +1661,8 @@ public class TestIndex extends BaseCQLTest {
     session.execute("CREATE TABLE test_jsonb_order_by(i INT, j JSONB, k INT, PRIMARY KEY (i, k))" +
                     "  WITH TRANSACTIONS = { 'enabled' : true };");
     session.execute("CREATE INDEX test_jsonb_order_by_idx ON test_jsonb_order_by(k, j->>'x');");
+    waitForReadPermsOnAllIndexes("test_jsonb_order_by");
+
     // Run one valid query to make sure the setup is correct.
     runValidSelect("SELECT * FROM test_jsonb_order_by WHERE k = 1 ORDER BY j->>'x';");
     // Test invalid ORDER BY non existing column "j->>'y'".
@@ -1658,6 +1690,7 @@ public class TestIndex extends BaseCQLTest {
     String stmt = String.format("INSERT INTO test_coverage(h, r, v, vv)" +
                                 "  VALUES (%d, %d, %d, %d);", h, r, v, vv);
     session.execute(stmt);
+    waitForReadPermsOnAllIndexes("test_coverage");
 
     String query = String.format("SELECT vv FROM test_coverage WHERE v = %d;", v);
     assertEquals(1, session.execute(query).all().size());
@@ -2428,6 +2461,8 @@ public class TestIndex extends BaseCQLTest {
     session.execute("INSERT INTO test_in (id, name, size) VALUES " +
                     "(5b6962dd-3f90-4c93-8f61-eabfa4a80310, NULL, NULL)");
 
+    waitForReadPermsOnAllIndexes("test_in");
+
     assertQuery("SELECT * FROM test_in",
                 "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e3, , ]" +
                 "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e2, first, second]" +
@@ -2467,6 +2502,8 @@ public class TestIndex extends BaseCQLTest {
     // Insert a row.
     session.execute("INSERT INTO test_in2 (h, r, v1, v2) VALUES ('foo', 'bar', 'v1', 'v2')");
 
+    waitForReadPermsOnAllIndexes("test_in2");
+
     // Main table: Hash key column.
     assertQuery(tp, "SELECT * FROM test_in2 WHERE h IN ()", "");
     // Main table: Range key column.
@@ -2477,7 +2514,17 @@ public class TestIndex extends BaseCQLTest {
     // Index table: Hash key column.
     assertQuery(tp, "SELECT * FROM test_in2 WHERE v1 IN ()", "");
     // Index table: Range key column.
+    RocksDBMetrics tableMetrics = getRocksDBMetric("test_in2");
+    RocksDBMetrics indexMetrics = getRocksDBMetric("i2");
+    LOG.info("Initial: table {}, index {}", tableMetrics, indexMetrics);
     assertQuery(tp, "SELECT * FROM test_in2 WHERE v1 = 'v1' AND r IN ()", "");
+    tableMetrics = getRocksDBMetric("test_in2").subtract(tableMetrics);
+    indexMetrics = getRocksDBMetric("i2").subtract(indexMetrics);
+    LOG.info("Difference: table {}, index {}", tableMetrics, indexMetrics);
+    assertTrue(tableMetrics.nextCount == 0);
+    assertTrue(tableMetrics.seekCount == 0);
+    assertTrue(indexMetrics.nextCount == 0);
+    assertTrue(indexMetrics.seekCount == 0);
     // Index table: Non-key column.
     assertQuery(tp, "SELECT * FROM test_in2 WHERE v1 = 'v1' AND r = 'bar' AND v2 IN ()", "");
   }

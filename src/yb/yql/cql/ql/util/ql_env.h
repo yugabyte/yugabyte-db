@@ -23,7 +23,8 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/transaction.pb.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -84,7 +85,8 @@ class QLEnv {
 
   // Create a new transaction.
   Result<client::YBTransactionPtr> NewTransaction(const client::YBTransactionPtr& transaction,
-                                                  IsolationLevel isolation_level);
+                                                  IsolationLevel isolation_level,
+                                                  CoarseTimePoint deadline);
 
   //------------------------------------------------------------------------------------------------
   // Permission related methods.

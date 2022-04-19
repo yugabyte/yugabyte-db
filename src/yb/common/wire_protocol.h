@@ -35,7 +35,9 @@
 
 #include <vector>
 
-#include "yb/common/wire_protocol.pb.h"
+#include "yb/common/common_fwd.h"
+
+#include <google/protobuf/repeated_field.h>
 
 #include "yb/gutil/endian.h"
 
@@ -46,10 +48,10 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status_ec.h"
 #include "yb/util/type_traits.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
-class ConstContiguousRow;
 class ColumnId;
 class ColumnSchema;
 class faststring;
@@ -63,6 +65,8 @@ void StatusToPB(const Status& status, AppStatusPB* pb);
 
 // Convert the given protobuf into the equivalent C++ Status object.
 Status StatusFromPB(const AppStatusPB& pb);
+
+Status StatusFromPB(const LWAppStatusPB& pb);
 
 // Convert the specified HostPort to protobuf.
 void HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb);

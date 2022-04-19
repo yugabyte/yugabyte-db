@@ -41,10 +41,13 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/lockfree/queue.hpp>
 
-#include "yb/gutil/thread_annotations.h"
-
+#include "yb/gutil/atomicops.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/proxy_base.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/concurrent_pod.h"
 #include "yb/util/net/net_fwd.h"
@@ -125,12 +128,25 @@ class Proxy {
                     RpcController* controller,
                     ResponseCallback callback);
 
+  void AsyncRequest(const RemoteMethod* method,
+                    std::shared_ptr<const OutboundMethodMetrics> method_metrics,
+                    const LightweightMessage& req,
+                    LightweightMessage* resp,
+                    RpcController* controller,
+                    ResponseCallback callback);
+
   // The same as AsyncRequest(), except that the call blocks until the call
   // finishes. If the call fails, returns a non-OK result.
   CHECKED_STATUS SyncRequest(const RemoteMethod* method,
                              std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                              const google::protobuf::Message& req,
                              google::protobuf::Message* resp,
+                             RpcController* controller);
+
+  CHECKED_STATUS SyncRequest(const RemoteMethod* method,
+                             std::shared_ptr<const OutboundMethodMetrics> method_metrics,
+                             const LightweightMessage& request,
+                             LightweightMessage* resp,
                              RpcController* controller);
 
   // Is the service local?
@@ -151,13 +167,30 @@ class Proxy {
   // reactor thread. This is an optimisation used by SyncRequest function.
   void DoAsyncRequest(const RemoteMethod* method,
                       std::shared_ptr<const OutboundMethodMetrics> method_metrics,
-                      const google::protobuf::Message& req,
-                      google::protobuf::Message* resp,
+                      AnyMessageConstPtr req,
+                      AnyMessagePtr resp,
                       RpcController* controller,
                       ResponseCallback callback,
                       bool force_run_callback_on_reactor);
 
+  CHECKED_STATUS DoSyncRequest(const RemoteMethod* method,
+                               std::shared_ptr<const OutboundMethodMetrics> method_metrics,
+                               AnyMessageConstPtr req,
+                               AnyMessagePtr resp,
+                               RpcController* controller);
+
   static void NotifyFailed(RpcController* controller, const Status& status);
+
+  void AsyncLocalCall(
+      const RemoteMethod* method, AnyMessageConstPtr req, AnyMessagePtr resp,
+      RpcController* controller, ResponseCallback callback);
+
+  void AsyncRemoteCall(
+      const RemoteMethod* method, std::shared_ptr<const OutboundMethodMetrics> method_metrics,
+      AnyMessageConstPtr req, AnyMessagePtr resp, RpcController* controller,
+      ResponseCallback callback, bool force_run_callback_on_reactor);
+
+  bool PrepareCall(AnyMessageConstPtr req, RpcController* controller);
 
   ProxyContext* context_;
   HostPort remote_;

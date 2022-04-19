@@ -42,6 +42,7 @@
 #include <vector>
 
 #include "yb/rocksdb/db/builder.h"
+#include "yb/rocksdb/db/compaction_context.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/event_helpers.h"
 #include "yb/rocksdb/db/filename.h"
@@ -69,18 +70,20 @@
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/util/stats/perf_step_timer.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
 
 namespace rocksdb {
 
 // Maintains state for each sub-compaction
-struct CompactionJob::SubcompactionState {
+struct CompactionJob::SubcompactionState : public CompactionFeed {
   Compaction* compaction;
+  BoundaryValuesExtractor* boundary_extractor; // Owned externally.
   std::unique_ptr<CompactionIterator> c_iter;
 
   // The boundaries of the key-range this compaction is interested in. No two
@@ -103,6 +106,10 @@ struct CompactionJob::SubcompactionState {
   std::unique_ptr<WritableFileWriter> base_outfile;
   std::unique_ptr<WritableFileWriter> data_outfile;
   std::unique_ptr<TableBuilder> builder;
+
+  CompactionFeed* feed = nullptr; // Owned externally.
+  CompactionContextPtr context;
+
   Output* current_output() {
     if (outputs.empty()) {
       // This subcompaction's outptut could be empty if compaction was aborted
@@ -117,50 +124,45 @@ struct CompactionJob::SubcompactionState {
   }
 
   // State during the subcompaction
-  uint64_t total_bytes;
-  uint64_t num_input_records;
-  uint64_t num_output_records;
+  uint64_t total_bytes = 0;
+  uint64_t num_input_records = 0;
+  uint64_t num_output_records = 0;
   CompactionJobStats compaction_job_stats;
   uint64_t approx_size;
+  std::function<Status()> open_compaction_output_file;
 
-  SubcompactionState(Compaction* c, Slice* _start, Slice* _end,
-                     uint64_t size = 0)
-      : compaction(c),
-        start(_start),
-        end(_end),
-        base_outfile(nullptr),
-        data_outfile(nullptr),
-        builder(nullptr),
-        total_bytes(0),
-        num_input_records(0),
-        num_output_records(0),
+  SubcompactionState(
+      Compaction* compaction_, BoundaryValuesExtractor* boundary_extractor_, Slice* start_,
+      Slice* end_, uint64_t size = 0)
+      : compaction(DCHECK_NOTNULL(compaction_)),
+        boundary_extractor(boundary_extractor_),
+        start(start_),
+        end(end_),
         approx_size(size) {
-    assert(compaction != nullptr);
   }
 
-  SubcompactionState(SubcompactionState&& o) { *this = std::move(o); }
+  Status Feed(const Slice& key, const Slice& value) override {
+    // Open output file if necessary
+    if (builder == nullptr) {
+      RETURN_NOT_OK(open_compaction_output_file());
+    }
+    DCHECK_ONLY_NOTNULL(builder);
+    DCHECK_ONLY_NOTNULL(current_output());
 
-  SubcompactionState& operator=(SubcompactionState&& o) {
-    compaction = std::move(o.compaction);
-    start = std::move(o.start);
-    end = std::move(o.end);
-    status = std::move(o.status);
-    outputs = std::move(o.outputs);
-    base_outfile = std::move(o.base_outfile);
-    data_outfile = std::move(o.data_outfile);
-    builder = std::move(o.builder);
-    total_bytes = std::move(o.total_bytes);
-    num_input_records = std::move(o.num_input_records);
-    num_output_records = std::move(o.num_output_records);
-    compaction_job_stats = std::move(o.compaction_job_stats);
-    approx_size = std::move(o.approx_size);
-    return *this;
+    builder->Add(key, value);
+    auto boundaries = MakeFileBoundaryValues(boundary_extractor, key, value);
+    if (!boundaries) {
+      return std::move(boundaries.status());
+    }
+    auto& boundary_values = *boundaries;
+    current_output()->meta.UpdateBoundaries(std::move(boundary_values.key), boundary_values);
+    num_output_records++;
+    return Status::OK();
   }
 
-  // Because member unique_ptrs do not have these.
-  SubcompactionState(const SubcompactionState&) = delete;
-
-  SubcompactionState& operator=(const SubcompactionState&) = delete;
+  Status Flush() override {
+    return Status::OK();
+  }
 };
 
 // Maintains state for the entire compaction
@@ -307,10 +309,12 @@ void CompactionJob::Prepare() {
     for (size_t i = 0; i <= boundaries_.size(); i++) {
       Slice* start = i == 0 ? nullptr : &boundaries_[i - 1];
       Slice* end = i == boundaries_.size() ? nullptr : &boundaries_[i];
-      compact_->sub_compact_states.emplace_back(c, start, end, sizes_[i]);
+      compact_->sub_compact_states.emplace_back(
+          c, db_options_.boundary_extractor.get(), start, end, sizes_[i]);
     }
   } else {
-    compact_->sub_compact_states.emplace_back(c, nullptr, nullptr);
+    compact_->sub_compact_states.emplace_back(
+        c, db_options_.boundary_extractor.get(), /* start= */ nullptr, /* end= */ nullptr);
   }
 }
 
@@ -525,7 +529,7 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
       "[%s] compacted to: %s, MB/sec: %.1f rd, %.1f wr, level %d, "
       "files in(%d, %d) out(%d) "
       "MB in(%.1f, %.1f) out(%.1f), read-write-amplify(%.1f) "
-      "write-amplify(%.1f) %s, records in: %d, records dropped: %d\n",
+      "write-amplify(%.1f) %s, records in: %llu, records dropped: %llu\n",
       cfd->GetName().c_str(), vstorage->LevelSummary(&tmp),
       (stats.bytes_read_non_output_levels + stats.bytes_read_output_level) /
           static_cast<double>(stats.micros),
@@ -607,12 +611,6 @@ void CompactionJob::ProcessKeyValueCompaction(
     compaction_filter = compaction_filter_from_factory.get();
   }
 
-  if (compaction_filter) {
-    // This is used to persist the history cutoff hybrid time chosen for the DocDB compaction
-    // filter.
-    largest_user_frontier_ = compaction_filter->GetLargestUserFrontier();
-  }
-
   MergeHelper merge(
       env_, cfd->user_comparator(), cfd->ioptions()->merge_operator,
       compaction_filter, db_options_.info_log.get(),
@@ -633,11 +631,30 @@ void CompactionJob::ProcessKeyValueCompaction(
     input->SeekToFirst();
   }
 
+  if (db_options_.compaction_context_factory) {
+    auto context = CompactionContextOptions {
+      .is_full_compaction = compact_->compaction->is_full_compaction(),
+    };
+    sub_compact->context = (*db_options_.compaction_context_factory)(sub_compact, context);
+    sub_compact->feed = sub_compact->context->Feed();
+  } else {
+    sub_compact->feed = sub_compact;
+  }
+
   Status status;
-  sub_compact->c_iter.reset(new CompactionIterator(
+  sub_compact->c_iter = std::make_unique<CompactionIterator>(
       input.get(), cfd->user_comparator(), &merge, versions_->LastSequence(),
       &existing_snapshots_, earliest_write_conflict_snapshot_, false,
-      sub_compact->compaction, compaction_filter));
+      sub_compact->compaction, compaction_filter);
+
+  if (sub_compact->context) {
+    sub_compact->c_iter->AddLiveRanges(sub_compact->context->GetLiveRanges());
+  }
+
+  sub_compact->open_compaction_output_file = [this, holder, sub_compact]() {
+    return OpenCompactionOutputFile(holder, sub_compact);
+  };
+
   auto c_iter = sub_compact->c_iter.get();
   c_iter->SeekToFirst();
   const auto& c_iter_stats = c_iter->iter_stats();
@@ -670,39 +687,32 @@ void CompactionJob::ProcessKeyValueCompaction(
       RecordCompactionIOStats();
     }
 
-    // Open output file if necessary
-    if (sub_compact->builder == nullptr) {
-      status = OpenCompactionOutputFile(holder, sub_compact);
-      if (!status.ok()) {
-        break;
-      }
-    }
-    assert(sub_compact->builder != nullptr);
-    assert(sub_compact->current_output() != nullptr);
-    sub_compact->builder->Add(key, value);
-    auto boundaries = MakeFileBoundaryValues(db_options_.boundary_extractor.get(),
-                                             key,
-                                             value);
-    if (!boundaries) {
-      status = std::move(boundaries.status());
+    status = sub_compact->feed->Feed(key, value);
+    if (!status.ok()) {
       break;
     }
-    auto& boundary_values = *boundaries;
-    sub_compact->current_output()->meta.UpdateBoundaries(std::move(boundary_values.key),
-                                                         boundary_values);
-    sub_compact->num_output_records++;
 
     // Close output file if it is big enough
     // TODO(aekmekji): determine if file should be closed earlier than this
     // during subcompactions (i.e. if output size, estimated by input size, is
     // going to be 1.2MB and max_output_file_size = 1MB, prefer to have 0.6MB
     // and 0.6MB instead of 1MB and 0.2MB)
-    if (sub_compact->builder->TotalFileSize() >=
-        sub_compact->compaction->max_output_file_size()) {
+    if (sub_compact->builder &&
+        sub_compact->builder->TotalFileSize() >= sub_compact->compaction->max_output_file_size()) {
       status = FinishCompactionOutputFile(input->status(), sub_compact);
     }
 
     c_iter->Next();
+  }
+
+  if (status.ok()) {
+    status = sub_compact->feed->Flush();
+  }
+
+  // This is used to persist the history cutoff hybrid time chosen for the DocDB compaction
+  // filter.
+  if (sub_compact->context) {
+    largest_user_frontier_ = sub_compact->context->GetLargestUserFrontier();
   }
 
   sub_compact->num_input_records = c_iter_stats.num_input_records;
@@ -744,7 +754,7 @@ void CompactionJob::ProcessKeyValueCompaction(
     }
   }
 
-  sub_compact->c_iter.reset();
+  sub_compact->c_iter = nullptr;
   input.reset();
   sub_compact->status = status;
   if (compaction_filter) {
@@ -957,8 +967,9 @@ Status CompactionJob::OpenFile(const std::string table_name, uint64_t file_numbe
 
 Status CompactionJob::OpenCompactionOutputFile(
     FileNumbersHolder* holder, SubcompactionState* sub_compact) {
-  assert(sub_compact != nullptr);
-  assert(sub_compact->builder == nullptr);
+  RSTATUS_DCHECK(sub_compact != nullptr, InternalError, "sub_compact is NULL");
+  RSTATUS_DCHECK(sub_compact->builder == nullptr, InternalError,
+                 "Sub compact builder already present");
   FileNumber file_number = file_numbers_provider_->NewFileNumber(holder);
 
   // Make the output file
@@ -1016,12 +1027,12 @@ Status CompactionJob::OpenCompactionOutputFile(
   // data is going to be found
   bool skip_filters =
       cfd->ioptions()->optimize_filters_for_hits && bottommost_level_;
-  sub_compact->builder.reset(NewTableBuilder(
+  sub_compact->builder = NewTableBuilder(
       *cfd->ioptions(), cfd->internal_comparator(),
       cfd->int_tbl_prop_collector_factories(), cfd->GetID(),
       sub_compact->base_outfile.get(), sub_compact->data_outfile.get(),
       sub_compact->compaction->output_compression(), cfd->ioptions()->compression_opts,
-      skip_filters));
+      skip_filters);
   LogFlush(db_options_.info_log);
   return Status::OK();
 }

@@ -15,8 +15,10 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -38,7 +40,7 @@ import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -76,6 +78,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
+    userIntent.provider = defaultProvider.uuid.toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = 3;
@@ -87,8 +90,8 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
 
     setDefaultNodeState(NodeState.Removed);
 
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(4);
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(4);
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     ChangeMasterClusterConfigResponse mockChangeConfigResponse =
@@ -124,6 +127,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
           TaskType.ModifyBlackList,
+          TaskType.SetNodeState,
           TaskType.AnsibleDestroyServer,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
@@ -132,6 +136,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> RELEASE_INSTANCE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "BeingDecommissioned")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -155,8 +160,8 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testReleaseInstanceSuccess() {
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(3);
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
 
@@ -201,5 +206,13 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     taskParams.universeUUID = defaultUniverse.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n9", 3);
     assertEquals(Failure, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testReleaseNodeAllowedState() {
+    Set<NodeState> allowedStates = NodeState.allowedStatesForAction(NodeActionType.RELEASE);
+    Set<NodeState> expectedStates =
+        ImmutableSet.of(NodeState.BeingDecommissioned, NodeState.Removed, NodeState.Terminating);
+    assertEquals(expectedStates, allowedStates);
   }
 }

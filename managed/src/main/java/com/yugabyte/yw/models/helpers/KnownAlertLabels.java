@@ -24,7 +24,6 @@ public enum KnownAlertLabels {
   ALERT_STATE,
   SEVERITY,
   THRESHOLD,
-  ERROR_MESSAGE,
   NODE_NAME,
   NODE_PREFIX,
   INSTANCE,
@@ -32,7 +31,8 @@ public enum KnownAlertLabels {
   TASK_TYPE,
   RESULT,
   ALERTNAME,
-  MESSAGE;
+  MESSAGE,
+  MAINTENANCE_WINDOW_UUIDS;
 
   public String labelName() {
     return name().toLowerCase();

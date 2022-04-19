@@ -123,10 +123,9 @@ static void ybcCheckPrimaryKeyAttribute(YbScanPlan      scan_plan,
 static void ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
 {
 	Oid            dboid          = YBCGetDatabaseOid(relation);
-	Oid            relid          = RelationGetRelid(relation);
 	YBCPgTableDesc ybc_table_desc = NULL;
 
-	HandleYBStatus(YBCPgGetTableDesc(dboid, relid, &ybc_table_desc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetStorageRelid(relation), &ybc_table_desc));
 
 	for (AttrNumber attnum = 1; attnum <= relation->rd_att->natts; attnum++)
 	{
@@ -450,7 +449,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		bool colocated = false;
 		bool notfound;
 		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(MyDatabaseId,
-														   RelationGetRelid(relation),
+														   YbGetStorageRelid(relation),
 														   &colocated),
 									 &notfound);
 		ybScan->prepare_params.querying_colocated_table |= colocated;
@@ -664,12 +663,11 @@ ShouldPushdownScanKey(Relation relation, YbScanPlan scan_plan, AttrNumber attnum
 		if (IsSearchArray(key->sk_flags))
 		{
 			/*
-			 * Expect equal strategy here (i.e. IN .. or = ANY(..) conditions,
+			 * Only allow equal strategy here (i.e. IN .. or = ANY(..) conditions,
 			 * NOT IN will generate <> which is not a supported LSM/BTREE
 			 * operator, so it should not get to this point.
 			 */
-			Assert(key->sk_strategy == BTEqualStrategyNumber);
-			return is_primary_key;
+			return key->sk_strategy == BTEqualStrategyNumber && is_primary_key;
 		}
 		/* No other operators are supported. */
 		return false;
@@ -737,15 +735,105 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	}
 }
 
+/* Return true if typid is one of the Object Identifier Types */
+static bool YbIsOidType(Oid typid) {
+	switch (typid)
+	{
+		case OIDOID:
+		case REGPROCOID:
+		case REGPROCEDUREOID:
+		case REGOPEROID:
+		case REGOPERATOROID:
+		case REGCLASSOID:
+		case REGTYPEOID:
+		case REGROLEOID:
+		case REGNAMESPACEOID:
+		case REGCONFIGOID:
+		case REGDICTIONARYOID:
+			return true;
+		default:
+			return false;
+	}
+}
+
+/*
+ * Return true if a scan key column type is compatible with value type. 'equal_strategy' is true
+ * for BTEqualStrategyNumber.
+ */
+static bool YbIsScanCompatible(Oid column_typid, Oid value_typid, bool equal_strategy) {
+	if (column_typid == value_typid)
+		return true;
+
+	switch (column_typid)
+	{
+		case INT2OID:
+			/*
+			 * If column c0 has INT2OID type and value type is INT4OID, the value may overflow
+			 * INT2OID. For example, where clause condition "c0 = 65539" would become "c0 = 3"
+			 * and will unnecessarily fetch a row with key of 3. This will not affect correctness
+			 * because at upper Postgres layer "c0 = 65539" will be applied again to filter out
+			 * this row. We prefer to bind scan key c0 to account for the common case where INT4OID
+			 * value does not overflow INT2OID, which happens in some system relation scan queries.
+			 */
+			return equal_strategy ? (value_typid == INT4OID || value_typid == INT8OID) : false;
+		case INT4OID:
+			return equal_strategy ? (value_typid == INT2OID || value_typid == INT8OID) :
+									value_typid == INT2OID;
+		case INT8OID:
+			return value_typid == INT2OID || value_typid == INT4OID;
+
+		case TEXTOID:
+		case BPCHAROID:
+		case VARCHAROID:
+			return value_typid == TEXTOID || value_typid == BPCHAROID || value_typid == VARCHAROID;
+
+		default:
+			if (YbIsOidType(column_typid) && YbIsOidType(value_typid))
+				return true;
+			/* Conservatively return false. */
+			return false;
+	}
+}
+
+/*
+ * We require compatible column type and value type to avoid misinterpreting the value Datum
+ * using a column type that can cause wrong scan results. Returns true if the column type
+ * and value type are compatible.
+ */
+static bool YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i, bool is_hashed) {
+	/* We treat the hash code column as a special column with INT4 type */
+	Oid	atttypid = is_hashed ? INT4OID :
+		ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
+	Assert(OidIsValid(atttypid));
+	Oid valtypid = ybScan->key[i].sk_subtype;
+	/*
+	 * Example: CREATE TABLE t1(c0 REAL, c1 TEXT, PRIMARY KEY(c0 asc));
+	 *          INSERT INTO t1(c0, c1) VALUES(0.4, 'SHOULD BE IN RESULT');
+	 *          SELECT ALL t1.c1 FROM t1 WHERE ((0.6)>(t1.c0));
+	 * Internally, c0 has float4 type, 0.6 has float8 type. If we bind 0.6 directly with
+	 * column c0, float8 0.6 will be misinterpreted as float4. However, casting to float4
+	 * may lose precision. Here we simply do not bind a key when there is a type mismatch
+	 * by leaving start_valid[idx] and end_valid[idx] as false. For the following cases
+	 * we assume that Postgres ensures there is no concern for type mismatch.
+	 * (1) value type is not a valid type id
+	 * (2) InvalidStrategy (for IS NULL)
+	 * (3) value type is a polymorphic pseudotype
+	 */
+	return !OidIsValid(valtypid) ||
+			ybScan->key[i].sk_strategy == InvalidStrategy ||
+			YbIsScanCompatible(atttypid, valtypid,
+				ybScan->key[i].sk_strategy == BTEqualStrategyNumber) ||
+			IsPolymorphicType(valtypid);
+}
+
 /* Use the scan-descriptor and scan-plan to setup binds for the queryplan */
 static void
 ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 	Relation relation = ybScan->relation;
 	Relation index = ybScan->index;
-	Oid		dboid    = YBCGetDatabaseOid(relation);
-	Oid		relid    = RelationGetRelid(relation);
+	Oid		 dboid = YBCGetDatabaseOid(relation);
 
-	HandleYBStatus(YBCPgNewSelect(dboid, relid, &ybScan->prepare_params, &ybScan->handle));
+	HandleYBStatus(YBCPgNewSelect(dboid, YbGetStorageRelid(relation), &ybScan->prepare_params, &ybScan->handle));
 
 	if (IsSystemRelation(relation))
 	{
@@ -758,6 +846,8 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 			if (is_hashed || bms_is_member(idx, scan_plan->sk_cols))
 			{
 				bool is_null = (ybScan->key[i].sk_flags & SK_ISNULL) == SK_ISNULL;
+
+				Assert(YbCheckScanTypes(ybScan, scan_plan, i, is_hashed));
 
 				ybcBindColumn(ybScan, scan_plan->bind_desc, scan_plan->bind_key_attnums[i],
 							  ybScan->key[i].sk_argument, is_null, is_hashed);
@@ -827,6 +917,174 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 		/* Check if this is primary columns */
 		int bind_key_attnum = scan_plan->bind_key_attnums[i];
 		int idx = YBAttnumToBmsIndex(relation, bind_key_attnum);
+		/* Check if this is full key row comparison expression */
+		if (ybScan->key[i].sk_flags & SK_ROW_HEADER)
+		{
+			int j = 0;
+			ScanKey subkeys = (ScanKey) 
+					DatumGetPointer(ybScan->key[i].sk_argument);
+			int last_att_no = YBFirstLowInvalidAttributeNumber;
+
+			/* 
+			 * We can only push down right now if the primary key columns
+			 * are specified in the correct order and the primary key
+			 * has no hashed columns. We also need to ensure that
+			 * the same comparison operation is done to all subkeys.
+			 */
+			bool can_pushdown = true;
+
+			int strategy = subkeys[0].sk_strategy;
+			int count = 0;
+			do {
+				ScanKey current = &subkeys[j];
+				/* Make sure that the specified keys are in the right order. */
+				if (!(current->sk_attno > last_att_no))
+				{
+					can_pushdown = false;
+					break;
+				}
+
+				/*
+				 * Make sure that the same comparator is applied to
+				 * all subkeys.
+				 */
+				if (strategy != current->sk_strategy)
+				{
+					can_pushdown = false;
+					break;
+				}
+				last_att_no = current->sk_attno;
+
+				/* Make sure that there are no hash key columns. */
+				if (index->rd_indoption[current->sk_attno - 1] 
+					& INDOPTION_HASH)
+				{
+					can_pushdown = false;
+					break;
+				}
+				count++;
+			}
+			while((subkeys[j++].sk_flags & SK_ROW_END) == 0);
+			
+			/*
+			 * Make sure that the primary key has no hash columns in order
+			 * to push down.
+			 */
+
+			for (int i = 0; i < index->rd_index->indnkeyatts; i++)
+			{
+				if (index->rd_indoption[i] & INDOPTION_HASH)
+				{
+					can_pushdown = false;
+					break;
+				}
+			}
+
+			if (can_pushdown)
+			{
+
+				YBCPgExpr *col_values = palloc(sizeof(YBCPgExpr)
+											* index->rd_index->indnkeyatts);
+				/*
+				 * Prepare upper/lower bound tuples determined from this
+				 * clause for bind. Care must be taken in the case
+				 * that primary key columns in the index are ordered
+				 * differently from each other. For example, consider
+				 * if the underlying index has primary key
+				 * (r1 ASC, r2 DESC, r3 ASC) and we are dealing with
+				 * a clause like (r1, r2, r3) <= (40, 35, 12).
+				 * We cannot simply bind (40, 35, 12) as an upper bound
+				 * as that will miss tuples such as (40, 32, 0).
+				 * Instead we must push down (40, Inf, 12) in this case
+				 * for correctness. (Note that +Inf in this context
+				 * is higher in STORAGE order than all other values not
+				 * necessarily logical order, similar to the role of
+				 * docdb::ValueType::kHighest.
+				 */
+
+				/*
+				 * Is the first column in ascending order in the index?
+				 * This is important because whether or not the RHS of a
+				 * (row key) >= (row key values) expression is
+				 * considered an upper bound is dependent on the answer
+				 * to this question. The RHS of such an expression will
+				 * be the scan upper bound if the first column is in
+				 * descending order and lower if else. Similar logic
+				 * applies to the RHS of (row key) <= (row key values)
+				 * expressions.
+				 */
+				bool is_direction_asc = 
+									(index->rd_indoption[
+										subkeys[0].sk_attno - 1] 
+										& INDOPTION_DESC) == 0;
+				bool gt = strategy == BTGreaterEqualStrategyNumber
+								|| strategy == BTGreaterStrategyNumber;
+				bool is_inclusive = strategy != BTGreaterStrategyNumber
+										&& strategy != BTLessStrategyNumber;
+				
+				bool is_point_scan = (count == index->rd_index->indnatts)
+										&& (strategy == BTEqualStrategyNumber);
+
+				/* Whether or not the RHS values make up a DocDB upper bound */
+				bool is_upper_bound = gt ^ is_direction_asc;
+				size_t subkey_index = 0;
+
+				for (j = 0; j < index->rd_index->indnkeyatts; j++)
+				{
+					bool is_column_specified = subkey_index < count
+											&& (subkeys[subkey_index]
+												.sk_attno - 1) == j;
+					/*
+					 * Is the current column stored in ascending order in the
+					 * underlying index?
+					 */
+					bool asc = (index->rd_indoption[j] & INDOPTION_DESC) == 0;
+
+					/*
+					 * If this column has different directionality than the
+					 * first column then we have to adjust the bounds on this
+					 * column.
+					 */
+					if(!is_column_specified
+						|| (asc != is_direction_asc &&
+							!is_point_scan))
+					{
+						col_values[j] = NULL;
+					}
+					else
+					{
+						ScanKey current = &subkeys[subkey_index];
+						col_values[j] = YBCNewConstant(ybScan->handle,
+											ybc_get_atttypid
+												(scan_plan->bind_desc,
+											current->sk_attno),
+											current->sk_collation,
+											current->sk_argument,
+											false);
+					}
+
+					if (is_column_specified)
+					{
+						subkey_index++;
+					}
+				}
+
+				if (is_upper_bound || strategy == BTEqualStrategyNumber)
+				{
+					HandleYBStatus(YBCPgDmlAddRowUpperBound(ybScan->handle,
+												index->rd_index->indnkeyatts,
+												col_values, is_inclusive));
+				}
+
+				if (!is_upper_bound || strategy == BTEqualStrategyNumber)
+				{
+					HandleYBStatus(YBCPgDmlAddRowLowerBound(ybScan->handle,
+												index->rd_index->indnkeyatts,
+												col_values, is_inclusive));
+				}
+			}
+			continue;
+		}
 		if (!IsHashCodeSearch(ybScan->key[i].sk_flags)
 			&& !bms_is_member(idx, scan_plan->sk_cols))
 			continue;
@@ -900,6 +1158,9 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 		if (is_column_bound[idx])
 			continue;
 
+		if (!YbCheckScanTypes(ybScan, scan_plan, i, is_hashed))
+			continue;
+
 		switch (ybScan->key[i].sk_strategy)
 		{
 			case InvalidStrategy: /* fallthrough, c IS NULL -> c = NULL (checked above) */
@@ -936,6 +1197,7 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 						* workspace context.
 						*/
 					arrayval = DatumGetArrayTypeP(cur->sk_argument);
+					Assert(ybScan->key[i].sk_subtype == ARR_ELEMTYPE(arrayval));
 					/* We could cache this data, but not clear it's worth it */
 					get_typlenbyvalalign(ARR_ELEMTYPE(arrayval), &elmlen,
 											&elmbyval, &elmalign);
@@ -961,12 +1223,13 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 
 					/*
 						* If there's no non-nulls, the scan qual is unsatisfiable
-						* TODO(rajukumaryb): when num_nonnulls is zero, the query should not be
-						* sent to DocDB as it will return rows that will all be dropped.
 						* Example: SELECT ... FROM ... WHERE h = ... AND r IN (NULL,NULL);
 						*/
 					if (num_nonnulls == 0)
+					{
+						ybScan->quit_scan = true;
 						break;
+					}
 
 					/* Build temporary vars */
 					IndexScanDescData tmp_scan_desc;
@@ -1404,6 +1667,9 @@ IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool 
 	AttrNumber *sk_attno = ybScan->target_key_attnums;
 	Relation    index    = ybScan->index;
 	IndexTuple  tup      = NULL;
+
+	if (ybScan->quit_scan)
+		return NULL;
 
 	/*
 	 * YB Scan may not be able to push down the scan key condition so we may
@@ -1846,9 +2112,9 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	TupleDesc      tupdesc = RelationGetDescr(relation);
 
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-																RelationGetRelid(relation),
-																NULL /* prepare_params */,
-																&ybc_stmt));
+								  YbGetStorageRelid(relation),
+								  NULL /* prepare_params */,
+								  &ybc_stmt));
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt,
@@ -1982,10 +2248,9 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy w
 	{
 		MemoryContext error_context = MemoryContextSwitchTo(exec_context);
 		ErrorData* edata = CopyErrorData();
-		FlushErrorState();
 
-		elog(DEBUG2, "Error when trying to lock row. wait_policy=%d message=%s", wait_policy,
-				 edata->message);
+		elog(DEBUG2, "Error when trying to lock row. wait_policy=%d txn_errcode=%d message=%s",
+			 wait_policy, edata->yb_txn_errcode, edata->message);
 
 		if (YBCIsTxnConflictError(edata->yb_txn_errcode))
 			res = HeapTupleUpdated;
@@ -1996,6 +2261,9 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy w
 			MemoryContextSwitchTo(error_context);
 			PG_RE_THROW();
 		}
+
+		/* Discard the error if not rethrown */
+		FlushErrorState();
 	}
 	PG_END_TRY();
 

@@ -14,6 +14,8 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.datePlus;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,8 +29,10 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertingFormData;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.CustomerDetailsData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
@@ -36,6 +40,9 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -43,7 +50,9 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
@@ -52,6 +61,7 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -70,6 +80,8 @@ import play.mvc.Result;
 public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
+
+  @Inject private AlertService alertService;
 
   @Inject private MetricService metricService;
 
@@ -171,12 +183,59 @@ public class CustomerController extends AuthenticatedController {
 
       CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
       if (alertingFormData.alertingData != null) {
+        long activeAlertNotificationPeriod =
+            alertingFormData.alertingData.activeAlertNotificationIntervalMs;
+        long oldActiveAlertNotificationPeriod = 0;
         if (config == null) {
           CustomerConfig.createAlertConfig(
               customerUUID, Json.toJson(alertingFormData.alertingData));
         } else {
+          AlertingData oldData = Json.fromJson(config.getData(), AlertingData.class);
+          if (oldData != null) {
+            oldActiveAlertNotificationPeriod = oldData.activeAlertNotificationIntervalMs;
+          }
           config.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.alertingData));
           config.update();
+        }
+
+        if (activeAlertNotificationPeriod != oldActiveAlertNotificationPeriod) {
+          AlertFilter alertFilter =
+              AlertFilter.builder().customerUuid(customerUUID).state(State.ACTIVE).build();
+          List<Alert> activeAlerts = alertService.list(alertFilter);
+          List<Alert> alertsToUpdate;
+          if (activeAlertNotificationPeriod > 0) {
+            // In case there was notification attempt - setting to last attempt time
+            // + interval as next notification attempt. Even if it's before now -
+            // instant notification will happen - which is what we need.
+            alertsToUpdate =
+                activeAlerts
+                    .stream()
+                    .filter(
+                        alert ->
+                            alert.getNextNotificationTime() == null
+                                && alert.getNotificationAttemptTime() != null)
+                    .map(
+                        alert ->
+                            alert.setNextNotificationTime(
+                                datePlus(
+                                    alert.getNotificationAttemptTime(),
+                                    activeAlertNotificationPeriod,
+                                    ChronoUnit.MILLIS)))
+                    .collect(Collectors.toList());
+          } else {
+            // In case we already notified on ACTIVE state and scheduled subsequent notification
+            // - clean that
+            alertsToUpdate =
+                activeAlerts
+                    .stream()
+                    .filter(
+                        alert ->
+                            alert.getNextNotificationTime() != null
+                                && alert.getNotifiedState() != null)
+                    .map(alert -> alert.setNextNotificationTime(null))
+                    .collect(Collectors.toList());
+          }
+          alertService.save(alertsToUpdate);
         }
       }
 
@@ -201,7 +260,13 @@ public class CustomerController extends AuthenticatedController {
     }
 
     CustomerConfig.upsertCallhomeConfig(customerUUID, alertingFormData.callhomeLevel);
-
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            customerUUID.toString(),
+            Audit.ActionType.Update,
+            Json.toJson(formData));
     return ok(Json.toJson(customer));
   }
 
@@ -222,9 +287,11 @@ public class CustomerController extends AuthenticatedController {
           INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
     }
 
-    metricService.handleSourceRemoval(customerUUID, null);
+    metricService.markSourceRemoved(customerUUID, null);
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Customer, customerUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 
@@ -255,7 +322,13 @@ public class CustomerController extends AuthenticatedController {
 
     customer.upsertFeatures(formData.features);
 
-    auditService().createAuditEntry(ctx(), request(), requestBody);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            customerUUID.toString(),
+            Audit.ActionType.UpsertCustomerFeatures,
+            requestBody);
     return ok(customer.getFeatures());
   }
 
@@ -340,12 +413,32 @@ public class CustomerController extends AuthenticatedController {
     if (params.containsKey("tableName")) {
       filterJson.put("table_name", params.remove("tableName"));
     }
+    if (params.containsKey("xClusterConfigUuid")) {
+      XClusterConfig xClusterConfig =
+          XClusterConfig.getOrBadRequest(UUID.fromString(params.remove("xClusterConfigUuid")));
+      String tableIdRegex = String.join("|", xClusterConfig.getTables());
+      filterJson.put("table_id", tableIdRegex);
+    }
     params.put("filters", Json.stringify(filterJson));
-    JsonNode response =
-        metricQueryHelper.query(formData.get().getMetrics(), params, filterOverrides);
+    JsonNode response;
+    if (formData.get().getIsRecharts()) {
+      response =
+          metricQueryHelper.query(
+              formData.get().getMetrics(), params, filterOverrides, formData.get().getIsRecharts());
+    } else {
+      response = metricQueryHelper.query(formData.get().getMetrics(), params, filterOverrides);
+    }
+
     if (response.has("error")) {
       throw new PlatformServiceException(BAD_REQUEST, response.get("error"));
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            customerUUID.toString(),
+            Audit.ActionType.AddMetrics,
+            request().body().asJson());
     return PlatformResults.withRawData(response);
   }
 

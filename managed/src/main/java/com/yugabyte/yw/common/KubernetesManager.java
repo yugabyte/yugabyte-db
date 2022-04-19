@@ -2,20 +2,25 @@
 
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
-import com.google.inject.Inject;
+import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
+import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodCondition;
+import io.fabric8.kubernetes.api.model.PodStatus;
+import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.api.model.Service;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import javax.inject.Singleton;
+import javax.annotation.Nullable;
+import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Singleton
-public class KubernetesManager {
+public abstract class KubernetesManager {
 
   @Inject ReleaseManager releaseManager;
 
@@ -25,40 +30,13 @@ public class KubernetesManager {
 
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesManager.class);
 
-  private static final long DEFAULT_TIMEOUT_SECS = 300;
-
-  private static final String SERVICE_INFO_JSONPATH =
-      "{.spec.clusterIP}|" + "{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}";
-
   private static final String LEGACY_HELM_CHART_FILENAME = "yugabyte-2.7-helm-legacy.tar.gz";
 
-  public ShellResponse createNamespace(Map<String, String> config, String universePrefix) {
-    List<String> commandList = ImmutableList.of("kubectl", "create", "namespace", universePrefix);
-    return execCommand(config, commandList);
-  }
+  private static final long DEFAULT_TIMEOUT_SECS = 300;
 
-  // TODO(bhavin192): modify the pullSecret on the fly while applying
-  // it? Add nodePrefix to the name, add labels which make it easy to
-  // find the secret by label selector, and even delete it if
-  // required. Something like, -lprovider=gke1 or
-  // -luniverse=uni1. Tracked here:
-  // https://github.com/yugabyte/yugabyte-db/issues/7012
-  public ShellResponse applySecret(
-      Map<String, String> config, String namespace, String pullSecret) {
-    List<String> commandList =
-        ImmutableList.of("kubectl", "apply", "-f", pullSecret, "--namespace", namespace);
-    return execCommand(config, commandList);
-  }
+  /* helm interface */
 
-  public String getTimeout() {
-    Long timeout = appConfig.getLong("yb.helm.timeout_secs");
-    if (timeout == null || timeout == 0) {
-      timeout = DEFAULT_TIMEOUT_SECS;
-    }
-    return String.valueOf(timeout) + "s";
-  }
-
-  public ShellResponse helmInstall(
+  public void helmInstall(
       String ybSoftwareVersion,
       Map<String, String> config,
       UUID providerUUID,
@@ -67,12 +45,13 @@ public class KubernetesManager {
       String overridesFile) {
 
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
 
     List<String> commandList =
         ImmutableList.of(
             "helm",
             "install",
-            universePrefix,
+            helmReleaseName,
             helmPackagePath,
             "--namespace",
             namespace,
@@ -82,107 +61,11 @@ public class KubernetesManager {
             getTimeout(),
             "--wait");
     LOG.info(String.join(" ", commandList));
-    return execCommand(config, commandList);
+    ShellResponse response = execCommand(config, commandList);
+    processHelmResponse(config, universePrefix, namespace, response);
   }
 
-  public ShellResponse getPodInfos(
-      Map<String, String> config, String universePrefix, String namespace) {
-    List<String> commandList =
-        ImmutableList.of(
-            "kubectl",
-            "get",
-            "pods",
-            "--namespace",
-            namespace,
-            "-o",
-            "json",
-            "-l",
-            "release=" + universePrefix);
-    return execCommand(config, commandList);
-  }
-
-  public ShellResponse getServices(
-      Map<String, String> config, String universePrefix, String namespace) {
-    List<String> commandList =
-        ImmutableList.of(
-            "kubectl",
-            "get",
-            "services",
-            "--namespace",
-            namespace,
-            "-o",
-            "json",
-            "-l",
-            "release=" + universePrefix);
-    System.out.println(commandList);
-    return execCommand(config, commandList);
-  }
-
-  public ShellResponse getPodStatus(Map<String, String> config, String namespace, String podName) {
-    List<String> commandList =
-        ImmutableList.of("kubectl", "get", "pod", "--namespace", namespace, "-o", "json", podName);
-    return execCommand(config, commandList);
-  }
-
-  public ShellResponse getServiceIPs(
-      Map<String, String> config, String namespace, boolean isMaster) {
-    String serviceName = isMaster ? "yb-master-service" : "yb-tserver-service";
-    List<String> commandList =
-        ImmutableList.of(
-            "kubectl",
-            "get",
-            "svc",
-            serviceName,
-            "--namespace",
-            namespace,
-            "-o",
-            "jsonpath=" + SERVICE_INFO_JSONPATH);
-    return execCommand(config, commandList);
-  }
-
-  public JsonNode getNodeInfos(Map<String, String> config) {
-    ShellResponse response = runGetNodeInfos(config);
-    if (response.code != 0) {
-      String msg = "Unable to get node information";
-      if (!response.message.isEmpty()) {
-        msg = String.format("%s: %s", msg, response.message);
-      }
-      throw new RuntimeException(msg);
-    }
-    return Util.convertStringToJson(response.message);
-  }
-
-  public ShellResponse runGetNodeInfos(Map<String, String> config) {
-    List<String> commandList = ImmutableList.of("kubectl", "get", "nodes", "-o", "json");
-    return execCommand(config, commandList);
-  }
-
-  public JsonNode getSecret(Map<String, String> config, String secretName, String namespace) {
-    ShellResponse response = runGetSecret(config, secretName, namespace);
-    if (response.code != 0) {
-      String msg = "Unable to get secret";
-      if (!response.message.isEmpty()) {
-        msg = String.format("%s: %s", msg, response.message);
-      }
-      throw new RuntimeException(msg);
-    }
-    return Util.convertStringToJson(response.message);
-  }
-
-  // TODO: disable the logging of stdout of this command if possibile,
-  // as it just leaks the secret content in the logs at DEBUG level.
-  public ShellResponse runGetSecret(
-      Map<String, String> config, String secretName, String namespace) {
-    List<String> commandList = new ArrayList<String>();
-    commandList.addAll(ImmutableList.of("kubectl", "get", "secret", secretName, "-o", "json"));
-    if (namespace != null) {
-      commandList.add("--namespace");
-      commandList.add(namespace);
-    }
-    return execCommand(config, commandList);
-  }
-
-  public ShellResponse helmUpgrade(
+  public void helmUpgrade(
       String ybSoftwareVersion,
       Map<String, String> config,
       String universePrefix,
@@ -190,12 +73,13 @@ public class KubernetesManager {
       String overridesFile) {
 
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
 
     List<String> commandList =
         ImmutableList.of(
             "helm",
             "upgrade",
-            universePrefix,
+            helmReleaseName,
             helmPackagePath,
             "-f",
             overridesFile,
@@ -205,58 +89,49 @@ public class KubernetesManager {
             getTimeout(),
             "--wait");
     LOG.info(String.join(" ", commandList));
-    return execCommand(config, commandList);
+    ShellResponse response = execCommand(config, commandList);
+    processHelmResponse(config, universePrefix, namespace, response);
   }
 
-  public ShellResponse updateNumNodes(Map<String, String> config, String namespace, int numNodes) {
-    List<String> commandList =
-        ImmutableList.of(
-            "kubectl",
-            "--namespace",
-            namespace,
-            "scale",
-            "statefulset",
-            "yb-tserver",
-            "--replicas=" + numNodes);
-    return execCommand(config, commandList);
+  public void helmDelete(Map<String, String> config, String universePrefix, String namespace) {
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+    List<String> commandList = ImmutableList.of("helm", "delete", helmReleaseName, "-n", namespace);
+    execCommand(config, commandList);
   }
 
-  public ShellResponse helmDelete(
-      Map<String, String> config, String universePrefix, String namespace) {
-    List<String> commandList = ImmutableList.of("helm", "delete", universePrefix, "-n", namespace);
-    return execCommand(config, commandList);
+  /* helm helpers */
+
+  private void processHelmResponse(
+      Map<String, String> config, String universePrefix, String namespace, ShellResponse response) {
+    if (response != null && response.code != ShellResponse.ERROR_CODE_SUCCESS) {
+      String message;
+      List<Pod> pods = getPodInfos(config, universePrefix, namespace);
+      for (Pod pod : pods) {
+        String podStatus = pod.getStatus().getPhase();
+        if (!podStatus.equals("Running")) {
+          for (PodCondition condition : pod.getStatus().getConditions()) {
+            if (condition.getStatus().equals("False")) {
+              message = condition.getMessage();
+              throw new RuntimeException(message);
+            }
+          }
+        }
+      }
+      if (pods.isEmpty()) {
+        message = "No pods even scheduled. Previous step(s) incomplete";
+      } else {
+        message = "Pods are ready. Services still not running";
+      }
+      throw new RuntimeException(message);
+    }
   }
 
-  public void deleteStorage(Map<String, String> config, String universePrefix, String namespace) {
-    // Delete Master Volumes
-    List<String> masterCommandList =
-        ImmutableList.of(
-            "kubectl",
-            "delete",
-            "pvc",
-            "--namespace",
-            namespace,
-            "-l",
-            "app=yb-master,release=" + universePrefix);
-    execCommand(config, masterCommandList);
-    // Delete TServer Volumes
-    List<String> tserverCommandList =
-        ImmutableList.of(
-            "kubectl",
-            "delete",
-            "pvc",
-            "--namespace",
-            namespace,
-            "-l",
-            "app=yb-tserver,release=" + universePrefix);
-    execCommand(config, tserverCommandList);
-    // TODO: check the execCommand outputs.
-  }
-
-  public void deleteNamespace(Map<String, String> config, String namespace) {
-    // Delete Namespace
-    List<String> masterCommandList = ImmutableList.of("kubectl", "delete", "namespace", namespace);
-    execCommand(config, masterCommandList);
+  public String getTimeout() {
+    Long timeout = appConfig.getLong("yb.helm.timeout_secs");
+    if (timeout == null || timeout == 0) {
+      timeout = DEFAULT_TIMEOUT_SECS;
+    }
+    return String.valueOf(timeout) + "s";
   }
 
   private ShellResponse execCommand(Map<String, String> config, List<String> command) {
@@ -297,4 +172,57 @@ public class KubernetesManager {
 
     return helmPackagePath;
   }
+
+  /* kubernetes helpers */
+
+  protected static String getIp(Service service) {
+    if (service.getStatus() != null
+        && service.getStatus().getLoadBalancer() != null
+        && service.getStatus().getLoadBalancer().getIngress() != null
+        && !service.getStatus().getLoadBalancer().getIngress().isEmpty()) {
+      LoadBalancerIngress ingress = service.getStatus().getLoadBalancer().getIngress().get(0);
+      if (ingress.getHostname() != null) {
+        return ingress.getHostname();
+      }
+      if (ingress.getIp() != null) {
+        return ingress.getIp();
+      }
+    }
+
+    if (service.getSpec() != null && service.getSpec().getClusterIP() != null) {
+      return service.getSpec().getClusterIP();
+    }
+    return null;
+  }
+
+  /* kubernetes interface */
+
+  public abstract void createNamespace(Map<String, String> config, String universePrefix);
+
+  public abstract void applySecret(Map<String, String> config, String namespace, String pullSecret);
+
+  public abstract List<Pod> getPodInfos(
+      Map<String, String> config, String universePrefix, String namespace);
+
+  public abstract List<Service> getServices(
+      Map<String, String> config, String universePrefix, String namespace);
+
+  public abstract PodStatus getPodStatus(
+      Map<String, String> config, String namespace, String podName);
+
+  /** @return the first that exists of loadBalancer.hostname, loadBalancer.ip, clusterIp */
+  public abstract String getPreferredServiceIP(
+      Map<String, String> config, String namespace, boolean isMaster);
+
+  public abstract List<Node> getNodeInfos(Map<String, String> config);
+
+  public abstract Secret getSecret(
+      Map<String, String> config, String secretName, @Nullable String namespace);
+
+  public abstract void updateNumNodes(Map<String, String> config, String namespace, int numNodes);
+
+  public abstract void deleteStorage(
+      Map<String, String> config, String universePrefix, String namespace);
+
+  public abstract void deleteNamespace(Map<String, String> config, String namespace);
 }

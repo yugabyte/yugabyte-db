@@ -16,7 +16,7 @@
 #ifndef YB_CONSENSUS_CONSENSUS_ERROR_H
 #define YB_CONSENSUS_CONSENSUS_ERROR_H
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
 #include "yb/util/status_ec.h"
 
 namespace yb {

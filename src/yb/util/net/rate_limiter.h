@@ -82,6 +82,10 @@ class RateLimiter {
   }
 #endif
 
+  uint64_t time_slot_ms() const {
+    return time_slot_ms_;
+  }
+
  private:
   void UpdateRate();
   void UpdateTimeSlotSizeAndMaybeSleep(uint64_t data_size, MonoDelta elapsed);
@@ -115,16 +119,15 @@ class RateLimiter {
   uint64_t min_time_slot_ = 10;
 
   // The maximum size that we will ever use for time_slot_ms_.
-  uint64_t max_time_slot_ = 100;
+  uint64_t max_time_slot_ = 500;
 
   // Maximum transmission rate in bytes/sec. Set by calling target_rate_updater_().
   uint64_t target_rate_ = 0;
   std::vector<uint64_t> transmissions_rates_;
 
   std::function<uint64_t()> target_rate_updater_;
-
-  FRIEND_TEST(RateLimiter, TestRate);
 };
+
 } // namespace yb
 
 #endif // YB_UTIL_NET_RATE_LIMITER_H

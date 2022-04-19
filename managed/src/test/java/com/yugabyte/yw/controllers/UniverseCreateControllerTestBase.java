@@ -83,7 +83,7 @@ import play.mvc.Result;
 @RunWith(JUnitParamsRunner.class)
 public abstract class UniverseCreateControllerTestBase extends UniverseControllerTestBase {
 
-  static String TMP_CHART_PATH = "/tmp/yugaware_tests/UniverseUiOnlyControllerTest/charts";
+  private String TMP_CHART_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/charts";
 
   @Before
   public void setUp() {
@@ -145,7 +145,10 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
     Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
-    assertBadRequest(result, "Invalid universe name format, valid characters [a-zA-Z0-9-].");
+    assertBadRequest(
+        result,
+        "Invalid universe name format, regex used for validation is "
+            + "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$.");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -561,8 +564,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     when(mockReleaseManager.getReleaseByVersion("1.0.0"))
         .thenReturn(
             ReleaseManager.ReleaseMetadata.create("1.0.0")
-                .withChartPath(TMP_CHART_PATH + "/yugabyte-1.0.0-helm.tar.gz"));
-    createTempFile(TMP_CHART_PATH, "yugabyte-1.0.0-helm.tar.gz", "Sample helm chart data");
+                .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-1.0.0-helm.tar.gz"));
+    createTempFile(TMP_CHART_PATH, "ucctb_yugabyte-1.0.0-helm.tar.gz", "Sample helm chart data");
 
     Provider p;
     switch (cloudType) {
@@ -849,8 +852,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         PublicCloudConstants.StorageType.UltraSSD_LRS,
         1,
         100,
-        null,
-        null,
+        3000,
+        125,
         null,
         null
       },
@@ -1045,6 +1048,28 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         null,
         null,
         "Number of volumes field is mandatory"
+      },
+      {
+        Common.CloudType.azu,
+        "c3.xlarge",
+        PublicCloudConstants.StorageType.UltraSSD_LRS,
+        1,
+        100,
+        null,
+        125,
+        null,
+        "Disk IOPS is mandatory for UltraSSD_LRS storage"
+      },
+      {
+        Common.CloudType.azu,
+        "c3.xlarge",
+        PublicCloudConstants.StorageType.UltraSSD_LRS,
+        1,
+        100,
+        3000,
+        null,
+        null,
+        "Disk throughput is mandatory for UltraSSD_LRS storage"
       },
       {
         Common.CloudType.azu,

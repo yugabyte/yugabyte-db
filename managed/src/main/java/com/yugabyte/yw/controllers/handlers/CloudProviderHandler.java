@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
+import static com.yugabyte.yw.commissioner.Common.CloudType.gcp;
 import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
@@ -17,9 +19,8 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.base.Strings;
 import com.google.common.collect.HashMultimap;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
 import com.google.inject.Inject;
@@ -36,10 +37,9 @@ import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.EditProviderRequest;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -54,12 +54,19 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.PersistenceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Secret;
 import play.Configuration;
 import play.Environment;
 import play.libs.Json;
@@ -86,7 +93,7 @@ public class CloudProviderHandler {
   @Inject private DnsManager dnsManager;
   @Inject private Environment environment;
   @Inject private CloudAPI.Factory cloudAPIFactory;
-  @Inject private KubernetesManager kubernetesManager;
+  @Inject private KubernetesManagerFactory kubernetesManagerFactory;
   @Inject private Configuration appConfig;
   @Inject private Config config;
   @Inject private CloudQueryHelper queryHelper;
@@ -105,7 +112,8 @@ public class CloudProviderHandler {
       if (!accessKey.getKeyInfo().provisionInstanceScript.isEmpty()) {
         new File(accessKey.getKeyInfo().provisionInstanceScript).delete();
       }
-      accessManager.deleteKeyByProvider(provider, accessKey.getKeyCode());
+      accessManager.deleteKeyByProvider(
+          provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
       accessKey.delete();
     }
     NodeInstance.deleteByProvider(provider.uuid);
@@ -219,7 +227,7 @@ public class CloudProviderHandler {
         boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, false);
         if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
           // Use in-cluster ServiceAccount credentials
-          az.setConfig(ImmutableMap.of("KUBECONFIG", ""));
+          az.updateConfig(ImmutableMap.of("KUBECONFIG", ""));
           az.save();
         }
       }
@@ -287,7 +295,7 @@ public class CloudProviderHandler {
         boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, false);
         if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
           // Use in-cluster ServiceAccount credentials
-          az.setConfig(ImmutableMap.of("KUBECONFIG", ""));
+          az.updateConfig(ImmutableMap.of("KUBECONFIG", ""));
           az.save();
         }
       }
@@ -438,7 +446,6 @@ public class CloudProviderHandler {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "No region and zone information found.");
       }
-
       String storageClass = appConfig.getString("yb.kubernetes.storageClass");
       String pullSecretName = appConfig.getString("yb.kubernetes.pullSecretName");
       if (storageClass == null || pullSecretName == null) {
@@ -481,38 +488,40 @@ public class CloudProviderHandler {
 
   // topology/failure-domain labels from the Kubernetes nodes.
   private Multimap<String, String> computeKubernetesRegionToZoneInfo() {
-    JsonNode nodeInfos = kubernetesManager.getNodeInfos(null);
+    List<Node> nodes = kubernetesManagerFactory.getManager().getNodeInfos(null);
     Multimap<String, String> regionToAZ = HashMultimap.create();
-    for (JsonNode nodeInfo : nodeInfos.path("items")) {
-      JsonNode nodeLabels = nodeInfo.path("metadata").path("labels");
-      // failure-domain.beta.k8s.io is deprecated as of 1.17
-      String region = nodeLabels.path("topology.kubernetes.io/region").asText();
-      if (region.isEmpty()) {
-        region = nodeLabels.path("failure-domain.beta.kubernetes.io/region").asText();
-      }
-      String zone = nodeLabels.path("topology.kubernetes.io/zone").asText();
-      zone =
-          zone.isEmpty()
-              ? nodeLabels.path("failure-domain.beta.kubernetes.io/zone").asText()
-              : zone;
-      if (region.isEmpty() || zone.isEmpty()) {
-        LOG.debug(
-            "Value of the zone or region label is empty for "
-                + nodeInfo.path("metadata").path("name").asText()
-                + ", skipping.");
-        continue;
-      }
-      regionToAZ.put(region, zone);
-    }
+    nodes.forEach(
+        node -> {
+          Map<String, String> labels = node.getMetadata().getLabels();
+          if (labels == null) {
+            return;
+          }
+          String region = labels.get("topology.kubernetes.io/region");
+          if (region == null) {
+            region = labels.get("failure-domain.beta.kubernetes.io/region");
+          }
+          String zone = labels.get("topology.kubernetes.io/zone");
+          if (zone == null) {
+            zone = labels.get("failure-domain.beta.kubernetes.io/zone");
+          }
+          if (region == null || zone == null) {
+            LOG.debug(
+                "Value of the zone or region label is empty for "
+                    + node.getMetadata().getName()
+                    + ", skipping.");
+            return;
+          }
+          regionToAZ.put(region, zone);
+        });
     return regionToAZ;
   } // Fetches the secret secretName from current namespace, removes
 
   // extra metadata and returns the secret as JSON string. Returns
   // null if the secret is not present.
   private String getKubernetesPullSecretContent(String secretName) {
-    JsonNode pullSecretJson;
+    Secret pullSecret;
     try {
-      pullSecretJson = kubernetesManager.getSecret(null, secretName, null);
+      pullSecret = kubernetesManagerFactory.getManager().getSecret(null, secretName, null);
     } catch (RuntimeException e) {
       if (e.getMessage().contains("Error from server (NotFound): secrets")) {
         LOG.debug(
@@ -521,22 +530,24 @@ public class CloudProviderHandler {
       }
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Unable to fetch the pull secret.");
     }
-    JsonNode secretMetadata = pullSecretJson.get("metadata");
-    if (secretMetadata == null) {
+    if (pullSecret.getMetadata() == null) {
       LOG.error(
           "metadata of the pull secret " + secretName + " is missing. This should never happen.");
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Error while fetching the pull secret.");
     }
-    ((ObjectNode) secretMetadata)
-        .remove(
-            ImmutableList.of(
-                "namespace", "uid", "selfLink", "creationTimestamp", "resourceVersion"));
-    JsonNode secretAnnotations = secretMetadata.get("annotations");
-    if (secretAnnotations != null) {
-      ((ObjectNode) secretAnnotations).remove("kubectl.kubernetes.io/last-applied-configuration");
+
+    ObjectMeta metadata = pullSecret.getMetadata();
+    metadata.setNamespace(null);
+    metadata.setUid(null);
+    metadata.setSelfLink(null);
+    metadata.setCreationTimestamp(null);
+    metadata.setResourceVersion(null);
+
+    if (metadata.getAnnotations() != null) {
+      metadata.getAnnotations().remove("kubectl.kubernetes.io/last-applied-configuration");
     }
-    return pullSecretJson.toString();
+    return pullSecret.toString();
   }
 
   public Provider setupNewDockerProvider(Customer customer) {
@@ -600,24 +611,141 @@ public class CloudProviderHandler {
     return taskUUID;
   }
 
-  public void editProvider(Provider provider, EditProviderRequest editProviderReq)
-      throws IOException {
-    if (Provider.HostedZoneEnabledProviders.contains(provider.code)) {
-      String hostedZoneId = editProviderReq.hostedZoneId;
-      if (hostedZoneId == null || hostedZoneId.length() == 0) {
-        throw new PlatformServiceException(BAD_REQUEST, "Required field hosted zone id");
+  private Set<Region> checkIfRegionsToAdd(Provider editProviderReq, Provider provider) {
+    Set<Region> regionsToAdd = new HashSet<>();
+    if (provider.getCloudCode().canAddRegions()) {
+      if (editProviderReq.regions != null && !editProviderReq.regions.isEmpty()) {
+        Set<String> newRegionCodes =
+            editProviderReq.regions.stream().map(region -> region.code).collect(Collectors.toSet());
+        Set<String> existingRegionCodes =
+            provider.regions.stream().map(region -> region.code).collect(Collectors.toSet());
+        newRegionCodes.removeAll(existingRegionCodes);
+        if (!newRegionCodes.isEmpty()) {
+          regionsToAdd =
+              editProviderReq
+                  .regions
+                  .stream()
+                  .filter(region -> newRegionCodes.contains(region.code))
+                  .collect(Collectors.toSet());
+        }
       }
-      validateAndUpdateHostedZone(provider, hostedZoneId);
-    } else if (provider.code.equals(kubernetes.toString())) {
-      if (editProviderReq.config != null) {
-        updateKubeConfig(provider, editProviderReq.config, true);
+      // Perform validation for necessary fields
+      if (provider.getCloudCode() == gcp) {
+        if (editProviderReq.destVpcId == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Required field dest vpc id for GCP");
+        }
+      }
+      if (!regionsToAdd.isEmpty()) {
+        // Verify access key exists. If no value provided, we use the default keycode.
+        String accessKeyCode;
+        if (Strings.isNullOrEmpty(editProviderReq.keyPairName)) {
+          LOG.debug("Access key not specified, using default key code...");
+          accessKeyCode = AccessKey.getDefaultKeyCode(provider);
+        } else {
+          accessKeyCode = editProviderReq.keyPairName;
+        }
+        AccessKey.getOrBadRequest(provider.uuid, accessKeyCode);
+
+        regionsToAdd.forEach(
+            region -> {
+              if (region.getVnetName() == null && provider.getCloudCode() == aws) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST, "Required field vnet name (VPC ID) for region: " + region.code);
+              }
+              if (region.zones == null || region.zones.isEmpty()) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST, "Zone info needs to be specified for region: " + region.code);
+              }
+              region.zones.forEach(
+                  zone -> {
+                    if (zone.subnet == null) {
+                      throw new PlatformServiceException(
+                          BAD_REQUEST, "Required field subnet for zone: " + zone.code);
+                    }
+                  });
+            });
+      }
+    }
+    return regionsToAdd;
+  }
+
+  public UUID editProvider(Customer customer, Provider provider, Provider editProviderReq)
+      throws IOException {
+    // Check if region edit mode.
+    Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
+    boolean updatedHostedZone = maybeUpdateHostedZone(editProviderReq, provider, regionsToAdd);
+    boolean updatedKubeConfig = maybeUpdateKubeConfig(editProviderReq, provider);
+    UUID taskUUID = maybeAddRegions(customer, editProviderReq, provider, regionsToAdd);
+    if (!updatedHostedZone && !updatedKubeConfig && taskUUID == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "No changes to be made for provider type: " + provider.code);
+    }
+    return taskUUID;
+  }
+
+  private UUID maybeAddRegions(
+      Customer customer, Provider editProviderReq, Provider provider, Set<Region> regionsToAdd) {
+    if (!regionsToAdd.isEmpty()) {
+      // Validate regions to add. We only support providing custom VPCs for now.
+      // So the user must have entered the VPC Info for the regions, as well as
+      // the zone info.
+      CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
+      taskParams.keyPairName =
+          Strings.isNullOrEmpty(editProviderReq.keyPairName)
+              ? AccessKey.getDefaultKeyCode(provider)
+              : editProviderReq.keyPairName;
+      taskParams.overrideKeyValidate = editProviderReq.overrideKeyValidate;
+      taskParams.providerUUID = provider.uuid;
+      taskParams.destVpcId = editProviderReq.destVpcId;
+      taskParams.perRegionMetadata =
+          regionsToAdd
+              .stream()
+              .collect(
+                  Collectors.toMap(
+                      region -> region.name, CloudBootstrap.Params.PerRegionMetadata::fromRegion));
+      // Only adding new regions in the bootstrap task.
+      taskParams.regionAddOnly = true;
+      UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
+      CustomerTask.create(
+          customer,
+          provider.uuid,
+          taskUUID,
+          CustomerTask.TargetType.Provider,
+          CustomerTask.TaskType.Update,
+          provider.name);
+      return taskUUID;
+    }
+    return null;
+  }
+
+  private boolean maybeUpdateKubeConfig(Provider editProviderReq, Provider provider)
+      throws IOException {
+    if (provider.getCloudCode() == CloudType.kubernetes) {
+      if (editProviderReq.getUnmaskedConfig() != null) {
+        updateKubeConfig(provider, editProviderReq.getUnmaskedConfig(), true);
+        return true;
       } else {
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Could not parse config");
       }
-    } else {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Expected aws/k8s, but found providers with code: " + provider.code);
     }
+    return false;
+  }
+
+  private boolean maybeUpdateHostedZone(
+      Provider editProviderReq, Provider provider, Set<Region> regionsToAdd) {
+    if (provider.getCloudCode().isHostedZoneEnabled()) {
+      String hostedZoneId = editProviderReq.hostedZoneId;
+      if (Strings.isNullOrEmpty(hostedZoneId)) {
+        // TODO: Remove this exception
+        if (regionsToAdd.isEmpty()) {
+          throw new PlatformServiceException(BAD_REQUEST, "Required field hosted zone id");
+        }
+        return false;
+      }
+      validateAndUpdateHostedZone(provider, hostedZoneId);
+      return true;
+    }
+    return false;
   }
 
   private void validateAndUpdateHostedZone(Provider provider, String hostedZoneId) {

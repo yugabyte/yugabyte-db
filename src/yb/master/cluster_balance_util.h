@@ -21,9 +21,9 @@
 #include <unordered_set>
 #include <vector>
 
-#include "yb/common/common.pb.h"
+#include "yb/gutil/casts.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/ts_descriptor.h"
 
 DECLARE_int32(leader_balance_threshold);
@@ -126,6 +126,7 @@ struct CBTabletMetadata {
 };
 
 using AffinitizedZonesSet = std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to>;
+using PathToTablets = std::unordered_map<std::string, std::set<TabletId>>;
 
 struct CBTabletServerMetadata {
   // The TSDescriptor for this tablet server.
@@ -133,10 +134,17 @@ struct CBTabletServerMetadata {
 
   // Map from path to the set of tablet ids that this tablet server is currently running
   // on the path.
-  std::unordered_map<std::string, std::set<TabletId>> path_to_tablets;
+  PathToTablets path_to_tablets;
 
-  // Set of paths sorted ascending by used space.
-  vector<std::string> sorted_path_load;
+  // Map from path to the number of replicas that this tablet server is currently starting
+  // on the path.
+  std::unordered_map<std::string, int> path_to_starting_tablets_count;
+
+  // Set of paths sorted descending by tablets count.
+  vector<std::string> sorted_path_load_by_tablets_count;
+
+  // Set of paths sorted ascending by tablet leaders count.
+  vector<std::string> sorted_path_load_by_leader_count;
 
   // The set of tablet ids that this tablet server is currently running.
   std::set<TabletId> running_tablets;
@@ -146,6 +154,10 @@ struct CBTabletServerMetadata {
 
   // The set of tablet leader ids that this tablet server is currently running.
   std::set<TabletId> leaders;
+
+  // Map from path to the set of tablet leader ids that this tablet server is currently running
+  // on the path.
+  PathToTablets path_to_leaders;
 
   // The set of tablet ids that this tablet server disabled (ex. after split).
   std::set<TabletId> disabled_by_ts_tablets;
@@ -276,10 +288,10 @@ class PerTableLoadState {
   };
 
   // Get the load for a certain TS.
-  int GetLoad(const TabletServerId& ts_uuid) const;
+  size_t GetLoad(const TabletServerId& ts_uuid) const;
 
   // Get the load for a certain TS.
-  int GetLeaderLoad(const TabletServerId& ts_uuid) const;
+  size_t GetLeaderLoad(const TabletServerId& ts_uuid) const;
 
   void SetBlacklist(const BlacklistPB& blacklist) { blacklist_ = blacklist; }
   void SetLeaderBlacklist(const BlacklistPB& leader_blacklist) {
@@ -318,40 +330,43 @@ class PerTableLoadState {
 
   void SortLoad();
 
-  void SortTabletServerDriveLoad();
+  void SortDriveLoad();
 
-  CHECKED_STATUS MoveLeader(
-    const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts = "");
+  CHECKED_STATUS MoveLeader(const TabletId& tablet_id,
+                            const TabletServerId& from_ts,
+                            const TabletServerId& to_ts = "",
+                            const TabletServerId& to_ts_path = "");
 
   void SortLeaderLoad();
+
+  void SortDriveLeaderLoad();
 
   void LogSortedLeaderLoad();
 
   inline bool IsLeaderLoadBelowThreshold(const TabletServerId& ts_uuid) {
     return ((leader_balance_threshold_ > 0) &&
-            (GetLeaderLoad(ts_uuid) <= leader_balance_threshold_));
+            (GetLeaderLoad(ts_uuid) <= implicit_cast<size_t>(leader_balance_threshold_)));
   }
 
   void AdjustLeaderBalanceThreshold();
 
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations(TabletInfo* tablet);
 
-  CHECKED_STATUS AddRunningTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
+  CHECKED_STATUS AddRunningTablet(const TabletId& tablet_id,
+                                  const TabletServerId& ts_uuid,
+                                  const std::string& path);
 
   CHECKED_STATUS RemoveRunningTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   CHECKED_STATUS AddStartingTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
-  CHECKED_STATUS AddLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
+  CHECKED_STATUS AddLeaderTablet(const TabletId& tablet_id,
+                                 const TabletServerId& ts_uuid,
+                                 const TabletServerId& ts_path);
 
   CHECKED_STATUS RemoveLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   CHECKED_STATUS AddDisabledByTSTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
-
-  CHECKED_STATUS AddTabletOnTSPath(
-      const TabletId& tablet_id, const std::string& path, const TabletServerId& ts_uuid);
-
-  CHECKED_STATUS RemoveTabletOnTSPath(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   // PerTableLoadState member fields
 

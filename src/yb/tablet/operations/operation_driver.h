@@ -38,6 +38,8 @@
 
 #include <boost/atomic.hpp>
 
+#include "yb/common/common_types.pb.h"
+
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_round.h"
 
@@ -115,7 +117,6 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // of any of the objects pointed to in the constructor's arguments.
   OperationDriver(OperationTracker* operation_tracker,
                   consensus::Consensus* consensus,
-                  log::Log* log,
                   Preparer* preparer,
                   TableType table_type_);
 
@@ -139,7 +140,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // multiple stages by multiple executors it might not be possible to stop
   // the operation immediately, but this will make sure it is aborted
   // at the next synchronization point.
-  void Abort(const Status& status);
+  void TEST_Abort(const Status& status);
 
   // Callback from Consensus when replication is complete, and thus the operation
   // is considered "committed" from the consensus perspective (ie it will be
@@ -247,7 +248,6 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   OperationTracker* const operation_tracker_;
   consensus::Consensus* const consensus_;
-  log::Log* const log_;
   Preparer* const preparer_;
 
   // Lock that synchronizes access to the operation's state.

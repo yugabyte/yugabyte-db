@@ -50,9 +50,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.client.TestUtils;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.YsqlSnapshotVersion;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
+
+import com.google.common.collect.ImmutableMap;
 
 /**
  * For now, this test covers creation of system and shared system relations that should be created
@@ -86,6 +89,23 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   /** Tests are performed on a fresh database. */
   private final String customDbName = SHARED_ENTITY_PREFIX + "sys_tables_db";
 
+  private static final int MASTER_REFRESH_TABLESPACE_INFO_SECS = 2;
+  private static final int MASTER_LOAD_BALANCER_WAIT_TIME_MS = 60 * 1000;
+
+  private static final List<Map<String, String>> perTserverZonePlacementFlags = Arrays.asList(
+      ImmutableMap.of(
+          "placement_cloud", "cloud1",
+          "placement_region", "region1",
+          "placement_zone", "zone1"),
+      ImmutableMap.of(
+          "placement_cloud", "cloud2",
+          "placement_region", "region2",
+          "placement_zone", "zone2"),
+      ImmutableMap.of(
+          "placement_cloud", "cloud3",
+          "placement_region", "region3",
+          "placement_zone", "zone3"));
+
   /** Since shared relations aren't cleared between tests, we can't reuse names. */
   private String sharedRelName;
 
@@ -105,6 +125,15 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
   @Rule
   public TestName name = new TestName();
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    builder.addMasterFlag("ysql_tablespace_info_refresh_secs",
+                          Integer.toString(MASTER_REFRESH_TABLESPACE_INFO_SECS));
+
+    builder.perTServerFlags(perTserverZonePlacementFlags);
+  }
 
   @Before
   public void beforeTestYsqlUpgrade() throws Exception {
@@ -799,6 +828,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         getMaxSysGeneratedOid(postSnapshotCustom));
   }
 
+  /** Test that migrations run without error in a geo-partitioned setup. */
+  @Test
+  public void migrationInGeoPartitionedSetup() throws Exception {
+    setupGeoPartitioning();
+    runMigrations();
+  }
+
   /** Invalid stuff which doesn't belong to other test cases. */
   @Test
   public void invalidUpgradeActions() throws Exception {
@@ -1220,23 +1256,34 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       assertEquals(
           "Expected \"fresh\" migrations table to have just one row, got " + reinitdbMigrations,
           1, reinitdbMigrations.size());
-      final int latestVersion = reinitdbMigrations.get(0).getInt(0);
-      assertRow(new Row(latestVersion, 0, "<baseline>", null), reinitdbMigrations.get(0));
+      final int latestMajorVersion = reinitdbMigrations.get(0).getInt(0);
+      final int latestMinorVersion = reinitdbMigrations.get(0).getInt(1);
+      final int totalMigrations = latestMajorVersion + latestMinorVersion;
+      assertRow(new Row(latestMajorVersion, latestMinorVersion, "<baseline>", null),
+                reinitdbMigrations.get(0));
 
       // Applied migrations table has a baseline row
       // followed by rows for all migrations (up to the latest).
       List<Row> appliedMigrations = migratedSnapshot.catalog.get(MIGRATIONS_TABLE);
       assertEquals(
-          "Expected applied migrations table to have exactly " + (latestVersion + 1) + " rows, got "
-              + appliedMigrations,
-          latestVersion + 1, appliedMigrations.size());
+          "Expected applied migrations table to have exactly "
+              + (totalMigrations + 1) + " rows, got " + appliedMigrations,
+          totalMigrations + 1, appliedMigrations.size());
       assertRow(new Row(0, 0, "<baseline>", null), appliedMigrations.get(0));
-      for (int ver = 1; ver <= latestVersion; ++ver) {
+      for (int ver = 1; ver <= totalMigrations; ++ver) {
         // Rows should be like [1, 0, 'V1__...', <recent timestamp in ms>]
         Row migrationRow = appliedMigrations.get(ver);
-        assertEquals(ver, migrationRow.getInt(0).intValue());
-        assertEquals(0, migrationRow.getInt(1).intValue());
-        assertTrue(migrationRow.getString(2).startsWith("V" + ver + "__"));
+        final int majorVersion = Math.min(ver, latestMajorVersion);
+        final int minorVersion = ver - majorVersion;
+        assertEquals(majorVersion, migrationRow.getInt(0).intValue());
+        assertEquals(minorVersion, migrationRow.getInt(1).intValue());
+        String migrationNamePrefix;
+        if (minorVersion > 0) {
+          migrationNamePrefix = "V" + majorVersion + "." + minorVersion + "__";
+        } else {
+          migrationNamePrefix = "V" + majorVersion + "__";
+        }
+        assertTrue(migrationRow.getString(2).startsWith(migrationNamePrefix));
         assertTrue("Expected migration timestamp to be at most 10 mins old!",
             migrationRow.getLong(3) != null &&
                 System.currentTimeMillis() - migrationRow.getLong(3) < 10 * 60 * 1000);
@@ -1479,6 +1526,39 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     if (!joined.toLowerCase().contains("successfully upgraded")) {
       throw new IllegalStateException("Unexpected migrations result: " + joined);
     }
+  }
+
+  private void setupGeoPartitioning() throws Exception {
+    // Setup tablespaces and tables to emulate a geo-partitioned setup.
+    try (Statement stmt = connection.createStatement()) {
+      for (Map<String, String> tserverPlacement : perTserverZonePlacementFlags) {
+        String cloud = tserverPlacement.get("placement_cloud");
+        String region = tserverPlacement.get("placement_region");
+        String zone = tserverPlacement.get("placement_zone");
+        String suffix = cloud + "_" + region + "_" + zone;
+
+        stmt.execute(
+            "CREATE TABLESPACE tablespace_" + suffix + " WITH (replica_placement=" +
+            "'{\"num_replicas\": 1, \"placement_blocks\":" +
+            "[{\"cloud\":\"" + cloud + "\",\"region\":\"" + region + "\",\"zone\":\"" + zone +
+            "\",\"min_num_replicas\":1}]}')");
+        stmt.execute("CREATE TABLE table_" + suffix + " (a int) TABLESPACE tablespace_" + suffix);
+      }
+    }
+
+    // Wait for tablespace info to be refreshed in load balancer.
+    Thread.sleep(MASTER_REFRESH_TABLESPACE_INFO_SECS); // TODO(esheng) 2x?
+
+    int expectedTServers = miniCluster.getTabletServers().size() + 1;
+    miniCluster.startTServer(perTserverZonePlacementFlags.get(1));
+    miniCluster.waitForTabletServers(expectedTServers);
+
+    // Wait for loadbalancer to run.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
+      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    // Wait for load balancer to become idle.
+    assertTrue(miniCluster.getClient().waitForLoadBalance(Long.MAX_VALUE, expectedTServers));
   }
 
   @FunctionalInterface

@@ -519,12 +519,13 @@ set yb_enable_create_with_table_oid=1;
 create table with_invalid_table_oid (a int) with (table_oid = 0);
 create table with_invalid_table_oid (a int) with (table_oid = -1);
 create table with_invalid_table_oid (a int) with (table_oid = 123);
+create table with_invalid_table_oid (a int) with (table_oid = 4294967296);
 create table with_invalid_table_oid (a int) with (table_oid = 'test');
 
-create table with_table_oid (a int) with (table_oid = 1234567);
+create table with_table_oid (a int) with (table_oid = 4294967295);
 select relname, oid from pg_class where relname = 'with_table_oid';
 
-create table with_table_oid_duplicate (a int) with (table_oid = 1234567);
+create table with_table_oid_duplicate (a int) with (table_oid = 4294967295);
 
 -- Test temp tables with (table_oid = x)
 -- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
@@ -548,3 +549,15 @@ RESET yb_enable_create_with_table_oid;
 BEGIN;
 CREATE TABLE tab_with_unique (i int, UNIQUE (i));
 COMMIT;
+
+-- Test temp table/view are automatically dropped.
+\c yugabyte
+create temporary table temp_tab(a int);
+create temporary view temp_view as select * from temp_tab;
+select count(*) from pg_class where relname = 'temp_tab';
+select count(*) from pg_class where relname = 'temp_view';
+\c yugabyte
+-- Wait some time for the last session to finish dropping temp table/view automatically.
+select pg_sleep(5);
+select count(*) from pg_class where relname = 'temp_tab';
+select count(*) from pg_class where relname = 'temp_view';

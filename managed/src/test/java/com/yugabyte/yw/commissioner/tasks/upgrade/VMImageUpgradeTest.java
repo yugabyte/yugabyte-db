@@ -77,9 +77,11 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.ReplaceRootVolume,
           TaskType.AnsibleSetupServer,
           TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
@@ -122,7 +124,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             node.isMaster = true;
             node.isTserver = true;
             node.cloudInfo = new CloudSpecificInfo();
-            node.cloudInfo.private_ip = "1.2.3." + idx;
+            node.cloudInfo.private_ip = "10.0.0." + idx;
             node.cloudInfo.az = az4.code;
             node.azUuid = az4.uuid;
             universeDetails.nodeDetailsSet.add(node);
@@ -180,6 +182,17 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     assertTaskType(createRootVolumeTasks, TaskType.CreateRootVolumes);
     assertEquals(expectedRootVolumeCreationTasks, createRootVolumeTasks.size());
 
+    /*
+     * Leader blacklisting may add ModifyBlackList task to subTasks.
+     * Task details for ModifyBlacklist task do not contain the required
+     * keys being asserted here. So, remove task types of ModifyBlackList
+     * from subTasks before asserting for required keys.
+     */
+    createRootVolumeTasks =
+        createRootVolumeTasks
+            .stream()
+            .filter(t -> t.getTaskType() != TaskType.ModifyBlackList)
+            .collect(Collectors.toList());
     createRootVolumeTasks.forEach(
         task -> {
           JsonNode details = task.getTaskDetails();

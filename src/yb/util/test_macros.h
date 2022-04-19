@@ -41,6 +41,7 @@
 #include <gtest/gtest.h> // For SUCCEED/FAIL
 
 #include "yb/util/tostring.h"
+#include "yb/gutil/stl_util.h"  // For VectorToSet
 
 namespace yb {
 namespace util {
@@ -182,6 +183,24 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
   } \
   } while (0)
 
+inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs) {
+  size_t min_len = std::min(lhs.size(), rhs.size());
+  size_t i = 0;
+  for (; i != min_len; ++i) {
+    if (lhs[i] != rhs[i]) {
+      break;
+    }
+  }
+  return lhs.substr(i, std::min<size_t>(lhs.size() - i, 32)) + " vs " +
+         rhs.substr(i, std::min<size_t>(rhs.size() - i, 32));
+}
+
+#define ASSERT_STR_EQ(lhs, rhs) do { \
+    std::string _lhs = (lhs); \
+    std::string _rhs = (rhs); \
+    ASSERT_EQ(lhs, rhs) << "First diff: " << FindFirstDiff(lhs, rhs); \
+  } while (0)
+
 #define ASSERT_FILE_EXISTS(env, path) do { \
   std::string _s = (path); \
   ASSERT_TRUE(env->FileExists(_s)) \
@@ -242,8 +261,8 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
   do { \
     auto&& expected_vector_computed = (expected_vector); \
     auto&& actual_vector_computed = (actual_vector); \
-    auto expected_set = VectorToSet(expected_vector_computed); \
-    auto actual_set = VectorToSet(actual_vector_computed); \
+    auto expected_set = ::yb::VectorToSet(expected_vector_computed); \
+    auto actual_set = ::yb::VectorToSet(actual_vector_computed); \
     GTEST_ASSERT_( \
         ::testing::internal::EqHelper<GTEST_IS_NULL_LITERAL_(expected_vector)>::Compare( \
             BOOST_PP_STRINGIZE(expected_vector), \

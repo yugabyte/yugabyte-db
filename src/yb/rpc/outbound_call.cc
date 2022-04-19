@@ -58,6 +58,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
@@ -147,9 +148,9 @@ void InvokeCallbackTask::Done(const Status& status) {
 OutboundCall::OutboundCall(const RemoteMethod* remote_method,
                            const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                            std::shared_ptr<const OutboundMethodMetrics> method_metrics,
-                           google::protobuf::Message* response_storage,
+                           AnyMessagePtr response_storage,
                            RpcController* controller,
-                           RpcMetrics* rpc_metrics,
+                           std::shared_ptr<RpcMetrics> rpc_metrics,
                            ResponseCallback callback,
                            ThreadPool* callback_thread_pool)
     : hostname_(&kEmptyString),
@@ -162,7 +163,7 @@ OutboundCall::OutboundCall(const RemoteMethod* remote_method,
       callback_(std::move(callback)),
       callback_thread_pool_(callback_thread_pool),
       outbound_call_metrics_(outbound_call_metrics),
-      rpc_metrics_(rpc_metrics),
+      rpc_metrics_(std::move(rpc_metrics)),
       method_metrics_(std::move(method_metrics)) {
   TRACE_TO_WITH_TIME(trace_, start_, "$0.", remote_method_->ToString());
 
@@ -192,15 +193,10 @@ OutboundCall::~OutboundCall() {
 }
 
 void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
-  if (status.ok()) {
-    // Even when call is already finished (timed out) we should notify connection that it was sent
-    // because it should expect response with appropriate id.
-    conn->CallSent(shared_from(this));
-  }
-
   if (IsFinished()) {
     LOG_IF_WITH_PREFIX(DFATAL, !IsTimedOut())
-        << "Transferred call is in wrong state: " << state_.load(std::memory_order_acquire);
+        << "Transferred call is in wrong state: " << state_.load(std::memory_order_acquire)
+        << ", status: " << this->status();
   } else if (status.ok()) {
     SetSent();
   } else {
@@ -214,21 +210,9 @@ void OutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* 
   buffer_consumption_ = ScopedTrackedConsumption();
 }
 
-Status OutboundCall::SetRequestParam(
-    const Message& message, const MemTrackerPtr& mem_tracker) {
-  using serialization::SerializeHeader;
-  using serialization::SerializeMessage;
-
-  size_t message_size = 0;
-  auto status = SerializeMessage(message,
-                                 /* param_buf */ nullptr,
-                                 /* additional_size */ 0,
-                                 /* use_cached_size */ false,
-                                 /* offset */ 0,
-                                 &message_size);
-  if (!status.ok()) {
-    return status;
-  }
+Status OutboundCall::SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) {
+  auto req_size = req.SerializedSize();
+  size_t message_size = SerializedMessageSize(req_size, 0);
 
   using Output = google::protobuf::io::CodedOutputStream;
   auto timeout_ms = VERIFY_RESULT(TimeoutMs());
@@ -239,7 +223,8 @@ Status OutboundCall::SetRequestParam(
   size_t header_pb_len = 1 + call_id_size + serialized_remote_method.size() + 1 + timeout_ms_size;
   size_t header_size =
       kMsgLengthPrefixLength                            // Int prefix for the total length.
-      + CodedOutputStream::VarintSize32(header_pb_len)  // Varint delimiter for header PB.
+      + CodedOutputStream::VarintSize32(
+            narrow_cast<uint32_t>(header_pb_len))       // Varint delimiter for header PB.
       + header_pb_len;                                  // Length for the header PB itself.
   size_t total_size = header_size + message_size;
 
@@ -248,11 +233,11 @@ Status OutboundCall::SetRequestParam(
 
   // 1. The length for the whole request, not including the 4-byte
   // length prefix.
-  NetworkByteOrder::Store32(dst, total_size - kMsgLengthPrefixLength);
+  NetworkByteOrder::Store32(dst, narrow_cast<uint32_t>(total_size - kMsgLengthPrefixLength));
   dst += sizeof(uint32_t);
 
   // 2. The varint-prefixed RequestHeader PB
-  dst = CodedOutputStream::WriteVarint32ToArray(header_pb_len, dst);
+  dst = CodedOutputStream::WriteVarint32ToArray(narrow_cast<uint32_t>(header_pb_len), dst);
   dst = Output::WriteTagToArray(RequestHeader::kCallIdFieldNumber << 3, dst);
   dst = Output::WriteVarint32ToArray(call_id_, dst);
   memcpy(dst, serialized_remote_method.data(), serialized_remote_method.size());
@@ -265,9 +250,7 @@ Status OutboundCall::SetRequestParam(
   if (mem_tracker) {
     buffer_consumption_ = ScopedTrackedConsumption(mem_tracker, buffer_.size());
   }
-
-  RETURN_NOT_OK(SerializeMessage(
-      message, &buffer_, /* additional_size */ 0, /* use_cached_size */ true, header_size));
+  RETURN_NOT_OK(SerializeMessage(req, req_size, buffer_, 0, header_size));
   if (method_metrics_) {
     IncrementCounterBy(method_metrics_->request_bytes, buffer_.size());
   }
@@ -283,7 +266,6 @@ const ErrorStatusPB* OutboundCall::error_pb() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return error_pb_.get();
 }
-
 
 string OutboundCall::StateName(State state) {
   return RpcCallState_Name(state);
@@ -410,9 +392,9 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
     // TODO: here we're deserializing the call response within the reactor thread,
     // which isn't great, since it would block processing of other RPCs in parallel.
     // Should look into a way to avoid this.
-    if (!pb_util::ParseFromArray(response_, r.data(), r.size()).IsOk()) {
-      SetFailed(STATUS(IOError, "Invalid response, missing fields",
-                                response_->InitializationErrorString()));
+    auto status = response_.ParseFromSlice(r);
+    if (!status.ok()) {
+      SetFailed(status);
       return;
     }
     if (SetState(FINISHED_SUCCESS)) {
@@ -521,8 +503,12 @@ bool OutboundCall::IsFinished() const {
   return FinishedState(state_.load(std::memory_order_acquire));
 }
 
-Result<Slice> OutboundCall::GetSidecar(int idx) const {
+Result<Slice> OutboundCall::GetSidecar(size_t idx) const {
   return call_response_.GetSidecar(idx);
+}
+
+Result<SidecarHolder> OutboundCall::GetSidecarHolder(size_t idx) const {
+  return call_response_.GetSidecarHolder(idx);
 }
 
 string OutboundCall::ToString() const {
@@ -561,7 +547,7 @@ Result<uint32_t> OutboundCall::TimeoutMs() const {
     if (timeout_millis <= 0) {
       return STATUS(TimedOut, "Call timed out before sending");
     }
-    return timeout_millis;
+    return narrow_cast<uint32_t>(timeout_millis);
   } else {
     return 0;
   }
@@ -605,13 +591,16 @@ CallResponse::CallResponse()
     : parsed_(false) {
 }
 
-Result<Slice> CallResponse::GetSidecar(int idx) const {
+Result<Slice> CallResponse::GetSidecar(size_t idx) const {
   DCHECK(parsed_);
-  if (idx < 0 || idx + 1 >= sidecar_bounds_.size()) {
-    return STATUS_FORMAT(InvalidArgument,
-        "Index $0 does not reference a valid sidecar", idx);
+  if (idx + 1 >= sidecar_bounds_.size()) {
+    return STATUS_FORMAT(InvalidArgument, "Index $0 does not reference a valid sidecar", idx);
   }
   return Slice(sidecar_bounds_[idx], sidecar_bounds_[idx + 1]);
+}
+
+Result<SidecarHolder> CallResponse::GetSidecarHolder(size_t idx) const {
+  return SidecarHolder(response_data_.buffer(), VERIFY_RESULT(GetSidecar(idx)));
 }
 
 Status CallResponse::ParseFrom(CallData* call_data) {
@@ -620,7 +609,7 @@ Status CallResponse::ParseFrom(CallData* call_data) {
 
   response_data_ = std::move(*call_data);
   Slice source(response_data_.data(), response_data_.size());
-  RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &entire_message));
+  RETURN_NOT_OK(ParseYBMessage(source, &header_, &entire_message));
 
   // Use information from header to extract the payload slices.
   const size_t sidecars = header_.sidecar_offsets_size();

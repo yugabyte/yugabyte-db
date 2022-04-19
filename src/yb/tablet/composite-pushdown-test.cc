@@ -48,6 +48,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 
@@ -78,7 +79,7 @@ class CompositePushdownTest : public YBTabletTest {
   }
 
   void FillTestTablet() {
-    uint32_t nrows = 10 * 12 * 28;
+    int nrows = 10 * 12 * 28;
     int i = 0;
 
     LocalTabletWriter writer(tablet().get());

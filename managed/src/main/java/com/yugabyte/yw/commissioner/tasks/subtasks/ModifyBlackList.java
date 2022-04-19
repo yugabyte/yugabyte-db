@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -22,7 +23,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 import org.apache.commons.collections.CollectionUtils;
-import org.yb.Common.HostPortPB;
+import org.yb.CommonNet.HostPortPB;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.YBClient;
 
@@ -97,13 +98,7 @@ public class ModifyBlackList extends UniverseTaskBase {
     if (CollectionUtils.isNotEmpty(nodes)) {
       hostPorts = new ArrayList<>(nodes.size());
       for (NodeDetails node : nodes) {
-        String ip = null;
-        if (node.cloudInfo == null || node.cloudInfo.private_ip == null) {
-          NodeDetails onDiskNode = universe.getNode(node.nodeName);
-          ip = onDiskNode.cloudInfo.private_ip;
-        } else {
-          ip = node.cloudInfo.private_ip;
-        }
+        String ip = Util.getNodeIp(universe, node);
         HostPortPB.Builder hpb = HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
         hostPorts.add(hpb.build());
       }

@@ -14,13 +14,15 @@
 #include "yb/tablet/tablet-test-util.h"
 
 #include "yb/common/ql_expr.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_value.h"
+
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/gutil/strings/join.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 #include "yb/tserver/tserver_admin.pb.h"
 
@@ -64,7 +66,7 @@ void YBTabletTest::SetUpTestTablet(const std::string& root_dir) {
 }
 
 void YBTabletTest::AlterSchema(const Schema& schema) {
-  tserver::ChangeMetadataRequestPB req;
+  ChangeMetadataRequestPB req;
   req.set_schema_version(tablet()->metadata()->schema_version() + 1);
 
   ChangeMetadataOperation operation(nullptr, nullptr, &req);
@@ -74,7 +76,7 @@ void YBTabletTest::AlterSchema(const Schema& schema) {
 }
 
 Status IterateToStringList(
-    YQLRowwiseIteratorIf* iter, std::vector<std::string> *out, int limit) {
+    docdb::YQLRowwiseIteratorIf* iter, std::vector<std::string> *out, int limit) {
   out->clear();
   Schema schema = iter->schema();
   int fetched = 0;

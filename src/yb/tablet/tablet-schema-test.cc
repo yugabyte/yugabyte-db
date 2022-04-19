@@ -41,8 +41,9 @@
 
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/schema.h"
+
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
@@ -50,6 +51,7 @@
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/env.h"
 #include "yb/util/status_log.h"
@@ -67,8 +69,8 @@ class TestTabletSchema : public YBTabletTest {
     : YBTabletTest(CreateBaseSchema(), YQL_TABLE_TYPE) {
   }
 
-  void InsertRows(size_t first_key, size_t nrows) {
-    for (size_t i = first_key; i < nrows; ++i) {
+  void InsertRows(int32_t first_key, int32_t nrows) {
+    for (int32_t i = first_key; i < nrows; ++i) {
       InsertRow(i);
       if (i == (nrows / 2)) {
         ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
@@ -76,7 +78,7 @@ class TestTabletSchema : public YBTabletTest {
     }
   }
 
-  void InsertRow(size_t key) {
+  void InsertRow(int32_t key) {
     LocalTabletWriter writer(tablet().get());
     QLWriteRequestPB req;
     QLAddInt32HashValue(&req, key);
@@ -84,7 +86,7 @@ class TestTabletSchema : public YBTabletTest {
     ASSERT_OK(writer.Write(&req));
   }
 
-  void DeleteRow(size_t key) {
+  void DeleteRow(int32_t key) {
     LocalTabletWriter writer(tablet().get());
     QLWriteRequestPB req;
     req.set_type(QLWriteRequestPB::QL_STMT_DELETE);
@@ -92,7 +94,7 @@ class TestTabletSchema : public YBTabletTest {
     ASSERT_OK(writer.Write(&req));
   }
 
-  void MutateRow(size_t key, size_t col_idx, int32_t new_val) {
+  void MutateRow(int32_t key, int32_t col_idx, int32_t new_val) {
     LocalTabletWriter writer(tablet().get());
     QLWriteRequestPB req;
     QLAddInt32HashValue(&req, key);

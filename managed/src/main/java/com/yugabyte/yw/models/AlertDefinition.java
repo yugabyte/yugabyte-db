@@ -67,6 +67,11 @@ public class AlertDefinition extends Model {
   @JsonIgnore
   private boolean configWritten = false;
 
+  @NotNull
+  @Column(nullable = false)
+  @JsonIgnore
+  private boolean active = true;
+
   @Version
   @Column(nullable = false)
   private int version;
@@ -169,6 +174,21 @@ public class AlertDefinition extends Model {
   public AlertDefinition setLabels(List<AlertDefinitionLabel> labels) {
     this.labels = setUniqueListValues(this.labels, labels);
     this.labels.forEach(label -> label.setDefinition(this));
+    return this;
+  }
+
+  public AlertDefinition removeLabel(KnownAlertLabels labelName) {
+    AlertDefinitionLabel toRemove =
+        labels
+            .stream()
+            .filter(label -> label.getName().equals(labelName.labelName()))
+            .findFirst()
+            .orElse(null);
+    if (toRemove == null) {
+      return this;
+    }
+
+    this.labels.remove(toRemove);
     return this;
   }
 

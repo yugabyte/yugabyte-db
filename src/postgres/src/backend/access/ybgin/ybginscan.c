@@ -115,7 +115,7 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 		.querying_colocated_table = isColocated(RelationGetRelid(scan->heapRelation)),
 	};
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(scan->heapRelation),
-								  RelationGetRelid(scan->heapRelation),
+								  YbGetStorageRelid(scan->heapRelation),
 								  &prepare_params,
 								  &ybso->handle));
 

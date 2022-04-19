@@ -37,6 +37,7 @@
 #include <atomic>
 #include <string>
 
+#include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/consensus/metadata.pb.h"
@@ -141,7 +142,7 @@ class ConsensusMetadata {
   void set_tablet_id(const TabletId& tablet_id) { tablet_id_ = tablet_id; }
 
   // Returns the currently active role of the current node.
-  RaftPeerPB::Role active_role() const;
+  PeerRole active_role() const;
 
   // Copy the stored state into a ConsensusStatePB object.
   // To get the active configuration, specify 'type' = ACTIVE.
@@ -175,7 +176,7 @@ class ConsensusMetadata {
   }
 
   // A lock-free way to read role and term atomically.
-  std::pair<RaftPeerPB::Role, int64_t> GetRoleAndTerm() const;
+  std::pair<PeerRole, int64_t> GetRoleAndTerm() const;
 
   // Used internally for storing the role + term combination atomically.
   using PackedRoleAndTerm = uint64;
@@ -207,7 +208,7 @@ class ConsensusMetadata {
   RaftConfigPB pending_config_;
 
   // Cached role of the peer_uuid_ within the active configuration.
-  RaftPeerPB::Role active_role_;
+  PeerRole active_role_;
 
   // Durable fields.
   ConsensusMetadataPB pb_;

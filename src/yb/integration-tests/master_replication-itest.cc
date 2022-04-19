@@ -50,6 +50,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/partition.h"
 
 #include "yb/gutil/algorithm.h"
 

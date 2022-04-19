@@ -444,7 +444,7 @@ Status TestWritableFile::Sync() {
   return Status::OK();
 }
 
-class FaultInjectionTest : public testing::Test,
+class FaultInjectionTest : public RocksDBTest,
                            public testing::WithParamInterface<bool> {
  protected:
   enum OptionConfig {

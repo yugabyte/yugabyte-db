@@ -70,7 +70,7 @@ class EnvCounter : public EnvWrapper {
   atomic<int> num_new_writable_file_;
 };
 
-class ColumnFamilyTest : public testing::Test {
+class ColumnFamilyTest : public RocksDBTest {
  public:
   ColumnFamilyTest() : rnd_(139) {
     env_ = new EnvCounter(Env::Default());
@@ -2588,6 +2588,80 @@ TEST_F(ColumnFamilyTest, LogSyncConflictFlush) {
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
   Close();
 }
+
+TEST_F(ColumnFamilyTest, GetColumnFamiliesOptions) {
+  column_family_options_.arena_block_size = 4096;
+
+  // Source options
+  ColumnFamilyOptions src_d = column_family_options_;
+  ColumnFamilyOptions src_1;
+  ColumnFamilyOptions src_2;
+  ColumnFamilyOptions src_3;
+  src_1.arena_block_size = 2 * column_family_options_.arena_block_size;
+  src_2.arena_block_size = 3 * column_family_options_.arena_block_size;
+  src_3.arena_block_size = 4 * column_family_options_.arena_block_size;
+
+  using OptionsRef  = std::reference_wrapper<ColumnFamilyOptions>;
+  using Descriptors = std::map<std::string, OptionsRef>;
+
+  auto compare_with = [this](Descriptors src) {
+    std::vector<std::string> cf_names;
+    std::vector<ColumnFamilyOptions> cf_options;
+    db_->GetColumnFamiliesOptions(&cf_names, &cf_options);
+
+    // Comapre sizes
+    ASSERT_EQ(cf_names.size(), cf_options.size());
+    ASSERT_EQ(cf_names.size(), src.size());
+
+    // Keep sorted order for the case descriptors are stored in an unpredictable way
+    Descriptors dst;
+    for (size_t i = 0; i < cf_names.size(); ++i) {
+      dst.insert(std::make_pair(cf_names[i], std::ref(cf_options[i])));
+    }
+
+    // Compare options
+    for (auto it1 = src.begin(), it2 = dst.begin();
+         it1 != src.end() && it2 != dst.end(); ++it1, ++it2) {
+      ASSERT_EQ(it1->first, it2->first);
+      ASSERT_OK(RocksDBOptionsParser::VerifyCFOptions(it1->second, it2->second));
+    }
+  };
+
+  Open();
+  compare_with({{"default", std::ref(src_d)}});
+
+  CreateColumnFamilies({"1", "2"}, {src_1, src_2});
+  compare_with({{"default", std::ref(src_d)}, {"1", std::ref(src_1)}, {"2", std::ref(src_2)}});
+
+  DropColumnFamilies({1});
+  compare_with({{"default", std::ref(src_d)}, {"2", std::ref(src_2)}});
+
+  CreateColumnFamilies({"3"}, {src_3});
+  compare_with({{"default", std::ref(src_d)}, {"3", std::ref(src_3)}, {"2", std::ref(src_2)}});
+  Close();
+
+  src_3.arena_block_size += 1024;
+  Open({"3", "2", "default"}, {src_3, src_2, src_d});
+  compare_with({{"default", std::ref(src_d)}, {"2", std::ref(src_2)}, {"3", std::ref(src_3)}});
+
+  DropColumnFamilies({0});
+  compare_with({{"default", std::ref(src_d)}, {"2", std::ref(src_2)}});
+  Close();
+
+  db_options_.create_missing_column_families = true;
+  src_3.arena_block_size -= 1024;
+  Open({"1", "default", "2", "3"}, {src_1, src_d, src_2, src_3});
+  compare_with({{"default", std::ref(src_d)}, {"2", std::ref(src_2)},
+                {"3", std::ref(src_3)}, {"1", std::ref(src_1)}});
+
+  DropColumnFamilies({0, 2});
+  compare_with({{"3", std::ref(src_3)}, {"default", std::ref(src_d)}});
+
+  DropColumnFamilies({3});
+  compare_with({{"default", std::ref(src_d)}});
+  Close();
+}
+
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

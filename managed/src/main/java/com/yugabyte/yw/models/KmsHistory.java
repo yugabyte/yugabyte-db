@@ -176,6 +176,10 @@ public class KmsHistory extends Model {
         .findOne();
   }
 
+  public static List<KmsHistory> getAllActiveHistory(KmsHistoryId.TargetType type) {
+    return KmsHistory.find.query().where().eq("type", type).eq("active", true).findList();
+  }
+
   public static boolean entryExists(UUID targetUUID, String keyRef, KmsHistoryId.TargetType type) {
     return KmsHistory.find
         .query()
@@ -203,9 +207,12 @@ public class KmsHistory extends Model {
     getAllTargetKeyRefs(targetUUID, type).forEach(KmsHistory::deleteKeyRef);
   }
 
-  public static void deleteAllConfigTargetKeyRefs(
+  public static int deleteAllConfigTargetKeyRefs(
       UUID configUUID, UUID targetUUID, KmsHistoryId.TargetType type) {
-    getAllConfigTargetKeyRefs(configUUID, targetUUID, type).forEach(KmsHistory::deleteKeyRef);
+    List<KmsHistory> keyList = getAllConfigTargetKeyRefs(configUUID, targetUUID, type);
+    int count = keyList.size();
+    keyList.forEach(KmsHistory::deleteKeyRef);
+    return count;
   }
 
   public static boolean configHasHistory(UUID configUUID, KmsHistoryId.TargetType type) {

@@ -21,6 +21,8 @@ import {
 } from '../../../actions/cloud';
 import { getTlsCertificates, getTlsCertificatesResponse } from '../../../actions/customers';
 import {
+  rollingUpgrade,
+  rollingUpgradeResponse,
   createUniverse,
   createUniverseResponse,
   editUniverse,
@@ -58,16 +60,20 @@ import {
 import { getClusterByType } from '../../../utils/UniverseUtils';
 import { EXPOSING_SERVICE_STATE_TYPES } from './ClusterFields';
 import { toast } from 'react-toastify';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
     submitConfigureUniverse: (values, universeUUID = null) => {
       dispatch(configureUniverseTemplateLoading());
       return dispatch(configureUniverseTemplate(values)).then((response) => {
-        if (response.error && universeUUID) {
-          dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
-            dispatch(fetchUniverseInfoResponse(response.payload));
-          });
+        if (response.error) {
+          toast.error(createErrorMessage(response.payload));
+          if (universeUUID) {
+            dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+              dispatch(fetchUniverseInfoResponse(response.payload));
+            });
+          }
         }
         return dispatch(configureUniverseTemplateResponse(response.payload));
       });
@@ -85,8 +91,7 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(getTlsCertificatesResponse(response.payload));
         });
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
         }
         return dispatch(createUniverseResponse(response.payload));
       });
@@ -103,14 +108,14 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     submitAddUniverseReadReplica: (values, universeUUID) => {
-      dispatch(addUniverseReadReplica(values, universeUUID)).then((response) => {
-        dispatch(addUniverseReadReplicaResponse(response.payload));
+      return dispatch(addUniverseReadReplica(values, universeUUID)).then((response) => {
+        return dispatch(addUniverseReadReplicaResponse(response.payload));
       });
     },
 
     submitEditUniverseReadReplica: (values, universeUUID) => {
-      dispatch(editUniverseReadReplica(values, universeUUID)).then((response) => {
-        dispatch(editUniverseReadReplicaResponse(response.payload));
+      return dispatch(editUniverseReadReplica(values, universeUUID)).then((response) => {
+        return dispatch(editUniverseReadReplicaResponse(response.payload));
       });
     },
 
@@ -130,12 +135,21 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     submitEditUniverse: (values, universeUUID) => {
-      dispatch(editUniverse(values, universeUUID)).then((response) => {
+      return dispatch(editUniverse(values, universeUUID)).then((response) => {
         if (response.error) {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
         }
-        dispatch(editUniverseResponse(response.payload));
+        return dispatch(editUniverseResponse(response.payload));
+      });
+    },
+
+    submitUniverseNodeResize: (values, universeUUID) => {
+      return dispatch(rollingUpgrade(values, universeUUID)).then((response) => {
+        if (!response.error) {
+          dispatch(closeUniverseDialog());
+        }
+        return dispatch(rollingUpgradeResponse(response.payload));
       });
     },
 
@@ -191,6 +205,14 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(openDialog('fullMoveModal'));
     },
 
+    showSmartResizeModal: () => {
+      dispatch(openDialog('smartResizeModal'));
+    },
+
+    showUpgradeNodesModal: () => {
+      dispatch(openDialog('resizeNodesModal'));
+    },
+
     fetchNodeInstanceList: (providerUUID) => {
       dispatch(getNodeInstancesForProvider(providerUUID)).then((response) => {
         dispatch(getNodesInstancesForProviderResponse(response.payload));
@@ -209,6 +231,7 @@ const formFieldNames = [
   'primary.instanceType',
   'primary.ybSoftwareVersion',
   'primary.accessKeyCode',
+  'primary.gFlags',
   'primary.masterGFlags',
   'primary.tserverGFlags',
   'primary.instanceTags',
@@ -262,6 +285,7 @@ const formFieldNames = [
   'masterGFlags',
   'tserverGFlags',
   'instanceTags',
+  'gFlags',
   'asyncClusters'
 ];
 
@@ -318,12 +342,29 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].regionList = cluster.regions.map((item) => {
       return { value: item.uuid, name: item.name, label: item.name };
     });
-    data[clusterType].masterGFlags = Object.keys(userIntent.masterGFlags).map((key) => {
-      return { name: key, value: userIntent.masterGFlags[key] };
-    });
-    data[clusterType].tserverGFlags = Object.keys(userIntent.tserverGFlags).map((key) => {
-      return { name: key, value: userIntent.tserverGFlags[key] };
-    });
+    //construct gflag component DS
+    data[clusterType].gFlags = [];
+    if (isNonEmptyObject(userIntent.masterGFlags)) {
+      Object.keys(userIntent.masterGFlags).forEach((key) => {
+        const masterObj = {};
+        if (userIntent?.tserverGFlags?.hasOwnProperty(key)) {
+          masterObj['TSERVER'] = userIntent.tserverGFlags[key];
+        }
+        masterObj['Name'] = key;
+        masterObj['MASTER'] = userIntent.masterGFlags[key];
+        data[clusterType].gFlags.push(masterObj);
+      });
+    }
+    if (isNonEmptyObject(userIntent.tserverGFlags)) {
+      Object.keys(userIntent.tserverGFlags).forEach((key) => {
+        const tserverObj = {};
+        if (!userIntent.masterGFlags.hasOwnProperty(key)) {
+          tserverObj['TSERVER'] = userIntent.tserverGFlags[key];
+          tserverObj['Name'] = key;
+          data[clusterType].gFlags.push(tserverObj);
+        }
+      });
+    }
     data[clusterType].instanceTags = Object.keys(userIntent.instanceTags).map((key) => {
       return { name: key, value: userIntent.instanceTags[key] };
     });
@@ -348,7 +389,7 @@ function mapStateToProps(state, ownProps) {
       ybSoftwareVersion: '',
       numNodes: 3,
       isMultiAZ: true,
-      instanceType: 'c5.large',
+      instanceType: 'c5.4xlarge',
       accessKeyCode: '',
       assignPublicIP: true,
       useSystemd: false,
@@ -424,6 +465,7 @@ function mapStateToProps(state, ownProps) {
       'primary.replicationFactor',
       'primary.ybSoftwareVersion',
       'primary.accessKeyCode',
+      'primary.gFlags',
       'primary.masterGFlags',
       'primary.tserverGFlags',
       'primary.instanceTags',
@@ -490,6 +532,7 @@ function mapStateToProps(state, ownProps) {
       'async.useTimeSync',
       'async.useSystemd',
       'masterGFlags',
+      'gFlags',
       'tserverGFlags',
       'instanceTags'
     )

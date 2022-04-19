@@ -12,6 +12,10 @@
 
 #include "yb/cdc/cdc_service.h"
 
+#include "yb/encryption/encrypted_file_factory.h"
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -29,9 +33,6 @@
 #include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/ntp_clock.h"
-#include "yb/util/encrypted_file_factory.h"
-#include "yb/util/header_manager_impl.h"
-#include "yb/util/universe_key_manager.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
@@ -42,6 +43,10 @@ TAG_FLAG(ts_backup_svc_num_threads, advanced);
 DEFINE_int32(ts_backup_svc_queue_length, 50,
              "RPC queue length for the TS backup service");
 TAG_FLAG(ts_backup_svc_queue_length, advanced);
+
+DEFINE_int32(xcluster_svc_queue_length, 5000,
+             "RPC queue length for the xCluster service");
+TAG_FLAG(xcluster_svc_queue_length, advanced);
 
 DECLARE_int32(svc_queue_length_default);
 
@@ -81,7 +86,7 @@ Status TabletServer::RegisterServices() {
       std::make_unique<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
 
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_svc_queue_length_default,
+      FLAGS_xcluster_svc_queue_length,
       std::make_unique<CDCServiceImpl>(tablet_manager_.get(), metric_entity(), metric_registry())));
 
   return super::RegisterServices();
@@ -110,12 +115,12 @@ CDCConsumer* TabletServer::GetCDCConsumer() {
   return cdc_consumer_.get();
 }
 
-yb::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
+encryption::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
   return opts_.universe_key_manager;
 }
 
 Status TabletServer::SetUniverseKeyRegistry(
-    const yb::UniverseKeyRegistryPB& universe_key_registry) {
+    const encryption::UniverseKeyRegistryPB& universe_key_registry) {
   opts_.universe_key_manager->SetUniverseKeyRegistry(universe_key_registry);
   return Status::OK();
 }

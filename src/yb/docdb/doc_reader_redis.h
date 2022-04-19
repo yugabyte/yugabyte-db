@@ -107,7 +107,7 @@ struct GetRedisSubDocumentData {
     const Slice& subdoc_key,
     SubDocument* result_,
     bool* doc_found_ = nullptr,
-    MonoDelta default_ttl = Value::kMaxTtl)
+    MonoDelta default_ttl = ValueControlFields::kMaxTtl)
       : subdocument_key(subdoc_key),
         result(result_),
         doc_found(doc_found_),
@@ -132,7 +132,7 @@ struct GetRedisSubDocumentData {
   const IndexBound* low_index = &IndexBound::Empty();
   const IndexBound* high_index = &IndexBound::Empty();
   // Maximum number of children to add for this subdocument (0 means no limit).
-  int32_t limit = 0;
+  size_t limit = 0;
   // Only store a count of the number of records found, but don't store the records themselves.
   bool count_only = false;
   // Stores the count of records found, if count_only option is set.
@@ -171,16 +171,16 @@ inline std::ostream& operator<<(std::ostream& out, const GetRedisSubDocumentData
 // behavior.
 // The projection, if set, restricts the scan to a subset of keys in the first level.
 // The projection is used for QL selects to get only a subset of columns.
-yb::Status GetRedisSubDocument(
+CHECKED_STATUS GetRedisSubDocument(
     IntentAwareIterator *db_iter,
     const GetRedisSubDocumentData& data,
-    const std::vector<PrimitiveValue>* projection = nullptr,
+    const std::vector<KeyEntryValue>* projection = nullptr,
     SeekFwdSuffices seek_fwd_suffices = SeekFwdSuffices::kTrue);
 
 // This version of GetRedisSubDocument creates a new iterator every time. This is not recommended
 // for multiple calls to subdocs that are sequential or near each other, in e.g.
 // doc_rowwise_iterator.
-yb::Status GetRedisSubDocument(
+CHECKED_STATUS GetRedisSubDocument(
     const DocDB& doc_db,
     const GetRedisSubDocumentData& data,
     const rocksdb::QueryId query_id,

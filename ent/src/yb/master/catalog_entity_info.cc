@@ -10,9 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/common/wire_protocol.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master.pb.h"
+
+#include "yb/common/wire_protocol.h"
+
+#include "yb/master/cdc_rpc_tasks.h"
+
+#include "yb/util/result.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/trace.h"
 
 using std::set;
@@ -24,13 +29,21 @@ namespace master {
 // CDCStreamInfo
 // ================================================================================================
 
-const TableId& CDCStreamInfo::table_id() const {
+const google::protobuf::RepeatedPtrField<std::string>& CDCStreamInfo::table_id() const {
   return LockForRead()->pb.table_id();
+}
+
+const NamespaceId& CDCStreamInfo::namespace_id() const {
+  return LockForRead()->pb.namespace_id();
 }
 
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
-  return Format("$0 [table=$1] {metadata=$2} ", id(), l->pb.table_id(), l->pb.ShortDebugString());
+  if (l->pb.has_namespace_id()) {
+    return Format(
+        "$0 [namespace=$1] {metadata=$2} ", id(), l->pb.namespace_id(), l->pb.ShortDebugString());
+  }
+  return Format("$0 [table=$1] {metadata=$2} ", id(), l->pb.table_id(0), l->pb.ShortDebugString());
 }
 
 // ================================================================================================

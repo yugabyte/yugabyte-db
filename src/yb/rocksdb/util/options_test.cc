@@ -90,7 +90,7 @@ Options PrintAndGetOptions(size_t total_write_buffer_limit,
   return options;
 }
 
-class OptionsTest : public testing::Test {};
+class OptionsTest : public RocksDBTest {};
 
 TEST_F(OptionsTest, LooseCondition) {
   Options options;
@@ -881,7 +881,7 @@ TEST_F(OptionsTest, ConvertOptionsTest) {
 }
 
 #ifndef ROCKSDB_LITE
-class OptionsParserTest : public testing::Test {
+class OptionsParserTest : public RocksDBTest {
  public:
   OptionsParserTest() { env_.reset(new test::StringEnv(Env::Default())); }
 
@@ -1937,6 +1937,7 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, block_based_table_mem_tracker),
       BLACKLIST_ENTRY(DBOptions, iterator_replacer),
       BLACKLIST_ENTRY(DBOptions, compaction_file_filter_factory),
+      BLACKLIST_ENTRY(DBOptions, disk_group_no),
   };
 
   TestAllFieldsSettable<DBOptions>(kDBOptionsBlacklist);

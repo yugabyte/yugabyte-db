@@ -151,8 +151,10 @@ Status OperationTracker::Add(OperationDriver* driver) {
       metrics_->operation_memory_pressure_rejections->Increment();
     }
 
-    // May be null in unit tests.
-    Tablet* tablet = driver->operation()->tablet();
+    // May be nullptr due to TabletPeer::SetPropagatedSafeTime.
+    auto* operation = driver->operation();
+    // May be nullptr in unit tests even when operation is not nullptr.
+    auto* tablet = operation ? operation->tablet() : nullptr;
 
     string msg = Substitute(
         "Operation failed, tablet $0 operation memory consumption ($1) "
@@ -247,7 +249,7 @@ std::vector<scoped_refptr<OperationDriver>> OperationTracker::GetPendingOperatio
 }
 
 
-int OperationTracker::GetNumPendingForTests() const {
+size_t OperationTracker::TEST_GetNumPending() const {
   std::lock_guard<std::mutex> l(mutex_);
   return pending_operations_.size();
 }

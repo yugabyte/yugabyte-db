@@ -20,9 +20,9 @@
 #include <boost/unordered_map.hpp>
 
 #include "yb/cdc/cdc_service.service.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.pb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/util/monotime.h"
@@ -35,28 +35,54 @@ class MemTracker;
 namespace cdc {
 
 struct StreamMetadata {
-  TableId table_id;
+  NamespaceId ns_id;
+  std::vector<TableId> table_ids;
   CDCRecordType record_type;
   CDCRecordFormat record_format;
+  CDCRequestSource source_type;
+  CDCCheckpointType checkpoint_type;
 
   StreamMetadata() = default;
 
-  StreamMetadata(TableId table_id, CDCRecordType record_type, CDCRecordFormat record_format)
-      : table_id(std::move(table_id)), record_type(record_type), record_format(record_format) {
+  StreamMetadata(NamespaceId ns_id,
+                 std::vector<TableId> table_ids,
+                 CDCRecordType record_type,
+                 CDCRecordFormat record_format,
+                 CDCRequestSource source_type,
+                 CDCCheckpointType checkpoint_type)
+      : ns_id(std::move(ns_id)),
+        table_ids((std::move(table_ids))),
+        record_type(record_type),
+        record_format(record_format),
+        source_type(source_type),
+        checkpoint_type(checkpoint_type) {
   }
 };
 
-CHECKED_STATUS GetChanges(const std::string& stream_id,
-                          const std::string& tablet_id,
-                          const OpId& op_id,
-                          const StreamMetadata& record,
-                          const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                          const std::shared_ptr<MemTracker>& mem_tracker,
-                          consensus::ReplicateMsgsHolder* msgs_holder,
-                          GetChangesResponsePB* resp,
-                          int64_t* last_readable_opid_index = nullptr,
-                          const CoarseTimePoint deadline = CoarseTimePoint::max());
+CHECKED_STATUS GetChangesForCDCSDK(const std::string& stream_id,
+                                   const std::string& tablet_id,
+                                   const CDCSDKCheckpointPB& op_id,
+                                   const StreamMetadata& record,
+                                   const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                                   const std::shared_ptr<MemTracker>& mem_tracker,
+                                   consensus::ReplicateMsgsHolder* msgs_holder,
+                                   GetChangesResponsePB* resp,
+                                   std::string* commit_timestamp,
+                                   std::shared_ptr<Schema>* cached_schema,
+                                   OpId* last_streamed_op_id,
+                                   int64_t* last_readable_opid_index = nullptr,
+                                   const CoarseTimePoint deadline = CoarseTimePoint::max());
 
+CHECKED_STATUS GetChangesForXCluster(const std::string& stream_id,
+                                     const std::string& tablet_id,
+                                     const OpId& op_id,
+                                     const StreamMetadata& record,
+                                     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                                     const std::shared_ptr<MemTracker>& mem_tracker,
+                                     consensus::ReplicateMsgsHolder* msgs_holder,
+                                     GetChangesResponsePB* resp,
+                                     int64_t* last_readable_opid_index = nullptr,
+                                     const CoarseTimePoint deadline = CoarseTimePoint::max());
 }  // namespace cdc
 }  // namespace yb
 

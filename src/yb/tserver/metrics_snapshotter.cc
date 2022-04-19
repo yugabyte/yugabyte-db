@@ -253,11 +253,11 @@ int MetricsSnapshotter::Thread::GetMillisUntilNextMetricsSnapshot() const {
 void MetricsSnapshotter::Thread::LogSessionErrors(const client::FlushStatus& flush_status) {
   const auto& errors = flush_status.errors;
 
-  int num_errors_to_log = 10;
+  size_t num_errors_to_log = 10;
 
   // Log only the first 10 errors.
   LOG_WITH_PREFIX(INFO) << errors.size() << " failed ops. First few errors follow";
-  int i = 0;
+  size_t i = 0;
   for (const auto& e : errors) {
     if (i == num_errors_to_log) {
       break;
@@ -274,7 +274,8 @@ void MetricsSnapshotter::Thread::LogSessionErrors(const client::FlushStatus& flu
 
 void MetricsSnapshotter::Thread::FlushSession(const std::shared_ptr<YBSession>& session,
                        const std::vector<std::shared_ptr<YBqlOp>>& ops) {
-  auto flush_status = session->FlushAndGetOpsErrors();
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  auto flush_status = session->TEST_FlushAndGetOpsErrors();
   if (PREDICT_FALSE(!flush_status.status.ok())) {
     LogSessionErrors(flush_status);
     return;

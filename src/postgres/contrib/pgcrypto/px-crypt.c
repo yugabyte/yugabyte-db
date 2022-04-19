@@ -65,7 +65,7 @@ run_crypt_bf(const char *psw, const char *salt,
 {
 	char	   *res;
 
-	res = _crypt_blowfish_rn(psw, salt, buf, len);
+	res = yb_crypt_blowfish_rn(psw, salt, buf, len);
 	return res;
 }
 
@@ -123,10 +123,10 @@ struct generator
 };
 
 static struct generator gen_list[] = {
-	{"des", _crypt_gensalt_traditional_rn, 2, 0, 0, 0},
-	{"md5", _crypt_gensalt_md5_rn, 6, 0, 0, 0},
-	{"xdes", _crypt_gensalt_extended_rn, 3, PX_XDES_ROUNDS, 1, 0xFFFFFF},
-	{"bf", _crypt_gensalt_blowfish_rn, 16, PX_BF_ROUNDS, 4, 31},
+	{"des", yb_crypt_gensalt_traditional_rn, 2, 0, 0, 0},
+	{"md5", yb_crypt_gensalt_md5_rn, 6, 0, 0, 0},
+	{"xdes", yb_crypt_gensalt_extended_rn, 3, PX_XDES_ROUNDS, 1, 0xFFFFFF},
+	{"bf", yb_crypt_gensalt_blowfish_rn, 16, PX_BF_ROUNDS, 4, 31},
 	{NULL, NULL, 0, 0, 0, 0}
 };
 

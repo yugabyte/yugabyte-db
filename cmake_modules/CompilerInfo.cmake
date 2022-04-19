@@ -97,3 +97,13 @@ else()
   message(FATAL_ERROR "Unknown compiler. Version info:\n${COMPILER_VERSION_FULL}")
 endif()
 message("Selected compiler family '${COMPILER_FAMILY}', version '${COMPILER_VERSION}'")
+
+set(IS_CLANG FALSE)
+if("${COMPILER_FAMILY}" STREQUAL "clang")
+  set(IS_CLANG TRUE)
+endif()
+
+set(IS_GCC FALSE)
+if("${COMPILER_FAMILY}" STREQUAL "gcc")
+  set(IS_GCC TRUE)
+endif()

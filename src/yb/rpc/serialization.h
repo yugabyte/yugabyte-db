@@ -38,8 +38,11 @@
 
 #include <string>
 
+#include <google/protobuf/message.h>
+
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
 
 namespace google {
@@ -56,41 +59,16 @@ class Slice;
 class Status;
 
 namespace rpc {
-namespace serialization {
 
-// Serialize the request param into a buffer which is allocated by this function.
-// Uses the message's cached size by calling MessageLite::GetCachedSize().
-// In : 'message' Protobuf Message to serialize
-//      'additional_size' Optional argument which increases the recorded size
-//        within param_buf. This argument is necessary if there will be
-//        additional sidecars appended onto the message (that aren't part of
-//        the protobuf itself).
-//      'use_cached_size' Additional optional argument whether to use the cached
-//        or explicit byte size by calling MessageLite::GetCachedSize() or
-//        MessageLite::ByteSize(), respectively.
-// Out: The faststring 'param_buf' to be populated with the serialized bytes.
-//        The faststring's length is only determined by the amount that
-//        needs to be serialized for the protobuf (i.e., no additional space
-//        is reserved for 'additional_size', which only affects the
-//        size indicator prefix in 'param_buf').
-Status SerializeMessage(const google::protobuf::MessageLite& message,
-                        RefCntBuffer* param_buf,
-                        int additional_size = 0,
-                        bool use_cached_size = false,
-                        size_t offset = 0,
-                        size_t* size = nullptr);
+Result<RefCntBuffer> SerializeRequest(
+    size_t body_size, size_t additional_size, const google::protobuf::Message& header,
+    AnyMessageConstPtr body);
 
-// Serialize the request or response header into a buffer which is allocated
-// by this function.
-// Includes leading 32-bit length of the buffer.
-// In: Protobuf Header to serialize,
-//     Length of the message param following this header in the frame.
-// Out: RefCntBuffer to be populated with the serialized bytes.
-Status SerializeHeader(const google::protobuf::MessageLite& header,
-                       size_t param_len,
-                       RefCntBuffer* header_buf,
-                       size_t reserve_for_param = 0,
-                       size_t* header_size = nullptr);
+size_t SerializedMessageSize(size_t body_size, size_t additional_size);
+
+CHECKED_STATUS SerializeMessage(
+    AnyMessageConstPtr msg, size_t body_size, const RefCntBuffer& param_buf,
+    size_t additional_size, size_t offset);
 
 struct ParsedRequestHeader {
   Slice remote_method;
@@ -122,7 +100,6 @@ struct ParsedRemoteMethod {
 
 Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf);
 
-}  // namespace serialization
 }  // namespace rpc
 }  // namespace yb
 

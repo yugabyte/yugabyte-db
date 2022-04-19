@@ -31,10 +31,13 @@
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
 #include "yb/util/test_macros.h"
+
+DECLARE_bool(never_fsync);
 
 namespace rocksdb {
 
@@ -326,8 +329,8 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
 
     dumpDb(db);
 
-    assert(counters.assert_get("a") == 3);
-    assert(counters.assert_get("b") == sum);
+    DCHECK_EQ(counters.assert_get("a"), 3);
+    DCHECK(counters.assert_get("b") == sum);
   }
 }
 
@@ -350,8 +353,8 @@ void testSuccessiveMerge(Counters *counters_ptr, size_t max_num_merges,
     }
 
     resetNumMergeOperatorCalls();
-    assert(counters.assert_get("z") == sum);
-    assert(num_merge_operator_calls == i % (max_num_merges + 1));
+    DCHECK(counters.assert_get("z") == sum);
+    DCHECK(num_merge_operator_calls == i % (max_num_merges + 1));
   }
 }
 
@@ -527,6 +530,9 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
 
 int main(int argc, char *argv[]) {
   // TODO: Make this test like a general rocksdb unit-test
+  // This is set by default in RocksDBTest and YBTest, and can be removed once this test is a
+  // general rocksdb unit-test
+  FLAGS_never_fsync = true;
   rocksdb::port::InstallStackTraceHandler();
   rocksdb::runTest(argc, rocksdb::test::TmpDir() + "/merge_testdb");
 // DBWithTTL is not supported in ROCKSDB_LITE

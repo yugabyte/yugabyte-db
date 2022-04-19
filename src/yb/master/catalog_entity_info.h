@@ -34,16 +34,23 @@
 #define YB_MASTER_CATALOG_ENTITY_INFO_H
 
 #include <shared_mutex>
-
 #include <mutex>
 #include <vector>
 
+#include <boost/bimap.hpp>
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
-#include "yb/master/master.pb.h"
+
+#include "yb/master/master_client.fwd.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/tasks_tracker.h"
-#include "yb/master/ts_descriptor.h"
+
 #include "yb/server/monitored_task.h"
+
+#include "yb/tablet/metadata.pb.h"
+
 #include "yb/util/cow_object.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
@@ -68,8 +75,8 @@ struct TabletReplicaDriveInfo {
 struct TabletReplica {
   TSDescriptor* ts_desc;
   tablet::RaftGroupStatePB state;
-  consensus::RaftPeerPB::Role role;
-  consensus::RaftPeerPB::MemberType member_type;
+  PeerRole role;
+  consensus::PeerMemberType member_type;
   MonoTime time_updated;
 
   // Replica is reporting that load balancer moves should be disabled. This could happen in the case
@@ -527,6 +534,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // for placement.
   bool UsesTablespacesForPlacement() const;
 
+  bool IsColocatedParentTable() const;
+  bool IsTablegroupParentTable() const;
+  bool IsColocatedUserTable() const;
+
   // Provides the ID of the tablespace that will be used to determine
   // where the tablets for this table should be placed when the table
   // is first being created.
@@ -681,13 +692,24 @@ class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
   const std::string& id() const { return tablegroup_id_; }
   const std::string& namespace_id() const { return namespace_id_; }
 
-  // Operations to track table_set_ information (what tables belong to the tablegroup)
-  void AddChildTable(const TableId& table_id);
+  // TODO(alex): Make this stuff return Status/Result
+
+  // Operations to track table_map_ information (what tables belong to the tablegroup)
+
+  void AddChildTable(const TableId& table_id, ColocationId colocation_id);
+
   void DeleteChildTable(const TableId& table_id);
+
   bool HasChildTables() const;
+
+  bool HasChildTable(ColocationId colocation_id) const;
+
   std::size_t NumChildTables() const;
+  std::unordered_set<TableId> ChildTables() const;
 
  private:
+  typedef boost::bimap<TableId, ColocationId> TableMap;
+
   friend class RefCountedThreadSafe<TablegroupInfo>;
   ~TablegroupInfo() = default;
 
@@ -696,9 +718,9 @@ class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
   const TablegroupId tablegroup_id_;
   const NamespaceId namespace_id_;
 
-  // Protects table_set_.
+  // Protects table_map_.
   mutable simple_spinlock lock_;
-  std::unordered_set<TableId> table_set_ GUARDED_BY(lock_);
+  TableMap table_map_ GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TablegroupInfo);
 };
@@ -774,21 +796,16 @@ struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB,
 
 // This is the in memory representation of the cluster config information serialized proto data,
 // using metadata() for CowObject access.
-class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
-                          public MetadataCowWrapper<PersistentClusterConfigInfo> {
+class ClusterConfigInfo : public MetadataCowWrapper<PersistentClusterConfigInfo> {
  public:
   ClusterConfigInfo() {}
+  ~ClusterConfigInfo() = default;
 
   virtual const std::string& id() const override { return fake_id_; }
 
  private:
-  friend class RefCountedThreadSafe<ClusterConfigInfo>;
-  ~ClusterConfigInfo() = default;
-
   // We do not use the ID field in the sys_catalog table.
   const std::string fake_id_;
-
-  DISALLOW_COPY_AND_ASSIGN(ClusterConfigInfo);
 };
 
 struct PersistentRedisConfigInfo

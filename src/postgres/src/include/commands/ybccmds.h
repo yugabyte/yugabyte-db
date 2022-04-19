@@ -45,7 +45,7 @@ extern void YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid
 
 /*  Tablegroup Functions ------------------------------------------------------------------------ */
 
-extern void YBCCreateTablegroup(Oid grpoid);
+extern void YBCCreateTablegroup(Oid grpoid, Oid tablespace_oid);
 
 extern void YBCDropTablegroup(Oid grpoid);
 
@@ -57,7 +57,9 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid relationId,
 						   Oid namespaceId,
 						   Oid tablegroupId,
-						   Oid tablespaceId);
+						   Oid colocationId,
+						   Oid tablespaceId,
+						   Oid matviewPgTableId);
 
 extern void YBCDropTable(Oid relationId);
 
@@ -73,6 +75,7 @@ extern void YBCCreateIndex(const char *indexName,
 						   OptSplit *split_options,
 						   const bool skip_index_backfill,
 						   Oid tablegroupId,
+						   Oid colocationId,
 						   Oid tablespaceId);
 
 extern void YBCDropIndex(Oid relationId);
@@ -80,7 +83,8 @@ extern void YBCDropIndex(Oid relationId);
 extern YBCPgStatement YBCPrepareAlterTable(List** subcmds,
 										   int subcmds_size,
 										   Oid relationId,
-										   YBCPgStatement *rollbackHandle);
+										   YBCPgStatement *rollbackHandle,
+										   bool isPartitionOfAlteredTable);
 
 extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 
@@ -91,5 +95,10 @@ extern bool YBCIsTableColocated(Oid dboid, Oid relationId);
 extern void YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest);
 
 extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);
+
+extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel, AttrNumber *newToOldAttmap);
+
+/*  System Validation -------------------------------------------------------------------------- */
+extern void YBCValidatePlacement(const char *placement_info);
 
 #endif

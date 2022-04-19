@@ -35,7 +35,7 @@ Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
   auto& intent_prefix = result.intent_prefix;
   intent_prefix = encoded_intent_key;
 
-  int doc_ht_size = 0;
+  size_t doc_ht_size = 0;
   RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(intent_prefix, &doc_ht_size));
   // There should always be 3 bytes present before teh start of the doc_ht:
   // 1. ValueType::kIntentTypeSet
@@ -47,26 +47,26 @@ Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
         Corruption, "Intent key is too short: $0 bytes", encoded_intent_key.size());
   }
   intent_prefix.remove_suffix(doc_ht_size + kBytesBeforeDocHt);
-  RETURN_NOT_OK(result.doc_ht.FullyDecodeFrom(
+  result.doc_ht = VERIFY_RESULT(DocHybridTime::FullyDecodeFrom(
       Slice(intent_prefix.data() + intent_prefix.size() + kBytesBeforeDocHt, doc_ht_size)));
   auto* prefix_end = intent_prefix.end();
 
-  if (prefix_end[2] != ValueTypeAsChar::kHybridTime)
+  if (prefix_end[2] != KeyEntryTypeAsChar::kHybridTime)
     return STATUS_FORMAT(Corruption, "Expecting hybrid time with ValueType $0, found $1",
-        ValueType::kHybridTime, static_cast<ValueType>(prefix_end[2]));
+        KeyEntryType::kHybridTime, static_cast<KeyEntryType>(prefix_end[2]));
 
-  if (prefix_end[0] != ValueTypeAsChar::kIntentTypeSet) {
-    if (prefix_end[0] == ValueTypeAsChar::kObsoleteIntentType) {
+  if (prefix_end[0] != KeyEntryTypeAsChar::kIntentTypeSet) {
+    if (prefix_end[0] == KeyEntryTypeAsChar::kObsoleteIntentType) {
       result.intent_types = ObsoleteIntentTypeToSet(prefix_end[1]);
-    } else if (prefix_end[0] == ValueTypeAsChar::kObsoleteIntentTypeSet) {
+    } else if (prefix_end[0] == KeyEntryTypeAsChar::kObsoleteIntentTypeSet) {
       result.intent_types = ObsoleteIntentTypeSetToNew(prefix_end[1]);
     } else {
       return STATUS_FORMAT(
           Corruption,
           "Expecting intent type set ($0) or intent type ($1) or obsolete intent type set ($2), "
               "found $3",
-          ValueType::kIntentTypeSet, ValueType::kObsoleteIntentType,
-          ValueType::kObsoleteIntentTypeSet, static_cast<ValueType>(prefix_end[0]));
+          KeyEntryType::kIntentTypeSet, KeyEntryType::kObsoleteIntentType,
+          KeyEntryType::kObsoleteIntentTypeSet, static_cast<KeyEntryType>(prefix_end[0]));
     }
   } else {
     result.intent_types = IntentTypeSet(prefix_end[1]);
@@ -78,10 +78,10 @@ Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
 Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value) {
   if (intent_value->empty()) {
     return STATUS_FORMAT(Corruption, "Expecting intent value to start with ValueType $0, but it is "
-        "empty", ValueType::kTransactionId);
-  } else if (*intent_value->data() != ValueTypeAsChar::kTransactionId) {
+        "empty", ValueEntryType::kTransactionId);
+  } else if (*intent_value->data() != ValueEntryTypeAsChar::kTransactionId) {
     return STATUS_FORMAT(Corruption, "Expecting intent key to start with ValueType $0, found $1",
-        ValueType::kTransactionId, static_cast<ValueType>(*intent_value->data()));
+        ValueEntryType::kTransactionId, static_cast<ValueEntryType>(*intent_value->data()));
   } else {
     intent_value->consume_byte();
   }
@@ -129,6 +129,7 @@ IntentTypeSet GetStrongIntentTypeSet(
   }
 
   switch (level) {
+    case IsolationLevel::READ_COMMITTED:
     case IsolationLevel::SNAPSHOT_ISOLATION:
       return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
     case IsolationLevel::SERIALIZABLE_ISOLATION:
@@ -160,14 +161,15 @@ bool HasStrong(IntentTypeSet inp) {
                                    transaction_id_slice.ToDebugHexString()))
 
 Result<DecodedIntentValue> DecodeIntentValue(
-    const Slice& encoded_intent_value, const Slice* verify_transaction_id_slice) {
+    const Slice& encoded_intent_value, const Slice* verify_transaction_id_slice,
+    bool has_strong_intent) {
   DecodedIntentValue decoded_value;
   auto intent_value = encoded_intent_value;
   auto transaction_id_slice = Slice();
 
   if (verify_transaction_id_slice) {
     transaction_id_slice = *verify_transaction_id_slice;
-    RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kTransactionId));
+    RETURN_NOT_OK(intent_value.consume_byte(ValueEntryTypeAsChar::kTransactionId));
     INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
         "wrong transaction id");
     intent_value.remove_prefix(TransactionId::StaticSize());
@@ -176,17 +178,19 @@ Result<DecodedIntentValue> DecodeIntentValue(
     transaction_id_slice = decoded_value.transaction_id.AsSlice();
   }
 
-  if (intent_value.TryConsumeByte(ValueTypeAsChar::kSubTransactionId)) {
+  if (intent_value.TryConsumeByte(ValueEntryTypeAsChar::kSubTransactionId)) {
     decoded_value.subtransaction_id = Load<SubTransactionId, BigEndian>(intent_value.data());
     intent_value.remove_prefix(sizeof(SubTransactionId));
   } else {
     decoded_value.subtransaction_id = kMinSubTransactionId;
   }
 
-  RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kWriteId));
-  INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");
-  decoded_value.write_id = BigEndian::Load32(intent_value.data());
-  intent_value.remove_prefix(sizeof(IntraTxnWriteId));
+  if (has_strong_intent) {
+    RETURN_NOT_OK(intent_value.consume_byte(ValueEntryTypeAsChar::kWriteId));
+    INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");
+    decoded_value.write_id = BigEndian::Load32(intent_value.data());
+    intent_value.remove_prefix(sizeof(IntraTxnWriteId));
+  }
 
   decoded_value.body = intent_value;
 
@@ -225,9 +229,9 @@ IntentTypeSet ObsoleteIntentTypeSetToNew(uint8_t obsolete_intent_type_set) {
 }
 
 bool IntentValueType(char ch) {
-  return ch == ValueTypeAsChar::kIntentTypeSet ||
-         ch == ValueTypeAsChar::kObsoleteIntentTypeSet ||
-         ch == ValueTypeAsChar::kObsoleteIntentType;
+  return ch == KeyEntryTypeAsChar::kIntentTypeSet ||
+         ch == KeyEntryTypeAsChar::kObsoleteIntentTypeSet ||
+         ch == KeyEntryTypeAsChar::kObsoleteIntentType;
 }
 
 }  // namespace docdb

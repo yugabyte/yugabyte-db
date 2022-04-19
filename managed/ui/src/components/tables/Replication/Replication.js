@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import moment from 'moment';
-import _ from 'lodash';
+import _, { isEmpty } from 'lodash';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBPanelItem } from '../../panels';
@@ -11,6 +11,8 @@ import { YBLoading } from '../../common/indicators';
 import { YBResourceCount } from '../../common/descriptors';
 import { MetricsPanel } from '../../metrics';
 import { ReplicationAlertModalBtn } from './ReplicationAlertModalBtn';
+import { Dropdown, MenuItem } from 'react-bootstrap';
+import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
 import './Replication.scss';
 
 const GRAPH_TYPE = 'replication';
@@ -18,11 +20,27 @@ const METRIC_NAME = 'tserver_async_replication_lag_micros';
 const MILLI_IN_MIN = 60000.0;
 const MILLI_IN_SEC = 1000.0;
 
+const filterTypes = [
+  { label: 'Last 1 hr', type: 'hours', value: '1' },
+  { label: 'Last 6 hrs', type: 'hours', value: '6' },
+  { label: 'Last 12 hrs', type: 'hours', value: '12' },
+  { label: 'Last 24 hrs', type: 'hours', value: '24' },
+  { label: 'Last 7 days', type: 'days', value: '7' },
+  { type: 'divider' },
+  { label: 'Custom', type: 'custom' }
+];
+
 export default class Replication extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      graphWidth: 840
+      graphWidth: props.hideHeader ? window.innerWidth - 300 : 840,
+      intervalId: null,
+      filterLabel: filterTypes[0].label,
+      filterType: filterTypes[0].type,
+      filterValue: filterTypes[0].value,
+      startMoment: moment().subtract(filterTypes[0].value, filterTypes[0].type),
+      endMoment: moment()
     };
   }
 
@@ -31,37 +49,92 @@ export default class Replication extends Component {
   };
 
   componentDidMount() {
-    const { graph } = this.props;
-    this.queryMetrics(graph.graphFilter);
+    const { sourceUniverseUUID } = this.props;
+    if (sourceUniverseUUID) {
+      this.props.fetchCurrentUniverse(sourceUniverseUUID).then(() => {
+        this.queryMetrics();
+      })
+    }
+    else {
+      this.queryMetrics();
+    }
+    const intervalId = setInterval(() => { this.queryMetrics() }, 10 * 2000);
+    this.setState({
+      intervalId
+    })
   }
 
   componentWillUnmount() {
     this.props.resetMasterLeader();
+    clearInterval(this.state.intervalId)
   }
 
-  queryMetrics = (graphFilter) => {
+  queryMetrics = () => {
     const {
-      universe: { currentUniverse }
+      universe: { currentUniverse },
+      replicationUUID
     } = this.props;
+    const { startMoment, endMoment, filterValue, filterType, filterLabel } = this.state;
     const universeDetails = getPromiseState(currentUniverse).isSuccess()
       ? currentUniverse.data.universeDetails
       : 'all';
+
     const params = {
       metrics: [METRIC_NAME],
-      start: graphFilter.startMoment.format('X'),
-      end: graphFilter.endMoment.format('X'),
-      nodePrefix: universeDetails.nodePrefix
+      start: startMoment.format('X'),
+      end: endMoment.format('X'),
+      nodePrefix: universeDetails.nodePrefix,
+      xClusterConfigUuid: replicationUUID
     };
+
+    if (filterLabel !== 'Custom') {
+      params['start'] = moment().subtract(filterValue, filterType).format('X')
+      params['end'] = moment().format('X')
+    }
+
     this.props.queryMetrics(params, GRAPH_TYPE);
   };
 
+  handleFilterChange = (eventKey, event) => {
+
+    const filterInfo = filterTypes[eventKey]
+    const self = this;
+
+    let stateToUpdate = {
+      filterLabel: filterInfo.label,
+      filterType: filterInfo.type,
+      filterValue: filterInfo.value
+    }
+    if (event.target.getAttribute('data-filter-type') !== 'custom') {
+      stateToUpdate = {
+        ...stateToUpdate,
+        endMoment: moment(),
+        startMoment: moment().subtract(filterInfo.value, filterInfo.type)
+      }
+      this.setState(stateToUpdate, () => self.queryMetrics())
+    }
+    else {
+      this.setState(stateToUpdate)
+    }
+  }
+
+  handleStartDateChange = (dateStr) => {
+    this.setState({ startMoment: moment(dateStr) });
+  };
+
+  handleEndDateChange = (dateStr) => {
+    this.setState({ endMoment: moment(dateStr) });
+  };
   render() {
     const {
       universe: { currentUniverse },
       graph: { metrics, prometheusQueryEnabled },
-      customer: { currentUser }
+      customer: { currentUser },
+      hideHeader
     } = this.props;
-
+    if (isEmpty(currentUniverse.data)) {
+      return <YBLoading />
+    }
     const universeDetails = currentUniverse.data.universeDetails;
     const nodeDetails = universeDetails.nodeDetailsSet;
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
@@ -79,7 +152,9 @@ export default class Replication extends Component {
       aggregatedMetrics = { ...metrics[GRAPH_TYPE][METRIC_NAME] };
       const replicationNodeMetrics = metrics[GRAPH_TYPE][METRIC_NAME].data.filter(
         (x) => x.name === committedLagName
-      );
+      )
+        .sort((a, b) => b.x.length - a.x.length);
+
       if (replicationNodeMetrics.length) {
         // Get max-value and avg-value metric array
         let avgArr = null,
@@ -129,7 +204,7 @@ export default class Replication extends Component {
           </div>
         );
       }
-      let resourceNumber = <YBResourceCount size={latestStat} kind="ms" inline={true} />;
+      let resourceNumber = <YBResourceCount size={parseFloat(latestStat.toFixed(4))} kind="ms" inline={true} />;
       if (latestStat > MILLI_IN_MIN) {
         resourceNumber = (
           <YBResourceCount size={(latestStat / MILLI_IN_MIN).toFixed(4)} kind="min" inline={true} />
@@ -148,14 +223,48 @@ export default class Replication extends Component {
       );
     }
 
+    let datePicker = null;
+    if (this.state.filterLabel === 'Custom') {
+      datePicker = (
+        <CustomDatePicker
+          startMoment={this.state.startMoment}
+          endMoment={this.state.endMoment}
+          setStartMoment={this.handleStartDateChange}
+          setEndMoment={this.handleEndDateChange}
+          handleTimeframeChange={this.queryMetrics}
+        />
+      );
+    }
+
+    const self = this;
+
+    const menuItems = filterTypes.map((filter, idx) => {
+      const key = 'graph-filter-' + idx;
+      if (filter.type === 'divider') {
+        return <MenuItem divider key={key} />;
+      }
+
+      return (
+        <MenuItem
+          onSelect={self.handleFilterChange}
+          data-filter-type={filter.type}
+          key={key}
+          eventKey={idx}
+          active={filter.label === self.state.filterLabel}
+        >
+          {filter.label}
+        </MenuItem>
+      );
+    });
+
     // TODO: Make graph resizeable
     return (
-      <div>
+      <div id="replication-tab-panel">
         <YBPanelItem
           header={
             <div className="replication-header">
               <h2>Replication</h2>
-              {!universePaused && (
+              {!universePaused && !hideHeader && (
                 <ReplicationAlertModalBtn
                   universeUUID={currentUniverse.data.universeUUID}
                   disabled={!showMetrics}
@@ -165,15 +274,28 @@ export default class Replication extends Component {
           }
           body={
             <div className="replication-content">
-              {infoBlock}
-              <div className="replication-content-stats">{recentStatBlock}</div>
+              {!hideHeader && infoBlock}
+              {!hideHeader && <div className="replication-content-stats">{recentStatBlock}</div>}
               {!showMetrics && <div className="no-data">No data to display.</div>}
+              {
+                showMetrics && <div className={`time-range-option ${!hideHeader ? 'old-view' : ''}`}>
+                  {datePicker}
+                  <Dropdown id="graphFilterDropdown" className="graph-filter-dropdown" pullRight>
+                    <Dropdown.Toggle>
+                      <i className="fa fa-clock-o"></i>&nbsp;
+                      {this.state.filterLabel}
+                    </Dropdown.Toggle>
+                    <Dropdown.Menu>{menuItems}</Dropdown.Menu>
+                  </Dropdown>
+                </div>
+              }
+
               {showMetrics && metrics[GRAPH_TYPE] && (
-                <div className="graph-container">
+                <div className={`graph-container ${!hideHeader ? 'old-view' : ''}`}>
                   <MetricsPanel
                     currentUser={currentUser}
                     metricKey={METRIC_NAME}
-                    metric={aggregatedMetrics}
+                    metric={JSON.parse(JSON.stringify(aggregatedMetrics))}
                     className={'metrics-panel-container'}
                     width={this.state.graphWidth}
                     height={540}

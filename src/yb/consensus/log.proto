@@ -37,7 +37,6 @@ option java_package = "org.yb.log";
 
 import "yb/common/common.proto";
 import "yb/consensus/consensus.proto";
-import "yb/consensus/metadata.proto";
 import "yb/util/opid.proto";
 
 // ===========================================================================
@@ -82,14 +81,14 @@ message LogSegmentHeaderPB {
   required uint32 minor_version = 2;
 
   // The ID of the tablet this WAL segment stores entries for.
-  required bytes tablet_id = 5;
+  required bytes unused_tablet_id = 5;
 
   // The tablet-specific sequence number of this WAL segment.
   required uint64 sequence_number = 6;
 
   // Schema used when appending entries to this log, and its version.
-  required SchemaPB schema = 7;
-  optional uint32 schema_version = 8;
+  required SchemaPB unused_schema = 7;
+  optional uint32 unused_schema_version = 8;
 }
 
 // A footer for a log segment.

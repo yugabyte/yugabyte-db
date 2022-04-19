@@ -28,6 +28,9 @@
 #include <string.h>         // for memcpy
 #include <limits.h>         // for enumeration casts and tests
 
+#include <limits>
+#include <string>
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/template_util.h"
 #include "yb/gutil/type_traits.h"
@@ -88,7 +91,9 @@ inline To down_cast(From* f) {                   // so we only accept pointers
 
   // TODO(user): This should use COMPILE_ASSERT.
   if (false) {
-    yb::implicit_cast<From*, To>(nullptr);
+    yb::implicit_cast<typename base::remove_const<From>::type*,
+                      typename base::remove_const<
+                          typename base::remove_pointer<To>::type>::type*>(nullptr);
   }
 
   // uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
@@ -107,13 +112,14 @@ inline To down_cast(From* f) {                   // so we only accept pointers
 template<typename To, typename From>
 inline To down_cast(From& f) { // NOLINT
   COMPILE_ASSERT(base::is_reference<To>::value, target_type_not_a_reference);
-  typedef typename base::remove_reference<To>::type* ToAsPointer;
+  typedef typename base::remove_reference<To>::type ToType;
   if (false) {
     // Compile-time check that To inherits from From. See above for details.
-    yb::implicit_cast<From*, ToAsPointer>(nullptr);
+    yb::implicit_cast<typename base::remove_const<From>::type*,
+                      typename base::remove_const<ToType>::type*>(nullptr);
   }
 
-  assert(dynamic_cast<ToAsPointer>(&f) != nullptr);  // RTTI: debug mode only
+  assert(dynamic_cast<ToType*>(&f) != nullptr);  // RTTI: debug mode only
   return static_cast<To>(f);
 }
 
@@ -379,10 +385,37 @@ inline bool tight_enum_test_cast(int e_val, Enum* e_var) {
   }
 }
 
+void BadNarrowCast(char rel, const std::string& in, const std::string& limit);
+
+template <class Out, class In>
+Out narrow_cast(const In& in) {
+  static_assert(sizeof(Out) < sizeof(In), "Wrong narrow cast");
+  if (in > static_cast<In>(std::numeric_limits<Out>::max())) {
+    BadNarrowCast('>', std::to_string(in), std::to_string(std::numeric_limits<Out>::max()));
+  }
+  if (std::is_signed<In>::value && in < static_cast<In>(std::numeric_limits<Out>::min())) {
+    BadNarrowCast('<', std::to_string(in), std::to_string(std::numeric_limits<Out>::min()));
+  }
+  return static_cast<Out>(in);
+}
+
+template <class Out, class In>
+Out trim_cast(const In& in) {
+  if (in > std::numeric_limits<Out>::max()) {
+    return std::numeric_limits<Out>::max();
+  }
+  if (in < std::numeric_limits<Out>::min()) {
+    return std::numeric_limits<Out>::min();
+  }
+  return static_cast<Out>(in);
+}
+
 } // namespace yb
 
 using yb::bit_cast;
 using yb::down_cast;
 using yb::implicit_cast;
+using yb::narrow_cast;
+using yb::trim_cast;
 
 #endif // YB_GUTIL_CASTS_H

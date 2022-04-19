@@ -21,19 +21,22 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.TriggerHealthCheckResult;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -161,9 +164,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Optional<String> optPassword = request().getHeaders().get(YSQL_PASSWORD_HEADER);
     JsonNode resultNode =
         universeInfoHandler.getSlowQueries(
-            universe,
-            optUsername.orElse(null),
-            optPassword.isPresent() ? Util.decodeBase64(optPassword.get()) : null);
+            universe, optUsername.orElse(null), optPassword.map(Util::decodeBase64).orElse(null));
     return Results.ok(resultNode);
   }
 
@@ -175,6 +176,12 @@ public class UniverseInfoController extends AuthenticatedController {
     log.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.ResetSlowQueries);
     return PlatformResults.withRawData(universeInfoHandler.resetSlowQueries(universe));
   }
 
@@ -199,6 +206,28 @@ public class UniverseInfoController extends AuthenticatedController {
     return PlatformResults.withData(detailsList);
   }
 
+  @ApiOperation(
+      value = "Trigger a universe health check",
+      notes = "Trigger a universe health check and return the trigger time.",
+      response = TriggerHealthCheckResult.class)
+  public Result triggerHealthCheck(UUID customerUUID, UUID universeUUID) {
+    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
+      throw new PlatformServiceException(
+          METHOD_NOT_ALLOWED, "Manual health check trigger is disabled.");
+    }
+
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+
+    OffsetDateTime dt = OffsetDateTime.now(ZoneOffset.UTC);
+    universeInfoHandler.triggerHealthCheck(customer, universe);
+
+    TriggerHealthCheckResult res = new TriggerHealthCheckResult();
+    res.timestamp = new Date(dt.toInstant().toEpochMilli());
+
+    return PlatformResults.withData(res);
+  }
+
   /**
    * API that downloads the log files for a particular node in a universe. Synchronized due to
    * potential race conditions.
@@ -212,6 +241,7 @@ public class UniverseInfoController extends AuthenticatedController {
       value = "Download a node's logs",
       notes = "Downloads the log files from a given node.",
       nickname = "downloadNodeLogs",
+      response = String.class,
       produces = "application/x-compressed")
   public CompletionStage<Result> downloadNodeLogs(
       UUID customerUUID, UUID universeUUID, String nodeName) {

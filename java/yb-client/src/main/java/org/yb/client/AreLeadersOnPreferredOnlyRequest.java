@@ -15,7 +15,7 @@ package org.yb.client;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.MasterClusterOuterClass;
 import org.yb.util.Pair;
 
 import com.google.protobuf.Message;
@@ -30,8 +30,8 @@ class AreLeadersOnPreferredOnlyRequest extends YRpc<AreLeadersOnPreferredOnlyRes
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final Master.AreLeadersOnPreferredOnlyRequestPB.Builder builder =
-      Master.AreLeadersOnPreferredOnlyRequestPB.newBuilder();
+    final MasterClusterOuterClass.AreLeadersOnPreferredOnlyRequestPB.Builder builder =
+      MasterClusterOuterClass.AreLeadersOnPreferredOnlyRequestPB.newBuilder();
     return toChannelBuffer(header, builder.build());
   }
 
@@ -45,8 +45,8 @@ class AreLeadersOnPreferredOnlyRequest extends YRpc<AreLeadersOnPreferredOnlyRes
   Pair<AreLeadersOnPreferredOnlyResponse, Object> deserialize(
       CallResponse callResponse,
       String masterUUID) throws Exception {
-    final Master.AreLeadersOnPreferredOnlyResponsePB.Builder respBuilder =
-      Master.AreLeadersOnPreferredOnlyResponsePB.newBuilder();
+    final MasterClusterOuterClass.AreLeadersOnPreferredOnlyResponsePB.Builder respBuilder =
+      MasterClusterOuterClass.AreLeadersOnPreferredOnlyResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     boolean hasErr = respBuilder.hasError();
     AreLeadersOnPreferredOnlyResponse response =

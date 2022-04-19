@@ -118,6 +118,9 @@ public class UserTaskDetails {
     // Restoring Table Backup
     RestoringTableBackup,
 
+    // Restoring Backup
+    RestoringBackup,
+
     // Create Namespace for Kubectl.
     CreateNamespace,
 
@@ -320,6 +323,10 @@ public class UserTaskDetails {
         title = "Restoring Table Backup";
         description = "Restoring from a backup.";
         break;
+      case RestoringBackup:
+        title = "Restoring Backup";
+        description = "Restoring from a backup.";
+        break;
       case HelmInit:
         title = "Kubernetes Helm Charts initialize";
         description = "Initialize Kubernetes Helm Charts";
@@ -439,8 +446,8 @@ public class UserTaskDetails {
       return description;
     }
 
-    public String getState() {
-      return state.toString();
+    public TaskInfo.State getState() {
+      return state;
     }
   }
 }

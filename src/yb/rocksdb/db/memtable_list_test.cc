@@ -34,7 +34,7 @@
 
 namespace rocksdb {
 
-class MemTableListTest : public testing::Test {
+class MemTableListTest : public RocksDBTest {
  public:
   std::string dbname;
   DB* db;

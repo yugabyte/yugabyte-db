@@ -14,6 +14,8 @@
 #ifndef YB_COMMON_PGSQL_ERROR_H
 #define YB_COMMON_PGSQL_ERROR_H
 
+#include "yb/common/pgsql_protocol.pb.h"
+
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
 #include "yb/util/yb_pg_errcodes.h"
@@ -35,6 +37,38 @@ struct PgsqlErrorTag : IntegralErrorTag<YBPgErrorCode> {
 };
 
 typedef StatusErrorCodeImpl<PgsqlErrorTag> PgsqlError;
+
+struct PgsqlRequestStatusTag : IntegralErrorTag<PgsqlResponsePB::RequestStatus> {
+  // It is part of the wire protocol and should not be changed once released.
+  static constexpr uint8_t kCategory = 17;
+
+  static std::string ToMessage(Value value) {
+    return PgsqlResponsePB::RequestStatus_Name(value);
+  }
+
+  static std::string DecodeToString(const uint8_t* source) {
+    return ToMessage(Decode(source));
+  }
+
+};
+
+typedef StatusErrorCodeImpl<PgsqlRequestStatusTag> PgsqlRequestStatus;
+
+struct OpIndexTag : IntegralErrorTag<size_t> {
+  // It is part of the wire protocol and should not be changed once released.
+  static constexpr uint8_t kCategory = 18;
+
+  static std::string ToMessage(Value value) {
+    return std::to_string(value);
+  }
+
+  static std::string DecodeToString(const uint8_t* source) {
+    return ToMessage(Decode(source));
+  }
+
+};
+
+typedef StatusErrorCodeImpl<OpIndexTag> OpIndex;
 
 } // namespace yb
 

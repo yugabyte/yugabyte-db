@@ -42,6 +42,8 @@
 
 #include <boost/variant.hpp>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/partition.h"
@@ -52,6 +54,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -75,14 +78,6 @@
 namespace yb {
 
 class Histogram;
-class YBPartialRow;
-
-namespace master {
-class MasterServiceProxy;
-class TabletLocationsPB_ReplicaPB;
-class TabletLocationsPB;
-class TSInfoPB;
-} // namespace master
 
 namespace client {
 
@@ -95,6 +90,8 @@ namespace internal {
 class LookupRpc;
 class LookupByKeyRpc;
 class LookupByIdRpc;
+
+YB_DEFINE_ENUM(LocalityLevel, (kNone)(kRegion)(kZone));
 
 // The information cached about a given tablet server in the cluster.
 //
@@ -137,38 +134,40 @@ class RemoteTabletServer {
   // Returns the remote server's uuid.
   const std::string& permanent_uuid() const;
 
-  const CloudInfoPB& cloud_info() const;
-
-  const google::protobuf::RepeatedPtrField<HostPortPB>& public_rpc_hostports() const;
-
-  const google::protobuf::RepeatedPtrField<HostPortPB>& private_rpc_hostports() const;
-
   bool HasCapability(CapabilityId capability) const;
+
+  bool IsLocalRegion() const;
+
+  LocalityLevel LocalityLevelWith(const CloudInfoPB& cloud_info) const;
+
+  HostPortPB DesiredHostPort(const CloudInfoPB& cloud_info) const;
+
+  std::string TEST_PlacementZone() const;
 
  private:
   mutable rw_spinlock mutex_;
   const std::string uuid_;
 
-  google::protobuf::RepeatedPtrField<HostPortPB> public_rpc_hostports_;
-  google::protobuf::RepeatedPtrField<HostPortPB> private_rpc_hostports_;
-  yb::CloudInfoPB cloud_info_pb_;
+  google::protobuf::RepeatedPtrField<HostPortPB> public_rpc_hostports_ GUARDED_BY(mutex_);
+  google::protobuf::RepeatedPtrField<HostPortPB> private_rpc_hostports_ GUARDED_BY(mutex_);
+  yb::CloudInfoPB cloud_info_pb_ GUARDED_BY(mutex_);
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
   ::yb::HostPort proxy_endpoint_;
   const tserver::LocalTabletServer* const local_tserver_ = nullptr;
   scoped_refptr<Histogram> dns_resolve_histogram_;
-  std::vector<CapabilityId> capabilities_;
+  std::vector<CapabilityId> capabilities_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);
 };
 
 struct RemoteReplica {
   RemoteTabletServer* ts;
-  consensus::RaftPeerPB::Role role;
+  PeerRole role;
   MonoTime last_failed_time = MonoTime::kUninitialized;
   // The state of this replica. Only updated after calling GetTabletStatus.
   tablet::RaftGroupStatePB state = tablet::RaftGroupStatePB::UNKNOWN;
 
-  RemoteReplica(RemoteTabletServer* ts_, consensus::RaftPeerPB::Role role_)
+  RemoteReplica(RemoteTabletServer* ts_, PeerRole role_)
       : ts(ts_), role(role_) {}
 
   void MarkFailed() {
@@ -517,7 +516,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       CoarseTimePoint deadline);
 
   // Lookup all tablets corresponding to a table.
-  void LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+  void LookupAllTablets(const std::shared_ptr<YBTable>& table,
                         CoarseTimePoint deadline,
                         LookupTabletRangeCallback callback);
 
@@ -660,6 +659,10 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   bool DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
                           CoarseTimePoint deadline,
                           LookupTabletRangeCallback* callback);
+
+  template <class Func, class Callback>
+  void RefreshTablePartitions(
+      Func&& func, const std::shared_ptr<YBTable>& table, Callback&& callback);
 
   YBClient* const client_;
 

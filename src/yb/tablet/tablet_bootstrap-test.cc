@@ -33,7 +33,6 @@
 #include <vector>
 
 #include "yb/common/index.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
 
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/consensus_meta.h"
@@ -41,14 +40,14 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+
 #include "yb/server/logical_clock.h"
 
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
-
-#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
@@ -245,7 +244,7 @@ class BootstrapTest : public LogTestBase {
     config.set_opid_index(consensus::kInvalidOpIdIndex);
     consensus::RaftPeerPB* peer = config.add_peers();
     peer->set_permanent_uuid(meta->fs_manager()->uuid());
-    peer->set_member_type(consensus::RaftPeerPB::VOTER);
+    peer->set_member_type(consensus::PeerMemberType::VOTER);
 
     std::unique_ptr<ConsensusMetadata> cmeta;
     RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(meta->fs_manager(), meta->raft_group_id(),
@@ -308,7 +307,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
   BuildLog();
 
   // Append a REPLICATE with no commit
-  int replicate_index = current_index_++;
+  auto replicate_index = current_index_++;
 
   OpIdPB opid = MakeOpId(1, replicate_index);
 
@@ -638,7 +637,7 @@ void GenerateRandomInput(size_t num_entries, std::mt19937_64* rng, BootstrapInpu
   const auto final_op_id_by_index = GenerateRawEntriesAndFinalOpByIndex(
       num_entries, rng, res_input);
 
-  const auto committed_op_id_for_index = [&final_op_id_by_index](int index) -> OpId {
+  const auto committed_op_id_for_index = [&final_op_id_by_index](int64_t index) -> OpId {
     auto it = final_op_id_by_index.find(index);
     if (it == final_op_id_by_index.end()) {
       return OpId();
@@ -888,7 +887,7 @@ TEST_F(BootstrapTest, RandomizedInput) {
 
     BuildLog();
 
-    for (auto i = 0; i < input.entries.size(); ++i) {
+    for (size_t i = 0; i < input.entries.size(); ++i) {
       const auto& entry = input.entries[i];
       if (entry.start_new_segment_with_this_entry && i != 0) {
         ASSERT_OK(RollLog());

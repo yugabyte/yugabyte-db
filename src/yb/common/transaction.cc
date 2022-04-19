@@ -14,6 +14,8 @@
 //
 #include "yb/common/transaction.h"
 
+#include "yb/common/common.pb.h"
+
 #include "yb/util/result.h"
 #include "yb/util/tsan_util.h"
 
@@ -26,7 +28,7 @@ namespace yb {
 
 YB_STRONGLY_TYPED_UUID_IMPL(TransactionId);
 
-const std::string kGlobalTransactionsTableName = "transactions";
+const char* kGlobalTransactionsTableName = "transactions";
 const std::string kMetricsSnapshotsTableName = "metrics";
 const std::string kTransactionTablePrefix = "transactions_";
 

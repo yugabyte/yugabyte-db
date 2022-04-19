@@ -17,3 +17,5 @@ add_library(ql_sem
 target_link_libraries(ql_sem
                       ql_parser
                       yb_util)
+
+yb_use_pch(ql_sem ql)

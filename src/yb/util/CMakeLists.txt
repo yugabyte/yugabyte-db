@@ -30,6 +30,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX util)
+set(YB_PCH_DEP_LIBS cds gmock gutil icui18n icuuc libev protoc)
+
 #######################################
 # protoc-gen-insertions
 #######################################
@@ -83,28 +86,17 @@ ADD_YB_LIBRARY(version_info_proto
 # op_id_proto
 #######################################
 
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
   OP_ID_PROTO_SRCS OP_ID_PROTO_HDRS OP_ID_PROTO_TGTS
+  MESSAGES TRUE
+  SERVICE FALSE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES opid.proto)
 ADD_YB_LIBRARY(opid_proto
   SRCS ${OP_ID_PROTO_SRCS}
-  DEPS protobuf
+  DEPS protobuf yb_util yrpc
   NONLINK_DEPS ${OP_ID_PROTO_TGTS})
-
-#########################################
-# encryption_proto
-#########################################
-PROTOBUF_GENERATE_CPP(
-  ENCRYPTION_PROTO_SRCS ENCRYPTION_PROTO_HDRS ENCRYPTION_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES encryption.proto)
-ADD_YB_LIBRARY(encryption_proto
-  SRCS ${ENCRYPTION_PROTO_SRCS}
-  DEPS protobuf
-  NONLINK_DEPS ${ENCRYPTION_PROTO_TGTS})
 
 ############################################################
 # Version stamp
@@ -138,6 +130,7 @@ endif()
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
+  async_task_util.cc
   atomic.cc
   background_task.cc
   bitmap.cc
@@ -146,7 +139,6 @@ set(UTIL_SRCS
   bytes_formatter.cc
   cache_metrics.cc
   capabilities.cc
-  ctr_cipher_stream.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc
@@ -164,9 +156,6 @@ set(UTIL_SRCS
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   delayer.cc
-  encrypted_file.cc
-  encrypted_file_factory.cc
-  encryption_util.cc
   enums.cc
   env.cc
   env_posix.cc
@@ -183,7 +172,6 @@ set(UTIL_SRCS
   flag_tags.cc
   flags.cc
   hdr_histogram.cc
-  header_manager_impl.cc
   hexdump.cc
   init.cc
   jsonreader.cc
@@ -254,11 +242,11 @@ set(UTIL_SRCS
   threadlocal.cc
   threadpool.cc
   timestamp.cc
+  tostring.cc
   trace.cc
   trilean.cc
   ulimit.cc
   ulimit_util.cc
-  universe_key_manager.cc
   url-coding.cc
   user.cc
   uuid.cc
@@ -286,7 +274,6 @@ set(UTIL_LIBS
   pb_util_proto
   protobuf
   version_info_proto
-  encryption_proto
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
   ${OPENSSL_SSL_LIBRARY})
@@ -322,36 +309,21 @@ add_dependencies(yb_util gen_version_info)
 # yb_test_util
 #######################################
 
-add_library(yb_test_util
-  logging_test_util.cc
-  memory/memory_usage_test_util.cc
-  test_util.cc
-  test_thread_holder.cc)
-target_link_libraries(yb_test_util
-  gflags
-  glog
-  gmock
-  yb_util)
-
-add_library(encryption_test_util encryption_test_util.cc header_manager_mock_impl.cc)
-target_link_libraries(encryption_test_util yb_test_util)
+ADD_YB_TEST_LIBRARY(
+  yb_test_util
+  SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc test_thread_holder.cc
+  DEPS gflags glog gmock yb_util)
 
 #######################################
 # yb_test_main
 #######################################
 
-add_library(yb_test_main
-  test_main.cc)
-target_link_libraries(yb_test_main
-  gflags
-  glog
-  gmock
-  yb_util
-  yb_test_util)
+ADD_YB_TEST_LIBRARY(yb_test_main
+                    SRCS test_main.cc
+                    DEPS gflags glog gmock yb_util yb_test_util)
 
 if(NOT APPLE)
-  target_link_libraries(yb_test_main
-    rt)
+  target_link_libraries(yb_test_main rt)
 endif()
 
 #######################################
@@ -410,7 +382,6 @@ ADD_YB_TEST(ref_cnt_buffer-test)
 ADD_YB_TEST(random-test)
 ADD_YB_TEST(random_util-test)
 ADD_YB_TEST(result-test)
-ADD_YB_TEST(rle-test)
 ADD_YB_TEST(rolling_log-test)
 ADD_YB_TEST(rw_mutex-test)
 ADD_YB_TEST(rw_semaphore-test)
@@ -457,9 +428,11 @@ PROTOBUF_GENERATE_CPP(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES jsonwriter_test.proto)
-add_library(jsonwriter_test_proto ${JSONWRITER_TEST_PROTO_SRCS} ${JSONWRITER_TEST_PROTO_HDRS})
-target_link_libraries(jsonwriter_test_proto
-  protobuf)
+ADD_YB_LIBRARY(
+    jsonwriter_test_proto
+    SRCS ${JSONWRITER_TEST_PROTO_SRCS} ${JSONWRITER_TEST_PROTO_HDRS})
+add_dependencies(jsonwriter_test_proto ${JSONWRITER_TEST_PROTO_TGTS})
+target_link_libraries(jsonwriter_test_proto protobuf)
 
 #######################################
 # jsonwriter-test
@@ -480,16 +453,10 @@ PROTOBUF_GENERATE_CPP(
     proto_container_test.proto
     proto_container_test2.proto
     proto_container_test3.proto)
-add_library(proto_container_test_proto
-  ${PROTO_CONTAINER_TEST_PROTO_SRCS}
-  ${PROTO_CONTAINER_TEST_PROTO_HDRS})
-add_dependencies(proto_container_test_proto
-  gen_src_yb_util_proto_container_test_proto
-  gen_src_yb_util_proto_container_test2_proto
-  gen_src_yb_util_proto_container_test3_proto
-  )
-target_link_libraries(proto_container_test_proto
-  protobuf)
+ADD_YB_LIBRARY(proto_container_test_proto
+               SRCS ${PROTO_CONTAINER_TEST_PROTO_SRCS} ${PROTO_CONTAINER_TEST_PROTO_HDRS})
+add_dependencies(proto_container_test_proto ${PROTO_CONTAINER_TEST_PROTO_TGTS})
+target_link_libraries(proto_container_test_proto protobuf)
 
 #######################################
 # pb_util-test
@@ -497,12 +464,6 @@ target_link_libraries(proto_container_test_proto
 
 ADD_YB_TEST(pb_util-test)
 YB_TEST_TARGET_LINK_LIBRARIES(pb_util-test proto_container_test_proto)
-
-ADD_YB_TEST(encrypted_env-test)
-YB_TEST_TARGET_LINK_LIBRARIES(encrypted_env-test encryption_test_util)
-
-ADD_YB_TEST(ctr_cipher_stream-test)
-YB_TEST_TARGET_LINK_LIBRARIES(ctr_cipher_stream-test encryption_test_util)
 
 ADD_YB_TEST(uint_set-test)
 YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)

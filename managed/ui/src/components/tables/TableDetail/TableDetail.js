@@ -49,7 +49,8 @@ export default class TableDetail extends Component {
     const {
       customer,
       universe: { currentUniverse },
-      tables: { currentTableDetail }
+      tables: { currentTableDetail },
+      modal: { visibleModal },
     } = this.props;
     const width = this.state.dimensions.width;
     if (getPromiseState(currentUniverse).isSuccess()) {
@@ -92,6 +93,7 @@ export default class TableDetail extends Component {
           customer={customer}
           tableName={tableName}
           nodePrefixes={nodePrefixes}
+          visibleModal={visibleModal}
         />
       );
     }

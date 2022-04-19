@@ -23,9 +23,8 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
-
-#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/barrier.h"
@@ -244,7 +243,6 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(UriMd5), PgLibPqTestAuthMd5) {
 // The described prodecure is repeated multiple times to increase probability of catching bug,
 // w/o running test multiple times.
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
-  static const std::string kTryAgain = "Try again.";
   constexpr auto kKeys = RegularBuildVsSanitizers(10, 20);
   constexpr auto kColors = 2;
   constexpr auto kIterations = 20;
@@ -262,7 +260,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
     auto s = conn.Execute("DELETE FROM t");
     if (!s.ok()) {
-      ASSERT_STR_CONTAINS(s.ToString(), kTryAgain);
+      ASSERT_TRUE(HasTryAgain(s)) << s;
       continue;
     }
     for (int k = 0; k != kKeys; ++k) {
@@ -282,8 +280,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
         auto res = connection.Fetch("SELECT * FROM t");
         if (!res.ok()) {
-          auto msg = res.status().message().ToBuffer();
-          ASSERT_STR_CONTAINS(res.status().ToString(), kTryAgain);
+          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
           return;
         }
         auto columns = PQnfields(res->get());
@@ -302,7 +299,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
           if (!status.ok()) {
             auto msg = status.message().ToBuffer();
             // Missing metadata means that transaction was aborted and cleaned.
-            ASSERT_TRUE(msg.find("Try again") != std::string::npos ||
+            ASSERT_TRUE(HasTryAgain(status) ||
                         msg.find("Missing metadata") != std::string::npos) << status;
             break;
           }
@@ -772,7 +769,7 @@ void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
   // Make a counter for each thread and have each thread increment it
   std::vector<std::thread> threads;
   while (threads.size() != kThreads) {
-    int key = threads.size();
+    int key = narrow_cast<int>(threads.size());
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, value) VALUES ($0, 0)", key));
 
     threads.emplace_back([this, key, isolation] {
@@ -1054,6 +1051,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
 }
 
 namespace {
+
 Result<master::TabletLocationsPB> GetColocatedTabletLocations(
     client::YBClient* client,
     std::string database_name,
@@ -1610,29 +1608,44 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
       30s, "Drop database with tablegroup (wait for RPCs to finish)"));
 }
 
+namespace {
+
+class PgLibPqTestRF1: public PgLibPqTest {
+  int GetNumMasters() const override {
+    return 1;
+  }
+
+  int GetNumTabletServers() const override {
+    return 1;
+  }
+};
+
+} // namespace
+
 // Test that the number of RPCs sent to master upon first connection is not too high.
 // See https://github.com/yugabyte/yugabyte-db/issues/3049
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs)) {
-  auto get_master_inbound_rpcs_created = [&cluster_ = this->cluster_]() -> Result<int64_t> {
+// Test uses RF1 cluster to avoid possible relelections which affects the number of RPCs received
+// by a master.
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs), PgLibPqTestRF1) {
+  auto get_master_inbound_rpcs_created = [this]() -> Result<int64_t> {
     int64_t m_in_created = 0;
-    for (auto* master : cluster_->master_daemons()) {
+    for (const auto* master : this->cluster_->master_daemons()) {
       m_in_created += VERIFY_RESULT(master->GetInt64Metric(
           &METRIC_ENTITY_server, "yb.master", &METRIC_rpc_inbound_calls_created, "value"));
     }
     return m_in_created;
   };
 
-  int64_t rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_created());
+  auto rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_created());
   ASSERT_RESULT(Connect());
-  int64_t rpcs_after  = ASSERT_RESULT(get_master_inbound_rpcs_created());
-  int64_t rpcs_during = rpcs_after - rpcs_before;
+  auto rpcs_during = ASSERT_RESULT(get_master_inbound_rpcs_created()) - rpcs_before;
 
-  // Real-world numbers (debug build, local Mac): 328 RPCs before, 95 after the fix for #3049
+  // Real-world numbers (debug build, local PC): 58 RPCs
   LOG(INFO) << "Master inbound RPC during connection: " << rpcs_during;
   // RPC counter is affected no only by table read/write operations but also by heartbeat mechanism.
-  // As far as ASAN/TSAN builds are slower they can receive more heartbeats while
-  // processing requests. As a result RPC count might be higher in comparison to other build types.
-  ASSERT_LT(rpcs_during, RegularBuildVsSanitizers(150, 200));
+  // As far as ASAN builds are slower they can receive more heartbeats while processing requests.
+  // As a result RPC count might be higher in comparison to other build types.
+  ASSERT_LT(rpcs_during, 100);
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
@@ -1671,7 +1684,7 @@ TEST_F_EX(PgLibPqTest,
           PgLibPqTestSmallTSTimeout) {
   const std::string kDatabaseName = "co";
   const auto kTimeout = 60s;
-  const int starting_num_tablet_servers = cluster_->num_tablet_servers();
+  const auto starting_num_tablet_servers = cluster_->num_tablet_servers();
   ExternalMiniClusterOptions opts;
   std::map<std::string, int> ts_loads;
   static const int tserver_unresponsive_timeout_ms = 8000;
@@ -1765,7 +1778,7 @@ TEST_F_EX(PgLibPqTest,
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
   constexpr int kNumDatabases = 3;
   const auto kTimeout = 60s;
-  const int starting_num_tablet_servers = cluster_->num_tablet_servers();
+  const size_t starting_num_tablet_servers = cluster_->num_tablet_servers();
   const std::string kDatabasePrefix = "co";
   std::map<std::string, int> ts_loads;
 
@@ -2168,7 +2181,7 @@ TEST_F_EX(PgLibPqTest,
   // A new PostgreSQL process will be respawned by the tablet server and
   // inherit the new --TEST_do_not_add_enum_sort_order flag from the tablet
   // server.
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
     const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
                                                 "postmaster.pid");
@@ -2250,6 +2263,78 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(value, "b");
 }
 
+// Test postgres large oid (>= 2^31). Internally postgres oid is an unsigned 32-bit integer. But
+// when extended to Datum type (unsigned long), the sign-bit is extended so that the high 32-bit
+// is ffffffff. This caused unexpected assertion failures and errors.
+class PgLibPqLargeOidTest: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+      Format("--TEST_ysql_oid_prefetch_adjustment=$0", kOidAdjustment));
+  }
+  const Oid kOidAdjustment = 2147483648U - kPgFirstNormalObjectId; // 2^31 - 16384
+};
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(LargeOid),
+          PgLibPqLargeOidTest) {
+  // Test large OID with enum type which had Postgres Assert failure.
+  const string kDatabaseName ="yugabyte";
+  const string kTableName ="enum_table";
+  const string kEnumTypeName ="enum_type";
+  PGConn conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TYPE $0 as enum('a', 'c')", kEnumTypeName));
+  // Do ALTER TYPE to ensure we correctly put sort order as the high 32-bit after clearing
+  // the signed extended ffffffff. The following index scan would yield wrong order if we
+  // left ffffffff in the high 32-bit.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TYPE $0 ADD VALUE 'b' BEFORE 'c'", kEnumTypeName));
+  std::string query = "SELECT oid FROM pg_enum";
+  PGResultPtr res = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  std::vector<int32> enum_oids = {
+    ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
+    ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+    ASSERT_RESULT(GetInt32(res.get(), 2, 0)),
+  };
+  // Ensure that we do see large OIDs in pg_enum table.
+  LOG(INFO) << "enum_oids: " << (Oid)enum_oids[0] << ","
+            << (Oid)enum_oids[1] << "," << (Oid)enum_oids[2];
+  ASSERT_GT((Oid)enum_oids[0], kOidAdjustment);
+  ASSERT_GT((Oid)enum_oids[1], kOidAdjustment);
+  ASSERT_GT((Oid)enum_oids[2], kOidAdjustment);
+
+  // Create a table using the enum type and insert a few rows.
+  ASSERT_OK(conn.ExecuteFormat(
+    "CREATE TABLE $0 (id $1)",
+    kTableName,
+    kEnumTypeName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('a'), ('b'), ('c')", kTableName));
+
+  // Create an index on the enum table column.
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (id ASC)", kTableName));
+
+  // Index only scan to verify that with large OIDs, the contents of index table
+  // is still correct. This also triggers index backfill statement, which used to
+  // fail on large oid such as:
+  // BACKFILL INDEX 2147500041 WITH x'0880011a00' READ TIME 6725053491126669312 PARTITION x'5555';
+  // We fix the syntax error by rewriting it to
+  // BACKFILL INDEX -2147467255 WITH x'0880011a00' READ TIME 6725053491126669312 PARTITION x'5555';
+  // Internally, -2147467255 will be reinterpreted as OID 2147500041 which is the OID of the index.
+  query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  res = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  std::vector<string> enum_values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+  };
+  ASSERT_EQ(enum_values[0], "a");
+  ASSERT_EQ(enum_values[1], "b");
+  ASSERT_EQ(enum_values[2], "c");
+}
+
 namespace {
 
 class CoordinatedRunner {
@@ -2295,7 +2380,7 @@ class CoordinatedRunner {
 
 bool RetryableError(const Status& status) {
   const auto msg = status.message().ToBuffer();
-  const std::string expected_errors[] = {"Try Again",
+  const std::string expected_errors[] = {"Try again",
                                          "Catalog Version Mismatch",
                                          "Restart read required at",
                                          "schema version mismatch for table"};

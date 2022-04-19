@@ -14,27 +14,27 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
-
-import java.util.UUID;
 
 public class GetUniverseReplicationRequest extends YRpc<GetUniverseReplicationResponse> {
 
-  private final UUID sourceUniverseUUID;
+  private final String replicationGroupName;
 
-  GetUniverseReplicationRequest(YBTable table, UUID sourceUniverseUUID) {
+  GetUniverseReplicationRequest(YBTable table, String replicationGroupName) {
     super(table);
-    this.sourceUniverseUUID = sourceUniverseUUID;
+    this.replicationGroupName = replicationGroupName;
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
-    final Master.GetUniverseReplicationRequestPB.Builder builder =
-      Master.GetUniverseReplicationRequestPB.newBuilder()
-        .setProducerId(sourceUniverseUUID.toString());
+    final MasterReplicationOuterClass.GetUniverseReplicationRequestPB.Builder builder =
+      MasterReplicationOuterClass.GetUniverseReplicationRequestPB.newBuilder().setProducerId(
+          replicationGroupName);
 
     return toChannelBuffer(header, builder.build());
   }
@@ -52,17 +52,16 @@ public class GetUniverseReplicationRequest extends YRpc<GetUniverseReplicationRe
   @Override
   Pair<GetUniverseReplicationResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
-    final Master.GetUniverseReplicationResponsePB.Builder builder =
-      Master.GetUniverseReplicationResponsePB.newBuilder();
+    final MasterReplicationOuterClass.GetUniverseReplicationResponsePB.Builder builder =
+      MasterReplicationOuterClass.GetUniverseReplicationResponsePB.newBuilder();
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
-    final Master.SysUniverseReplicationEntryPB info = builder.getEntry();
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final CatalogEntityInfo.SysUniverseReplicationEntryPB info = builder.getEntry();
 
     GetUniverseReplicationResponse response =
-      new GetUniverseReplicationResponse(deadlineTracker.getElapsedMillis(),
-        tsUUID, error, info);
+      new GetUniverseReplicationResponse(deadlineTracker.getElapsedMillis(), tsUUID, error, info);
 
     return new Pair<>(response, error);
   }

@@ -164,7 +164,7 @@ TEST_F(BackupTxnTest, PointInTimeBigSkipRestore) {
   auto session = CreateSession();
   ASSERT_OK(WriteRow(session, kKey, 0));
   auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
-  for (size_t r = 1; r <= kNumWrites; ++r) {
+  for (int r = 1; r <= kNumWrites; ++r) {
     ASSERT_OK(WriteRow(session, kKey, r, WriteOpType::INSERT, client::Flush::kFalse));
     futures.push_back(session->FlushFuture());
   }
@@ -418,7 +418,7 @@ TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
   ASSERT_NO_FATALS(WriteData());
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
 
-  for (int i = 0; i != cluster_->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
     auto tablet_peer = cluster_->mini_master(i)->tablet_peer();
     ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
   }
@@ -458,7 +458,7 @@ TEST_F(BackupTxnTest, Consistency) {
         for (int j = 0; j != kKeys; ++j) {
           ASSERT_OK(WriteRow(session, j, v, WriteOpType::INSERT, Flush::kFalse));
         }
-        auto status = session->Flush();
+        auto status = session->TEST_Flush();
         if (status.ok()) {
           status = txn->CommitFuture().get();
         }

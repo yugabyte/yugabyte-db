@@ -15,8 +15,12 @@
 #ifndef YB_YQL_PGGATE_PG_DDL_H_
 #define YB_YQL_PGGATE_PG_DDL_H_
 
-#include "yb/yql/pggate/pg_statement.h"
+#include "yb/common/constants.h"
 #include "yb/common/transaction.h"
+
+#include "yb/tserver/pg_client.messages.h"
+
+#include "yb/yql/pggate/pg_statement.h"
 
 namespace yb {
 namespace pggate {
@@ -41,8 +45,8 @@ class PgCreateDatabase : public PgDdl {
                    const bool colocated);
   virtual ~PgCreateDatabase();
 
-  void AddTransaction(std::shared_future<Result<TransactionMetadata>> transaction) {
-    txn_future_ = transaction;
+  void UseTransaction() {
+    req_.set_use_transaction(true);
   }
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_DATABASE; }
@@ -51,12 +55,7 @@ class PgCreateDatabase : public PgDdl {
   CHECKED_STATUS Exec();
 
  private:
-  const char *database_name_;
-  const PgOid database_oid_;
-  const PgOid source_database_oid_;
-  const PgOid next_oid_;
-  bool colocated_ = false;
-  boost::optional<std::shared_future<Result<TransactionMetadata>>> txn_future_ = boost::none;
+  tserver::PgCreateDatabaseRequestPB req_;
 };
 
 class PgDropDatabase : public PgDdl {
@@ -101,7 +100,8 @@ class PgCreateTablegroup : public PgDdl {
   PgCreateTablegroup(PgSession::ScopedRefPtr pg_session,
                      const char *database_name,
                      const PgOid database_oid,
-                     const PgOid tablegroup_oid);
+                     const PgOid tablegroup_oid,
+                     const PgOid tablespace_oid);
   virtual ~PgCreateTablegroup();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLEGROUP; }
@@ -145,7 +145,9 @@ class PgCreateTable : public PgDdl {
                 bool add_primary_key,
                 const bool colocated,
                 const PgObjectId& tablegroup_oid,
-                const PgObjectId& tablespace_oid);
+                const ColocationId colocation_id,
+                const PgObjectId& tablespace_oid,
+                const PgObjectId& matview_pg_table_oid);
 
   void SetupIndex(
       const PgObjectId& base_table_id, bool is_unique_index, bool skip_index_backfill);
@@ -158,7 +160,8 @@ class PgCreateTable : public PgDdl {
                            bool is_hash,
                            bool is_range,
                            SortingType sorting_type = SortingType::kNotSpecified) {
-    return AddColumnImpl(attr_name, attr_num, attr_ybtype, is_hash, is_range, sorting_type);
+    return AddColumnImpl(attr_name, attr_num, attr_ybtype, 20 /*INT8OID*/,
+                         is_hash, is_range, sorting_type);
   }
 
   CHECKED_STATUS AddColumn(const char *attr_name,
@@ -167,7 +170,8 @@ class PgCreateTable : public PgDdl {
                            bool is_hash,
                            bool is_range,
                            SortingType sorting_type = SortingType::kNotSpecified) {
-    return AddColumnImpl(attr_name, attr_num, attr_type->yb_type, is_hash, is_range, sorting_type);
+    return AddColumnImpl(attr_name, attr_num, attr_type->yb_type, attr_type->type_oid,
+                         is_hash, is_range, sorting_type);
   }
 
   // Specify the number of tablets explicitly.
@@ -175,8 +179,8 @@ class PgCreateTable : public PgDdl {
 
   CHECKED_STATUS AddSplitBoundary(PgExpr **exprs, int expr_count);
 
-  void UseTransaction(const TransactionMetadata& txn_metadata) {
-    txn_metadata.ToPB(req_.mutable_use_transaction());
+  void UseTransaction() {
+    req_.set_use_transaction(true);
   }
 
   // Execute.
@@ -184,8 +188,8 @@ class PgCreateTable : public PgDdl {
 
  protected:
   virtual CHECKED_STATUS AddColumnImpl(
-      const char *attr_name, int attr_num, int attr_ybtype, bool is_hash, bool is_range,
-      SortingType sorting_type = SortingType::kNotSpecified);
+      const char *attr_name, int attr_num, int attr_ybtype, int pg_type_oid, bool is_hash,
+      bool is_range, SortingType sorting_type = SortingType::kNotSpecified);
 
  private:
   tserver::PgCreateTableRequestPB req_;
@@ -256,8 +260,8 @@ class PgAlterTable : public PgDdl {
 
   StmtOp stmt_op() const override { return StmtOp::STMT_ALTER_TABLE; }
 
-  void UseTransaction(const TransactionMetadata& txn_metadata) {
-    txn_metadata.ToPB(req_.mutable_use_transaction());
+  void UseTransaction() {
+    req_.set_use_transaction(true);
   }
 
  private:

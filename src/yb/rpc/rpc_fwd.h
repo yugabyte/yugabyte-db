@@ -30,21 +30,30 @@
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+
+class RefCntBuffer;
+class Slice;
+
 namespace rpc {
 
 class Acceptor;
 class AcceptorPool;
+class AnyMessageConstPtr;
+class AnyMessagePtr;
+class CallResponse;
 class ConnectionContext;
 class DelayedTask;
 class DumpRunningRpcsRequestPB;
 class DumpRunningRpcsResponsePB;
 class GrowableBufferAllocator;
+class LightweightMessage;
 class MessengerBuilder;
 class Proxy;
 class ProxyCache;
 class ProxyContext;
 class Reactor;
 class ReactorTask;
+class RpcCallParams;
 class RemoteMethod;
 class RequestHeader;
 class RpcConnectionPB;
@@ -53,6 +62,8 @@ class RpcController;
 class Rpcs;
 class Poller;
 class Protocol;
+class Proxy;
+class ProxySource;
 class RefinedStream;
 class Scheduler;
 class SecureContext;
@@ -103,8 +114,6 @@ typedef std::shared_ptr<ServerEventList> ServerEventListPtr;
 class ServiceIf;
 typedef std::shared_ptr<ServiceIf> ServiceIfPtr;
 
-class ErrorStatusPB;
-
 typedef std::function<int(const std::string&, const std::string&)> Publisher;
 
 // SteadyTimePoint is something like MonoTime, but 3rd party libraries know it and don't know about
@@ -136,6 +145,9 @@ YB_DEFINE_ENUM(InvokeCallbackMode,
     // On thread pool.
     (kThreadPoolNormal)
     (kThreadPoolHigh));
+
+using SidecarHolder = std::pair<RefCntBuffer, Slice>;
+using CallResponsePtr = std::shared_ptr<CallResponse>;
 
 } // namespace rpc
 } // namespace yb

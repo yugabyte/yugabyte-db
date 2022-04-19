@@ -4,8 +4,6 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
-import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,9 +29,8 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +44,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yb.client.ListMastersResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -57,16 +55,23 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
 
+  private ShellResponse dummyShellResponse;
+
+  private YBClient mockClient;
+
   private Region region;
 
   @Override
   @Before
   public void setUp() {
     super.setUp();
-    YBClient mockClient = mock(YBClient.class);
+    mockClient = mock(YBClient.class);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     try {
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
+      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasters()).thenReturn(listMastersResponse);
     } catch (Exception e) {
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
@@ -77,6 +82,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
+    userIntent.provider = defaultProvider.uuid.toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.uuid);
@@ -89,7 +95,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     gflags.put("foo", "bar");
     defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags = gflags;
 
-    ShellResponse dummyShellResponse = new ShellResponse();
+    dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
   }
@@ -112,7 +118,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     return null;
   }
 
-  private static final List<TaskType> START_NODE_TASK_SEQUENCE =
+  List<TaskType> START_NODE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -122,7 +128,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
-  private static final List<JsonNode> START_NODE_TASK_EXPECTED_RESULTS =
+  List<JsonNode> START_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
@@ -132,9 +138,10 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
-  private static final List<TaskType> WITH_MASTER_UNDER_REPLICATED =
+  List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
@@ -153,9 +160,10 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
-  private static final List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
+  List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Starting")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
@@ -205,7 +213,6 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     taskParams.universeUUID = defaultUniverse.universeUUID;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-    assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(2)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -223,8 +230,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = universe.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-    assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(10)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -238,7 +244,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     taskParams.universeUUID = defaultUniverse.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n9");
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -252,8 +258,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = universe.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-    assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(13)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -267,26 +272,11 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     universe =
         Universe.saveDetails(
             universe.universeUUID,
-            univ -> {
-              univ.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor = 5;
-            });
-    universe =
-        Universe.saveDetails(
-            universe.universeUUID,
-            ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(true, 3));
-    universe =
-        Universe.saveDetails(
-            universe.universeUUID,
-            univ -> {
-              // First node should be master, so stopping it should give
-              // areMastersUnderReplicated = true.
-              univ.getNode("host-n1").isMaster = false;
-            });
+            ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(false, 3));
 
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = universe.universeUUID;
-    TaskInfo taskInfo = submitTask(taskParams, "yb-tserver-0", 4);
-    assertEquals(Success, taskInfo.getTaskState());
+    TaskInfo taskInfo = submitTask(taskParams, "yb-tserver-0");
     verify(mockNodeManager, times(2)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -300,20 +290,14 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   @Parameters({"false, region-1, true", "true, region-1, true", "true, test-region, false"})
   // @formatter:on
   public void testStartNodeWithUnderReplicatedMaster_WithDefaultRegion(
-      boolean isDefaultRegion, String regionCodeForFirstNode, boolean isMasterStart) {
+      boolean isDefaultRegion, String nodeRegionCode, boolean isMasterStart) {
     // 'test-region' for automatically created nodes.
     Region testRegion = Region.create(defaultProvider, "test-region", "Region 2", "yb-image-1");
 
     Universe universe = createUniverse("Demo");
     universe =
         Universe.saveDetails(
-            universe.universeUUID,
-            univ -> {
-              univ.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor = 5;
-            });
-    universe =
-        Universe.saveDetails(
-            universe.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes(true));
+            universe.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes(false));
 
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = universe.universeUUID;
@@ -322,13 +306,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         Universe.saveDetails(
             universe.universeUUID,
             univ -> {
-              // First node should be master, so stopping it should give
-              // areMastersUnderReplicated = true.
-              NodeDetails node = univ.getNode("host-n1");
-              node.cloudInfo.region = regionCodeForFirstNode;
-              node.state = NodeState.Stopped;
-              node.isMaster = false;
-
+              univ.getNode("host-n1").cloudInfo.region = nodeRegionCode;
               Cluster cluster = univ.getUniverseDetails().clusters.get(0);
               cluster.userIntent.regionList = ImmutableList.of(region.uuid, testRegion.uuid);
               cluster.placementInfo =
@@ -336,15 +314,15 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
                       ClusterType.PRIMARY,
                       cluster.userIntent,
                       cluster.userIntent.replicationFactor,
+                      true,
                       region.uuid);
               if (isDefaultRegion) {
                 cluster.placementInfo.cloudList.get(0).defaultRegion = region.uuid;
               }
             });
 
-    TaskInfo taskInfo = submitTask(taskParams, "host-n1", 4);
-    assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(isMasterStart ? 15 : 2)).nodeCommand(any(), any());
+    TaskInfo taskInfo = submitTask(taskParams, "host-n1", 3);
+    verify(mockNodeManager, times(isMasterStart ? 10 : 2)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));

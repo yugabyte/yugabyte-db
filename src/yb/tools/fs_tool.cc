@@ -53,6 +53,7 @@
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/env.h"
@@ -97,7 +98,7 @@ Status FsTool::Init() {
   // TODO(bogdan): do we use this tool? would we use it for more than tservers?
   opts.server_type = "tserver";
   fs_manager_.reset(new FsManager(Env::Default(), opts));
-  RETURN_NOT_OK(fs_manager_->Open());
+  RETURN_NOT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
 
   LOG(INFO) << "Opened file system with uuid: " << fs_manager_->uuid();
 

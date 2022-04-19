@@ -20,10 +20,11 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/status.h"
@@ -102,7 +103,7 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
   // Set the hash column values to compute the partition key.
   auto it = tokenizer.begin();
   int col_id = 0;
-  for (int i = 0; i < schema.num_hash_key_columns(); col_id++, it++) {
+  for (size_t i = 0; i < schema.num_hash_key_columns(); col_id++, it++) {
     if (skipped_cols.find(col_id) != skipped_cols.end()) {
       continue;
     }
@@ -110,7 +111,7 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
       return STATUS_SUBSTITUTE(IllegalState, "Primary key cannot be null: $0", *it);
     }
 
-    DataType column_type = schema.column(i).type_info()->type();
+    DataType column_type = schema.column(i).type_info()->type;
     auto* value_pb = ql_read->add_hashed_column_values()->mutable_value();
 
     switch(column_type) {

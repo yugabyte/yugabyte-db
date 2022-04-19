@@ -11,8 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -26,7 +25,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.Common;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.YBClient;
 
 @Slf4j
@@ -61,9 +60,6 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
         ysqlPassword = taskParams().getPrimaryCluster().userIntent.ysqlPassword;
         taskParams().getPrimaryCluster().userIntent.ysqlPassword = Util.redactString(ysqlPassword);
       }
-
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
@@ -123,7 +119,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
 
       // Create a simple redis table.
       if (taskParams().getPrimaryCluster().userIntent.enableYEDIS) {
-        createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
+        createTableTask(TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
@@ -149,7 +145,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;

@@ -20,11 +20,18 @@ import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.MaintenanceWindow;
+import com.yugabyte.yw.models.MaintenanceWindow.State;
+import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.filters.MaintenanceWindowFilter;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -64,6 +71,8 @@ public class AlertConfigurationWriter {
 
   private final RuntimeConfigFactory configFactory;
 
+  private final MaintenanceService maintenanceService;
+
   @Inject
   public AlertConfigurationWriter(
       ExecutionContext executionContext,
@@ -73,7 +82,8 @@ public class AlertConfigurationWriter {
       AlertConfigurationService alertConfigurationService,
       SwamperHelper swamperHelper,
       MetricQueryHelper metricQueryHelper,
-      RuntimeConfigFactory configFactory) {
+      RuntimeConfigFactory configFactory,
+      MaintenanceService maintenanceService) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.metricService = metricService;
@@ -82,10 +92,10 @@ public class AlertConfigurationWriter {
     this.swamperHelper = swamperHelper;
     this.metricQueryHelper = metricQueryHelper;
     this.configFactory = configFactory;
-    this.initialize();
+    this.maintenanceService = maintenanceService;
   }
 
-  private void initialize() {
+  public void start() {
     int configSyncPeriodSec = configFactory.globalRuntimeConf().getInt(CONFIG_SYNC_INTERVAL_PARAM);
     if (configSyncPeriodSec < MIN_CONFIG_SYNC_INTERVAL_SEC) {
       log.warn(
@@ -100,7 +110,7 @@ public class AlertConfigurationWriter {
         .schedule(
             Duration.Zero(),
             Duration.create(configSyncPeriodSec, TimeUnit.SECONDS),
-            this::syncDefinitions,
+            this::process,
             this.executionContext);
   }
 
@@ -115,7 +125,10 @@ public class AlertConfigurationWriter {
           definition != null
               ? alertConfigurationService.get(definition.getConfigurationUUID())
               : null;
-      if (definition == null || configuration == null || !configuration.isActive()) {
+      if (definition == null
+          || !definition.isActive()
+          || configuration == null
+          || !configuration.isActive()) {
         swamperHelper.removeAlertDefinition(definitionUuid);
         requiresReload.set(true);
         return SyncResult.REMOVED;
@@ -136,11 +149,94 @@ public class AlertConfigurationWriter {
   }
 
   @VisibleForTesting
-  void syncDefinitions() {
+  void process() {
     if (!running.compareAndSet(false, true)) {
       log.info("Previous run of alert configuration writer is still underway");
       return;
     }
+    try {
+      applyMaintenanceWindows();
+      syncDefinitions();
+    } finally {
+      running.set(false);
+    }
+  }
+
+  private void applyMaintenanceWindows() {
+    try {
+      MaintenanceWindowFilter filter =
+          MaintenanceWindowFilter.builder().state(State.ACTIVE).build();
+      List<MaintenanceWindow> activeWindows = maintenanceService.list(filter);
+      List<MaintenanceWindow> appliedWindows = new ArrayList<>();
+
+      Map<UUID, Set<UUID>> maintenanceWindowToAlertConfigs = new HashMap<>();
+      for (MaintenanceWindow window : activeWindows) {
+        AlertConfigurationFilter alertConfigurationFilter =
+            window
+                .getAlertConfigurationFilter()
+                .toFilter()
+                .toBuilder()
+                .customerUuid(window.getCustomerUUID())
+                .build();
+        List<AlertConfiguration> configurations =
+            alertConfigurationService.list(alertConfigurationFilter);
+        List<AlertConfiguration> toSave =
+            configurations
+                .stream()
+                .filter(
+                    configuration ->
+                        !configuration.getMaintenanceWindowUuidsSet().contains(window.getUuid())
+                            || !window.isAppliedToAlertConfigurations())
+                .map(configuration -> configuration.addMaintenanceWindowUuid(window.getUuid()))
+                .collect(Collectors.toList());
+
+        alertConfigurationService.save(toSave);
+        maintenanceWindowToAlertConfigs.put(
+            window.getUuid(),
+            configurations.stream().map(AlertConfiguration::getUuid).collect(Collectors.toSet()));
+        if (!window.isAppliedToAlertConfigurations()) {
+          window.setAppliedToAlertConfigurations(true);
+          appliedWindows.add(window);
+        }
+      }
+
+      maintenanceService.save(appliedWindows);
+
+      List<AlertConfiguration> toUnsuspend = new ArrayList<>();
+      AlertConfigurationFilter suspendedFilter =
+          AlertConfigurationFilter.builder().suspended(true).build();
+      alertConfigurationService.process(
+          suspendedFilter,
+          configuration -> {
+            List<UUID> currentWindows =
+                configuration.getMaintenanceWindowUuidsSet() != null
+                    ? new ArrayList<>(configuration.getMaintenanceWindowUuidsSet())
+                    : Collections.emptyList();
+            boolean changed = false;
+            for (UUID window : currentWindows) {
+              Set<UUID> affectedConfigs =
+                  maintenanceWindowToAlertConfigs.getOrDefault(window, Collections.emptySet());
+              if (!affectedConfigs.contains(configuration.getUuid())) {
+                configuration.removeMaintenanceWindowUuid(window);
+                changed = true;
+              }
+            }
+            if (changed) {
+              toUnsuspend.add(configuration);
+            }
+          });
+      alertConfigurationService.save(toUnsuspend);
+
+      metricService.setOkStatusMetric(
+          buildMetricTemplate(PlatformMetrics.ALERT_MAINTENANCE_WINDOW_PROCESSOR_STATUS));
+    } catch (Exception e) {
+      metricService.setFailureStatusMetric(
+          buildMetricTemplate(PlatformMetrics.ALERT_MAINTENANCE_WINDOW_PROCESSOR_STATUS));
+      log.error("Error processing maintenance windows:", e);
+    }
+  }
+
+  private void syncDefinitions() {
     try {
       AlertDefinitionFilter filter = AlertDefinitionFilter.builder().configWritten(false).build();
       List<SyncResult> results = new ArrayList<>();
@@ -177,12 +273,9 @@ public class AlertConfigurationWriter {
       metricService.setOkStatusMetric(
           buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS));
     } catch (Exception e) {
-      metricService.setStatusMetric(
-          buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS),
-          "Error syncing alert definition configs " + e.getMessage());
+      metricService.setFailureStatusMetric(
+          buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS));
       log.error("Error syncing alert definition configs", e);
-    } finally {
-      running.set(false);
     }
   }
 

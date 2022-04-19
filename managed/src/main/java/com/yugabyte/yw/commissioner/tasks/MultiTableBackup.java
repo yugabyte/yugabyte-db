@@ -16,14 +16,15 @@ import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.BACKUP_SUCCESS_C
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_ATTEMPT_COUNTER;
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_FAILURE_COUNTER;
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_SUCCESS_COUNTER;
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-import static com.yugabyte.yw.common.Util.lockedUpdateBackupState;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -46,15 +47,16 @@ import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 
 @Slf4j
+@Abortable
 public class MultiTableBackup extends UniverseTaskBase {
 
   @Inject
@@ -82,17 +84,18 @@ public class MultiTableBackup extends UniverseTaskBase {
     Universe universe = Universe.getOrBadRequest(params().universeUUID);
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    boolean isUniverseLocked = false;
     try {
       checkUniverseVersion();
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
+      isUniverseLocked = true;
 
       // Update universe 'backupInProgress' flag to true or throw an exception if universe is
       // already having a backup in progress.
-      lockedUpdateBackupState(params().universeUUID, this, true);
+      lockedUpdateBackupState(true);
       try {
         String masterAddresses = universe.getMasterAddresses(true);
         String certificate = universe.getCertificateNodetoNode();
@@ -167,6 +170,13 @@ public class MultiTableBackup extends UniverseTaskBase {
               }
 
               if (tableType == TableType.PGSQL_TABLE_TYPE
+                  && params().getKeyspace() == null
+                  && SYSTEM_PLATFORM_DB.equals(tableKeySpace)) {
+                log.info("Skipping " + SYSTEM_PLATFORM_DB + " database");
+                continue;
+              }
+
+              if (tableType == TableType.PGSQL_TABLE_TYPE
                   && !keyspaceMap.containsKey(tableKeySpace)) {
                 // YSQL keyspaces must have prefix in front
                 if (params().getKeyspace() != null) {
@@ -216,7 +226,9 @@ public class MultiTableBackup extends UniverseTaskBase {
         } catch (Exception e) {
           log.error("Failed to get list of tables in universe " + params().universeUUID, e);
           unlockUniverseForUpdate();
-          throw new RuntimeException(e);
+          isUniverseLocked = false;
+          // Do not lose the actual exception thrown.
+          Throwables.propagate(e);
         } finally {
           ybService.closeClient(client, masterAddresses);
         }
@@ -225,8 +237,12 @@ public class MultiTableBackup extends UniverseTaskBase {
           throw new RuntimeException("Invalid Keyspace or no tables to backup");
         }
 
-        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
+        // Clear previous subtasks if any.
+        getRunnableTask().reset();
+        if (params().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(false)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
         log.info("Successfully started scheduled backup of tables.");
         if (params().getKeyspace() == null && params().tableUUIDList.size() == 0) {
           // Full universe backup, each table to be sequentially backed up
@@ -241,6 +257,7 @@ public class MultiTableBackup extends UniverseTaskBase {
           tableBackupParams.timeBeforeDelete = params().timeBeforeDelete;
           tableBackupParams.transactionalBackup = params().transactionalBackup;
           tableBackupParams.backupType = params().backupType;
+          tableBackupParams.isFullBackup = true;
 
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
           backup.setTaskUUID(userTaskUUID);
@@ -282,14 +299,19 @@ public class MultiTableBackup extends UniverseTaskBase {
         }
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
+        if (params().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
         createMarkUniverseUpdateSuccessTasks()
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         taskInfo = String.join(",", tablesToBackup);
 
         unlockUniverseForUpdate();
+        isUniverseLocked = false;
 
-        subTaskGroupQueue.run();
+        getRunnableTask().runSubTasks();
 
         if (params().actionType == ActionType.CREATE) {
           BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
@@ -297,21 +319,32 @@ public class MultiTableBackup extends UniverseTaskBase {
               buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
         }
       } catch (Throwable t) {
+        if (params().alterLoadBalancer) {
+          // Clear previous subtasks if any.
+          getRunnableTask().reset();
+          // If the task failed, we don't want the loadbalancer to be
+          // disabled, so we enable it again in case of errors.
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          getRunnableTask().runSubTasks();
+        }
         throw t;
       } finally {
-        lockedUpdateBackupState(params().universeUUID, this, false);
+        lockedUpdateBackupState(false);
       }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
 
       if (params().actionType == ActionType.CREATE) {
         BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-        metricService.setStatusMetric(
-            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
+        metricService.setFailureStatusMetric(
+            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       }
       // Run an unlock in case the task failed before getting to the unlock. It is okay if it
       // errors out.
-      unlockUniverseForUpdate();
+      if (isUniverseLocked) {
+        unlockUniverseForUpdate();
+      }
       throw t;
     }
     log.info("Finished {} task.", getName());

@@ -94,7 +94,8 @@ CHECKED_STATUS QLEnv::DeleteIndexTable(const YBTableName& name, YBTableName* ind
 
 //------------------------------------------------------------------------------------------------
 Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transaction,
-                                               const IsolationLevel isolation_level) {
+                                               const IsolationLevel isolation_level,
+                                               CoarseTimePoint deadline) {
   if (transaction) {
     DCHECK(transaction->IsRestartRequired());
     return transaction->CreateRestartedTransaction();
@@ -106,7 +107,7 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
       return STATUS(InternalError, "No transaction pool provider");
     }
   }
-  auto result = transaction_pool_->Take(client::ForceGlobalTransaction::kTrue);
+  auto result = transaction_pool_->Take(client::ForceGlobalTransaction::kTrue, deadline);
   RETURN_NOT_OK(result->Init(isolation_level));
   return result;
 }
@@ -268,7 +269,7 @@ Status QLEnv::HasResourcePermission(const string& canonical_name,
       "Permissions check is not allowed when use_cassandra_authentication flag is disabled"));
   return metadata_cache_->HasResourcePermission(canonical_name, object_type, CurrentRoleName(),
                                                 permission, keyspace, table,
-                                                client::internal::CacheCheckMode::RETRY);
+                                                client::CacheCheckMode::RETRY);
 }
 
 Result<std::string> QLEnv::RoleSaltedHash(const RoleName& role_name) {

@@ -129,7 +129,7 @@ class RaftConsensusQuorumTest : public YBTest {
       opts.server_type = "tserver_test";
       std::unique_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
       RETURN_NOT_OK(fs_manager->CreateInitialFileSystemLayout());
-      RETURN_NOT_OK(fs_manager->Open());
+      RETURN_NOT_OK(fs_manager->CheckAndOpenFileSystemRoots());
 
       scoped_refptr<Log> log;
       RETURN_NOT_OK(Log::Open(LogOptions(),
@@ -186,7 +186,7 @@ class RaftConsensusQuorumTest : public YBTest {
           proxy_factory.get(),
           queue.get(),
           pool_token.get(),
-          logs_[i]);
+          nullptr);
 
       shared_ptr<RaftConsensus> peer(new RaftConsensus(
           options_,
@@ -410,10 +410,9 @@ class RaftConsensusQuorumTest : public YBTest {
     std::unique_ptr<LogReader> log_reader;
     EXPECT_OK(log::LogReader::Open(fs_managers_[idx]->env(),
                                    scoped_refptr<log::LogIndex>(),
-                                   kTestTablet,
+                                   "Log reader: ",
                                    fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTable,
                                                                                 kTestTablet),
-                                   fs_managers_[idx]->uuid(),
                                    table_metric_entity_.get(),
                                    tablet_metric_entity_.get(),
                                    &log_reader));
@@ -480,7 +479,7 @@ class RaftConsensusQuorumTest : public YBTest {
     auto leader_ids = ExtractReplicateIds(leader_entries);
     auto replica_ids = ExtractReplicateIds(replica_entries);
     ASSERT_EQ(leader_ids.size(), replica_ids.size());
-    for (int i = 0; i < leader_ids.size(); i++) {
+    for (size_t i = 0; i < leader_ids.size(); i++) {
       ASSERT_EQ(leader_ids[i].ShortDebugString(),
                 replica_ids[i].ShortDebugString());
     }

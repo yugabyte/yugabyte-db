@@ -18,8 +18,10 @@
 #ifndef YB_COMMON_QL_TYPE_H_
 #define YB_COMMON_QL_TYPE_H_
 
+#include <boost/optional.hpp>
+
 #include "yb/common/common_fwd.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/value.pb.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -28,7 +30,6 @@ namespace yb {
 // Used internally in QLType and only set for user-defined types.
 class UDTypeInfo {
  public:
-
   UDTypeInfo(std::string keyspace_name, std::string name)
       : keyspace_name_(keyspace_name), name_(name) {
   }
@@ -49,7 +50,7 @@ class UDTypeInfo {
     return field_names_;
   }
 
-  const std::string& field_name(int index) const {
+  const std::string& field_name(size_t index) const {
     return field_names_[index];
   }
 
@@ -175,7 +176,7 @@ class QLType {
 
   std::shared_ptr<QLType> values_type() const;
 
-  const QLType::SharedPtr& param_type(int member_index = 0) const;
+  const QLType::SharedPtr& param_type(size_t member_index = 0) const;
 
   const TypeInfo* type_info() const;
 
@@ -190,7 +191,7 @@ class QLType {
     return udtype_info_->field_names();
   }
 
-  const std::string& udtype_field_name(int index) const {
+  const std::string& udtype_field_name(size_t index) const {
     return udtype_info_->field_name(index);
   }
 
@@ -214,15 +215,7 @@ class QLType {
   }
 
   // returns position of "field_name" in udtype_field_names() vector if found, otherwise -1
-  int GetUDTypeFieldIdxByName(const std::string &field_name) const {
-    const std::vector<std::string>& field_names = udtype_field_names();
-    int i = 0;
-    while (i != field_names.size()) {
-      if (field_names[i] == field_name) return i;
-      i++;
-    }
-    return -1;
-  }
+  boost::optional<size_t> GetUDTypeFieldIdxByName(const std::string &field_name) const;
 
   // Get the type ids of all UDTs (transitively) referenced by this UDT.
   std::vector<std::string> GetUserDefinedTypeIds() const {
@@ -242,40 +235,13 @@ class QLType {
 
   // Check whether the type id exists among type ids of all UDTs referenced by this UDT.
   static bool DoesUserDefinedTypeIdExist(const QLTypePB& type_pb,
-                                    const bool transitive,
-                                    const std::string& udt_id) {
-    if (type_pb.main() == USER_DEFINED_TYPE) {
-      if (type_pb.udtype_info().id() == udt_id) {
-        return true;
-      }
-      if (!transitive) {
-        return false; // Do not check params of the UDT if only looking for direct dependencies.
-      }
-    }
-
-    for (const auto& param : type_pb.params()) {
-      if (DoesUserDefinedTypeIdExist(param, transitive, udt_id)) {
-        return true;
-      }
-    }
-    return false;
-  }
+                                         const bool transitive,
+                                         const std::string& udt_id);
 
   // Get the type ids of all UDTs referenced by this UDT.
   static void GetUserDefinedTypeIds(const QLTypePB& type_pb,
                                     const bool transitive,
-                                    std::vector<std::string>* udt_ids) {
-    if (type_pb.main() == USER_DEFINED_TYPE) {
-      udt_ids->push_back(type_pb.udtype_info().id());
-      if (!transitive) {
-        return; // Do not check params of the UDT if only looking for direct dependencies.
-      }
-    }
-
-    for (const auto& param : type_pb.params()) {
-      GetUserDefinedTypeIds(param, transitive, udt_ids);
-    }
-  }
+                                    std::vector<std::string>* udt_ids);
 
   // Returns the type of given field, or nullptr if that field is not found in this UDT.R
   Result<QLType::SharedPtr> GetUDTFieldTypeByName(const std::string& field_name) const;

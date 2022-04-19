@@ -19,10 +19,13 @@
 
 #include <boost/tokenizer.hpp>
 
+#include "yb/encryption/encryption_util.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/refined_stream.h"
 
-#include "yb/util/encryption_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"
@@ -71,7 +74,7 @@ std::string SSLErrorMessage(uint64_t error) {
 #define SSL_STATUS(type, format) STATUS_FORMAT(type, format, SSLErrorMessage(ERR_get_error()))
 
 Result<BIOPtr> BIOFromSlice(const Slice& data) {
-  BIOPtr bio(BIO_new_mem_buf(data.data(), data.size()));
+  BIOPtr bio(BIO_new_mem_buf(data.data(), narrow_cast<int>(data.size())));
   if (!bio) {
     return SSL_STATUS(IOError, "Create BIO failed: $0");
   }
@@ -156,7 +159,7 @@ Result<detail::X509Ptr> CreateCertificate(
   X509_NAMEPtr name(X509_NAME_new());
   auto bytes = pointer_cast<const unsigned char*>(common_name.c_str());
   if (!X509_NAME_add_entry_by_txt(
-      name.get(), "CN", MBSTRING_ASC, bytes, common_name.length(), -1, 0)) {
+      name.get(), "CN", MBSTRING_ASC, bytes, narrow_cast<int>(common_name.length()), -1, 0)) {
     return SSL_STATUS(IOError, "Failed to create subject: $0");
   }
 
@@ -240,6 +243,25 @@ int64_t ProtocolsOption() {
   return result;
 }
 
+
+class OpenSSLInitializer {
+ public:
+  OpenSSLInitializer() {
+    SSL_library_init();
+    SSL_load_error_strings();
+    OpenSSL_add_all_algorithms();
+    OpenSSL_add_all_ciphers();
+  }
+
+  ~OpenSSLInitializer() {
+    ERR_free_strings();
+    EVP_cleanup();
+    CRYPTO_cleanup_all_ex_data();
+    ERR_remove_thread_state(nullptr);
+    SSL_COMP_free_compression_methods();
+  }
+};
+
 } // namespace
 
 namespace detail {
@@ -251,8 +273,12 @@ YB_RPC_SSL_TYPE_DEFINE(X509)
 
 }
 
+void InitOpenSSL() {
+  static OpenSSLInitializer initializer;
+}
+
 SecureContext::SecureContext() {
-  yb::InitOpenSSL();
+  InitOpenSSL();
 
   context_.reset(SSL_CTX_new(SSLv23_method()));
   DCHECK(context_);
@@ -417,8 +443,9 @@ Status SecureRefiner::Send(OutboundDataPtr data) {
   for (const auto& buf : queue) {
     Slice slice(buf.data(), buf.size());
     for (;;) {
-      auto len = SSL_write(ssl_.get(), slice.data(), slice.size());
-      if (len == slice.size()) {
+      int slice_size = narrow_cast<int>(slice.size());
+      auto len = SSL_write(ssl_.get(), slice.data(), slice_size);
+      if (len == slice_size) {
         break;
       }
       auto error = len <= 0 ? SSL_get_error(ssl_.get(), len) : SSL_ERROR_NONE;
@@ -446,8 +473,9 @@ Result<bool> SecureRefiner::WriteEncrypted(OutboundDataPtr data) {
     return data ? STATUS(NetworkError, "No pending data during write") : Result<bool>(false);
   }
   RefCntBuffer buf(pending);
-  auto len = BIO_read(bio_.get(), buf.data(), buf.size());
-  LOG_IF_WITH_PREFIX(DFATAL, len != buf.size())
+  int buf_size = narrow_cast<int>(buf.size());
+  auto len = BIO_read(bio_.get(), buf.data(), buf_size);
+  LOG_IF_WITH_PREFIX(DFATAL, len != buf_size)
       << "BIO_read was not full: " << buf.size() << ", read: " << len;
   VLOG_WITH_PREFIX(4) << "Write encrypted: " << len << ", " << AsString(data);
   RETURN_NOT_OK(stream_->SendToLower(std::make_shared<SingleBufferOutboundData>(
@@ -485,7 +513,7 @@ Result<ReadBufferFull> SecureRefiner::Read(StreamReadBuffer* out) {
   auto iovecs = VERIFY_RESULT(out->PrepareAppend());
   auto iov_it = iovecs.begin();
   for (;;) {
-    auto len = SSL_read(ssl_.get(), iov_it->iov_base, iov_it->iov_len);
+    auto len = SSL_read(ssl_.get(), iov_it->iov_base, narrow_cast<int>(iov_it->iov_len));
 
     if (len <= 0) {
       auto error = SSL_get_error(ssl_.get(), len);
@@ -519,13 +547,13 @@ void SecureRefiner::DecryptReceived() {
   }
   size_t total = 0;
   for (const auto& iov : inp.AppendedVecs()) {
-    auto res = BIO_write(bio_.get(), iov.iov_base, iov.iov_len);
+    auto res = BIO_write(bio_.get(), iov.iov_base, narrow_cast<int>(iov.iov_len));
     VLOG_WITH_PREFIX(4) << "Decrypted: " << res << " of " << iov.iov_len;
     if (res <= 0) {
       break;
     }
     total += res;
-    if (res < iov.iov_len) {
+    if (implicit_cast<size_t>(res) < iov.iov_len) {
       break;
     }
   }
@@ -565,7 +593,7 @@ Status SecureRefiner::Handshake() {
     if (ssl_error == SSL_ERROR_WANT_WRITE || pending_after > pending_before) {
       // SSL expects that we would write to underlying transport.
       RefCntBuffer buffer(pending_after);
-      int len = BIO_read(bio_.get(), buffer.data(), buffer.size());
+      int len = BIO_read(bio_.get(), buffer.data(), narrow_cast<int>(buffer.size()));
       DCHECK_EQ(len, pending_after);
       RETURN_NOT_OK(stream_->SendToLower(
           std::make_shared<SingleBufferOutboundData>(buffer, nullptr)));

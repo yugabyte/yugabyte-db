@@ -2,7 +2,7 @@
 title: yb_hash_code() function [YSQL]
 headerTitle: yb_hash_code()
 linkTitle: yb_hash_code()
-description: Returns the partition hash code for a given set of expressions. 
+description: Returns the partition hash code for a given set of expressions.
 menu:
   stable:
     identifier: api-ysql-exprs-yb_hash_code
@@ -23,7 +23,7 @@ showAsideToc: true
 yb_hash_code(a1:t1, a2:t2, a3:t3, a4:t4...) → int4 (32 bit integer)
 ```
 
-Where `a1, a2, a3...` are expressions of type `t1, t2, t3...`, respectively. `t1, t2, t3...` must be types that are currently allowed in a primary key. 
+Where `a1, a2, a3...` are expressions of type `t1, t2, t3...`, respectively. `t1, t2, t3...` must be types that are currently allowed in a primary key.
 
 ## Function Pushdown
 
@@ -41,6 +41,7 @@ SELECT * FROM sample_table WHERE yb_hash_code(x,y) <= 128 AND yb_hash_code(x,y) 
 ```
 
 You can verify this with the `EXPLAIN ANALYZE` result of this statement
+
 ```sql
 EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,y) <= 128 AND yb_hash_code(x,y) >= 0;
 ```
@@ -57,7 +58,7 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,y) <= 128 AND yb
 
 Here, you can see that the primary key index was used and no row was rechecked at the YSQL layer.
 
-As the `yb_hash_code` calls in this statement request the hash code of `x` and `y`, (i.e. the full hash key of `sample_table`), YSQL pushes down these calls. As an added side effect, the RPC request will only be sent out to tablet servers that definitely contain values in the requested hash range. 
+As the `yb_hash_code` calls in this statement request the hash code of `x` and `y`, (i.e. the full hash key of `sample_table`), YSQL pushes down these calls. As an added side effect, the RPC request will only be sent out to tablet servers that definitely contain values in the requested hash range.
 
 This pushdown functionality works for secondary indexes too. This is a feature that is currently unavailable with the YCQL counterpart of this function, partition_hash(). For example, if you create an index on `sample_table` as follows:
 
@@ -112,7 +113,7 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb
 (4 rows)
 ```
 
-You can also mix calls that can be pushed down and calls that cannot in a single statement as such 
+You can also mix calls that can be pushed down and calls that cannot in a single statement as such
 
 ```sql
 EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 and yb_hash_code(x,y) >= 5 AND yb_hash_code(x,y,z) <= 256;
@@ -131,7 +132,7 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 and yb
 (6 rows)
 ```
 
-In this example, only the first clause is pushed down to an index, `sample_idx`. The rest are filters executed at the YSQL level. The reason why the optimizer chose this particular filter to push down is that it has the lowest selectivity as determined by the low number of hash values it filters for compared to the `yb_hash_code(x,y) >= 5` filter.
+In this example, only the first clause is pushed down to an index, `sample_idx`. The rest are filters executed at the YSQL level. The optimizer prefers to push down this particular filter because it selects the fewest rows as determined by the low number of hash values it filters for compared to the `yb_hash_code(x,y) >= 5` filter.
 
 ## Use Case Examples
 
@@ -146,7 +147,7 @@ SELECT yb_hash_code(1::int, 2::int, 'sample string'::text);
 ```
 
 ```output
- yb_hash_code 
+ yb_hash_code
 --------------
         23017
 ```
@@ -186,7 +187,7 @@ SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 4600 and yb_hash_co
 ```
 
 ```output
- count 
+ count
 -------
     74
 (1 row)
@@ -218,4 +219,4 @@ An example of a script that performs the above on a YSQL instance can be found [
 
 ## See also
 
-- [`partition_hash`](../../ycql/expr_fcall/#partition-hash-function)
+- [`partition_hash`](../../../../api/ycql/expr_fcall/#partition-hash-function)

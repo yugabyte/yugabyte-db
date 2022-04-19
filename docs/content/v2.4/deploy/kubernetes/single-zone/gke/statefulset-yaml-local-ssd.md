@@ -16,19 +16,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link">
+    <a href="/preview/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm Chart
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
+    <a href="/preview/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (remote disk)
     </a>
   </li>
    <li >
-    <a href="/latest/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link active">
+    <a href="/preview/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (local disk)
     </a>

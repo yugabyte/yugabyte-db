@@ -22,9 +22,9 @@ bool AreLoadsBalanced(const std::vector<uint32_t>& tserver_loads) {
     if (tserver_loads.empty()) {
       return true;
     }
-    int min_load = tserver_loads[0];
-    int max_load = min_load;
-    for (int i = 1; i < tserver_loads.size(); ++i) {
+    auto min_load = tserver_loads[0];
+    auto max_load = min_load;
+    for (size_t i = 1; i < tserver_loads.size(); ++i) {
       if (tserver_loads[i] < min_load) {
         min_load = tserver_loads[i];
       } else if (tserver_loads[i] > max_load) {

@@ -14,19 +14,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/public-clouds/aws/cloudformation" class="nav-link">
+    <a href="/preview/deploy/public-clouds/aws/cloudformation" class="nav-link">
       <i class="icon-shell"></i>
       CloudFormation
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/public-clouds/aws/terraform" class="nav-link">
+    <a href="/preview/deploy/public-clouds/aws/terraform" class="nav-link">
       <i class="icon-shell"></i>
       Terraform
     </a>
   </li>
   <li>
-    <a href="/latest/deploy/public-clouds/aws/manual-deployment" class="nav-link active">
+    <a href="/preview/deploy/public-clouds/aws/manual-deployment" class="nav-link active">
       <i class="icon-shell"></i>
       Manual deployment
     </a>
@@ -113,7 +113,7 @@ export TAR_FILE=yugabyte-${YB_VERSION}-linux.tar.gz
 
 ### Prepare data drives
 
-If your AMI already has the needed hooks for mounting the devices as directories in some well defined location OR if are just trying to use a vanilla directory as the data drive for a quick experiment and do not need mounting the additional devices on your AWS volume, you can just use an arbitrary directory (like `/home/$USER/` as your data directory), and YugabyteDB will create a `yb-data` subdirectory there (`/home/$USER/yb-data`) and use that. The steps below are are simply a guide to help use the additional volumes (install a filesystem on those volumes and mount them in some well defined location so that they can be used as data directories by YugabyteDB).
+If your AMI already has the needed hooks for mounting the devices as directories in some well defined location OR if are just trying to use a vanilla directory as the data drive for a quick experiment and do not need mounting the additional devices on your AWS volume, you can just use an arbitrary directory (like `/home/$USER/` as your data directory), and YugabyteDB will create a `yb-data` subdirectory there (`/home/$USER/yb-data`) and use that. The steps below are simply a guide to help use the additional volumes (install a filesystem on those volumes and mount them in some well defined location so that they can be used as data directories by YugabyteDB).
 
 #### Locate drives
 
@@ -556,7 +556,7 @@ done
 
 ## 7. Configure AZ- and region-aware placement
 
-Note: This example is a multi-AZ (single region deployment). 
+Note: This example is a multi-AZ (single region deployment).
 
 The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the placement_* configuration flags. However, for the current deployment, you want to explicitly place 1 replica in each AZ. The following command sets replication factor of 3 across `us-west-2a`, `us-west-2b` and `us-west-2c` leading to the placement of 1 replica in each AZ.
 
@@ -686,7 +686,7 @@ SELECT * FROM yb_table;
 Output should be the following:
 
 ```sql
- id 
+ id
 ----
   3
   2

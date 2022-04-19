@@ -29,6 +29,7 @@
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/master_client.pb.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet_metadata.h"
@@ -56,8 +57,6 @@ DECLARE_int64(db_index_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(process_split_tablet_candidates_interval_msec);
-DECLARE_int32(max_queued_split_candidates);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
@@ -65,7 +64,6 @@ DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
 DECLARE_int64(tablet_force_split_threshold_bytes);
 
 DECLARE_double(TEST_simulate_lookup_partition_list_mismatch_probability);
-DECLARE_bool(TEST_disable_split_tablet_candidate_processing);
 DECLARE_bool(TEST_reject_delete_not_serving_tablet_rpc);
 
 namespace yb {
@@ -92,7 +90,7 @@ Result<size_t> GetNumActiveTablets(
     const RequireTabletsRunning require_tablets_running) {
   master::GetTableLocationsResponsePB resp;
   RETURN_NOT_OK(itest::GetTableLocations(
-      cluster->GetLeaderMasterProxy(), table_name, timeout, require_tablets_running, &resp));
+      cluster, table_name, timeout, require_tablets_running, &resp));
   return resp.tablet_locations_size();
 }
 
@@ -110,8 +108,6 @@ class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
     // Setting this very low will just cause to include metrics in every heartbeat, no overhead on
     // setting it lower than FLAGS_heartbeat_interval_ms.
     FLAGS_tserver_heartbeat_metrics_interval_ms = 1;
-    // Split as soon as we get tablet to split on master.
-    FLAGS_process_split_tablet_candidates_interval_msec = 1;
     FLAGS_heartbeat_interval_ms = 1000;
 
     // Reduce cleanup waiting time, so tests are completed faster.
@@ -119,7 +115,6 @@ class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
 
     FLAGS_tablet_split_low_phase_size_threshold_bytes = 0;
     FLAGS_tablet_split_high_phase_size_threshold_bytes = 0;
-    FLAGS_max_queued_split_candidates = 10;
     FLAGS_tablet_split_low_phase_shard_count_per_node = 0;
     FLAGS_tablet_split_high_phase_shard_count_per_node = 0;
     FLAGS_tablet_force_split_threshold_bytes = 64_KB;
@@ -172,7 +167,7 @@ class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
   std::unique_ptr<load_generator::SessionFactory> load_session_factory_;
   std::unique_ptr<load_generator::MultiThreadedWriter> writer_;
   std::unique_ptr<load_generator::MultiThreadedReader> reader_;
-  int start_num_active_tablets_;
+  size_t start_num_active_tablets_;
 };
 
 class CqlTabletSplitTestMultiMaster : public CqlTabletSplitTest {
@@ -365,7 +360,8 @@ void CqlTabletSplitTest::CompleteSecondaryIndexTest(const int num_splits, const 
   LOG(INFO) << "Workload complete, num_writes: " << writer_->num_writes()
             << ", num_write_errors: " << writer_->num_write_errors()
             << ", num_reads: " << reader_->num_reads()
-            << ", num_read_errors:" << reader_->num_read_errors();
+            << ", num_read_errors: " << reader_->num_read_errors()
+            << ", splits done: " << num_active_tablets - start_num_active_tablets_;
   ASSERT_EQ(reader_->read_status_stopped(), load_generator::ReadStatus::kOk)
       << " reader stopped due to: " << AsString(reader_->read_status_stopped());
   ASSERT_LE(writer_->num_write_errors(), max_write_errors_);
@@ -458,8 +454,6 @@ class CqlTabletSplitTestExt : public CqlTestBase<ExternalMiniCluster> {
     master_flags.push_back("--tablet_split_high_phase_size_threshold_bytes=0");
     master_flags.push_back("--tablet_split_low_phase_shard_count_per_node=0");
     master_flags.push_back("--tablet_split_high_phase_shard_count_per_node=0");
-    // Split as soon as we get tablet to split on master.
-    master_flags.push_back("--process_split_tablet_candidates_interval_msec=1");
     master_flags.push_back(Format("--tablet_force_split_threshold_bytes=$0", kSplitThreshold));
 
     auto& tserver_flags = mini_cluster_opt_.extra_tserver_flags;
@@ -512,8 +506,8 @@ CHECKED_STATUS RunBatchTimeSeriesTest(
   std::atomic_int num_read_errors(0);
   std::atomic_int num_write_errors(0);
 
-  Random r(/* seed */ 29383);
-  const auto num_metrics = r.Uniform(kMaxMetricsCount - kMinMetricsCount) + kMinMetricsCount;
+  std::mt19937_64 rng(/* seed */ 29383);
+  const auto num_metrics = RandomUniformInt<>(kMinMetricsCount, kMaxMetricsCount - 1, &rng);
   std::vector<std::unique_ptr<BatchTimeseriesDataSource>> data_sources;
   for (int i = 0; i < num_metrics; ++i) {
     data_sources.emplace_back(std::make_unique<BatchTimeseriesDataSource>(Format("metric-$0", i)));
@@ -542,13 +536,12 @@ CHECKED_STATUS RunBatchTimeSeriesTest(
       kTableName.table_name())));
 
   std::mutex random_mutex;
-  auto get_random_source = [&r, &random_mutex, &data_sources]() -> BatchTimeseriesDataSource* {
+  auto get_random_source = [&rng, &random_mutex, &data_sources]() -> BatchTimeseriesDataSource* {
     std::lock_guard<decltype(random_mutex)> lock(random_mutex);
-    auto index = r.Uniform(data_sources.size());
-    return data_sources.at(index).get();
+    return RandomElement(data_sources, &rng).get();
   };
 
-  auto get_value = [](int ts, std::string* value) {
+  auto get_value = [](int64_t ts, std::string* value) {
     value->clear();
     value->append(AsString(ts));
     const auto suffix_size = value->size() >= kValueSize ? 0 : kValueSize - value->size();
@@ -681,15 +674,19 @@ CHECKED_STATUS RunBatchTimeSeriesTest(
 }
 
 TEST_F_EX(CqlTabletSplitTest, BatchTimeseries, CqlTabletSplitTestExt) {
-  const auto kNumSplits = 20;
+  // TODO(#10498) - Set this back to 20 once outstanding_tablet_split_limit is set back to a higher
+  // value.
+  const auto kNumSplits = 4;
   ASSERT_OK(
       RunBatchTimeSeriesTest(cluster_.get(), driver_.get(), kNumSplits, 300s * kTimeMultiplier));
 }
 
 TEST_F_EX(CqlTabletSplitTest, BatchTimeseriesRf1, CqlTabletSplitTestExtRf1) {
-  const auto kNumSplits = 20;
+  // TODO(#10498) - Set this back to 20 once outstanding_tablet_split_limit is set back to a higher
+  // value.
+  const auto kNumSplits = 4;
   ASSERT_OK(
-      RunBatchTimeSeriesTest(cluster_.get(), driver_.get(), kNumSplits, 200s * kTimeMultiplier));
+      RunBatchTimeSeriesTest(cluster_.get(), driver_.get(), kNumSplits, 300s * kTimeMultiplier));
 }
 
 }  // namespace yb

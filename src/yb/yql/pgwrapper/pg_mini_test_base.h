@@ -33,11 +33,11 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
 
   void SetUp() override;
 
-  virtual int NumMasters() {
+  virtual size_t NumMasters() {
     return 1;
   }
 
-  virtual int NumTabletServers() {
+  virtual size_t NumTabletServers() {
     return 3;
   }
 
@@ -54,11 +54,17 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
     return PGConn::Connect(pg_host_port_, dbname);
   }
 
+  CHECKED_STATUS RestartCluster();
+
   const HostPort& pg_host_port() const {
     return pg_host_port_;
   }
 
+  Result<TableId> GetTableIDFromTableName(const std::string table_name);
+
  private:
+  Result<PgProcessConf> CreatePgProcessConf(uint16_t port);
+
   std::unique_ptr<PgSupervisor> pg_supervisor_;
   HostPort pg_host_port_;
 };

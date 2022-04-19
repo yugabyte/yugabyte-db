@@ -22,7 +22,7 @@
 
 #include <gtest/gtest.h>
 
-DECLARE_int32(rate_limiter_min_rate);
+DECLARE_uint64(rate_limiter_min_rate);
 
 namespace yb {
 
@@ -41,7 +41,7 @@ TEST(RateLimiter, TestRate) {
     RateLimiter rate_limiter([rate]() { return rate; });
     auto min_rate = std::max(rate, static_cast<uint64_t>(FLAGS_rate_limiter_min_rate));
     ASSERT_EQ(rate_limiter.GetMaxSizeForNextTransmission(),
-              min_rate * rate_limiter.time_slot_ms_ / MonoTime::kMillisecondsPerSecond);
+              min_rate * rate_limiter.time_slot_ms() / MonoTime::kMillisecondsPerSecond);
   }
 }
 

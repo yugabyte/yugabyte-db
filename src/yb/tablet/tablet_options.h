@@ -43,8 +43,6 @@ class MetricRegistry;
 
 namespace tablet {
 
-YB_STRONGLY_TYPED_BOOL(IsDropTable);
-
 // Common for all tablets within TabletManager.
 struct TabletOptions {
   std::shared_ptr<rocksdb::Cache> block_cache;
@@ -52,6 +50,7 @@ struct TabletOptions {
   std::vector<std::shared_ptr<rocksdb::EventListener>> listeners;
   yb::Env* env = Env::Default();
   rocksdb::Env* rocksdb_env = rocksdb::Env::Default();
+  std::shared_ptr<rocksdb::RateLimiter> rate_limiter;
 };
 
 struct TabletInitData {

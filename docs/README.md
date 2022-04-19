@@ -7,7 +7,7 @@ This file has three sections:
 &nbsp;&nbsp;&nbsp;[2. Advanced usage](#2-advanced-usage)<br>
 &nbsp;&nbsp;&nbsp;[3. Mental model and glossary: creating and maintaining syntax diagrams for YSQL Docs](#3-mental-model-and-glossary-creating-and-maintaining-syntax-diagrams-for-ysql-docs)
 
-> **Note:** The account is intended mainly for Yugabyte staff. It assumes that you will make changes only in the `/latest/` subtree. You can easily generalise the account if you need to make changes in the `/stable/` tree. Both the `/latest/` and the `/stable/` subtrees are direct children of the [_content directory_](#content-directory). However, deciding the _policy_ for this is outside the scope of this document. You must establish the aims in this space in discussion with colleagues.
+> **Note:** The account is intended mainly for Yugabyte staff. It assumes that you will make changes only in the `/preview/` subtree. You can easily generalise the account if you need to make changes in the `/stable/` tree. Both the `/preview/` and the `/stable/` subtrees are direct children of the [_content directory_](#content-directory). However, deciding the _policy_ for this is outside the scope of this document. You must establish the aims in this space in discussion with colleagues.
 
 All the source material for the YugabyteDB documentation is held in the main [yugabyte-db](https://github.com/yugabyte/yugabyte-db) GitHub repository. Users read this documentation by starting at [docs.yugabyte.com/](https://docs.yugabyte.com/).
 
@@ -61,7 +61,7 @@ Follow these steps if this is the first time you are setting up to work on the d
 > _"With any major or semi-major [MacOS] update you'll need to update the command line tools in order to get them functioning properly again. Check Xcode with any update."_
 >
 > The (re)installation of Xcode from the referenced  [tools for Apple Developers](https://developer.apple.com/download/more/) site is a bit different for Big Sur than it is for Catalina. The downloaded file is a `.xip` — an Apple proprietary compressed file, digitally signed for integrity. `Xcode_12.2.xip` is 11.43 GB and can take quite long to download. (Your mileage might vary.)  Then it must be expanded—and that takes time too. This simply leaves you with `Xcode.app` in your "downloads" folder. It's about 30 MB (so who knows why the `.xip` is so ginormous). Anyway, drop it into the `/applications` folder. But even this is not enough.
-> 
+>
 > Then you need to do this:
 
    ```
@@ -131,7 +131,7 @@ It's recommended that you routinely check that you have the current latest "Xcod
 ```
 brew update
 brew upgrade hugo
-npm ci   
+npm ci
 ```
 You _must_ do this if ever you drop your local `git` (for example after a successful `git push` and subsequent merge) and re-do the `git clone` step.
 
@@ -250,40 +250,41 @@ The nature of your documentation change will determine which selection of the fo
 - Create new [_free-standing generated grammar-diagram pair(s)_](#free-standing-generated-grammar-diagram-pair)
 - Add [_diagram inclusion HTML_](#diagram-inclusion-HTML) to one or more of the content files that you modified or created.
 
-Very occasionally, you might want to reorganize the hierarchical structure of a part of the overall documentation as the user sees it. (This is the hierarchy that you see and navigate in the left-hand navigation panel.) Such changes involve moving existing  [_humanly typed documentation source_](#humanly-typed-documentation-source) file(s) within the directory tree that starts at the [_content directory_](#content-directory). If you do this, then you must use your favorite editor (a generic plain text editor is best for this purpose) to do manually driven global search and replace to update URL references to moved files at their old locations. However, because you will do this only within the scope of the files that you worked on (most likely, the `/latest/` subtree), you must also establish URL redirects in each moved file to avoid breaking links in other Yugabyte Internet properties, or in third party sites. The _frontmatter_ allows this easily. Here is an example.
+Very occasionally, you might want to reorganize the hierarchical structure of a part of the overall documentation as the user sees it. (This is the hierarchy that you see and navigate in the left-hand navigation panel.) Such changes involve moving existing  [_humanly typed documentation source_](#humanly-typed-documentation-source) file(s) within the directory tree that starts at the [_content directory_](#content-directory). If you do this, then you must use your favorite editor (a generic plain text editor is best for this purpose) to do manually driven global search and replace to update URL references to moved files at their old locations. However, because you will do this only within the scope of the files that you worked on (most likely, the `/preview/` subtree), you must also establish URL redirects in each moved file to avoid breaking links in other Yugabyte Internet properties, or in third party sites. The _frontmatter_ allows this easily. Here is an example.
 
-```
+```yaml
 title: SELECT statement [YSQL]
 headerTitle: SELECT
 linkTitle: SELECT
 description: Use the SELECT statement to retrieve rows of specified columns that meet a given condition from a table.
 menu:
-  latest:
+  preview:
     identifier: dml_select
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/dml_select/
+  - /preview/api/ysql/commands/dml_select/
 isTocNested: true
 showAsideToc: true
 ```
+
 The `aliases` page property allows a list of many URLs. Notice that these are _relative_ to the [_content directory_](#content-directory). The `.md` file in this example used to be here:
 
-```
-<your path>/yugabyte-db/docs/content/latest/api/ysql/commands/dml_select.md
+```output
+<your path>/yugabyte-db/docs/content/preview/api/ysql/commands/dml_select.md
 ```
 
 It was moved to here:
 
-```
-<your path>/yugabyte-db/docs/content/latest/api/ysql/the-sql-language/statements/dml_select.md
+```output
+<your path>/yugabyte-db/docs/content/preview/api/ysql/the-sql-language/statements/dml_select.md
 ```
 
 Your specific documentation enhancement will determine if you need only to change existing content pages or to add new ones. You will decide, in turn, if you need to modify any existing [_syntax rules_](#syntax-rule) or to define new ones. And if you do define new ones, you will decide in which files you need to include the "grammar" and "diagram" depictions. (See the section about [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair).)
 
 Follow this general flow on each local editing cycle.
 
-1. Modify content pages, or If necessary create new ones.
-1. If necessary, edit the the [_diagram definition file_](#diagram-definition-file).
+1. Modify content pages, or if necessary create new ones.
+1. If necessary, edit the [_diagram definition file_](#diagram-definition-file).
 1. If necessary, create one or more new [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair), using `touch`, on the appropriate directories in the [_syntax resources directory_](#syntax-resources-directory) tree.
 1. If necessary, [_run the generator_](#run-the-generator).
 1. If necessary, add [_diagram inclusion HTML_](#diagram-inclusion-HTML) to one or more of the content files that you modified.
@@ -301,13 +302,13 @@ The ordering of the glossary terms is insignificant. There’s a fair amount of 
 
 > **Note:** The account that follows distinguishes between _directory_ and _file_ in the usual way: a _directory_ contains _files_ and/or _directories_. And a _file_ has actual content.
 >
-> **Note:** the two terms, “grammar” and “syntax”, mean pretty much the same as each other. But one, or the other, of these is used by convention in the spellings and definitions of the terms of art that this glossary defines.
+> **Note:** the two terms, “grammar” and “syntax”, mean pretty much the same as each other. But one or the other of these is used by convention in the spellings and definitions of the terms of art that this glossary defines.
 >
 > **Note:** Users of the Internet-facing YugabyteDB documentation typically access the sub-corpus that starts here:
 >
-> [`docs.yugabyte.com/latest/`](https://docs.yugabyte.com/latest/)
+> [`docs.yugabyte.com/preview/`](https://docs.yugabyte.com/preview/)
 >
-> Users with more specific requirements will start at `.../stable/` or, maybe, something like `.../v2.1/`. This account assumes that users will work on content only in the `/latest/` subtree.
+> Users with more specific requirements will start at `.../stable/` or, maybe, something like `.../v2.1/`. This account assumes that users will work on content only in the `/preview/` subtree.
 
 ### syntax rule
 
@@ -315,11 +316,11 @@ The ordering of the glossary terms is insignificant. There’s a fair amount of 
 
 Every [_syntax rule_](#syntax-rule) is defined textually in the single [_diagram definition file_](#diagram-definition-file). The set of all these rules is intended to define the entirety of the YSQL grammar—but nothing beyond this. Presently, the definitions of some [_syntax rules_](#syntax-rule) (while these are implemented in the YSQL subsystem of YugabyteDB) remain to be written down.
 
-Sometimes, the grammar of an entire SQL statement can be comfortably described by a single, self-contained [_syntax rule_](#syntax-rule). The [Syntax section](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/txn_commit/#syntax) of the account of the `COMMIT` statement provides an example. More commonly, the grammar of a SQL statement includes references (by name) to the definition(s) of one or more other rule(s). And often such referenced [_syntax rules_](#syntax-rule) are the targets of references from many other [_syntax rules_](#syntax-rule). The complete account of a very flexible SQL statement can end up as a very large closure of multiply referenced rules. [`SELECT`](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/dml_select/#syntax) is the canonical example of complexity. For example, a terminal like [`integer`](https://docs.yugabyte.com/latest/api/ysql/syntax_resources/grammar_diagrams/#integer) can end up as the reference target in very many distinct syntax spots within the total definition of the `SELECT` statement, and of other statements.
+Sometimes, the grammar of an entire SQL statement can be comfortably described by a single, self-contained [_syntax rule_](#syntax-rule). The [Syntax section](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/txn_commit/#syntax) of the account of the `COMMIT` statement provides an example. More commonly, the grammar of a SQL statement includes references (by name) to the definition(s) of one or more other rule(s). And often such referenced [_syntax rules_](#syntax-rule) are the targets of references from many other [_syntax rules_](#syntax-rule). The complete account of a very flexible SQL statement can end up as a very large closure of multiply referenced rules. [`SELECT`](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/dml_select/#syntax) is the canonical example of complexity. For example, a terminal like [`integer`](https://docs.yugabyte.com/preview/api/ysql/syntax_resources/grammar_diagrams/#integer) can end up as the reference target in very many distinct syntax spots within the total definition of the `SELECT` statement, and of other statements.
 
-A [_syntax rule_](#syntax-rule) is specified using EBNF notation. EBNF stands for “extended Backus–Naur form”. See this [Wikipedia article](https://en.wikipedia.org/wiki/Extended_Backus–Naur_form). Here is an example for the [`PREPARE`](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/perf_prepare/#syntax) statement:
+A [_syntax rule_](#syntax-rule) is specified using EBNF notation. EBNF stands for “extended Backus–Naur form”. See this [Wikipedia article](https://en.wikipedia.org/wiki/Extended_Backus–Naur_form). Here is an example for the [`PREPARE`](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/perf_prepare/#syntax) statement:
 
-```
+```ebnf
 prepare_statement ::= 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS' statement ;
 ```
 
@@ -340,7 +341,7 @@ Notice the following:
 ### diagram definition file
 
 ```
-<your path>/yugabyte-db/docs/content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf
+<your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/ysql_grammar.ebnf
 ```
 
 Located directly on the [_syntax resources directory_](#syntax-resources-directory), this file, uniquely under the whole of the [_ysql directory_](#ysql-directory) is not a `.md` file. And uniquely under the [_syntax resources directory_](#syntax-resources-directory), it is typed up humanly. It holds the definition, written in EBNF notation, of every [_syntax rule_](#syntax-rule) that is processed by the [_diagram generator_](#diagram-generator).
@@ -357,7 +358,7 @@ The [_diagram generator_](#diagram-generator) doesn’t care about the order of 
 
 The [_syntax diagram_](#syntax-diagram) and the [_syntax rule_](#syntax-rule) bear a one-to-one mutual relationship.
 
-The [Syntax section](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/perf_prepare/#syntax) of the account of the [`PREPARE`](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/perf_prepare/) statement provides a short, but sufficient, example. The [_syntax diagram_](#syntax-diagram) appears as a (member of a) tabbed pair which gives the reader the choice to see a [_syntax rule_](#syntax-rule) as either the “Grammar” form (in the syntax used in the PostgreSQL documentation and the documentation for several other databases) or the “Diagram” form (a so-called “railroad diagram” that again is used commonly in the documentation for several other databases).
+The [Syntax section](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/perf_prepare/#syntax) of the account of the [`PREPARE`](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/perf_prepare/) statement provides a short, but sufficient, example. The [_syntax diagram_](#syntax-diagram) appears as a (member of a) tabbed pair which gives the reader the choice to see a [_syntax rule_](#syntax-rule) as either the “Grammar” form (in the syntax used in the PostgreSQL documentation and the documentation for several other databases) or the “Diagram” form (a so-called “railroad diagram” that again is used commonly in the documentation for several other databases).
 
 ### docs directory
 
@@ -366,6 +367,7 @@ The [Syntax section](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/
 ```
 cd <your path>/yugabyte-db/docs
 ```
+
 You install the [_diagram generator_](#diagram-generator) here. And you stand here when you [_run the generator_](#run-the-generator). You also typically stand here when you start "hugo"; and when you prepare for, and then do, a `git push` to your personal GitHub fork.
 
 ### content directory
@@ -377,24 +379,25 @@ In other words, it holds the entire [_humanly typed documentation source_](#huma
 ```
 cd <your path>/yugabyte-db/docs/content
 ```
+
 "hugo" uses the tree starting at the [_content directory_](#content-directory) to generate the documentation site (under the influence of the [_supporting doc infrastructure_](#supporting-doc-infrastructure)) as a set of static files.
 
 Notice that, when your current directory is the [_docs directory_](#docs-directory), `git status` shows the paths of what it reports starting with the [_content directory_](#content-directory) like this:
 
 ```
-modified:   content/latest/api/ysql/syntax_resources/grammar_diagrams.md
-modified:   content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf
-modified:   content/latest/api/ysql/the-sql-language/statements/cmd_do.md
+modified:   content/preview/api/ysql/syntax_resources/grammar_diagrams.md
+modified:   content/preview/api/ysql/syntax_resources/ysql_grammar.ebnf
+modified:   content/preview/api/ysql/the-sql-language/statements/cmd_do.md
 ```
 
-Both the `/latest/` and the `/stable/` subtrees are direct children of the [_content directory_](#content-directory).
+Both the `/preview/` and the `/stable/` subtrees are direct children of the [_content directory_](#content-directory).
 
 ### ysql directory
 
-- **The directory tree that holds all the [_humanly typed documentation source_](#humanly-typed-documentation-source), the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair), and the [_diagram definition file_](#diagram-definition-file) that jointly describe the YugabyteDB YSQL subsystem in the /latest/ tree**.
+- **The directory tree that holds all the [_humanly typed documentation source_](#humanly-typed-documentation-source), the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair), and the [_diagram definition file_](#diagram-definition-file) that jointly describe the YugabyteDB YSQL subsystem in the /preview/ tree**.
 
 ```
-cd <your path>/yugabyte-db/docs/content/latest/api/ysql
+cd <your path>/yugabyte-db/docs/content/preview/api/ysql
 ```
 
 ### supporting doc infrastructure
@@ -416,7 +419,7 @@ With just a few on the [_ysql directory_](#ysql-directory) itself, the [_humanly
 ### syntax resources directory
 
 ```
-cd <your path>/yugabyte-db/docs/content/latest/api/ysql/syntax_resources
+cd <your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources
 ```
 
 With the one exception of the [_diagram definition file_](#diagram-definition-file), every file within the [_syntax resources directory_](#syntax-resources-directory) tree is generated.
@@ -429,10 +432,10 @@ All are located within the [_syntax resources directory_](#syntax-resources-dire
 
 Notice that there is no garbage collection scheme for unreferenced [_generated documentation source_](#generated-documentation-source) files. Content authors must do this task manually.
 
-### grammar diagrams file ([here](https://docs.yugabyte.com/latest/api/ysql/syntax_resources/grammar_diagrams/#abort))
+### grammar diagrams file ([here](https://docs.yugabyte.com/preview/api/ysql/syntax_resources/grammar_diagrams/#abort))
 
 ```
-<your path>/yugabyte-db/docs/content/latest/api/ysql/syntax_resources/grammar_diagrams.md
+<your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/grammar_diagrams.md
 ```
 
 This contains every [_syntax diagram_](#syntax-diagram) that is generated from all of the [_syntax rules_](#syntax-rule) that are found in the [_diagram definition file_](#diagram-definition-file).
@@ -450,7 +453,7 @@ Always found in the [_grammar diagrams file_](#grammar-diagrams-file-here) (but,
 - **Such a pair requests the [_diagram generator_](#diagram-generator) to populate them automatically with respectively the "grammar" and the "diagram" presentations of the set of [_syntax rules_](#syntax-rule) that each asks for**.
 
   They are defined by a pair of `.md` files with names that follow a purpose-designed syntax:
-  
+
 ```
 <rule-name>[, <rule-name>, ...].grammar.md
                ~               .diagram.md
@@ -463,7 +466,7 @@ Such a pair should be placed in the exact mirror sibling directory, in the [_syn
 Here is an example. Suppose that the file `wants-to-include.md` wants to include the [_syntax diagram_](#syntax-diagram) with a rule set denoted by the appropriately spelled identifier `<rule set X>`. And suppose that the [_humanly typed documentation source_](#humanly-typed-documentation-source) file is here:
 
 ```
-<your path>/yugabyte-db/docs/content/latest/api/ysql                 /dir_1/dir_2/dir_3/wants-to-include.md
+<your path>/yugabyte-db/docs/content/preview/api/ysql                 /dir_1/dir_2/dir_3/wants-to-include.md
 ```
 
 The white space between `/ysql` and `/dir_1` has been introduced as a device to advertise the convention. It doesn’t exist in the actual file path.
@@ -471,8 +474,8 @@ The white space between `/ysql` and `/dir_1` has been introduced as a device to 
 The [_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair) _must_ be placed here.
 
 ```
-<your path>/yugabyte-db/docs/content/latest/api/ysql/syntax_resources/dir_1/dir_2/dir_3/<rule set X>.grammar.md
-<your path>/yugabyte-db/docs/content/latest/api/ysql/syntax_resources/dir_1/dir_2/dir_3/<rule set X>.diagram.md
+<your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/dir_1/dir_2/dir_3/<rule set X>.grammar.md
+<your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/dir_1/dir_2/dir_3/<rule set X>.diagram.md
 ```
 
 Suppose that a [_syntax rule_](#syntax-rule) includes a reference to another [_syntax rule_](#syntax-rule). If the referenced [_syntax rule_](#syntax-rule) is included (by virtue of the name of the _diagram-grammar file pair_) in the same [_syntax diagram set_](#syntax-diagram-set), then the name of the [_syntax rule_](#syntax-rule) in the referring [_syntax diagram_](#syntax-diagram) becomes a link to the [_syntax rule_](#syntax-rule) in that same [_syntax diagram set_](#syntax-diagram-set). Otherwise the generated link target of the referring rule is within the [_grammar diagrams file_](#grammar-diagrams-file-here). The way that this link is spelled depends on the location, within the [_ysql directory_](#ysql-directory) tree, of the `.md` file that includes the generated [_syntax diagram_](#syntax-diagram).
@@ -490,12 +493,12 @@ If you don’t follow this rule, then (as long as you specify the right path to 
 Consider this example:
 
 ```
-<your path>/yugabyte-db/docs/content/latest/api/ysql/dir_1/dir_2/dir_3/wants-to-include.md
+<your path>/yugabyte-db/docs/content/preview/api/ysql/dir_1/dir_2/dir_3/wants-to-include.md
 ```
 
 You must include this boilerplate text in `wants-to-include.md` at the location in this file where you want the [_syntax diagram_](#syntax-diagram) to be seen:
 
-```
+```html
 <ul class=“nav nav-tabs nav-tabs-yb”>
   <li >
     <a href=“#grammar” class=“nav-link active” id=“grammar-tab” data-toggle=“tab” role=“tab” aria-controls=“grammar” aria-selected=“true”>
@@ -558,10 +561,9 @@ Use `ls rrdiagram.jar` to check that it is now present. (It isn't shown by "git 
 
 Specifically:
 
-```
+```sh
 cd <your path>/yugabyte-db/docs
-java -jar rrdiagram.jar content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf \
-  content/latest/api/ysql/syntax_resources/
+java -jar rrdiagram.jar content/preview/api/ysql/syntax_resources/ysql_grammar.ebnf content/preview/api/ysql/syntax_resources/
 ```
 
 This will (re)generate _all_ of the files that it ought to. You can run this at any time. In the worst case, a typing error somewhere, especially in the [_diagram inclusion HTML_](#diagram-inclusion-HTML), can crash "hugo", resulting in the notorious blanked out screen in the browser.
@@ -578,7 +580,7 @@ And while the rules do give `a/b - c` an unambiguous meaning (advertised by the 
 
 In EBNF, `( ... )` plays a similar role as it does in algebra. In some situations, just which subset of items is grouped changes the meaning. But in some situations (like `a + b + c` in algebra) the use of `( ... )` conveys no semantics. Look for this at the end of the [_diagram definition file_](#diagram-definition-file):
 
-```
+```ebnf
 (*
   Notice that the "demo-2" rule uses ( ... ) redundantly.
   The two rules are semantically identical but they produce the different diagrams.
@@ -601,7 +603,7 @@ demo-2-irrelevant-for-ysql-syntax ::= ( ( a 'K' b ) { ',' ( a 'K' b ) } ) ;
 Suppose that this [_humanly typed documentation source_](#humanly-typed-documentation-source) file:
 
 ```
-<your path>/yugabyte-db/docs/content/latest/api/ysql/exprs/window_functions/window-definition.md
+<your path>/yugabyte-db/docs/content/preview/api/ysql/exprs/window_functions/window-definition.md
 ```
 wants to include a [_syntax diagram set_](#syntax-diagram-set) with these [_syntax rules_](#syntax-rule):
 
@@ -612,9 +614,9 @@ _Step 1:_ If they all already exist in the [_diagram definition file_](#diagram-
 _Step 2:_ Create these empty files (for example, with `touch`).
 
 ```
-<your path>/yugabyte-db/docs/content/latest/api/ysql/syntax_resources/exprs/window_functions/frame_clause,frame_bounds,frame_bound.diagram.md
+<your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/exprs/window_functions/frame_clause,frame_bounds,frame_bound.diagram.md
 
-<your path>/yugabyte-db/docs/content/latest/api/ysql/syntax_resources/exprs/window_functions/frame_clause,frame_bounds,frame_bound.grammar.md
+<your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/exprs/window_functions/frame_clause,frame_bounds,frame_bound.grammar.md
 ```
 
 _Step 3:_ Copy a reliable example of the [_diagram inclusion HTML_](#diagram-inclusion-HTML) and paste it into `window-definition.md` at the location where you want the syntax diagram set to appear. Edit the bolded text shown above appropriately.

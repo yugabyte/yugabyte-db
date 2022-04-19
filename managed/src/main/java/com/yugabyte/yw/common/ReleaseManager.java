@@ -4,7 +4,9 @@ package com.yugabyte.yw.common;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.forms.ReleaseFormData;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModel;
@@ -13,10 +15,12 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,6 +68,9 @@ public class ReleaseManager {
     // File path where the release helm chart is stored
     @ApiModelProperty(value = "Helm chart path")
     public String chartPath;
+
+    @ApiModelProperty(value = "Release packages")
+    public List<Package> packages;
 
     // Docker image tag corresponding to the release
     @ApiModelProperty(value = "Release image tag")
@@ -143,6 +150,12 @@ public class ReleaseManager {
       public PackagePaths paths;
     }
 
+    public static class Package {
+      @ApiModelProperty @Constraints.Required public String path;
+
+      @ApiModelProperty @Constraints.Required public Architecture arch;
+    }
+
     public static ReleaseMetadata fromLegacy(String version, Object metadata) {
       // Legacy release metadata would have name and release path alone
       // convert those to new format.
@@ -157,6 +170,7 @@ public class ReleaseManager {
       rm.state = ReleaseState.ACTIVE;
       rm.imageTag = version;
       rm.notes = new ArrayList<>();
+      rm.packages = new ArrayList<>();
       return rm;
     }
 
@@ -170,26 +184,72 @@ public class ReleaseManager {
       return this;
     }
 
+    public ReleaseMetadata withPackage(String path, Architecture arch) {
+      Package p = new Package();
+      p.path = path;
+      p.arch = arch;
+      this.packages.add(p);
+      return this;
+    }
+
     public String toString() {
       return Json.toJson(CommonUtils.maskObject(this)).toString();
+    }
+
+    private List<Package> matchPackages(Architecture arch) {
+      // Old style release without packages. No matching packages.
+      if (packages == null) {
+        return Collections.emptyList();
+      }
+      return packages.stream().filter(p -> p.arch == arch).collect(Collectors.toList());
+    }
+
+    public String getFilePath(Region region) {
+      Architecture arch = region.getArchitecture();
+      // Must be old style region or release with no architecture (or packages).
+      if (arch == null || packages == null || packages.isEmpty()) {
+        return filePath;
+      }
+      List<Package> matched = matchPackages(arch);
+      if (matched.size() == 0) {
+        throw new RuntimeException(
+            "Could not find matching package with architecture " + arch.name());
+      } else if (matched.size() > 1) {
+        LOG.warn(
+            "Found more than one package with matching architecture, picking {}.",
+            matched.get(0).path);
+      }
+      return matched.get(0).path;
+    }
+
+    public Boolean matchesRegion(Region region) {
+      Architecture arch = region.getArchitecture();
+      // Must be old style region or release with no architecture (or packages).
+      if (arch == null || packages == null || packages.isEmpty()) {
+        return true;
+      }
+      List<Package> matched = matchPackages(arch);
+      return matched.size() > 0;
     }
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseManager.class);
 
-  final PathMatcher ybPackageMatcher =
-      FileSystems.getDefault().getPathMatcher("glob:**yugabyte*centos*.tar.gz");
-  final Predicate<Path> ybPackageFilter =
-      p -> Files.isRegularFile(p) && ybPackageMatcher.matches(p);
+  private Predicate<Path> getPackageFilter(String pathMatchGlob) {
+    return p -> Files.isRegularFile(p) && getPathMatcher(pathMatchGlob).matches(p);
+  }
 
-  final PathMatcher ybChartMatcher =
-      FileSystems.getDefault().getPathMatcher("glob:**yugabyte-*-helm.tar.gz");
-  final Predicate<Path> ybChartFilter = p -> Files.isRegularFile(p) && ybChartMatcher.matches(p);
+  private PathMatcher getPathMatcher(String pathMatchGlob) {
+    return FileSystems.getDefault().getPathMatcher(pathMatchGlob);
+  }
+
+  final Predicate<Path> ybChartFilter = getPackageFilter("glob:**yugabyte-*-helm.tar.gz");
 
   // This regex needs to support old style packages with -ee as well as new style packages without.
   // There are previously existing YW deployments that will have the old packages and users will
   // need to still be able to use said universes and their existing YB releases.
-  final Pattern ybPackagePattern = Pattern.compile("[^.]+yugabyte-(?:ee-)?(.*)-centos(.*).tar.gz");
+  final Pattern ybPackagePattern =
+      Pattern.compile("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos)(.*).tar.gz");
 
   final Pattern ybHelmChartPattern = Pattern.compile("[^.]+yugabyte-(.*)-helm.tar.gz");
 
@@ -209,18 +269,32 @@ public class ReleaseManager {
     return fileMap;
   }
 
-  public Map<String, ReleaseMetadata> getLocalReleases(String releasesPath) {
-    Map<String, ReleaseMetadata> localReleases = new HashMap<>();
-    Map<String, String> releaseFiles = getReleaseFiles(releasesPath, ybPackageFilter);
-    Map<String, String> releaseCharts = getReleaseFiles(releasesPath, ybChartFilter);
+  private void updateLocalReleases(
+      Map<String, ReleaseMetadata> localReleases,
+      Map<String, String> releaseFiles,
+      Map<String, String> releaseCharts,
+      Architecture arch) {
     releaseFiles.forEach(
         (version, filePath) -> {
-          ReleaseMetadata r =
-              ReleaseMetadata.create(version)
-                  .withFilePath(filePath)
-                  .withChartPath(releaseCharts.getOrDefault(version, ""));
-          localReleases.put(version, r);
+          ReleaseMetadata r = localReleases.get(version);
+          if (r == null) {
+            r =
+                ReleaseMetadata.create(version)
+                    .withFilePath(filePath)
+                    .withChartPath(releaseCharts.getOrDefault(version, ""));
+          }
+          localReleases.put(version, r.withPackage(filePath, arch));
         });
+  }
+
+  public Map<String, ReleaseMetadata> getLocalReleases(String releasesPath) {
+    Map<String, String> releaseFiles;
+    Map<String, String> releaseCharts = getReleaseFiles(releasesPath, ybChartFilter);
+    Map<String, ReleaseMetadata> localReleases = new HashMap<>();
+    for (Architecture arch : Architecture.values()) {
+      releaseFiles = getReleaseFiles(releasesPath, getPackageFilter(arch.getGlob()));
+      updateLocalReleases(localReleases, releaseFiles, releaseCharts, arch);
+    }
     return localReleases;
   }
 
@@ -372,6 +446,40 @@ public class ReleaseManager {
     }
   }
 
+  /** Idempotent method to update all releases with packages if possible. */
+  public synchronized void updateCurrentReleases() {
+    Map<String, Object> currentReleases = getReleaseMetadata();
+    Map<String, Object> updatedReleases = new HashMap<>();
+    currentReleases.forEach(
+        (version, object) -> {
+          ReleaseMetadata rm = metadataFromObject(object);
+          // update packages if possible
+          if ((rm.packages == null || rm.packages.isEmpty())
+              && !(rm.filePath == null || rm.filePath.isEmpty())) {
+            Path fp = null;
+            try {
+              fp = Paths.get(rm.filePath);
+            } catch (InvalidPathException e) {
+              LOG.error("Error {} getting package path for version {}", e.getMessage(), version);
+            }
+            if (fp != null) {
+              for (Architecture arch : Architecture.values()) {
+                if (getPathMatcher(arch.getGlob()).matches(fp)) {
+                  rm.packages = new ArrayList<>();
+                  rm = rm.withPackage(rm.filePath, arch);
+                }
+              }
+            }
+            if (rm.packages == null || rm.packages.isEmpty()) {
+              LOG.warn(
+                  "Could not match any available architectures to existing release {}", version);
+            }
+          }
+          updatedReleases.put(version, rm);
+        });
+    configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, updatedReleases);
+  }
+
   public synchronized void updateReleaseMetadata(String version, ReleaseMetadata newData) {
     Map<String, Object> currentReleases = getReleaseMetadata();
     if (currentReleases.containsKey(version)) {
@@ -426,7 +534,11 @@ public class ReleaseManager {
     if (metadata == null) {
       return null;
     }
-    return Json.fromJson(Json.toJson(metadata), ReleaseMetadata.class);
+    return metadataFromObject(metadata);
+  }
+
+  public ReleaseMetadata metadataFromObject(Object object) {
+    return Json.fromJson(Json.toJson(object), ReleaseMetadata.class);
   }
 
   public Map<String, String> getReleases() {

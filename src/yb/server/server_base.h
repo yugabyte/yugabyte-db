@@ -35,8 +35,6 @@
 #include <memory>
 #include <string>
 
-#include "yb/common/wire_protocol.pb.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
@@ -99,9 +97,7 @@ class RpcServerBase {
   // Return a PB describing the status of the server (version info, bound ports, etc)
   virtual void GetStatusPB(ServerStatusPB* status) const;
 
-  CloudInfoPB MakeCloudInfoPB() const {
-    return options_.MakeCloudInfoPB();
-  }
+  CloudInfoPB MakeCloudInfoPB() const;
 
   const ServerBaseOptions& options() const {
     return options_;
@@ -114,7 +110,8 @@ class RpcServerBase {
   RpcServerBase(std::string name,
                 const ServerBaseOptions& options,
                 const std::string& metrics_namespace,
-                std::shared_ptr<MemTracker> mem_tracker);
+                std::shared_ptr<MemTracker> mem_tracker,
+                const scoped_refptr<Clock>& clock = nullptr);
   virtual ~RpcServerBase();
 
   CHECKED_STATUS Init();
@@ -136,6 +133,7 @@ class RpcServerBase {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
   scoped_refptr<Clock> clock_;
+  bool external_clock_ = false;
 
   // The instance identifier of this server.
   std::unique_ptr<NodeInstancePB> instance_pb_;
@@ -184,7 +182,8 @@ class RpcAndWebServerBase : public RpcServerBase {
   RpcAndWebServerBase(
       std::string name, const ServerBaseOptions& options,
       const std::string& metrics_namespace,
-      std::shared_ptr<MemTracker> mem_tracker);
+      std::shared_ptr<MemTracker> mem_tracker,
+      const scoped_refptr<Clock>& clock = nullptr);
   virtual ~RpcAndWebServerBase();
 
   virtual Status HandleDebugPage(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
@@ -218,12 +217,12 @@ std::shared_ptr<MemTracker> CreateMemTrackerForServer();
 YB_STRONGLY_TYPED_BOOL(Private);
 
 // Returns public/private address for test server with specified index.
-std::string TEST_RpcAddress(int index, Private priv);
+std::string TEST_RpcAddress(size_t index, Private priv);
 // Returns bind endpoint for test server with specified index and specified port.
-std::string TEST_RpcBindEndpoint(int index, uint16_t port);
+std::string TEST_RpcBindEndpoint(size_t index, uint16_t port);
 
 // Sets up connectivity in test for specified messenger of server with index.
-void TEST_SetupConnectivity(rpc::Messenger* messenger, int index);
+void TEST_SetupConnectivity(rpc::Messenger* messenger, size_t index);
 // Isolates specific messenger, i.e. breaks any of this messengers connections with all other
 // servers.
 void TEST_Isolate(rpc::Messenger* messenger);

@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import javax.inject.Inject;
@@ -28,7 +29,7 @@ public class XClusterConfigDelete extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    XClusterConfig xClusterConfig = refreshXClusterConfig();
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
 
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
@@ -37,7 +38,7 @@ public class XClusterConfigDelete extends XClusterConfigTaskBase {
 
     try {
       DeleteUniverseReplicationResponse resp =
-          client.deleteUniverseReplication(xClusterConfig.sourceUniverseUUID);
+          client.deleteUniverseReplication(xClusterConfig.getReplicationGroupName());
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(
@@ -46,6 +47,10 @@ public class XClusterConfigDelete extends XClusterConfigTaskBase {
       }
 
       xClusterConfig.delete();
+
+      if (HighAvailabilityConfig.get().isPresent()) {
+        getUniverse(true).incrementVersion();
+      }
 
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

@@ -62,13 +62,13 @@ class RaftConsensusStateTest : public YBTest {
   void SetUp() override {
     YBTest::SetUp();
     ASSERT_OK(fs_manager_.CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_.Open());
+    ASSERT_OK(fs_manager_.CheckAndOpenFileSystemRoots());
 
     // Initialize test configuration.
     config_.set_opid_index(kInvalidOpIdIndex);
     RaftPeerPB* peer = config_.add_peers();
     peer->set_permanent_uuid(fs_manager_.uuid());
-    peer->set_member_type(RaftPeerPB::VOTER);
+    peer->set_member_type(PeerMemberType::VOTER);
 
     std::unique_ptr<ConsensusMetadata> cmeta;
     ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, fs_manager_.uuid(),

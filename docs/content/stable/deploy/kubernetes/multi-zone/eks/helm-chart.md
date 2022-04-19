@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/multi-zone/eks/helm-chart" class="nav-link active">
+    <a href="/preview/deploy/kubernetes/multi-zone/eks/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
@@ -126,7 +126,6 @@ provisioner: kubernetes.io/aws-ebs
 parameters:
   type: gp2
   zone: us-east-1c
-
 ```
 
 Apply the above configuration to your cluster.
@@ -154,12 +153,12 @@ $ helm repo update
 Validate that you have the updated chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
 ```
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
-yugabytedb/yugabyte     2.8.0           2.8.0.0-b37    YugabyteDB is the high-performance distributed ...
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION
+yugabytedb/yugabyte     2.12.2           2.12.2.0-b58    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -259,7 +258,7 @@ gflags:
 
 ### Install YugabyteDB
 
-Install YugabyteDB in the Kubernetes cluster using the commands below. 
+Install YugabyteDB in the Kubernetes cluster using the commands below.
 
 For Helm, you have to first create the 3 namespaces.
 
@@ -274,19 +273,25 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 ```sh
 $ helm install yb-demo-us-east-1a yugabytedb/yugabyte \
  --namespace yb-demo-us-east-1a \
- -f overrides-us-east-1a.yaml --wait
+ -f overrides-us-east-1a.yaml \
+ --version {{<yb-version version="stable" format="short">}} \
+ --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-east-1b yugabytedb/yugabyte \
  --namespace yb-demo-us-east-1b \
- -f overrides-us-east-1b.yaml --wait
+ -f overrides-us-east-1b.yaml \
+ --version {{<yb-version version="stable" format="short">}} \
+ --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-east-1c yugabytedb/yugabyte \
  --namespace yb-demo-us-east-1c \
- -f overrides-us-east-1c.yaml --wait
+ -f overrides-us-east-1c.yaml \
+ --version {{<yb-version version="stable" format="short">}} \
+ --wait
 ```
 
 ## 3. Check the cluster status
@@ -325,11 +330,11 @@ yb-demo-us-east-1c   yb-tservers          ClusterIP      None             <none>
 
 Access the yb-master Admin UI for the cluster at `http://<external-ip>:7000` where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above three services for this purpose since all of them will show the same cluster metadata.
 
-![mz-ybmaster](/images/deploy/kubernetes/aws-multizone-ybmaster.png) 
+![mz-ybmaster](/images/deploy/kubernetes/aws-multizone-ybmaster.png)
 
 ## 4. Configure zone-aware replica placement
 
-Default replica placement policy treats every yb-tserver as equal irrespective of its `placement_*` setting. Go to `http://<external-ip>:7000/cluster-config` to confirm that the default configuration is still in effect. 
+Default replica placement policy treats every yb-tserver as equal irrespective of its `placement_*` setting. Go to `http://<external-ip>:7000/cluster-config` to confirm that the default configuration is still in effect.
 
 ![before-zoneaware](/images/deploy/kubernetes/gke-aws-multizone-before-zoneaware.png)
 
@@ -364,7 +369,7 @@ yb-tserver-0.yb-tservers.yb-demo-us-east-1a
 
 You can follow the [Explore YSQL](../../../../../quick-start/explore/ysql) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
 
-![mz-ybtserver](/images/deploy/kubernetes/aws-multizone-ybtserver.png) 
+![mz-ybtserver](/images/deploy/kubernetes/aws-multizone-ybtserver.png)
 
 ## 6. Connect using external clients
 

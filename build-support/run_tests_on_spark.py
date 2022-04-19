@@ -87,7 +87,7 @@ TIME_SEC_TO_START_RUNNING_TEST = 5 * 60
 
 # Defaults for maximum test failure threshold, after which the Spark job will be aborted
 DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 150
-DEFAULT_MAX_NUM_TEST_FAILURES = 50
+DEFAULT_MAX_NUM_TEST_FAILURES = 100
 
 
 def wait_for_path_to_exist(target_path: str) -> None:
@@ -171,12 +171,6 @@ ONE_SHOT_TESTS = set([
 
 HASH_COMMENT_RE = re.compile('#.*$')
 
-# Number of failures of any particular task before giving up on the job. The total number of
-# failures spread across different tasks will not cause the job to fail; a particular task has to
-# fail this number of attempts. Should be greater than or equal to 1. Number of allowed retries =
-# this value - 1.
-SPARK_TASK_MAX_FAILURES = 100
-
 # Global variables. Some of these are used on the remote worker side.
 verbose = False
 g_spark_master_url_override = None
@@ -239,7 +233,6 @@ def init_spark_context(details: List[str] = []) -> None:
     global_conf = yb_dist_tests.get_global_conf()
     build_type = global_conf.build_type
     from pyspark import SparkContext  # type: ignore
-    SparkContext.setSystemProperty('spark.task.maxFailures', str(SPARK_TASK_MAX_FAILURES))
 
     spark_master_url = g_spark_master_url_override
     if spark_master_url is None:
@@ -442,31 +435,9 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
             else:
                 logging.warning("Artifact list does not exist: '%s'", artifact_list_path)
 
-            if is_macos() and socket.gethostname() == os.environ.get('YB_BUILD_HOST'):
-                logging.info("Files already local to build host. Skipping artifact copy.")
-            else:
-                num_artifacts_copied = 0
-                for artifact_path in artifact_paths:
-                    if not os.path.exists(artifact_path):
-                        logging.warning("Build artifact file does not exist: '%s'", artifact_path)
-                        continue
-                    if is_macos():
-                        dest_path = get_mac_shared_nfs(artifact_path)
-                    else:
-                        dest_path = yb_dist_tests.to_real_nfs_path(artifact_path)
-                    dest_dir = os.path.dirname(dest_path)
-                    if not os.path.exists(dest_dir):
-                        logging.info("Creating directory %s", dest_dir)
-                        subprocess.check_call(['mkdir', '-p', dest_dir])
-                    logging.info("Copying %s to %s", artifact_path, dest_path)
-                    try:
-                        subprocess.check_call(['cp', '-f', artifact_path, dest_path])
-                    except subprocess.CalledProcessError as ex:
-                        logging.error("Error copying %s to %s: %s", artifact_path, dest_path, ex)
-                        num_errors_copying_artifacts = 1
-
-                    num_artifacts_copied += 1
-                logging.info("Number of build artifact files copied: %d", num_artifacts_copied)
+            build_host = os.environ.get('YB_BUILD_HOST')
+            assert build_host is not None
+            copy_to_host(artifact_paths, build_host)
 
             rel_artifact_paths = [
                     os.path.relpath(os.path.abspath(artifact_path), global_conf.yb_src_root)
@@ -565,7 +536,7 @@ set -euo pipefail
         fi
         actual_archive_sha256sum=$( (
             [[ $OSTYPE == linux* ]] && sha256sum '{archive_path}' ||
-            shasum --portable --algorithm 256 '{archive_path}'
+            shasum --algorithm 256 '{archive_path}'
         ) | awk '{{ print $1 }}' )
         if [[ $actual_archive_sha256sum != '{expected_archive_sha256sum}' ]]; then
           echo "Archive SHA256 sum of '{archive_path}' is $actual_archive_sha256sum, which" \
@@ -696,6 +667,44 @@ def get_mac_shared_nfs(path: str) -> str:
     return "/Volumes/net/v1/" + yb_build_host + relpath
 
 
+def copy_to_host(artifact_paths: List[str], build_host: str) -> None:
+    """
+    Provide compatibility to copy artifacts back to build host via NFS or SSH.
+    """
+    if is_macos() and socket.gethostname() == build_host:
+        logging.info("Files already local to build host. Skipping artifact copy.")
+    else:
+        ssh_mode = True if os.getenv('YB_SPARK_COPY_MODE') == 'SSH' else False
+        num_artifacts_copied = 0
+        for artifact_path in artifact_paths:
+            if not os.path.exists(artifact_path):
+                logging.warning("Build artifact file does not exist: '%s'", artifact_path)
+                continue
+            if ssh_mode:
+                dest_dir = os.path.dirname(artifact_path)
+                logging.info(f"Copying {artifact_path} to {build_host}:{dest_dir}")
+            else:
+                if is_macos():
+                    dest_path = get_mac_shared_nfs(artifact_path)
+                else:
+                    dest_path = yb_dist_tests.to_real_nfs_path(artifact_path)
+                dest_dir = os.path.dirname(dest_path)
+                logging.info(f"Copying {artifact_path} to {dest_dir}")
+            try:
+                if ssh_mode:
+                    subprocess.check_call(['ssh', build_host, 'mkdir', '-p', dest_dir])
+                    subprocess.check_call(['scp', artifact_path, f'{build_host}:{dest_dir}/'])
+                else:
+                    subprocess.check_call(['mkdir', '-p', dest_dir])
+                    subprocess.check_call(['cp', '-f', artifact_path, dest_path])
+            except subprocess.CalledProcessError as ex:
+                logging.error("Error copying %s to %s: %s", artifact_path, dest_dir, ex)
+                num_errors_copying_artifacts = 1
+
+            num_artifacts_copied += 1
+        logging.info("Number of build artifact files copied: %d", num_artifacts_copied)
+
+
 def get_jenkins_job_name() -> Optional[str]:
     return os.environ.get('JOB_NAME')
 
@@ -790,7 +799,7 @@ def save_report(
             elapsed_time_sec=result.elapsed_time_sec,
             exit_code=result.exit_code,
             language=test_descriptor.language,
-            rtifact_paths=result.artifact_paths
+            artifact_paths=result.artifact_paths
         )
         test_reports_by_descriptor[test_descriptor.descriptor_str] = test_report_dict
         if test_descriptor.error_output_path and os.path.isfile(test_descriptor.error_output_path):

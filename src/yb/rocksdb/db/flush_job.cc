@@ -75,6 +75,10 @@ DEFINE_int32(rocksdb_nothing_in_memtable_to_flush_sleep_ms, 10,
 DEFINE_test_flag(bool, rocksdb_crash_on_flush, false,
                  "When set, memtable flush in rocksdb crashes.");
 
+DEFINE_bool(rocksdb_release_mutex_during_wait_for_memtables_to_flush, true,
+            "When a flush is scheduled, but there isn't a memtable eligible yet, release "
+            "the mutex before going to sleep and reacquire it post sleep.");
+
 namespace rocksdb {
 
 FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
@@ -124,14 +128,9 @@ void FlushJob::ReportStartedFlush() {
   IOSTATS_RESET(bytes_written);
 }
 
-void FlushJob::ReportFlushInputSize(const autovector<MemTable*>& mems) {
-  uint64_t input_size = 0;
-  for (auto* mem : mems) {
-    input_size += mem->ApproximateMemoryUsage();
-  }
-}
-
 void FlushJob::RecordFlushIOStats() {
+  RecordTick(stats_, FLUSH_WRITE_BYTES, IOSTATS(bytes_written));
+  IOSTATS_RESET(bytes_written);
 }
 
 Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
@@ -149,15 +148,26 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
     // the provisional records RocksDB.
     //
     // See https://github.com/yugabyte/yugabyte-db/issues/437 for more details.
-    YB_LOG_EVERY_N_SECS(WARNING, 1)
+    YB_LOG_EVERY_N_SECS(INFO, 1)
         << db_options_.log_prefix
-        << "[" << cfd_->GetName() << "] Nothing in memtable to flush.";
-    std::this_thread::sleep_for(std::chrono::milliseconds(
+        << "[" << cfd_->GetName() << "] No eligible memtables to flush.";
+
+    bool release_mutex = FLAGS_rocksdb_release_mutex_during_wait_for_memtables_to_flush;
+
+    if (release_mutex) {
+      // Release the mutex before the sleep, so as to unblock writers.
+      db_mutex_->Unlock();
+    }
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(
         FLAGS_rocksdb_nothing_in_memtable_to_flush_sleep_ms));
+
+    if (release_mutex) {
+      db_mutex_->Lock();
+    }
+
     return FileNumbersHolder();
   }
-
-  ReportFlushInputSize(mems);
 
   // entries mems are (implicitly) sorted in ascending order by their created
   // time. We will use the first memtable's `edit` to keep the meta info for
@@ -196,6 +206,8 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
   if (fnum.ok() && file_meta != nullptr) {
     *file_meta = meta;
   }
+
+  // This includes both SST and MANIFEST files IO.
   RecordFlushIOStats();
 
   auto stream = event_logger_->LogToBuffer(log_buffer_);
@@ -337,7 +349,7 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
   cfd_->internal_stats()->AddCompactionStats(0 /* level */, stats);
   cfd_->internal_stats()->AddCFStats(InternalStats::BYTES_FLUSHED,
       meta->fd.GetTotalFileSize());
-  RecordTick(stats_, COMPACT_WRITE_BYTES, meta->fd.GetTotalFileSize());
+  RecordFlushIOStats();
   if (s.ok()) {
     return file_number_holder;
   } else {

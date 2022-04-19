@@ -84,7 +84,8 @@ typedef enum
 	DO_POLICY,
 	DO_PUBLICATION,
 	DO_PUBLICATION_REL,
-	DO_SUBSCRIPTION
+	DO_SUBSCRIPTION,
+	DO_TABLEGROUP
 } DumpableObjectType;
 
 /* component types of an object which can be selected for dumping */
@@ -337,6 +338,20 @@ typedef struct _tableInfo
 	int			numTriggers;	/* number of triggers for table */
 	struct _triggerInfo *triggers;	/* array of TriggerInfo structs */
 } TableInfo;
+
+typedef struct _tablegroupInfo
+{
+	/*
+	 * These fields are collected for every tablegroup in the database.
+	 */
+	DumpableObject dobj;
+	char	   *grpowner;		/* name of owner, or empty string */
+	char	   *grpacl;
+	char	   *grpracl;
+	char	   *grpinitacl;
+	char	   *grpinitracl;
+	char	   *grpoptions;		/* options specified by WITH (...) */
+} TablegroupInfo;
 
 typedef struct _attrDefInfo
 {
@@ -673,6 +688,7 @@ extern OprInfo *findOprByOid(Oid oid);
 extern CollInfo *findCollationByOid(Oid oid);
 extern NamespaceInfo *findNamespaceByOid(Oid oid);
 extern ExtensionInfo *findExtensionByOid(Oid oid);
+extern TablegroupInfo *findTablegroupByOid(Oid oid);
 
 extern void setExtensionMembership(ExtensionMemberId *extmems, int nextmems);
 extern ExtensionInfo *findOwningExtension(CatalogId catalogId);
@@ -699,6 +715,7 @@ extern OpfamilyInfo *getOpfamilies(Archive *fout, int *numOpfamilies);
 extern CollInfo *getCollations(Archive *fout, int *numCollations);
 extern ConvInfo *getConversions(Archive *fout, int *numConversions);
 extern TableInfo *getTables(Archive *fout, int *numTables);
+extern TablegroupInfo *getTablegroups(Archive *fout, int *numTablegroups);
 extern void getOwnedSeqs(Archive *fout, TableInfo tblinfo[], int numTables);
 extern InhInfo *getInherits(Archive *fout, int *numInherits);
 extern void getIndexes(Archive *fout, TableInfo tblinfo[], int numTables);

@@ -39,6 +39,7 @@
 
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log_index.h"
+#include "yb/consensus/log_util.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 
@@ -109,14 +110,13 @@ const int64_t LogReader::kNoSizeLimit = -1;
 
 Status LogReader::Open(Env *env,
                        const scoped_refptr<LogIndex>& index,
-                       const std::string& tablet_id,
+                       std::string log_prefix,
                        const std::string& tablet_wal_path,
-                       const std::string& peer_uuid,
                        const scoped_refptr<MetricEntity>& table_metric_entity,
                        const scoped_refptr<MetricEntity>& tablet_metric_entity,
                        std::unique_ptr<LogReader> *reader) {
   std::unique_ptr<LogReader> log_reader(new LogReader(
-      env, index, tablet_id, peer_uuid, table_metric_entity, tablet_metric_entity));
+      env, index, std::move(log_prefix), table_metric_entity, tablet_metric_entity));
 
   RETURN_NOT_OK(log_reader->Init(tablet_wal_path));
   *reader = std::move(log_reader);
@@ -125,14 +125,12 @@ Status LogReader::Open(Env *env,
 
 LogReader::LogReader(Env* env,
                      const scoped_refptr<LogIndex>& index,
-                     string tablet_id,
-                     string peer_uuid,
+                     std::string log_prefix,
                      const scoped_refptr<MetricEntity>& table_metric_entity,
                      const scoped_refptr<MetricEntity>& tablet_metric_entity)
     : env_(env),
       log_index_(index),
-      tablet_id_(std::move(tablet_id)),
-      log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid)),
+      log_prefix_(std::move(log_prefix)),
       state_(kLogReaderInitialized) {
   if (table_metric_entity) {
     read_batch_latency_ = METRIC_log_reader_read_batch_latency.Instantiate(table_metric_entity);
@@ -207,7 +205,8 @@ Status LogReader::Init(const string& tablet_wal_path) {
     for (const SegmentSequence::value_type& entry : read_segments) {
       VLOG_WITH_PREFIX(1) << " Log Reader Indexed: " << entry->footer().ShortDebugString();
       // Check that the log segments are in sequence.
-      if (previous_seg_seqno != -1 && entry->header().sequence_number() != previous_seg_seqno + 1) {
+      if (previous_seg_seqno != -1 &&
+          entry->header().sequence_number() != implicit_cast<size_t>(previous_seg_seqno) + 1) {
         return STATUS(Corruption, Substitute("Segment sequence numbers are not consecutive. "
             "Previous segment: seqno $0, path $1; Current segment: seqno $2, path $3",
             previous_seg_seqno, previous_seg_path,
@@ -266,7 +265,8 @@ bool LogReader::ViolatesMinSpacePolicy(const scoped_refptr<ReadableLogSegment>& 
     return false;
   } else {
     uint64_t free_space = *free_space_result;
-    if ((free_space + *potential_reclaimed_space) / 1024 < FLAGS_log_stop_retaining_min_disk_mb) {
+    if (free_space + *potential_reclaimed_space <
+            implicit_cast<size_t>(FLAGS_log_stop_retaining_min_disk_mb) * 1024) {
       YB_LOG_EVERY_N_SECS(WARNING, 300)
           << "Segment " << segment->path() << " violates minimum free space policy "
           << "specified by log_stop_retaining_min_disk_mb: "
@@ -344,34 +344,6 @@ int64_t LogReader::GetMinReplicateIndex() const {
   return min_remaining_op_idx;
 }
 
-void LogReader::GetMaxIndexesToSegmentSizeMap(int64_t min_op_idx, int32_t segments_count,
-                                              int64_t max_close_time_us,
-                                              std::map<int64_t, int64_t>*
-                                              max_idx_to_segment_size) const {
-  std::lock_guard<simple_spinlock> lock(lock_);
-  DCHECK_GE(segments_count, 0);
-  for (const scoped_refptr<ReadableLogSegment>& segment : segments_) {
-    if (max_idx_to_segment_size->size() == segments_count) {
-      break;
-    }
-    DCHECK(segment->HasFooter());
-    if (segment->footer().max_replicate_index() < min_op_idx) {
-      // This means we found a log we can GC. Adjust the expected number of logs.
-      segments_count--;
-      continue;
-    }
-
-    if (max_close_time_us < segment->footer().close_timestamp_micros()) {
-      int64_t age_seconds = segment->footer().close_timestamp_micros() / 1000000;
-      VLOG_WITH_PREFIX(2)
-          << "Segment " << segment->path() << " is only " << age_seconds << "s old: "
-          << "won't be counted towards log retention";
-      break;
-    }
-    (*max_idx_to_segment_size)[segment->footer().max_replicate_index()] = segment->file_size();
-  }
-}
-
 scoped_refptr<ReadableLogSegment> LogReader::GetSegmentBySequenceNumber(int64_t seq) const {
   std::lock_guard<simple_spinlock> lock(lock_);
   if (segments_.empty()) {
@@ -381,8 +353,8 @@ scoped_refptr<ReadableLogSegment> LogReader::GetSegmentBySequenceNumber(int64_t 
   // We always have a contiguous set of log segments, so we can find the requested
   // segment in our vector by calculating its offset vs the first element.
   int64_t first_seqno = segments_[0]->header().sequence_number();
-  int64_t relative = seq - first_seqno;
-  if (relative < 0 || relative >= segments_.size()) {
+  size_t relative = seq - first_seqno;
+  if (relative >= segments_.size()) {
     return nullptr;
   }
 
@@ -426,6 +398,9 @@ Status LogReader::ReadReplicatesInRange(
     const int64_t up_to,
     int64_t max_bytes_to_read,
     ReplicateMsgs* replicates,
+    int64_t* starting_op_segment_seq_num,
+    yb::SchemaPB* modified_schema,
+    uint32_t* modified_schema_version,
     CoarseTimePoint deadline) const {
   DCHECK_GT(starting_at, 0);
   DCHECK_GE(up_to, starting_at);
@@ -458,6 +433,9 @@ Status LogReader::ReadReplicatesInRange(
     RETURN_NOT_OK_PREPEND(log_index_->GetEntry(index, &index_entry),
                           Substitute("Failed to read log index for op $0", index));
 
+    if (index == starting_at && starting_op_segment_seq_num != nullptr) {
+      *starting_op_segment_seq_num = index_entry.segment_sequence_number;
+    }
     // Since a given LogEntryBatch may contain multiple REPLICATE messages,
     // it's likely that this index entry points to the same batch as the previous
     // one. If that's the case, we've already read this REPLICATE and we can
@@ -499,6 +477,12 @@ Status LogReader::ReadReplicatesInRange(
           total_size + space_required < max_bytes_to_read) {
         total_size += space_required;
         replicates_tmp.emplace_back(entry->release_replicate());
+        if (replicates_tmp.back()->op_type() == consensus::OperationType::CHANGE_METADATA_OP &&
+            modified_schema != nullptr && modified_schema_version != nullptr) {
+          (*modified_schema).CopyFrom(replicates_tmp.back()->change_metadata_request().schema());
+          *modified_schema_version = replicates_tmp.back()->change_metadata_request().
+            schema_version();
+        }
       } else {
         limit_exceeded = true;
       }
@@ -522,6 +506,15 @@ Result<yb::OpId> LogReader::LookupOpId(int64_t op_index) const {
   return index_entry.op_id;
 }
 
+Result<int64_t> LogReader::LookupHeader(int64_t op_index) const {
+  LogIndexEntry index_entry;
+  Status st = log_index_->GetEntry(op_index, &index_entry);
+  if (st.IsNotFound()) {
+    return -1;
+  }
+  return index_entry.segment_sequence_number;
+}
+
 Status LogReader::GetSegmentsSnapshot(SegmentSequence* segments) const {
   std::lock_guard<simple_spinlock> lock(lock_);
   CHECK_EQ(state_, kLogReaderReading);
@@ -529,7 +522,7 @@ Status LogReader::GetSegmentsSnapshot(SegmentSequence* segments) const {
   return Status::OK();
 }
 
-Status LogReader::TrimSegmentsUpToAndIncluding(int64_t segment_sequence_number) {
+Status LogReader::TrimSegmentsUpToAndIncluding(uint64_t segment_sequence_number) {
   std::lock_guard<simple_spinlock> lock(lock_);
   CHECK_EQ(state_, kLogReaderReading);
   auto iter = segments_.begin();
@@ -606,7 +599,7 @@ Status LogReader::AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& se
   return Status::OK();
 }
 
-const int LogReader::num_segments() const {
+size_t LogReader::num_segments() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   return segments_.size();
 }

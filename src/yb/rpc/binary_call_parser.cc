@@ -30,7 +30,7 @@ DEFINE_bool(
     binary_call_parser_reject_on_mem_tracker_hard_limit, true,
     "Whether to reject/ignore calls on hitting mem tracker hard limit.");
 
-DEFINE_int32(
+DEFINE_int64(
     rpc_throttle_threshold_bytes, 1048576,
     "Throttle inbound RPC calls larger than specified size on hitting mem tracker soft limit. "
     "Throttling is disabled if negative value is specified.");
@@ -41,7 +41,7 @@ namespace yb {
 namespace rpc {
 
 bool ShouldThrottleRpc(
-    const MemTrackerPtr& throttle_tracker, size_t call_data_size, const char* throttle_message) {
+    const MemTrackerPtr& throttle_tracker, ssize_t call_data_size, const char* throttle_message) {
   return (FLAGS_rpc_throttle_threshold_bytes >= 0 &&
       call_data_size > FLAGS_rpc_throttle_threshold_bytes &&
       !CheckMemoryPressureWithLogging(throttle_tracker, 0 /* score */, throttle_message));
@@ -109,7 +109,7 @@ Result<ProcessCallsResult> BinaryCallParser::Parse(
         VLOG(4) << "BinaryCallParser::Parse, tracker_for_throttle memory usage: "
                 << (*tracker_for_throttle)->LogUsage("");
         if (ShouldThrottleRpc(*tracker_for_throttle, call_data_size, "Ignoring RPC call: ")) {
-          call_data_ = CallData(call_data_size, ShouldReject::kTrue);
+          call_data_ = CallData(call_data_size, CallData::ShouldRejectTag());
           return ProcessCallsResult{
               .consumed = full_input_size,
               .buffer = Slice(),
@@ -141,7 +141,7 @@ Result<ProcessCallsResult> BinaryCallParser::Parse(
               << ", blocked by: " << AsString(blocking_mem_tracker)
               << ", consumption: " << consumption << " of " << limit << ". Call will be ignored.\n"
               << DumpMemoryUsage();
-          call_data_ = CallData(call_data_size, ShouldReject::kTrue);
+          call_data_ = CallData(call_data_size, CallData::ShouldRejectTag());
           return ProcessCallsResult{
             .consumed = full_input_size,
             .buffer = Slice(),

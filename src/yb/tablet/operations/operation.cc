@@ -33,6 +33,7 @@
 #include "yb/tablet/operations/operation.h"
 
 #include "yb/consensus/consensus_round.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/tablet/tablet.h"
 
@@ -46,7 +47,6 @@
 namespace yb {
 namespace tablet {
 
-using consensus::DriverType;
 using tserver::TabletServerError;
 using tserver::TabletServerErrorPB;
 
@@ -176,6 +176,12 @@ OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
       shared_synchronizer->StatusCB(status);
     }
   };
+}
+
+consensus::ReplicateMsgPtr CreateReplicateMsg(OperationType op_type) {
+  auto result = std::make_shared<consensus::ReplicateMsg>();
+  result->set_op_type(static_cast<consensus::OperationType>(op_type));
+  return result;
 }
 
 }  // namespace tablet

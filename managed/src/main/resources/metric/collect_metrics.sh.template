@@ -53,12 +53,25 @@ while [[ $# -gt 0 ]]; do
 done
 
 YB_HOME_DIR=${YB_HOME_DIR:=/home/yugabyte}
-YB_TSERVER_LOGS_DIR=${YB_HOME_DIR}/tserver/logs/
 
-UNRECOGNIZED_STATUS_REGEX='server process \(PID \d+\) exited with unrecognized status .*'
-TERMINATED_BY_SIGNAL_REGEX='server process \(PID \d+\) was terminated by signal .*'
-TERMINATED_BY_EXCEPTION_REGEX='server process \(PID \d+\) was terminated by exception .*'
-EXITED_WITH_CODE_REGEX='server process \(PID \d+\) exited with exit code .*'
+PIDFILE=${YB_HOME_DIR}/collect_metrics.pid
+if [ -f $PIDFILE ]
+then
+  PID=$(cat "$PIDFILE")
+  PID_CHECK_STATUS=$(ps -p $PID > /dev/null 2>&1; echo $?)
+  if [ "$PID_CHECK_STATUS" -eq 0 ]
+  then
+    echo "Process $PID already running"
+    exit 1
+  fi
+fi
+
+PID_CREATE_STATUS=$(echo $$ > $PIDFILE; echo $?)
+if [ "$PID_CREATE_STATUS" -ne 0 ]
+then
+  echo "Could not create $PIDFILE"
+  exit 1
+fi
 
 PROCESS_MASTER="yb-master"
 PROCESS_TSERVER="yb-tserver"
@@ -66,12 +79,16 @@ PROCESS_TSERVER="yb-tserver"
 MASTER_HTTP_ENDPOINT="{{NODE_PRIVATE_IP}}:{{MASTER_HTTP_PORT}}"
 TSERVER_HTTP_ENDPOINT="{{NODE_PRIVATE_IP}}:{{TSERVER_HTTP_PORT}}"
 YSQL_SERVER_HTTP_ENDPOINT="{{NODE_PRIVATE_IP}}:{{YSQL_SERVER_HTTP_PORT}}"
+YSQLSH_CMD_TEMPLATE="{{YSQLSH_CMD_TEMPLATE}}"
+MASTER_INDEX="{{MASTER_INDEX}}"
+TSERVER_INDEX="{{TSERVER_INDEX}}"
+TEST_READ_WRITE="{{TEST_READ_WRITE}}"
 
 metrics=""
 
 get_oom_kills_last_10_minutes()
 {
-  local oom_kills=$(journalctl -k --since "10min ago" | grep -c 'invoked oom-killer' | \
+  local oom_kills=$(sudo -n journalctl -k --since "10min ago" | grep -c 'invoked oom-killer' | \
     sed 's/^ *//')
   echo "$oom_kills"
   return $?
@@ -87,10 +104,18 @@ get_boot_time()
   return $?
 }
 
+get_tserver_pid()
+{
+  local tserver_pid=$(ps --no-headers -C yb-tserver -o pid= | tr -dc '0-9')
+  [[ -z "$tserver_pid" ]] && { return 1; }
+  echo "$tserver_pid"
+  return 0
+}
+
 get_postmaster_pid()
 {
-  local tserver_pid=$(ps --no-headers -C yb-tserver -o pid=)
-  [[ -z "$tserver_pid" ]] && { echo "yb-tserver not running" ; return 1; }
+  local tserver_pid=$(get_tserver_pid)
+  [[ -z "$tserver_pid" ]] && { return 1; }
   local postmaster_pid=$(ps --no-headers --ppid "$tserver_pid" -o pid= -o comm= | \
     grep postgres | tr -dc '0-9')
   echo "$postmaster_pid"
@@ -117,37 +142,11 @@ get_postgres_worker_count()
   return $?
 }
 
-cat_today_logs()
-{
-  local directory=$1
-  local filename_prefix=$2
-  [[ ! -d "$directory" ]] && { echo "$directory is not a directory" ; return 1; }
-  local today=$(date +"%Y-%m-%d")
-  find "$directory" -regex ".*$filename_prefix$today.*" -print0 | sort -z | while read -d $'\0' file
-  do
-    if [ "$file" == "*.gz" ]; then
-      zcat $file
-    else
-      cat $file
-    fi
-  done
-  return $?
-}
-
-get_postgres_worker_terminated_count()
-{
-  local regex=$1
-  local terminated_count=$(cat_today_logs "$YB_TSERVER_LOGS_DIR" "postgresql-" | \
-    grep -cP "$regex")
-  echo "$terminated_count"
-  return $?
-}
-
 get_postmaster_rss()
 {
   local postmaster_pid=$(get_postmaster_pid)
   [[ -z "$postmaster_pid" ]] && { echo "postmaster not running" ; return 1; }
-  local postmaster_rss=$(cat /proc/$postmaster_pid/statm | awk '{print $2}')
+  local postmaster_rss=$(cat /proc/"${postmaster_pid}"/statm | awk '{print $2}')
   echo "$postmaster_rss"
   return $?
 
@@ -157,7 +156,7 @@ get_postgres_workers_rss()
 {
   local postmaster_pid=$(get_postmaster_pid)
   [[ -z "$postmaster_pid" ]] && { echo "postmaster not running" ; return 1; }
-  local postgres_workers_rss=$(ps --no-headers --ppid "$postmaster_pid" -o pid= | \
+  local postgres_workers_rss=$(ps --no-headers --ppid "${postmaster_pid}" -o pid= | \
     xargs -I {} cat /proc/{}/statm | awk -F' ' '{sum += $2} END {print sum;} ')
   echo "$postgres_workers_rss"
   return $?
@@ -184,24 +183,80 @@ is_master_leader()
 ysql_connections_count()
 {
   local rpcs_response=$(curl -s "$YSQL_SERVER_HTTP_ENDPOINT"/rpcz)
-  local valid_response=$(echo "$rpcs_response" | grep '"connections":')
+  local valid_response=$(echo "${rpcs_response}" | grep '"connections":')
   [[ -z "$valid_response" ]] && { echo "unexpected response received" ; return 1; }
-  local connections_count=$(echo "$rpcs_response" | grep -c '"backend_type": "client backend"')
+  local connections_count=$(echo "${rpcs_response}" | grep -c '"backend_type": "client backend"')
   echo "$connections_count";
   return $?
+}
+
+get_ysqlsh_cmd()
+{
+  local local_socket_dir=$(dirname "$(ls /tmp/.yb.*/.s.PGSQL.* | head -1)")
+  local ysqlsh_cmd=${YSQLSH_CMD_TEMPLATE//__local_ysql_socket__/$local_socket_dir}
+  echo "$ysqlsh_cmd"
+  return $?
+}
+
+ysql_connect()
+{
+  [[ -z "$YSQLSH_CMD_TEMPLATE" ]] && { echo "YSQL is disabled"; return 1; }
+  local tserver_pid=$(get_tserver_pid)
+  [[ -z "$tserver_pid" ]] && { echo "TServer is not running"; return 1; }
+  local ysqlsh_cmd=$(get_ysqlsh_cmd)
+  local connect_result=$(timeout 20 ${ysqlsh_cmd} -d system_platform -c "\\conninfo")
+  if [[ ! $connect_result == "You are connected to database"* ]]; then
+    echo "0";
+    return 1;
+  else
+    echo "1";
+    return 0;
+  fi
+}
+
+ysql_write_read()
+{
+  [[ ! "${TEST_READ_WRITE,,}" == "true" ]] && { echo "Read Write test is disabled"; return 1; }
+  [[ -z "$YSQLSH_CMD_TEMPLATE" ]] && { echo "YSQL is disabled"; return 1; }
+  local tserver_pid=$(get_tserver_pid)
+  [[ -z "$tserver_pid" ]] && { echo "TServer is not running"; return 1; }
+  local num_attempts=3
+  for i in $(seq 1 ${num_attempts})
+  do
+    # Need to retry because of https://support.yugabyte.com/hc/en-us/articles/
+    # 4403469712397-Database-Transactions-errors-out-with-Restart-read-required-
+    local ysqlsh_cmd=$(get_ysqlsh_cmd)
+    local key=$((1 + TSERVER_INDEX * 100))
+    # read/write a row for each tablet of range sharded table with num_tserver tablets
+    local read_write_result=$(timeout 20 ${ysqlsh_cmd} -d system_platform -c \
+      "insert into write_read_test values (${key}) on conflict do nothing; \
+      select from write_read_test where id = ${key}; \
+      delete from write_read_test where id = ${key};" 2>&1)
+    if [[ ${read_write_result} == *"relation \"write_read_test\" does not exist"* ]]; then
+      echo "Test table does not exist";
+      return 1;
+    fi
+    if [[ ${read_write_result} == *"DELETE 1" ]]; then
+      echo "1";
+      return 0;
+    fi
+  done
+  # Means 3 attempts to write/read failed
+  echo "0";
+  return 1;
 }
 
 collect_leaderless_tablets()
 {
   local leaderless_tablets_response=$(curl -s "$MASTER_HTTP_ENDPOINT/api/v1/tablet-replication" | \
     grep -P '{"leaderless_tablets":\[.*\]}')
-  [[ -z "$leaderless_tablets_response" ]] && { echo "unexpected response received" ; return 1; }
+  [[ -z "$leaderless_tablets_response" ]] && { echo "unexpected response received" ; return; }
   local leaderless_tablets=$(echo "$leaderless_tablets_response" | \
-    sed -r 's/^\{"leaderless_tablets":\[(.*)\]\}$/\1/' | sed 's/,/\n/g' | \
-    sed -r 's/^"(.*)"$/\1/')
-  [[ -z "$leaderless_tablets" ]] && { echo "no leaderless tablets" ; return 0; }
+    sed -r 's/^\{"leaderless_tablets":\[(.*)\]\}$/\1/' | sed 's/},{/}\n{/g' | \
+    sed -r 's/"table_uuid":/table_uuid=/' | sed -r 's/"tablet_uuid":/tablet_uuid=/')
+  [[ -z "$leaderless_tablets" ]] && { echo "no leaderless tablets" ; return; }
   local leaderless_tablet_metrics=$(echo "$leaderless_tablets" | \
-    awk '{printf "yb_node_leaderless_tablet{tablet_id=\"%s\"} 1\n", $1}')
+    awk '{printf "yb_node_leaderless_tablet%s 1\n", $1}')
   metrics="$metrics$leaderless_tablet_metrics\n"
 }
 
@@ -209,13 +264,13 @@ collect_underreplicated_tablets()
 {
   local ur_tablets_response=$(curl -s "$MASTER_HTTP_ENDPOINT/api/v1/tablet-under-replication" | \
     grep -P '{"underreplicated_tablets":\[.*\]}')
-  [[ -z "$ur_tablets_response" ]] && { echo "unexpected response received" ; return 1; }
+  [[ -z "$ur_tablets_response" ]] && { echo "unexpected response received" ; return; }
   local underreplicated_tablets=$(echo "$ur_tablets_response" | \
-    sed -r 's/^\{"underreplicated_tablets":\[(.*)\]\}$/\1/' | sed 's/,/\n/g' | \
-    sed -r 's/^"(.*)"$/\1/')
-  [[ -z "$underreplicated_tablets" ]] && { echo "no under-replicated tablets" ; return 0; }
+    sed -r 's/^\{"underreplicated_tablets":\[(.*)\]\}$/\1/' | sed 's/},{/}\n{/g' | \
+    sed -r 's/"table_uuid":/table_uuid=/' | sed -r 's/"tablet_uuid":/tablet_uuid=/')
+  [[ -z "$underreplicated_tablets" ]] && { echo "no under-replicated tablets" ; return; }
   local underreplicated_tablet_metrics=$(echo "$underreplicated_tablets" | \
-    awk '{printf "yb_node_underreplicated_tablet{tablet_id=\"%s\"} 1\n", $1}')
+    awk '{printf "yb_node_underreplicated_tablet%s 1\n", $1}')
   metrics="$metrics$underreplicated_tablet_metrics\n"
 }
 
@@ -240,18 +295,12 @@ collect_metric 'yb_node_boot_time{process="master"}' "get_boot_time $PROCESS_MAS
 collect_metric 'yb_node_boot_time{process="tserver"}' "get_boot_time $PROCESS_TSERVER"
 collect_metric 'yb_node_boot_time{process="postmaster"}' 'get_postmaster_boot_time'
 collect_metric 'yb_node_postgres_worker_count' 'get_postgres_worker_count'
-collect_metric 'yb_node_postgres_worker_terminated_count{reason="unrecognized_status"}' \
- "get_postgres_worker_terminated_count \"$UNRECOGNIZED_STATUS_REGEX\""
-collect_metric 'yb_node_postgres_worker_terminated_count{reason="terminated_by_signal"}' \
- "get_postgres_worker_terminated_count \"$TERMINATED_BY_SIGNAL_REGEX\""
-collect_metric 'yb_node_postgres_worker_terminated_count{reason="terminated_by_exception"}' \
- "get_postgres_worker_terminated_count \"$TERMINATED_BY_EXCEPTION_REGEX\""
-collect_metric 'yb_node_postgres_worker_terminated_count{reason="exited_with_code"}' \
- "get_postgres_worker_terminated_count \"$EXITED_WITH_CODE_REGEX\""
 collect_metric 'yb_node_postgres_rss{process="postmaster"}' 'get_postmaster_rss'
 collect_metric 'yb_node_postgres_rss{process="workers"}' 'get_postgres_workers_rss'
 collect_metric 'yb_node_is_master_leader' "is_master_leader"
 collect_metric 'yb_node_ysql_connections_count' "ysql_connections_count"
+collect_metric 'yb_node_ysql_connect' "ysql_connect"
+collect_metric 'yb_node_ysql_write_read' "ysql_write_read"
 collect_leaderless_tablets
 collect_underreplicated_tablets
 

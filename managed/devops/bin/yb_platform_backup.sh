@@ -206,7 +206,7 @@ create_backup() {
 
   exclude_dirs="--exclude postgres* --exclude devops --exclude yugaware/lib \
   --exclude yugaware/logs --exclude yugaware/README.md --exclude yugaware/bin \
-  --exclude yugaware/conf --exclude backup_*.tgz --exclude helm"
+  --exclude yugaware/conf --exclude backup_*.tgz --exclude helm --exclude prometheusv2"
 
   modify_service yb-platform stop
 

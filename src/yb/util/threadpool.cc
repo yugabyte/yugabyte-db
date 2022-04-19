@@ -473,7 +473,7 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
   int threads_from_this_submit =
       token->IsActive() && token->mode() == ExecutionMode::SERIAL ? 0 : 1;
   int inactive_threads = num_threads_ - active_threads_;
-  int additional_threads = (queue_.size() + threads_from_this_submit) - inactive_threads;
+  int64_t additional_threads = (queue_.size() + threads_from_this_submit) - inactive_threads;
   if (additional_threads > 0 && num_threads_ < max_threads_) {
     Status status = CreateThreadUnlocked();
     if (!status.ok()) {
@@ -684,6 +684,35 @@ void ThreadPool::CheckNotPoolThreadUnlocked() {
     LOG(FATAL) << Substitute("Thread belonging to thread pool '$0' with "
         "name '$1' called pool function that would result in deadlock",
         name_, current->name());
+  }
+}
+
+CHECKED_STATUS TaskRunner::Init(int concurrency) {
+  ThreadPoolBuilder builder("Task Runner");
+  if (concurrency > 0) {
+    builder.set_max_threads(concurrency);
+  }
+  return builder.Build(&thread_pool_);
+}
+
+CHECKED_STATUS TaskRunner::Wait() {
+  std::unique_lock<std::mutex> lock(mutex_);
+  cond_.wait(lock, [this] { return running_tasks_ == 0; });
+  return first_failure_;
+}
+
+void TaskRunner::CompleteTask(const Status& status) {
+  if (!status.ok()) {
+    bool expected = false;
+    if (failed_.compare_exchange_strong(expected, true)) {
+      first_failure_ = status;
+    } else {
+      LOG(WARNING) << status.message() << std::endl;
+    }
+  }
+  if (--running_tasks_ == 0) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    cond_.notify_one();
   }
 }
 

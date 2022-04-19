@@ -1,0 +1,151 @@
+-- verify ALTER TYPE ... RENAME TO works correctly
+CREATE TYPE bogus AS ENUM('good');
+ALTER TYPE bogus RENAME TO bogon;
+SELECT 'good'::bogus; -- fail
+ERROR:  type "bogus" does not exist
+LINE 1: SELECT 'good'::bogus;
+                       ^
+SELECT 'good'::bogon;
+ bogon
+-------
+ good
+(1 row)
+
+DROP TYPE bogon;
+-- test ALTER table column's TYPE ... RENAME TO works correctly
+CREATE TYPE happiness AS ENUM ('happy', 'very happy', 'ecstatic');
+CREATE TABLE holidays (
+    num_weeks integer,
+    happiness_level happiness
+);
+INSERT INTO holidays(num_weeks,happiness_level) VALUES (4, 'happy');
+INSERT INTO holidays(num_weeks,happiness_level) VALUES (6, 'very happy');
+SELECT * FROM holidays ORDER BY num_weeks;
+ num_weeks | happiness_level
+-----------+-----------------
+         4 | happy
+         6 | very happy
+(2 rows)
+
+ALTER TYPE happiness RENAME TO new_name;
+\dT+ new_name
+                                         List of data types
+ Schema |   Name   | Internal name | Size |  Elements  |  Owner   | Access privileges | Description
+--------+----------+---------------+------+------------+----------+-------------------+-------------
+ public | new_name | new_name      | 4    | happy     +| yugabyte |                   |
+        |          |               |      | very happy+|          |                   |
+        |          |               |      | ecstatic   |          |                   |
+(1 row)
+
+\d holidays
+                   Table "public.holidays"
+     Column      |   Type   | Collation | Nullable | Default
+-----------------+----------+-----------+----------+---------
+ num_weeks       | integer  |           |          |
+ happiness_level | new_name |           |          |
+
+INSERT INTO holidays(num_weeks,happiness_level) VALUES (8, 'ecstatic');
+SELECT * FROM holidays ORDER BY num_weeks;
+ num_weeks | happiness_level
+-----------+-----------------
+         4 | happy
+         6 | very happy
+         8 | ecstatic
+(3 rows)
+
+DROP TYPE happiness; -- fail
+ERROR:  type "happiness" does not exist
+DROP TYPE new_name;  -- fail
+ERROR:  cannot drop type new_name because other objects depend on it
+DETAIL:  column happiness_level of table holidays depends on type new_name
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP TYPE new_name CASCADE;
+NOTICE:  drop cascades to column happiness_level of table holidays
+\d holidays
+               Table "public.holidays"
+  Column   |  Type   | Collation | Nullable | Default
+-----------+---------+-----------+----------+---------
+ num_weeks | integer |           |          |
+
+SELECT * FROM holidays ORDER BY num_weeks;
+ num_weeks
+-----------
+         4
+         6
+         8
+(3 rows)
+
+DROP TABLE holidays;
+-- test ALTER table PRIMARY KEY column's TYPE ... RENAME TO works correctly
+CREATE TYPE happiness AS ENUM ('happy', 'very happy');
+CREATE TABLE holidays (
+    num_weeks integer,
+    happiness_level happiness PRIMARY KEY
+);
+\d holidays
+                   Table "public.holidays"
+     Column      |   Type    | Collation | Nullable | Default
+-----------------+-----------+-----------+----------+---------
+ num_weeks       | integer   |           |          |
+ happiness_level | happiness |           | not null |
+Indexes:
+    "holidays_pkey" PRIMARY KEY, lsm (happiness_level HASH)
+
+INSERT INTO holidays(num_weeks,happiness_level) VALUES (4, 'happy');
+INSERT INTO holidays(num_weeks,happiness_level) VALUES (6, 'very happy');
+SELECT * FROM holidays ORDER BY num_weeks;
+ num_weeks | happiness_level
+-----------+-----------------
+         4 | happy
+         6 | very happy
+(2 rows)
+
+ALTER TYPE happiness RENAME TO new_name;
+\dT+ new_name
+                                         List of data types
+ Schema |   Name   | Internal name | Size |  Elements  |  Owner   | Access privileges | Description
+--------+----------+---------------+------+------------+----------+-------------------+-------------
+ public | new_name | new_name      | 4    | happy     +| yugabyte |                   |
+        |          |               |      | very happy |          |                   |
+(1 row)
+
+ALTER TYPE new_name ADD VALUE 'ecstatic';
+\dT+ new_name
+                                         List of data types
+ Schema |   Name   | Internal name | Size |  Elements  |  Owner   | Access privileges | Description
+--------+----------+---------------+------+------------+----------+-------------------+-------------
+ public | new_name | new_name      | 4    | happy     +| yugabyte |                   |
+        |          |               |      | very happy+|          |                   |
+        |          |               |      | ecstatic   |          |                   |
+(1 row)
+
+INSERT INTO holidays(num_weeks,happiness_level) VALUES (8, 'ecstatic');
+SELECT * FROM holidays ORDER BY num_weeks;
+ num_weeks | happiness_level
+-----------+-----------------
+         4 | happy
+         6 | very happy
+         8 | ecstatic
+(3 rows)
+
+DROP TYPE new_name;  -- fail
+ERROR:  cannot drop type new_name because other objects depend on it
+DETAIL:  column happiness_level of table holidays depends on type new_name
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP TYPE new_name CASCADE;
+NOTICE:  drop cascades to column happiness_level of table holidays
+\d holidays
+               Table "public.holidays"
+  Column   |  Type   | Collation | Nullable | Default
+-----------+---------+-----------+----------+---------
+ num_weeks | integer |           |          |
+
+SELECT * FROM holidays ORDER BY num_weeks;
+ num_weeks
+-----------
+         4
+         6
+         8
+(3 rows)
+
+DROP TABLE holidays;

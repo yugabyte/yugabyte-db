@@ -30,6 +30,8 @@ from yb import library_packager as library_packager_module
 from yb.mac_library_packager import MacLibraryPackager, add_common_arguments
 from yb.release_util import ReleaseUtil, check_for_local_changes
 from yb.common_util import init_env, get_build_type_from_build_root, set_thirdparty_dir
+from yb.linuxbrew import set_build_root
+
 
 YB_SRC_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -47,7 +49,7 @@ def main():
                              'false if --build_target is specified, true otherwise.')
     parser.add_argument('--destination', help='Copy release to Destination folder.')
     parser.add_argument('--force', help='Skip prompts', action='store_true')
-    parser.add_argument('--commit', help='Custom specify a git commit.')
+    parser.add_argument('--commit', help='Specifies a custom git commit to use in archive name.')
     parser.add_argument('--skip_build', help='Skip building the code', action='store_true')
     parser.add_argument('--build_target',
                         help='Target directory to put the YugaByte distribution into. This can '
@@ -65,8 +67,8 @@ def main():
                         help='Do not re-create the initial sys catalog snapshot. Useful when '
                              'debugging the release process.')
     parser.add_argument('--package_name',
-                        default='all',
-                        help='Name of package to release (e.g. cli).')
+                        default='yugabyte',
+                        help='Name of package to release ("yugabyte" or "yugabyte-client").')
     add_common_arguments(parser)
     args = parser.parse_args()
 
@@ -206,7 +208,7 @@ def main():
             "specified on the command line ('{}')".format(build_root))
 
     # We are guaranteed to have a build_root by now.
-    library_packager_module.set_build_root(build_root)
+    set_build_root(build_root)
 
     thirdparty_dir = build_desc["thirdparty_dir"]
     thirdparty_dir_from_env = os.environ.get("YB_THIRDPARTY_DIR", thirdparty_dir)
@@ -221,8 +223,13 @@ def main():
     # This points to the release manifest within the release_manager, and we are modifying that
     # directly.
     release_util = ReleaseUtil(
-        YB_SRC_ROOT, build_type, build_target, args.force, args.commit, build_root,
-        args.package_name)
+        repository=YB_SRC_ROOT,
+        build_type=build_type,
+        distribution_path=build_target,
+        force=args.force,
+        commit=args.commit,
+        build_root=build_root,
+        package_name=args.package_name)
 
     system = platform.system().lower()
     library_packager_args = dict(

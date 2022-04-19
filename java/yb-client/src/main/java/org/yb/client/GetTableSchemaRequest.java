@@ -33,7 +33,8 @@ package org.yb.client;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import static org.yb.master.Master.*;
+import static org.yb.master.MasterDdlOuterClass.*;
+import static org.yb.master.MasterTypes.*;
 
 import org.yb.IndexInfo;
 import org.yb.Schema;

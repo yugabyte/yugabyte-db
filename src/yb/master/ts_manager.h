@@ -40,11 +40,12 @@
 
 #include <boost/function.hpp>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/master/master_cluster.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -147,7 +148,7 @@ class TSManager {
   void GetDescriptorsUnlocked(std::function<bool(const TSDescriptorPtr&)> condition,
                       TSDescriptorVector* descs) const REQUIRES_SHARED(lock_);
 
-  int GetCountUnlocked() const REQUIRES_SHARED(lock_);
+  size_t GetCountUnlocked() const REQUIRES_SHARED(lock_);
 
   mutable rw_spinlock lock_;
 
@@ -156,7 +157,7 @@ class TSManager {
 
   // This callback will be called when the number of tablet servers reaches the given number.
   TSCountCallback ts_count_callback_ GUARDED_BY(lock_);
-  int ts_count_callback_min_count_ GUARDED_BY(lock_) = 0;
+  size_t ts_count_callback_min_count_ GUARDED_BY(lock_) = 0;
 
   DISALLOW_COPY_AND_ASSIGN(TSManager);
 };

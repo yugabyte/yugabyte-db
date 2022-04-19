@@ -20,12 +20,15 @@
 #include "yb/client/table.h"
 
 #include "yb/common/jsonb.h"
+#include "yb/common/partition.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_serialization.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/util/decimal.h"
@@ -105,7 +108,7 @@ class TestQLQuery : public QLTestBase {
     auto row_block = processor->row_block();
     // checking result
     ASSERT_EQ(test_rows.size(), row_block->row_count());
-    for (int i = 0; i < test_rows.size(); i++) {
+    for (size_t i = 0; i < test_rows.size(); i++) {
       QLRow &row = row_block->row(i);
       EXPECT_EQ(std::get<1>(test_rows[i]), row.column(0).int32_value());
       EXPECT_EQ(std::get<2>(test_rows[i]), row.column(1).string_value());
@@ -753,7 +756,7 @@ TEST_F(TestQLQuery, TestPagingState) {
     do {
       CHECK_OK(processor->Run(select_stmt, params));
       std::shared_ptr<QLRowBlock> row_block = processor->row_block();
-      for (int j = 0; j < row_block->row_count(); j++) {
+      for (size_t j = 0; j < row_block->row_count(); j++) {
         const QLRow& row = row_block->row(j);
         i++;
         CHECK_EQ(row.column(0).int32_value(), 1);
@@ -795,7 +798,7 @@ TEST_F(TestQLQuery, TestPagingState) {
     do {
       CHECK_OK(processor->Run("SELECT h, r, v FROM t WHERE r > 100;", params));
       std::shared_ptr<QLRowBlock> row_block = processor->row_block();
-      for (int j = 0; j < row_block->row_count(); j++) {
+      for (size_t j = 0; j < row_block->row_count(); j++) {
         const QLRow& row = row_block->row(j);
         CHECK_EQ(row.column(0).int32_value() + 100, row.column(1).int32_value());
         sum += row.column(0).int32_value();
@@ -827,7 +830,7 @@ TEST_F(TestQLQuery, TestPagingState) {
     do {
       CHECK_OK(processor->Run(select_stmt, params));
       std::shared_ptr<QLRowBlock> row_block = processor->row_block();
-      for (int j = 0; j < row_block->row_count(); j++) {
+      for (size_t j = 0; j < row_block->row_count(); j++) {
         const QLRow& row = row_block->row(j);
         CHECK_EQ(row.column(0).int32_value() + 100, row.column(1).int32_value());
         sum += row.column(0).int32_value();
@@ -873,48 +876,49 @@ TEST_F(TestQLQuery, TestPagingState) {
   }
 }
 
-#define RUN_PAGINATION_WITH_DESC_TEST(processor, type, values, rows)                               \
-do {                                                                                               \
-  /* Creating the table. */                                                                        \
-  string create_stmt = Substitute("CREATE TABLE t_$0 (h int, r1 $1, r2 $2, v int, "                \
-      "primary key((h), r1, r2)) WITH CLUSTERING ORDER BY (r1 DESC, r2 ASC);", type, type, type);  \
-  CHECK_VALID_STMT(create_stmt);                                                                   \
-                                                                                                   \
-  /* Inserting the values. */                                                                      \
-  for (auto& value : values) {                                                                     \
-    string stmt = Substitute("INSERT INTO t_$0 (h, r1, r2, v) VALUES (1, $1, $2, $3);",            \
-        type, value, value, 0);                                                                  \
-    CHECK_VALID_STMT(stmt);                                                                        \
-  }                                                                                                \
-  /* Seting up low page size for reading to test paging. */                                        \
-  StatementParameters params;                                                                      \
-  int kPageSize = 5;                                                                               \
-  params.set_page_size(kPageSize);                                                                 \
-  /* Setting up range query, will include all values except minimum and maximum */                 \
-  int num_rows = values.size();                                                                    \
-  auto min_val = values[0];                                                                        \
-  auto max_val = values[num_rows - 1];                                                             \
-  int page_count = 0;                                                                              \
-  string select_stmt = Substitute("SELECT h, r1, r2, v FROM t_$0 WHERE h = 1 AND "                 \
-    "r1 > $1 AND r2 > $2 AND r1 < $3 AND r2 < $4;", type, min_val, min_val, max_val, max_val );    \
-  /* Reading rows, loading the rows vector to be checked later for each case */                    \
-  do {                                                                                             \
-    CHECK_OK(processor->Run(select_stmt, params));                                                 \
-    std::shared_ptr<QLRowBlock> row_block = processor->row_block();                               \
-    for (int j = 0; j < row_block->row_count(); j++) {                                             \
-    const QLRow& row = row_block->row(j);                                                         \
-      rows->push_back(row);                                                                        \
-    }                                                                                              \
-    page_count++;                                                                                  \
-    if (processor->rows_result()->paging_state().empty()) {                                        \
-      break;                                                                                       \
-    }                                                                                              \
-    CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));                   \
-  } while (true);                                                                                  \
-  /* Page count should be at least "<nrRowsRead> / kPageSize". */                                  \
-  /* Can be more since some pages may not be fully filled depending on hash key distribution. */   \
-  CHECK_GE(page_count, (num_rows - 2) / kPageSize);                                                \
-} while(0)
+template <class T>
+void RunPaginationWithDescTest(
+    TestQLProcessor *processor, const char* type, const std::vector<T>& values,
+    std::vector<QLRow>* rows) {
+  /* Creating the table. */
+  string create_stmt = Substitute("CREATE TABLE t_$0 (h int, r1 $1, r2 $2, v int, "
+      "primary key((h), r1, r2)) WITH CLUSTERING ORDER BY (r1 DESC, r2 ASC);", type, type, type);
+  CHECK_VALID_STMT(create_stmt);
+
+  /* Inserting the values. */
+  for (auto& value : values) {
+    string stmt = Substitute("INSERT INTO t_$0 (h, r1, r2, v) VALUES (1, $1, $2, $3);",
+        type, value, value, 0);
+    CHECK_VALID_STMT(stmt);
+  }
+  /* Seting up low page size for reading to test paging. */
+  StatementParameters params;
+  int kPageSize = 5;
+  params.set_page_size(kPageSize);
+  /* Setting up range query, will include all values except minimum and maximum */
+  auto min_val = values.front();
+  auto max_val = values.back();
+  int page_count = 0;
+  string select_stmt = Substitute("SELECT h, r1, r2, v FROM t_$0 WHERE h = 1 AND "
+    "r1 > $1 AND r2 > $2 AND r1 < $3 AND r2 < $4;", type, min_val, min_val, max_val, max_val );
+  /* Reading rows, loading the rows vector to be checked later for each case */
+  do {
+    CHECK_OK(processor->Run(select_stmt, params));
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    for (size_t j = 0; j < row_block->row_count(); j++) {
+      const QLRow& row = row_block->row(j);
+      rows->push_back(row);
+    }
+    page_count++;
+    if (processor->rows_result()->paging_state().empty()) {
+      break;
+    }
+    CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
+  } while (true);
+  /* Page count should be at least "<nrRowsRead> / kPageSize". */
+  /* Can be more since some pages may not be fully filled depending on hash key distribution. */
+  CHECK_GE(page_count, (values.size() - 2) / kPageSize);
+}
 
 TEST_F(TestQLQuery, TestPaginationWithDescSort) {
 
@@ -936,7 +940,7 @@ TEST_F(TestQLQuery, TestPaginationWithDescSort) {
     }
     std::vector<QLRow> rows;
     auto rows_ptr = &rows;
-    RUN_PAGINATION_WITH_DESC_TEST(processor, "int", values, rows_ptr);
+    RunPaginationWithDescTest(processor, "int", values, rows_ptr);
     // Checking rows values -- expecting results in descending order except for min and max values.
     CHECK_EQ(rows.size(), values.size() - 2);
     // Results should start from second-largest value.
@@ -961,7 +965,7 @@ TEST_F(TestQLQuery, TestPaginationWithDescSort) {
     }
     std::vector<QLRow> rows;
     auto rows_ptr = &rows;
-    RUN_PAGINATION_WITH_DESC_TEST(processor, "timestamp", values, rows_ptr);
+    RunPaginationWithDescTest(processor, "timestamp", values, rows_ptr);
     // Checking rows values -- expecting results in descending order except for min and max values.
     CHECK_EQ(rows.size(), values.size() - 2);
     // Results should start from second-largest value.
@@ -992,7 +996,7 @@ TEST_F(TestQLQuery, TestPaginationWithDescSort) {
     }
     std::vector<QLRow> rows;
     auto rows_ptr = &rows;
-    RUN_PAGINATION_WITH_DESC_TEST(processor, "inet", input_values, rows_ptr);
+    RunPaginationWithDescTest(processor, "inet", input_values, rows_ptr);
     // Checking rows values -- expecting results in descending order except for min and max values.
     CHECK_EQ(rows.size(), values.size() - 2);
     // Results should start from second-largest value.
@@ -1020,7 +1024,7 @@ TEST_F(TestQLQuery, TestPaginationWithDescSort) {
     }
     std::vector<QLRow> rows;
     auto rows_ptr = &rows;
-    RUN_PAGINATION_WITH_DESC_TEST(processor, "uuid", values, rows_ptr);
+    RunPaginationWithDescTest(processor, "uuid", values, rows_ptr);
     // Checking rows values -- expecting results in descending order except for min and max values.
     CHECK_EQ(rows.size(), values.size() - 2);
     // Results should start from second-largest value.
@@ -1046,7 +1050,7 @@ TEST_F(TestQLQuery, TestPaginationWithDescSort) {
     }
     std::vector<QLRow> rows;
     auto rows_ptr = &rows;
-    RUN_PAGINATION_WITH_DESC_TEST(processor, "decimal", values, rows_ptr);
+    RunPaginationWithDescTest(processor, "decimal", values, rows_ptr);
     // Checking rows values -- expecting results in descending order except for min and max values.
     CHECK_EQ(rows.size(), values.size() - 2);
     // Results should start from second-largest value.
@@ -1075,7 +1079,7 @@ TEST_F(TestQLQuery, TestPaginationWithDescSort) {
     }
     std::vector<QLRow> rows;
     auto rows_ptr = &rows;
-    RUN_PAGINATION_WITH_DESC_TEST(processor, "float", values, rows_ptr);
+    RunPaginationWithDescTest(processor, "float", values, rows_ptr);
     // Checking rows values -- expecting results in descending order except for min and max values.
     CHECK_EQ(rows.size(), values.size() - 2);
     // Results should start from second-largest value.
@@ -1101,7 +1105,7 @@ TEST_F(TestQLQuery, TestPaginationWithDescSort) {
     }
     std::vector<QLRow> rows;
     auto rows_ptr = &rows;
-    RUN_PAGINATION_WITH_DESC_TEST(processor, "double", values, rows_ptr);
+    RunPaginationWithDescTest(processor, "double", values, rows_ptr);
     // Checking rows values -- expecting results in descending order except for min and max values.
     CHECK_EQ(rows.size(), values.size() - 2);
     // Results should start from second-largest value.
@@ -1129,7 +1133,7 @@ TEST_F(TestQLQuery, TestPaginationWithDescSort) {
     }
     std::vector<QLRow> rows;
     auto rows_ptr = &rows;
-    RUN_PAGINATION_WITH_DESC_TEST(processor, "varchar", input_values, rows_ptr);
+    RunPaginationWithDescTest(processor, "varchar", input_values, rows_ptr);
     // Checking rows values -- expecting results in descending order except for min and max values.
     CHECK_EQ(rows.size(), values.size() - 2);
     // Results should start from second-largest value.
@@ -1623,7 +1627,7 @@ TEST_F(TestQLQuery, TestPagination) {
   auto row_block = processor->row_block();
   EXPECT_EQ(10, row_block->row_count());
   int sum = 0;
-  for (int i = 0; i < row_block->row_count(); i++) {
+  for (size_t i = 0; i < row_block->row_count(); i++) {
     sum += row_block->row(i).column(0).int32_value();
   }
   EXPECT_EQ(55, sum);
@@ -1908,7 +1912,7 @@ void verifyJson(std::shared_ptr<QLRowBlock> row_block) {
   ASSERT_OK(jsonb.ToJsonString(&json));
   EXPECT_EQ("{\"a\":1,\"b\":2}", json);
   faststring buffer;
-  row.column(1).Serialize(QLType::Create(DataType::JSONB), YQL_CLIENT_CQL, &buffer);
+  SerializeValue(QLType::Create(DataType::JSONB), YQL_CLIENT_CQL, row.column(1).value(), &buffer);
   int32_t len = 0;
   Slice data(buffer);
   ASSERT_OK(CQLDecodeNum(sizeof(len), NetworkByteOrder::Load32, &data, &len));

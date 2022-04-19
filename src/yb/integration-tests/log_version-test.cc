@@ -23,7 +23,7 @@
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -94,14 +94,14 @@ TEST_F(LogRollingTest, Rolling) {
   // In case of log rolling log_path link will be pointed to newly created file
   const auto initial_target = ASSERT_RESULT(env_->ReadLink(log_path));
   auto prev_size = ASSERT_RESULT(env_->GetFileSize(log_path));
-  auto master_proxy = cluster_->master_proxy();
+  auto master_proxy = cluster_->GetMasterProxy<master::MasterDdlProxy>();
   while(initial_target == ASSERT_RESULT(env_->ReadLink(log_path))) {
     // Call rpc functions to generate logs in master
     for(int i = 0; i < 20; ++i) {
       master::TruncateTableRequestPB req;
       master::TruncateTableResponsePB resp;
       rpc::RpcController rpc;
-      ASSERT_OK(master_proxy->TruncateTable(req, &resp, &rpc));
+      ASSERT_OK(master_proxy.TruncateTable(req, &resp, &rpc));
     }
     const auto current_size = ASSERT_RESULT(env_->GetFileSize(log_path));
     // Make sure log size is changed and it is not much than 2Mb

@@ -12,7 +12,7 @@ public class XClusterConfigCreateFormData {
 
   @Required
   @MaxLength(256)
-  @ApiModelProperty(value = "Name", required = true)
+  @ApiModelProperty(value = "Name", example = "Repl-config1", required = true)
   public String name;
 
   @Required
@@ -24,9 +24,9 @@ public class XClusterConfigCreateFormData {
   public UUID targetUniverseUUID;
 
   @Required
-  @ApiModelProperty(value = "Source Universe table IDs", required = true)
+  @ApiModelProperty(
+      value = "Source Universe table IDs",
+      example = "[000033df000030008000000000004006, 000033df00003000800000000000400b]",
+      required = true)
   public Set<String> tables;
-
-  @ApiModelProperty(value = "Bootstrap IDs")
-  public Set<String> bootstrapIds;
 }

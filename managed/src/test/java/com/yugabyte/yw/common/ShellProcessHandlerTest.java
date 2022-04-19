@@ -2,14 +2,16 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.ShellProcessHandler.YB_LOGS_MAX_MSG_SIZE;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.when;
 
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -18,6 +20,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import junit.framework.TestCase;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -28,16 +31,25 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
-public class ShellProcessHandlerTest {
+public class ShellProcessHandlerTest extends TestCase {
   @InjectMocks ShellProcessHandler shellProcessHandler;
 
   @Mock play.Configuration appConfig;
-  static String TMP_STORAGE_PATH = "/tmp/yugaware_tests";
+
+  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
+
+  @Mock Config mockConfig;
+
+  static String TMP_STORAGE_PATH = "/tmp/yugaware_tests/spht_certs";
+  static final String COMMAND_OUTPUT_LOGS_DELETE = "yb.logs.cmdOutputDelete";
 
   @Before
   public void beforeTest() {
     new File(TMP_STORAGE_PATH).mkdirs();
     when(appConfig.getString("yb.devops.home")).thenReturn(TMP_STORAGE_PATH);
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    when(mockConfig.getBoolean(COMMAND_OUTPUT_LOGS_DELETE)).thenReturn(true);
+    when(appConfig.getBytes(YB_LOGS_MAX_MSG_SIZE)).thenReturn(2000L);
   }
 
   @After

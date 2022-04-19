@@ -39,6 +39,7 @@ import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.extended.AlertConfigurationTemplate;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
@@ -56,6 +57,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import play.mvc.Result;
@@ -153,6 +155,9 @@ public class AlertController extends AuthenticatedController {
     alertService.acknowledge(filter);
 
     Alert alert = alertService.getOrBadRequest(alertUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Alert, alertUUID.toString(), Audit.ActionType.Acknowledge);
     return PlatformResults.withData(alert);
   }
 
@@ -173,6 +178,14 @@ public class AlertController extends AuthenticatedController {
     AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
 
     alertService.acknowledge(filter);
+
+    String alertUUIDs = "";
+    for (UUID uuid : filter.getUuids()) {
+      alertUUIDs += uuid.toString() + " ";
+    }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Alert, alertUUIDs, Audit.ActionType.Acknowledge);
     return YBPSuccess.empty();
   }
 
@@ -277,7 +290,13 @@ public class AlertController extends AuthenticatedController {
 
     configuration = alertConfigurationService.save(configuration);
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Alert,
+            Objects.toString(configuration.getUuid(), null),
+            Audit.ActionType.Create,
+            request().body().asJson());
     return PlatformResults.withData(configuration);
   }
 
@@ -306,7 +325,13 @@ public class AlertController extends AuthenticatedController {
 
     configuration = alertConfigurationService.save(configuration);
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Alert,
+            configurationUUID.toString(),
+            Audit.ActionType.Update,
+            request().body().asJson());
     return PlatformResults.withData(configuration);
   }
 
@@ -318,7 +343,13 @@ public class AlertController extends AuthenticatedController {
 
     alertConfigurationService.delete(configurationUUID);
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Alert,
+            configurationUUID.toString(),
+            Audit.ActionType.Delete,
+            request().body().asJson());
     return YBPSuccess.empty();
   }
 
@@ -348,7 +379,13 @@ public class AlertController extends AuthenticatedController {
     AlertChannel channel =
         new AlertChannel().setCustomerUUID(customerUUID).setName(data.name).setParams(data.params);
     alertChannelService.save(channel);
-    auditService().createAuditEntryWithReqBody(ctx());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AlertChannel,
+            Objects.toString(channel.getUuid(), null),
+            Audit.ActionType.Create,
+            request().body().asJson());
     return PlatformResults.withData(channel);
   }
 
@@ -375,7 +412,13 @@ public class AlertController extends AuthenticatedController {
         .setName(data.name)
         .setParams(CommonUtils.unmaskObject(channel.getParams(), data.params));
     alertChannelService.save(channel);
-    auditService().createAuditEntryWithReqBody(ctx());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AlertChannel,
+            alertChannelUUID.toString(),
+            Audit.ActionType.Update,
+            request().body().asJson());
     return PlatformResults.withData(CommonUtils.maskObject(channel));
   }
 
@@ -384,8 +427,13 @@ public class AlertController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     AlertChannel channel = alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID);
     alertChannelService.delete(customerUUID, alertChannelUUID);
-    metricService.handleSourceRemoval(channel.getCustomerUUID(), alertChannelUUID);
-    auditService().createAuditEntry(ctx(), request());
+    metricService.markSourceRemoved(channel.getCustomerUUID(), alertChannelUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AlertChannel,
+            alertChannelUUID.toString(),
+            Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 
@@ -421,7 +469,13 @@ public class AlertController extends AuthenticatedController {
             .setChannelsList(alertChannelService.getOrBadRequest(customerUUID, data.channels))
             .setDefaultDestination(data.defaultDestination);
     alertDestinationService.save(destination);
-    auditService().createAuditEntryWithReqBody(ctx());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AlertDestination,
+            Objects.toString(destination.getUuid(), null),
+            Audit.ActionType.Create,
+            request().body().asJson());
     return PlatformResults.withData(destination);
   }
 
@@ -450,7 +504,13 @@ public class AlertController extends AuthenticatedController {
         .setDefaultDestination(data.defaultDestination)
         .setChannelsList(alertChannelService.getOrBadRequest(customerUUID, data.channels));
     alertDestinationService.save(destination);
-    auditService().createAuditEntryWithReqBody(ctx());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AlertDestination,
+            alertDestinationUUID.toString(),
+            Audit.ActionType.Update,
+            request().body().asJson());
     return PlatformResults.withData(destination);
   }
 
@@ -458,7 +518,12 @@ public class AlertController extends AuthenticatedController {
   public Result deleteAlertDestination(UUID customerUUID, UUID alertDestinationUUID) {
     Customer.getOrBadRequest(customerUUID);
     alertDestinationService.delete(customerUUID, alertDestinationUUID);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AlertDestination,
+            alertDestinationUUID.toString(),
+            Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 

@@ -28,7 +28,11 @@
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
 
+#include "yb/util/size_literals.h"
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/util/testutil.h"
+
+using namespace yb::size_literals;
 
 namespace rocksdb {
 
@@ -39,7 +43,7 @@ class CountingLogger : public Logger {
   size_t log_count;
 };
 
-class CompactionPickerTest : public testing::Test {
+class CompactionPickerTest : public RocksDBTest {
  public:
   const Comparator* ucmp_;
   InternalKeyComparatorPtr icmp_;
@@ -417,6 +421,67 @@ TEST_F(CompactionPickerTest, NeedsCompactionUniversal) {
               vstorage_->CompactionScore(0) >= 1);
   }
 }
+
+// Tests if the correct compaction reason is used given which files are marked
+// as being compacted. Specifically, the test ensures that if the earliest file
+// available in a sequence of sorted runs is currently being compacted, it is
+// not included in the compaction.
+TEST_F(CompactionPickerTest, CompactionUniversalPickForFilesBeingCompacted) {
+  NewVersionStorage(1, kCompactionStyleUniversal);
+  ioptions_.compaction_style = kCompactionStyleUniversal;
+  ioptions_.num_levels = 1;
+  mutable_cf_options_.write_buffer_size = 100_KB;
+  mutable_cf_options_.target_file_size_base = 32_KB;
+  mutable_cf_options_.level0_file_num_compaction_trigger = 3;
+  UniversalCompactionPicker universal_compaction_picker(ioptions_, icmp_.get());
+  // must return false when there's no files.
+  ASSERT_FALSE(universal_compaction_picker.NeedsCompaction(vstorage_.get()));
+  UpdateVersionStorageInfo();
+
+  NewVersionStorage(1, kCompactionStyleUniversal);
+
+  // Create three files, the earliest of which is significantly smaller than the other
+  // two. This should cause the compaction picker to include all three files,
+  // choosing "size amplification" as the compaction reason.
+  // Add third file
+  Add(/* level = */ 0, /* file number = */ 3, /* smallest = */ "300000",
+      /* largest = */ "300999", /* file_size = */ 1000000, /* path_id = */ 0,
+      /* smallest seq num = */ 300, /* largest seq num = */ 399);
+  // Add second file
+  Add(/* level = */ 0, /* file number = */ 2, /* smallest = */ "200000",
+      /* largest = */ "200999", /* file size = */ 1000000, /* path_id = */ 0,
+      /* smallest seq num = */ 200, /* largest seq num = */ 299);
+  // Add first file
+  Add(/* level = */ 0, /* file number = */ 1, /* smallest = */ "100000",
+      /* largest = */ "100999", /* file size (smaller) = */ 10,
+      /* path_id = */ 0, /* smallest seq num = */ 100, /* largest seq num = */ 199);
+
+  UpdateVersionStorageInfo();
+  auto compaction = universal_compaction_picker.PickCompaction(
+      cf_name_, mutable_cf_options_, vstorage_.get(), &log_buffer_);
+  ASSERT_NE(compaction, nullptr);
+  ASSERT_EQ(compaction->compaction_reason(), CompactionReason::kUniversalSizeAmplification);
+  // Verify that all three files are now being compacted.
+  for (int i = 1; i <= 3; i++) {
+    ASSERT_TRUE(file_map_.at(i).first->being_compacted);
+  }
+
+  // Reset "being_compacted" on files 2 and 3 (simulates if earliest file is being compacted).
+  // This scenario is particularly likely if file expiration based on TTL is enabled.
+  file_map_.at(2).first->being_compacted = false;
+  file_map_.at(3).first->being_compacted = false;
+
+  // Files in sequence are [3 (available), 2 (available), 1 (being compacted)].
+  // The compaction picker should still create a compaction, but it will only include files
+  // 3 and 2, and will be due to file ratio/sorted run num.
+  compaction = universal_compaction_picker.PickCompaction(
+      cf_name_, mutable_cf_options_, vstorage_.get(), &log_buffer_);
+  ASSERT_NE(compaction, nullptr);
+  ASSERT_EQ(compaction->compaction_reason(), CompactionReason::kUniversalSortedRunNum);
+  // Verify there are exactly 2 files being compacted.
+  ASSERT_EQ(compaction->inputs(0)->size(), 2);
+}
+
 // Tests if the files can be trivially moved in multi level
 // universal compaction when allow_trivial_move option is set
 // In this test as the input files overlaps, they cannot
@@ -493,13 +558,11 @@ TEST_F(CompactionPickerTest, NeedsCompactionFIFO) {
 
   // verify whether compaction is needed based on the current
   // size of L0 files.
-  uint64_t current_size = 0;
   for (int i = 1; i <= kFileCount; ++i) {
     NewVersionStorage(1, kCompactionStyleFIFO);
     Add(0, i, ToString((i + 100) * 1000).c_str(),
         ToString((i + 100) * 1000 + 999).c_str(),
         kFileSize, 0, i * 100, i * 100 + 99);
-    current_size += kFileSize;
     UpdateVersionStorageInfo();
     ASSERT_EQ(level_compaction_picker.NeedsCompaction(vstorage_.get()),
               vstorage_->CompactionScore(0) >= 1);

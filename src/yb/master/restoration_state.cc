@@ -14,10 +14,13 @@
 #include "yb/master/restoration_state.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_state.h"
 
 #include "yb/tserver/tserver_error.h"
+
+#include "yb/util/result.h"
 
 namespace yb {
 namespace master {
@@ -40,7 +43,8 @@ RestorationState::RestorationState(
     SnapshotState* snapshot)
     : StateWithTablets(context, SysSnapshotEntryPB::RESTORING,
                        MakeRestorationStateLogPrefix(restoration_id, snapshot)),
-      restoration_id_(restoration_id), snapshot_id_(snapshot->id()) {
+      restoration_id_(restoration_id), snapshot_id_(snapshot->id()),
+      schedule_id_(snapshot->schedule_id()) {
   InitTabletIds(snapshot->TabletIdsInState(SysSnapshotEntryPB::COMPLETE));
 }
 
@@ -64,6 +68,7 @@ TabletInfos RestorationState::PrepareOperations() {
   std::vector<TabletId> tablet_ids;
   DoPrepareOperations([&tablet_ids](const TabletData& data) {
     tablet_ids.push_back(data.id);
+    return true;
   });
   return context().GetTabletInfos(tablet_ids);
 }

@@ -39,21 +39,12 @@ constexpr int kEncodedKeyStrTerminatorSize = 2;
 // This is only used in unit tests as of 08/02/2016.
 bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const std::string &encoded_doc_key);
 
-// Decode a DocHybridTime stored in the end of the given slice.
-CHECKED_STATUS DecodeHybridTimeFromEndOfKey(const rocksdb::Slice &key, DocHybridTime *dest);
-
 // Given a DocDB key stored in RocksDB, validate the DocHybridTime size stored as the
 // last few bits of the final byte of the key, and ensure that the ValueType byte preceding that
 // encoded DocHybridTime is ValueType::kHybridTime.
 CHECKED_STATUS CheckHybridTimeSizeAndValueType(
     const rocksdb::Slice& key,
-    int* ht_byte_size_dest);
-
-// Consumes hybrid time from the given slice, decreasing the slice size by the hybrid time size.
-// Hybrid time is stored in a "key-appropriate" format (bits inverted for reverse sorting).
-// @param slice The slice holding RocksDB key bytes.
-// @param hybrid_time Where to store the hybrid time. Undefined in case of failure.
-yb::Status ConsumeHybridTimeFromKey(rocksdb::Slice* slice, DocHybridTime* hybrid_time);
+    size_t* ht_byte_size_dest);
 
 template <class Buffer>
 void AppendUInt16ToKey(uint16_t val, Buffer* dest) {
@@ -145,6 +136,14 @@ inline std::string ToShortDebugStr(const std::string& raw_str) {
 }
 
 Result<DocHybridTime> DecodeInvertedDocHt(Slice key_slice);
+
+constexpr size_t kMaxWordsPerEncodedHybridTimeWithValueType =
+    ((kMaxBytesPerEncodedHybridTime + 1) + sizeof(size_t) - 1) / sizeof(size_t);
+
+// Puts inverted encoded doc hybrid time specified by input to buffer.
+// And returns slice to it.
+using DocHybridTimeWordBuffer = std::array<size_t, kMaxWordsPerEncodedHybridTimeWithValueType>;
+Slice InvertEncodedDocHT(const Slice& input, DocHybridTimeWordBuffer* buffer);
 
 }  // namespace docdb
 }  // namespace yb

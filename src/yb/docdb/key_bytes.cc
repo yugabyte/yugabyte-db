@@ -37,32 +37,35 @@ namespace yb {
 namespace docdb {
 
 void AppendDocHybridTime(const DocHybridTime& doc_ht, KeyBytes* key) {
-  key->AppendValueType(ValueType::kHybridTime);
+  key->AppendKeyEntryType(KeyEntryType::kHybridTime);
   doc_ht.AppendEncodedInDocDbFormat(key->mutable_data());
+}
+
+void AppendHash(uint16_t hash, KeyBytes* key) {
+  key->AppendKeyEntryType(KeyEntryType::kUInt16Hash);
+  key->AppendUInt16(hash);
 }
 
 void KeyBytes::AppendUInt64AsVarInt(uint64_t value) {
   unsigned char buf[util::kMaxVarIntBufferSize];
-  size_t len = 0;
-  util::FastEncodeUnsignedVarInt(value, buf, &len);
-  AppendRawBytes(Slice(buf, len));
+  AppendRawBytes(Slice(buf, util::FastEncodeUnsignedVarInt(value, buf)));
 }
 
 void KeyBytes::AppendColumnId(ColumnId column_id) {
   util::FastAppendSignedVarIntToBuffer(column_id.rep(), &data_);
 }
 
-void KeyBytes::AppendValueType(ValueType value_type) {
+void KeyBytes::AppendKeyEntryType(KeyEntryType value_type) {
   data_.push_back(static_cast<char>(value_type));
 }
 
-void KeyBytes::AppendValueTypeBeforeGroupEnd(ValueType value_type) {
-  if (data_.empty() || data_.back() != ValueTypeAsChar::kGroupEnd) {
-    AppendValueType(value_type);
-    AppendValueType(ValueType::kGroupEnd);
+void KeyBytes::AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType value_type) {
+  if (data_.empty() || data_.back() != KeyEntryTypeAsChar::kGroupEnd) {
+    AppendKeyEntryType(value_type);
+    AppendKeyEntryType(KeyEntryType::kGroupEnd);
   } else {
     data_.back() = static_cast<char>(value_type);
-    data_.push_back(ValueTypeAsChar::kGroupEnd);
+    data_.push_back(KeyEntryTypeAsChar::kGroupEnd);
   }
 }
 
@@ -70,7 +73,7 @@ void KeyBytes::AppendHybridTime(const DocHybridTime& hybrid_time) {
   hybrid_time.AppendEncodedInDocDbFormat(&data_);
 }
 
-void KeyBytes::RemoveValueTypeSuffix(ValueType value_type) {
+void KeyBytes::RemoveKeyEntryTypeSuffix(KeyEntryType value_type) {
   CHECK_GE(data_.size(), sizeof(char));
   CHECK_EQ(data_.back(), static_cast<char>(value_type));
   data_.pop_back();
@@ -106,6 +109,10 @@ void KeyBytes::AppendDescendingUInt32(uint32_t x) {
 
 void KeyBytes::AppendUInt16(uint16_t x) {
   AppendUInt16ToKey(x, &data_);
+}
+
+void KeyBytes::AppendGroupEnd() {
+  AppendKeyEntryType(KeyEntryType::kGroupEnd);
 }
 
 void KeyBytes::Truncate(size_t new_size) {

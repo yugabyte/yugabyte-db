@@ -23,14 +23,14 @@ public class CallHome {
 
   private final ExecutionContext executionContext;
 
-  private CallHomeManager callHomeManager;
+  private final CallHomeManager callHomeManager;
 
   private final Environment environment;
 
   // Interval at which to send callhome diagnostics in minutes
-  private final int YB_CALLHOME_INTERVAL = 60;
+  private static final int YB_CALLHOME_INTERVAL = 60;
 
-  private AtomicBoolean running = new AtomicBoolean(false);
+  private final AtomicBoolean running = new AtomicBoolean(false);
 
   @Inject
   public CallHome(
@@ -42,23 +42,21 @@ public class CallHome {
     this.executionContext = executionContext;
     this.environment = environment;
     this.callHomeManager = callHomeManager;
+  }
 
+  public void start() {
     // We don't want to start callhome on dev environments
     if (this.environment.isDev()) {
       log.info("Skip callhome scheduling");
-    } else {
-      log.info("Initialize callhome service");
-      this.initialize();
+      return;
     }
-  }
-
-  private void initialize() {
+    log.info("Initialize callhome service");
     this.actorSystem
         .scheduler()
         .schedule(
             Duration.create(0, TimeUnit.MINUTES), // initialDelay
             Duration.create(YB_CALLHOME_INTERVAL, TimeUnit.MINUTES), // interval
-            () -> scheduleRunner(),
+            this::scheduleRunner,
             this.executionContext);
   }
 

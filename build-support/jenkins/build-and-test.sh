@@ -161,6 +161,9 @@ log "Removing old JSON-based test report files"
   rm -f test_results.json test_failures.json
 )
 
+activate_virtualenv
+set_pythonpath
+
 # We change YB_RUN_JAVA_TEST_METHODS_SEPARATELY in a subshell in a few places and that is OK.
 # shellcheck disable=SC2031
 export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
@@ -171,8 +174,6 @@ if is_mac; then
   # This is needed to make sure we're using Homebrew-installed CMake on Mac OS X.
   export PATH=/usr/local/bin:$PATH
 fi
-
-MAX_NUM_PARALLEL_TESTS=3
 
 # gather core dumps
 ulimit -c unlimited
@@ -400,13 +401,7 @@ if [[ $BUILD_TYPE != "asan" ]]; then
   export YB_TEST_ULIMIT_CORE=unlimited
 fi
 
-# Cap the number of parallel tests to run at $MAX_NUM_PARALLEL_TESTS
 detect_num_cpus
-if [[ $YB_NUM_CPUS -gt $MAX_NUM_PARALLEL_TESTS ]]; then
-  NUM_PARALLEL_TESTS=$MAX_NUM_PARALLEL_TESTS
-else
-  NUM_PARALLEL_TESTS=$YB_NUM_CPUS
-fi
 
 declare -i EXIT_STATUS=0
 
@@ -616,6 +611,24 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   log "Finished building Java code (see timing information above)"
 fi
 
+# It is important to do these LTO linking steps before building the package.
+if should_use_lto; then
+  log "Using LTO. Replacing the yb-tserver binary with an LTO-enabled one."
+  log "See below for the file size and linked shared libraries."
+  (
+    set -x
+    "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+        --build-root "$BUILD_ROOT" \
+        --file-regex "^.*/yb-tserver$" \
+        --lto-output-suffix="" \
+        link-whole-program
+    ls -l "$BUILD_ROOT/bin/yb-tserver"
+    ldd "$BUILD_ROOT/bin/yb-tserver"
+  )
+else
+  log "Not using LTO: YB_COMPILER_TYPE=${YB_COMPILER_TYPE}, build_type=${build_type}"
+fi
+
 # -------------------------------------------------------------------------------------------------
 # Now that that all C++ and Java code has been built, test creating a package.
 #
@@ -745,11 +758,14 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
         test_conf_path="$BUILD_ROOT/test_conf.json"
         # YB_GIT_COMMIT_FOR_DETECTING_TESTS allows overriding the commit to use to detect the set
         # of tests to run. Useful when testing this script.
-        "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
-            --build-root "$BUILD_ROOT" \
-            --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
-            --output-test-config "$test_conf_path" \
-            affected
+        (
+          set -x
+          "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+              --build-root "$BUILD_ROOT" \
+              --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
+              --output-test-config "$test_conf_path" \
+              affected
+        )
         run_tests_extra_args+=( "--test_conf" "$test_conf_path" )
         unset test_conf_path
       fi

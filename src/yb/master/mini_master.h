@@ -50,6 +50,7 @@
 
 namespace yb {
 
+class FsManager;
 class HostPort;
 
 namespace master {
@@ -108,6 +109,8 @@ class MiniMaster {
   std::string permanent_uuid() const;
 
   std::string bound_rpc_addr_str() const;
+
+  FsManager& fs_manager() const;
 
  private:
   CHECKED_STATUS StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web_port,

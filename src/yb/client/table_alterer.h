@@ -20,9 +20,9 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/schema.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -110,13 +110,13 @@ class YBTableAlterer {
 
   bool wait_ = true;
 
-  boost::optional<YBTableName> rename_to_;
+  std::unique_ptr<YBTableName> rename_to_;
 
-  boost::optional<TableProperties> table_properties_;
+  std::unique_ptr<TableProperties> table_properties_;
 
   boost::optional<uint32_t> wal_retention_secs_;
 
-  boost::optional<master::ReplicationInfoPB> replication_info_;
+  std::unique_ptr<master::ReplicationInfoPB> replication_info_;
 
   const TransactionMetadata* txn_ = nullptr;
 

@@ -22,8 +22,19 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/status.h"
+#include "yb/util/thread.h"
 
 namespace yb {
+
+YB_DEFINE_ENUM(PriorityThreadPoolTaskState, (kPaused)(kNotStarted)(kRunning));
+const uint64_t kDefaultGroupNo = 0;
+const int kHighPriority = 300;
+
+// Used to contain both priorities
+struct PriorityThreadPoolPriorities {
+  int task_priority;
+  int group_no_priority;
+};
 
 // PriorityThreadPoolSuspender is provided to task ran by thread pool, task could use it to check
 // whether is should be preempted in favor of another task with higher priority.
@@ -49,6 +60,17 @@ class PriorityThreadPoolTask {
 
   virtual std::string ToString() const = 0;
 
+  // Updates any stats (ex: metrics) associated with the tasks changing state to another.
+  virtual void UpdateStatsStateChangedTo(PriorityThreadPoolTaskState state) const {}
+
+  // Updates any stats (ex: metrics) associated with the tasks changing state from another.
+  virtual void UpdateStatsStateChangedFrom(PriorityThreadPoolTaskState state) const {}
+
+  // Calculates group no priority for the task based on the number of active_tasks.
+  // Group No priority is used for prioritizing which tasks to run.
+  // Group No priority should be inversly proportional to active_tasks.
+  virtual int CalculateGroupNoPriority(int active_tasks) const = 0;
+
   size_t SerialNo() const {
     return serial_no_;
   }
@@ -60,17 +82,20 @@ class PriorityThreadPoolTask {
 // Tasks submitted to this pool have assigned priority and are picked from queue using it.
 class PriorityThreadPool {
  public:
-  explicit PriorityThreadPool(int64_t max_running_tasks);
+  explicit PriorityThreadPool(size_t max_running_tasks);
   ~PriorityThreadPool();
 
   // Submit task to the pool.
   // On success task ownership is transferred to the pool, i.e. `task` would point to nullptr.
-  CHECKED_STATUS Submit(int priority, std::unique_ptr<PriorityThreadPoolTask>* task);
+  CHECKED_STATUS Submit(
+      int task_priority, std::unique_ptr<PriorityThreadPoolTask>* task,
+      const uint64_t group_no = kDefaultGroupNo);
 
   template <class Task>
-  CHECKED_STATUS Submit(int priority, std::unique_ptr<Task>* task) {
+  CHECKED_STATUS Submit(
+      int task_priority, std::unique_ptr<Task>* task, const uint64_t group_no = kDefaultGroupNo) {
     std::unique_ptr<PriorityThreadPoolTask> temp_task = std::move(*task);
-    auto result = Submit(priority, &temp_task);
+    auto result = Submit(task_priority, &temp_task, group_no);
     task->reset(down_cast<Task*>(temp_task.release()));
     return result;
   }
@@ -79,9 +104,16 @@ class PriorityThreadPool {
   // from the pool.
   void Remove(void* key);
 
-  // Change priority of task with specified serial no.
+  // Change task priority of task with specified serial no.
   // Returns true if change was performed.
   bool ChangeTaskPriority(size_t serial_no, int priority);
+
+  // Prioritizes task heavily (above all others)
+  // Returns true if change was performed.
+  // The change may not be performed if the disk priority is already frozen, or
+  // the serial no is not found amongst the current set of tasks.
+  bool PrioritizeTask(size_t serial_no);
+
 
   void Shutdown() {
     StartShutdown();

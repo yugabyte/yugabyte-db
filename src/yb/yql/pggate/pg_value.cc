@@ -162,9 +162,9 @@ Status PgValueFromPB(const YBCPgTypeEntity *type_entity,
 Status PgValueToPB(const YBCPgTypeEntity *type_entity,
                    uint64_t datum,
                    bool is_null,
-                   QLValue* ql_value) {
+                   QLValuePB* ql_value) {
   if (is_null) {
-    ql_value->SetNull();
+    SetNull(ql_value);
     return Status::OK();
   }
 

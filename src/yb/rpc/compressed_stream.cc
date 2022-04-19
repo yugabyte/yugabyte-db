@@ -21,6 +21,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/range/iterator_range.hpp>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/refined_stream.h"
@@ -215,9 +217,9 @@ class ZlibCompressor : public Compressor {
     return DecompressBySlices(
         inp, out, [this](Slice* input, void* out, size_t outlen) -> Result<size_t> {
       inflate_stream_.next_in = const_cast<Bytef*>(pointer_cast<const Bytef*>(input->data()));
-      inflate_stream_.avail_in = input->size();
+      inflate_stream_.avail_in = narrow_cast<uInt>(input->size());
       inflate_stream_.next_out = static_cast<Bytef*>(out);
-      inflate_stream_.avail_out = outlen;
+      inflate_stream_.avail_out = narrow_cast<uInt>(outlen);
 
       int res = inflate(&inflate_stream_, Z_NO_FLUSH);
       if (res != Z_OK && res != Z_BUF_ERROR) {
@@ -355,7 +357,7 @@ static size_t FindMaxChunkSize(size_t header_len, const F& max_compressed_len) {
   size_t r = max_value;
   while (r > l) {
     size_t m = (l + r + 1) / 2;
-    if (max_compressed_len(m) > max_value) {
+    if (implicit_cast<size_t>(max_compressed_len(narrow_cast<int>(m))) > max_value) {
       r = m - 1;
     } else {
       l = m;
@@ -595,12 +597,14 @@ class LZ4DecompressState {
  private:
   CHECKED_STATUS DecompressChunk(const Slice& input) {
     int res = LZ4_decompress_safe(
-        input.cdata(), static_cast<char*>(out_it_->iov_base), input.size(), out_it_->iov_len);
+        input.cdata(), static_cast<char*>(out_it_->iov_base), narrow_cast<int>(input.size()),
+        narrow_cast<int>(out_it_->iov_len));
     if (res <= 0) {
       // Unfortunately LZ4 does not provide information whether decryption failed because
       // of wrong data or it just does not fit into output buffer.
       // Try to decode to buffer that is big enough for max possible decompressed chunk.
-      res = LZ4_decompress_safe(input.cdata(), output_buffer_, input.size(), kLZ4BufferSize);
+      res = LZ4_decompress_safe(
+          input.cdata(), output_buffer_, narrow_cast<int>(input.size()), kLZ4BufferSize);
       if (res <= 0) {
         return STATUS_FORMAT(RuntimeError, "Decompress failed: $0", res);
       }
@@ -692,8 +696,9 @@ class LZ4Compressor : public Compressor {
           chunk = input_slice;
         }
         input_slice.remove_prefix(chunk.size());
-        RefCntBuffer output(kHeaderLen + LZ4_compressBound(chunk.size()));
-        int res = LZ4_compress(chunk.cdata(), output.data() + kHeaderLen, chunk.size());
+        RefCntBuffer output(kHeaderLen + LZ4_compressBound(narrow_cast<int>(chunk.size())));
+        int res = LZ4_compress(
+            chunk.cdata(), output.data() + kHeaderLen, narrow_cast<int>(chunk.size()));
         if (res <= 0) {
           return STATUS_FORMAT(RuntimeError, "LZ4 compression failed: $0", res);
         }

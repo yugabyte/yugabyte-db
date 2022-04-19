@@ -18,6 +18,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_client.pb.h"
 
 #include "yb/util/status_log.h"
 #include "yb/util/yb_partition.h"
@@ -52,8 +53,8 @@ Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
     // Get tablets for table.
     auto tablets = table->GetTablets();
     for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-      TabletLocationsPB tabletLocationsPB;
-      Status s = catalog_manager->GetTabletLocations(tablet->id(), &tabletLocationsPB);
+      TabletLocationsPB tablet_locations_pb;
+      Status s = catalog_manager->GetTabletLocations(tablet->id(), &tablet_locations_pb);
       // Skip not-found tablets: they might not be running yet or have been deleted.
       if (!s.ok()) {
         continue;
@@ -63,7 +64,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
       RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns_info->name(), &row));
       RETURN_NOT_OK(SetColumnValue(kTableName, table->name(), &row));
 
-      const PartitionPB &partition = tabletLocationsPB.partition();
+      const PartitionPB &partition = tablet_locations_pb.partition();
       uint16_t yb_start_hash = !partition.partition_key_start().empty() ?
           PartitionSchema::DecodeMultiColumnHashValue(partition.partition_key_start()) : 0;
       string cql_start_hash = std::to_string(YBPartition::YBToCqlHashCode(yb_start_hash));

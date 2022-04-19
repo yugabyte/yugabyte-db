@@ -92,7 +92,7 @@ class ConsensusPeersTest : public YBTest {
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
 
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     ASSERT_OK(Log::Open(options_,
                        kTabletId,
                        fs_manager_->GetFirstTabletWalDirOrDie(kTableId, kTabletId),
@@ -144,16 +144,18 @@ class ConsensusPeersTest : public YBTest {
         raft_pool_.get(), new NoOpTestPeerProxy(raft_pool_.get(), peer_pb));
     *peer = CHECK_RESULT(Peer::NewRemotePeer(
         peer_pb, kTabletId, kLeaderUuid, PeerProxyPtr(proxy_ptr), message_queue_.get(),
-        raft_pool_token_.get(), nullptr /* consensus */, messenger_.get()));
+        nullptr /* multi raft batcher */, raft_pool_token_.get(),
+        nullptr /* consensus */, messenger_.get()));
     return proxy_ptr;
   }
 
-  void CheckLastLogEntry(int term, int index) {
-    ASSERT_EQ(log_->GetLatestEntryOpId(), yb::OpId(term, index));
+  void CheckLastLogEntry(int64_t term, int64_t index) {
+    ASSERT_EQ(log_->GetLatestEntryOpId(), OpId(term, index));
   }
 
-  void CheckLastRemoteEntry(DelayablePeerProxy<NoOpTestPeerProxy>* proxy, int term, int index) {
-    ASSERT_EQ(yb::OpId::FromPB(proxy->proxy()->last_received()), yb::OpId(term, index));
+  void CheckLastRemoteEntry(
+      DelayablePeerProxy<NoOpTestPeerProxy>* proxy, int64_t term, int64_t index) {
+    ASSERT_EQ(OpId::FromPB(proxy->proxy()->last_received()), OpId(term, index));
   }
 
  protected:
@@ -316,7 +318,8 @@ TEST_F(ConsensusPeersTest, TestCloseWhenRemotePeerDoesntMakeProgress) {
   auto mock_proxy = new MockedPeerProxy(raft_pool_.get());
   auto peer = ASSERT_RESULT(Peer::NewRemotePeer(
       FakeRaftPeerPB(kFollowerUuid), kTabletId, kLeaderUuid, PeerProxyPtr(mock_proxy),
-      message_queue_.get(), raft_pool_token_.get(), nullptr /* consensus */,
+      message_queue_.get(), nullptr /* multi raft batcher */,
+      raft_pool_token_.get(), nullptr /* consensus */,
       messenger_.get()));
 
   // Make the peer respond without making any progress -- it always returns
@@ -345,7 +348,8 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   auto mock_proxy = new MockedPeerProxy(raft_pool_.get());
   auto peer = ASSERT_RESULT(Peer::NewRemotePeer(
       FakeRaftPeerPB(kFollowerUuid), kTabletId, kLeaderUuid, PeerProxyPtr(mock_proxy),
-      message_queue_.get(), raft_pool_token_.get(), nullptr /* consensus */,
+      message_queue_.get(), nullptr /* multi raft batcher */, raft_pool_token_.get(),
+      nullptr /* consensus */,
       messenger_.get()));
 
   auto se = ScopeExit([&peer] {

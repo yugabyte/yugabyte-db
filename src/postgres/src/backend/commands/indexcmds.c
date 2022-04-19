@@ -368,7 +368,6 @@ DefineIndex(Oid relationId,
 	LockRelId	heaprelid;
 	LOCKMODE	lockmode;
 	int			i;
-	bool		is_indexed_table_colocated = false;
 
 	Oid			databaseId;
 	bool		relIsShared;
@@ -408,20 +407,6 @@ DefineIndex(Oid relationId,
 
 	databaseId = YBCGetDatabaseOid(rel);
 	relIsShared = rel->rd_rel->relisshared;
-
-	/*
-	 * Get whether the indexed table is colocated.  This includes tables that
-	 * are colocated because they are part of a tablegroup with colocation.
-	 */
-	if (IsYugaByteEnabled() &&
-		!IsBootstrapProcessingMode() &&
-		!YBIsPreparingTemplates() &&
-		IsYBRelation(rel))
-	{
-		HandleYBStatus(YBCPgIsTableColocated(databaseId,
-											 relationId,
-											 &is_indexed_table_colocated));
-	}
 
 	/*
 	 * An index build should not be concurent when
@@ -678,6 +663,41 @@ DefineIndex(Oid relationId,
 		}
 	}
 
+	bool is_colocated = false;
+
+	/*
+	 * Unless there's an explicit tablegroup on an index, follow colocation
+	 * rules of the indexed table.
+	 */
+	if (stmt->tablegroup)
+	{
+		is_colocated = stmt->tablegroup->has_tablegroup;
+	}
+	else
+	{
+		/*
+		 * Get whether the indexed table is colocated.  This includes tables
+		 * that are colocated because they are part of a tablegroup with
+		 * colocation.
+		 */
+		if (IsYugaByteEnabled() &&
+			!IsBootstrapProcessingMode() &&
+			!YBIsPreparingTemplates() &&
+			IsYBRelation(rel))
+		{
+			HandleYBStatus(YBCPgIsTableColocated(databaseId,
+												 YbGetStorageRelid(rel),
+												 &is_colocated));
+		}
+	}
+
+	Oid colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
+
+	if (OidIsValid(colocation_id) && !is_colocated)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot set colocation_id for non-colocated index")));
+
 	/*
 	 * Check permissions for tablegroup. To create an index within a tablegroup, a user must
 	 * either be a superuser, the owner of the tablegroup, or have create perms on it.
@@ -700,7 +720,7 @@ DefineIndex(Oid relationId,
 	 */
 	if (OidIsValid(tablegroupId))
 	{
-		stmt->options = lcons(makeDefElem("tablegroup",
+		stmt->options = lcons(makeDefElem("tablegroup_oid",
 										  (Node *) makeInteger(tablegroupId), -1),
 										  stmt->options);
 	}
@@ -847,11 +867,12 @@ DefineIndex(Oid relationId,
 	/*
 	 * Parse AM-specific options, convert to text array form, validate.
 	 */
-	reloptions = ybTransformRelOptions((Datum) 0, stmt->options,
-										NULL, NULL, false, false,
-										IsYsqlUpgrade);
+	reloptions = transformRelOptions((Datum) 0, stmt->options,
+									 NULL, NULL, false, false);
 
 	(void) index_reloptions(amoptions, reloptions, true);
+
+	reloptions = ybExcludeNonPersistentReloptions(reloptions);
 
 	/*
 	 * Prepare arguments for index_create, primarily an IndexInfo structure.
@@ -1098,7 +1119,7 @@ DefineIndex(Oid relationId,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId, stmt->split_options,
-					 !stmt->concurrent, tablegroupId);
+					 !stmt->concurrent, tablegroupId, colocation_id);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 
@@ -1570,7 +1591,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		use_yb_ordering = IsYBRelation(rel) && !IsSystemRelation(rel);
 		if (IsYBRelation(rel))
 			HandleYBStatus(YBCPgIsTableColocated(YBCGetDatabaseOid(rel),
-												 relId,
+												 YbGetStorageRelid(rel),
 												 &colocated));
 		RelationClose(rel);
 	}

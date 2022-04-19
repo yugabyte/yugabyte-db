@@ -24,10 +24,14 @@
 #ifndef YB_DOCDB_DOCDB_PGAPI_H_
 #define YB_DOCDB_DOCDB_PGAPI_H_
 
+#include <map>
+#include <vector>
+
+#include "yb/common/column_id.h"
 #include "yb/common/common_fwd.h"
-#include "yb/common/common.pb.h"
 
 #include "yb/util/status_fwd.h"
+#include "yb/util/decimal.h"
 
 #include "ybgate/ybgate_api.h"
 
@@ -48,32 +52,57 @@ struct DocPgParamDesc {
     {}
 };
 
+struct DocPgVarRef {
+  ColumnIdRep var_colid;
+  const YBCPgTypeEntity *var_type;
+  YBCPgTypeAttrs var_type_attrs;
+  DocPgVarRef() {}
+
+  DocPgVarRef(ColumnIdRep var_colid, const YBCPgTypeEntity *var_type, int32_t var_typmod)
+    : var_colid(var_colid), var_type(var_type), var_type_attrs({var_typmod})
+  {}
+};
+
 const YBCPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type);
 
 //-----------------------------------------------------------------------------
 // Expressions/Values
 //-----------------------------------------------------------------------------
 
-Status DocPgEvalExpr(const std::string& expr_str,
-                     std::vector<DocPgParamDesc> params,
-                     const QLTableRow& table_row,
-                     const Schema *schema,
-                     QLValue* result);
+Status DocPgPrepareExpr(const std::string& expr_str,
+                        YbgPreparedExpr *expr,
+                        DocPgVarRef *ret_type);
+
+Status DocPgAddVarRef(const ColumnId& column_id,
+                      int32_t attno,
+                      int32_t typid,
+                      int32_t typmod,
+                      int32_t collid,
+                      std::map<int, const DocPgVarRef> *var_map);
+
+Status DocPgCreateExprCtx(const std::map<int, const DocPgVarRef>& var_map,
+                          YbgExprContext *expr_ctx);
+
+Status DocPgPrepareExprCtx(const QLTableRow& table_row,
+                           const std::map<int, const DocPgVarRef>& var_map,
+                           YbgExprContext expr_ctx);
+
+Status DocPgEvalExpr(YbgPreparedExpr expr,
+                     YbgExprContext expr_ctx,
+                     uint64_t *datum,
+                     bool *is_null);
 
 // Given a 'ql_value' with a binary value, interpret the binary value as a text
 // array, and store the individual elements in 'ql_value_vec';
-Status ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value,
-                                         std::vector<QLValuePB> *const ql_value_vec);
+Result<std::vector<std::string>> ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value);
 
-// Given a 'ql_value', interpret the binary value in it as an array of type
-// 'array_type' with elements of type 'elem_type' and store the individual
-// elements in 'result'. Here, 'array_type' and 'elem_type' are PG typoids
-// corresponding to the required array and element types.
-Status ExtractVectorFromQLBinaryValueHelper(
-    const QLValuePB& ql_value,
-    const int array_type,
-    const int elem_type,
-    std::vector<QLValuePB> *result);
+Status SetValueFromQLBinary(const QLValuePB ql_value,
+                            const int pg_data_type,
+                            DatumMessagePB* cdc_datum_message = NULL);
+
+Status SetValueFromQLBinaryHelper(const QLValuePB ql_value,
+                                  const int elem_type,
+                                  DatumMessagePB* cdc_datum_message = NULL);
 
 } // namespace docdb
 } // namespace yb

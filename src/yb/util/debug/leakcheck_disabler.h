@@ -45,12 +45,7 @@ class ScopedLeakCheckDisabler {
   ScopedLeakCheckDisabler() {}
 
  private:
-
-#if defined(__has_feature)
-#  if __has_feature(address_sanitizer)
   ScopedLSANDisabler lsan_disabler;
-#  endif
-#endif
 
   DISALLOW_COPY_AND_ASSIGN(ScopedLeakCheckDisabler);
 };

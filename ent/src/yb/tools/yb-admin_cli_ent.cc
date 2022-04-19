@@ -70,7 +70,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       [client](const CLIArguments& args) -> Status {
         EnumBitSet<ListSnapshotsFlag> flags;
 
-        for (int i = 0; i < args.size(); ++i) {
+        for (size_t i = 0; i < args.size(); ++i) {
           std::string uppercase_flag;
           ToUpperCase(args[i], &uppercase_flag);
 
@@ -268,7 +268,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
         const string file_name = args[0];
         TypedNamespaceName keyspace;
-        int num_tables = 0;
+        size_t num_tables = 0;
         vector<YBTableName> tables;
 
         if (args.size() >= 2) {
@@ -279,7 +279,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             LOG_IF(DFATAL, keyspace.name.empty()) << "Uninitialized keyspace: " << keyspace.name;
             tables.reserve(num_tables);
 
-            for (int i = 0; i < num_tables; ++i) {
+            for (size_t i = 0; i < num_tables; ++i) {
               tables.push_back(YBTableName(keyspace.db_type, keyspace.name, args[2 + i]));
             }
           }
@@ -427,16 +427,67 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_cdc_stream", " <stream_id>",
+    "create_change_data_stream", " <namespace> [checkpoint_type]",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() < 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+
+      std::string checkpoint_type = yb::ToString("IMPLICIT");
+      std::string uppercase_checkpoint_type;
+
+      if (args.size() > 1) {
+         ToUpperCase(args[1], &uppercase_checkpoint_type);
+         if (uppercase_checkpoint_type != yb::ToString("EXPLICIT")
+            && uppercase_checkpoint_type != yb::ToString("IMPLICIT")) {
+            return ClusterAdminCli::kInvalidArguments;
+         }
+         checkpoint_type = uppercase_checkpoint_type;
+      }
+
+      const string namespace_name = args[0];
+
+      const TypedNamespaceName database =
+        VERIFY_RESULT(ParseNamespaceName(args[0], YQL_DATABASE_PGSQL));
+      SCHECK_EQ(
+        database.db_type, YQL_DATABASE_PGSQL, InvalidArgument,
+        Format("Wrong database type: $0", YQLDatabase_Name(database.db_type)));
+
+      RETURN_NOT_OK_PREPEND(client->CreateCDCSDKDBStream(database, checkpoint_type),
+                            Substitute("Unable to create CDC stream for database $0",
+                                       namespace_name));
+      return Status::OK();
+    });
+
+  Register(
+      "delete_cdc_stream", " <stream_id> [force_delete]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
         const string stream_id = args[0];
-        RETURN_NOT_OK_PREPEND(client->DeleteCDCStream(stream_id),
+        bool force_delete = false;
+        if (args.size() >= 2 && args[1] == "force_delete") {
+          force_delete = true;
+        }
+        RETURN_NOT_OK_PREPEND(client->DeleteCDCStream(stream_id, force_delete),
             Substitute("Unable to delete CDC stream id $0", stream_id));
         return Status::OK();
       });
+
+  Register(
+    "delete_change_data_stream", " <db_stream_id>",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() < 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+
+      const std::string db_stream_id = args[0];
+      RETURN_NOT_OK_PREPEND(client->DeleteCDCSDKDBStream(db_stream_id),
+                            Substitute("Unable to delete CDC database stream id $0",
+                                       db_stream_id));
+      return Status::OK();
+    });
 
   Register(
       "list_cdc_streams", " [table_id]",
@@ -449,6 +500,34 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             Substitute("Unable to list CDC streams for table $0", table_id));
         return Status::OK();
       });
+
+  Register(
+    "list_change_data_streams", " [namespace]",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() != 0 && args.size() != 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+      const string namespace_name = args.size() == 1 ? args[0] : "";
+      string msg = (args.size() == 1)
+                       ? Substitute("Unable to list CDC streams for namespace $0", namespace_name)
+                       : "Unable to list CDC streams";
+
+      RETURN_NOT_OK_PREPEND(client->ListCDCSDKStreams(namespace_name), msg);
+      return Status::OK();
+    });
+
+  Register(
+    "get_change_data_stream_info", " <db_stream_id>",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() != 0 && args.size() != 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+      const string db_stream_id = args.size() == 1 ? args[0] : "";
+      RETURN_NOT_OK_PREPEND(client->GetCDCDBStreamInfo(db_stream_id),
+                            Substitute("Unable to list CDC stream info for database stream $0",
+                                       db_stream_id));
+      return Status::OK();
+    });
 
   Register(
       "setup_universe_replication",
@@ -568,7 +647,6 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                 producer_id));
         return Status::OK();
       });
-
 
   Register(
       "bootstrap_cdc_producer", " <comma_separated_list_of_table_ids>",

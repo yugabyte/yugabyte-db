@@ -3,7 +3,11 @@ import { Col, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
-import { fetchTablesInUniverse, editXClusterTables } from '../../../actions/xClusterReplication';
+import {
+  fetchTablesInUniverse,
+  editXClusterTables,
+  fetchTaskUntilItCompletes
+} from '../../../actions/xClusterReplication';
 import { YBModalForm } from '../../common/forms';
 import { YBButton, YBInputField } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
@@ -28,14 +32,31 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
 
   const queryClient = useQueryClient();
 
+  const [selectedTables, setSelectedTables] = useState<string[]>([]);
+
   const addTablesToXCluster = useMutation(
     (replication: IReplication) => {
       return editXClusterTables(replication);
     },
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['Xcluster', replication.uuid]);
+      onSuccess: (resp) => {
         onHide();
+        fetchTaskUntilItCompletes(resp.data.taskUUID, (err: boolean) => {
+          if (!err) {
+            queryClient.invalidateQueries(['Xcluster', replication.uuid]);
+          } else {
+            toast.error(
+              <span className="alertMsg">
+                <i className="fa fa-exclamation-circle" />
+                <span>Unable to add table.</span>
+                <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+                  View Details
+                </a>
+              </span>
+            );
+            queryClient.invalidateQueries(['Xcluster', replication.uuid]);
+          }
+        });
       },
       onError: (err: any) => {
         toast.error(err.response.data.error);
@@ -54,53 +75,67 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
     };
   });
 
-  const [tablesInReplication, tablesNotInReplication] = tablesInSourceUniverse.reduce(
-    (out: IReplicationTable[][], currentTable: IReplicationTable) => {
-      if (replication.tables.includes(currentTable.tableUUID)) {
-        out[0].push(currentTable);
-      } else {
-        out[1].push(currentTable);
-      }
-      return out;
-    },
-    [[], []]
+  const tablesNotInReplication = tablesInSourceUniverse.filter(
+    (t: IReplicationTable) => !replication.tables.includes(t.tableUUID)
   );
 
   const initialValues = {
-    tablesInReplication,
     tablesNotInReplication
   };
 
-  const addTablesToClusterFunc = async (values: any, setSubmitting: Function) => {
+  const handleRowSelect = (row: IReplicationTable, isSelected: boolean) => {
+    if (isSelected) {
+      setSelectedTables([...selectedTables, row.tableUUID]);
+    } else {
+      setSelectedTables([...selectedTables.filter((t) => t !== row.tableUUID)]);
+    }
+  };
+
+  const handleSelectAll = (isSelected: boolean, row: IReplicationTable[]) => {
+    if (isSelected) {
+      setSelectedTables([...row.map((t) => t.tableUUID)]);
+    } else {
+      setSelectedTables([]);
+    }
+    return true;
+  };
+
+  const addTablesToClusterFunc = async (setSubmitting: Function) => {
+    const uniqueTables = new Set([...replication.tables, ...selectedTables]);
     try {
       await addTablesToXCluster.mutateAsync({
         ...replication,
-        tables: values['tablesInReplication'].map((t: IReplicationTable) => t.tableUUID)
+        tables: Array.from(uniqueTables)
       });
     } catch {
       setSubmitting(false);
     }
   };
 
+  const resetAndHide = () => {
+    setSearchText('');
+    onHide();
+  };
+
   return (
     <YBModalForm
-      onHide={onHide}
+      onHide={resetAndHide}
       size="large"
       visible={visible}
       initialValues={initialValues}
-      title="Add tables to the replication"
+      title="Add tables"
       submitLabel={'Apply Changes'}
-      onFormSubmit={(values: any, { setSubmitting }: { setSubmitting: Function }) => {
-        addTablesToClusterFunc(values, setSubmitting);
+      onFormSubmit={(_: any, { setSubmitting }: { setSubmitting: Function }) => {
+        addTablesToClusterFunc(setSubmitting);
       }}
-      footerAccessory={<YBButton btnText="Cancel" onClick={onHide} />}
+      footerAccessory={<YBButton btnText="Cancel" onClick={resetAndHide} />}
       render={({ values, setFieldValue }: { values: any; setFieldValue: Function }) => (
         <div className="add-tables-to-cluster">
           <Row className="info-search">
-            <Col lg={6} className="info">
-              List of common tables across source and target universes
+            <Col lg={12} className="info">
+              List of tables not replicated
             </Col>
-            <Col lg={6}>
+            <Col lg={12}>
               <YBInputField
                 placeHolder="Search"
                 onValueChanged={(value: string) => setSearchText(value)}
@@ -109,7 +144,6 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
           </Row>
           <Row>
             <Col lg={12}>
-              <div className="replication-info">Tables not replicated</div>
               <BootstrapTable
                 data={values['tablesNotInReplication'].filter((table: IReplicationTable) => {
                   if (!searchText) {
@@ -121,108 +155,8 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
                 tableContainerClass="add-to-table-container"
                 selectRow={{
                   mode: 'checkbox',
-                  selected: [],
-                  onSelect: (row: IReplicationTable) => {
-                    setFieldValue('tablesInReplication', [...values['tablesInReplication'], row]);
-
-                    setFieldValue('tablesNotInReplication', [
-                      ...values['tablesNotInReplication'].filter(
-                        (r: IReplicationTable) => r.tableUUID !== row.tableUUID
-                      )
-                    ]);
-                  },
-                  onSelectAll: (_isSelected: boolean, rows: IReplicationTable[]) => {
-                    setFieldValue('tablesInReplication', [
-                      ...values['tablesInReplication'],
-                      ...rows
-                    ]);
-
-                    setFieldValue('tablesNotInReplication', []);
-                    return true;
-                  }
-                }}
-                trClassName={(row) => {
-                  if (
-                    tablesInReplication.some(
-                      (t: IReplicationTable) => t.tableUUID === row.tableUUID
-                    )
-                  ) {
-                    return 'removed-from-replication';
-                  }
-                  return '';
-                }}
-              >
-                <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />
-                <TableHeaderColumn dataField="tableName" width="50%">
-                  Name
-                </TableHeaderColumn>
-                <TableHeaderColumn
-                  dataField="tableType"
-                  width="20%"
-                  dataFormat={(cell) => {
-                    if (cell === YSQL_TABLE_TYPE) return 'YSQL';
-                    return 'YCQL';
-                  }}
-                >
-                  Type
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="keySpace" width="20%">
-                  Keyspace
-                </TableHeaderColumn>
-                <TableHeaderColumn dataField="sizeBytes" width="10%">
-                  Size
-                </TableHeaderColumn>
-              </BootstrapTable>
-            </Col>
-          </Row>
-          <Row>
-            <Col lg={12}>
-              <div className="replication-info">Tables replicated</div>
-              <BootstrapTable
-                data={values['tablesInReplication'].filter((table: IReplicationTable) => {
-                  if (!searchText) {
-                    return true;
-                  }
-                  return table.tableName.toLowerCase().indexOf(searchText.toLowerCase()) !== -1;
-                })}
-                height="300"
-                tableContainerClass="add-to-table-container"
-                selectRow={{
-                  mode: 'checkbox',
-                  selected: values['tablesInReplication'].map(
-                    (t: IReplicationTable) => t.tableUUID
-                  ),
-                  onSelect: (row: IReplicationTable) => {
-                    setFieldValue('tablesNotInReplication', [
-                      ...values['tablesNotInReplication'],
-                      row
-                    ]);
-
-                    setFieldValue('tablesInReplication', [
-                      ...values['tablesInReplication'].filter(
-                        (r: IReplicationTable) => r.tableUUID !== row.tableUUID
-                      )
-                    ]);
-                  },
-                  onSelectAll: (_isSelected: boolean, rows: IReplicationTable[]) => {
-                    setFieldValue('tablesNotInReplication', [
-                      ...values['tablesNotInReplication'],
-                      ...rows
-                    ]);
-
-                    setFieldValue('tablesInReplication', []);
-                    return true;
-                  }
-                }}
-                trClassName={(row) => {
-                  if (
-                    tablesNotInReplication.some(
-                      (t: IReplicationTable) => t.tableUUID === row.tableUUID
-                    )
-                  ) {
-                    return 'added-to-replication';
-                  }
-                  return '';
+                  onSelect: handleRowSelect,
+                  onSelectAll: handleSelectAll
                 }}
               >
                 <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />

@@ -1,1 +1,0 @@
-cp drop_owned,role_specification.diagram.md alter_default_privileges,abbr_gr_table,abbr_gr_seq,abbr_gr_func,abbr_gr_type,abbr_gr_schema,abbr_rev_table,abbr_rev_seq,abbr_rev_func,abbr_rev_type,abbr_rev_schema,gr_table_privileges,gr_seq_privileges,gr_role_spec.diagram.md

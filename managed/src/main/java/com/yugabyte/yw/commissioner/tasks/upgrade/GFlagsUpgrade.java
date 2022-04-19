@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 
@@ -67,16 +68,17 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     switch (taskParams().upgradeOption) {
       case ROLLING_UPGRADE:
         createRollingUpgradeTaskFlow(
-            this::createServerConfFileUpdateTasks, masterNodes, tServerNodes, true);
+            this::createServerConfFileUpdateTasks, masterNodes, tServerNodes, RUN_BEFORE_STOPPING);
         break;
       case NON_ROLLING_UPGRADE:
         createNonRollingUpgradeTaskFlow(
-            this::createServerConfFileUpdateTasks, masterNodes, tServerNodes, true);
+            this::createServerConfFileUpdateTasks, masterNodes, tServerNodes, RUN_BEFORE_STOPPING);
         break;
       case NON_RESTART_UPGRADE:
         createNonRestartUpgradeTaskFlow(
-            (List<NodeDetails> nodeList, ServerType processType) -> {
-              createServerConfFileUpdateTasks(nodeList, processType);
+            (List<NodeDetails> nodeList, Set<ServerType> processTypes) -> {
+              ServerType processType = getSingle(processTypes);
+              createServerConfFileUpdateTasks(nodeList, processTypes);
               createSetFlagInMemoryTasks(
                       nodeList,
                       processType,
@@ -93,7 +95,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     }
   }
 
-  private void createServerConfFileUpdateTasks(List<NodeDetails> nodes, ServerType processType) {
+  private void createServerConfFileUpdateTasks(
+      List<NodeDetails> nodes, Set<ServerType> processTypes) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
       return;
@@ -103,12 +106,12 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      taskGroup.addTask(getAnsibleConfigureServerTask(node, processType));
+      subTaskGroup.addSubTask(getAnsibleConfigureServerTask(node, getSingle(processTypes)));
     }
-    taskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private AnsibleConfigureServers getAnsibleConfigureServerTask(
@@ -116,7 +119,6 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(
             node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
-    params.addDefaultGFlags = true;
     if (processType.equals(ServerType.MASTER)) {
       params.gflags = taskParams().masterGFlags;
       params.gflagsToRemove =

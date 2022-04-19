@@ -53,9 +53,11 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"
 #include "yb/rpc/constants.h"
+#include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/serialization.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/thread_pool.h"
@@ -81,13 +83,6 @@ class Message;
 
 namespace yb {
 namespace rpc {
-
-class CallResponse;
-class DumpRunningRpcsRequestPB;
-class YBInboundTransfer;
-class RpcCallInProgressPB;
-class RpcCallDetailsPB;
-class RpcController;
 
 // Used to key on Connection information.
 // For use as a key in an unordered STL collection, use ConnectionIdHash and ConnectionIdEqual.
@@ -173,7 +168,8 @@ class CallResponse {
     return serialized_response_;
   }
 
-  Result<Slice> GetSidecar(int idx) const;
+  Result<Slice> GetSidecar(size_t idx) const;
+  Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
 
   size_t DynamicMemoryUsage() const {
     return DynamicMemoryUsageOf(header_, response_data_) +
@@ -232,9 +228,9 @@ class OutboundCall : public RpcCall {
   OutboundCall(const RemoteMethod* remote_method,
                const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                std::shared_ptr<const OutboundMethodMetrics> method_metrics,
-               google::protobuf::Message* response_storage,
+               AnyMessagePtr response_storage,
                RpcController* controller,
-               RpcMetrics* rpc_metrics,
+               std::shared_ptr<RpcMetrics> rpc_metrics,
                ResponseCallback callback,
                ThreadPool* callback_thread_pool);
 
@@ -245,7 +241,7 @@ class OutboundCall : public RpcCall {
   // Because the data is fully serialized by this call, 'req' may be
   // subsequently mutated with no ill effects.
   virtual CHECKED_STATUS SetRequestParam(
-      const google::protobuf::Message& req, const MemTrackerPtr& mem_tracker);
+      AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker);
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
@@ -317,7 +313,7 @@ class OutboundCall : public RpcCall {
   const ResponseCallback& callback() const { return callback_; }
   RpcController* controller() { return controller_; }
   const RpcController* controller() const { return controller_; }
-  google::protobuf::Message* response() const { return response_; }
+  AnyMessagePtr response() const { return response_; }
 
   int32_t call_id() const {
     return call_id_;
@@ -341,7 +337,8 @@ class OutboundCall : public RpcCall {
  protected:
   friend class RpcController;
 
-  virtual Result<Slice> GetSidecar(int idx) const;
+  virtual Result<Slice> GetSidecar(size_t idx) const;
+  virtual Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
 
   ConnectionId conn_id_;
   const std::string* hostname_;
@@ -349,7 +346,7 @@ class OutboundCall : public RpcCall {
   RpcController* controller_;
   // Pointer for the protobuf where the response should be written.
   // Can be used only while callback_ object is alive.
-  google::protobuf::Message* response_;
+  AnyMessagePtr response_;
 
   // The trace buffer.
   scoped_refptr<Trace> trace_;
@@ -392,7 +389,7 @@ class OutboundCall : public RpcCall {
 
   Result<uint32_t> TimeoutMs() const;
 
-  int32_t call_id_;
+  const int32_t call_id_;
 
   // The remote method being called.
   const RemoteMethod* remote_method_;
@@ -414,7 +411,7 @@ class OutboundCall : public RpcCall {
 
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
 
-  RpcMetrics* rpc_metrics_;
+  std::shared_ptr<RpcMetrics> rpc_metrics_;
 
   Status thread_pool_failure_;
 

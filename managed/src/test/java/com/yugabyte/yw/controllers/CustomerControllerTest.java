@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.models.helpers.CommonUtils.datePlus;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
@@ -39,7 +40,10 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -48,7 +52,9 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -193,7 +199,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
     assertThat(json.get("name").asText(), is(equalTo("Test Customer")));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -218,7 +224,84 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertEquals(alertEmail, config.data.get("alertingEmail").asText());
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testCustomerPUTWithSetAlertNotificationPeriod() {
+    Alert alert = ModelFactory.createAlert(customer);
+    alert.setNotificationAttemptTime(new Date());
+    alert.setNextNotificationTime(null);
+    alert.save();
+
+    Alert alert2 = ModelFactory.createAlert(customer);
+    alert2.setState(State.RESOLVED);
+    alert2.setNotificationAttemptTime(new Date());
+    alert2.setNextNotificationTime(null);
+    alert2.save();
+
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("code", "tc");
+    params.put("email", "admin");
+    params.put("name", "Test Customer");
+    ObjectNode alertingData = Json.newObject();
+    String alertEmail = "alerts@yugabyte.com";
+    alertingData.put("alertingEmail", alertEmail);
+    alertingData.put("sendAlertsToYb", true);
+    alertingData.put("reportOnlyErrors", false);
+    alertingData.put("activeAlertNotificationIntervalMs", 5000);
+    params.put("alertingData", alertingData);
+    params.put("callhomeLevel", "LOW");
+    Result result =
+        route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
+    assertEquals(OK, result.status());
+
+    Alert updatedAlert = alertService.get(alert.getUuid());
+    assertThat(
+        updatedAlert.getNextNotificationTime(),
+        equalTo(datePlus(alert.getNotificationAttemptTime(), 5000, ChronoUnit.MILLIS)));
+
+    Alert updatedAlert2 = alertService.get(alert2.getUuid());
+    assertThat(updatedAlert2.getNextNotificationTime(), nullValue());
+  }
+
+  @Test
+  public void testCustomerPUTWithUnsetAlertNotificationPeriod() {
+    Alert alert = ModelFactory.createAlert(customer);
+    alert.setNotifiedState(State.ACTIVE);
+    alert.save();
+
+    Alert alert2 = ModelFactory.createAlert(customer);
+
+    AlertingData alertingData = new AlertingData();
+    alertingData.activeAlertNotificationIntervalMs = 5000;
+    CustomerConfig.createAlertConfig(customer.getUuid(), Json.toJson(alertingData));
+
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("code", "tc");
+    params.put("email", "admin");
+    params.put("name", "Test Customer");
+    ObjectNode newAlertingData = Json.newObject();
+    String alertEmail = "alerts@yugabyte.com";
+    newAlertingData.put("alertingEmail", alertEmail);
+    newAlertingData.put("sendAlertsToYb", true);
+    newAlertingData.put("reportOnlyErrors", false);
+    newAlertingData.put("activeAlertNotificationIntervalMs", 0);
+    params.put("alertingData", newAlertingData);
+    params.put("callhomeLevel", "LOW");
+    Result result =
+        route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
+    assertEquals(OK, result.status());
+
+    Alert updatedAlert = alertService.get(alert.getUuid());
+    assertThat(updatedAlert.getNextNotificationTime(), nullValue());
+    Alert updatedAlert2 = alertService.get(alert2.getUuid());
+    assertThat(updatedAlert2.getNextNotificationTime(), notNullValue());
+    assertThat(updatedAlert2.getNextNotificationTime(), equalTo(alert2.getNextNotificationTime()));
   }
 
   @Test
@@ -244,7 +327,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertEquals(CollectionLevel.MEDIUM, callhomeLevel);
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -278,7 +361,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertEquals(CollectionLevel.MEDIUM, callhomeLevel);
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -297,7 +380,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customer.uuid);
     CollectionLevel callhomeLevel = CustomerConfig.getCallhomeLevel(customer.uuid);
     assertEquals(CollectionLevel.MEDIUM, callhomeLevel);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -316,7 +399,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(features, json.get("features"));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -446,7 +529,7 @@ public class CustomerControllerTest extends FakeDBApplication {
                 .bodyJson(params));
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -481,7 +564,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertValue(filters, "namespace", "demo-az-1|demo-az-2|test-ns-1");
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -512,7 +595,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertValue(filters, "namespace", "demo");
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -545,7 +628,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertValue(filters, "pod_name", "demo-n1");
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -635,7 +718,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     assertThat(filters.get("table_name"), nullValue());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -734,7 +817,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     String nodePrefix = filters.get("node_prefix").asText();
     assertThat(nodePrefix, allOf(notNullValue(), equalTo("host-1")));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -764,7 +847,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     String nodeName = filters.get("exported_instance").asText();
     assertThat(nodeName, allOf(notNullValue(), equalTo("host-n1")));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   private Result getHostInfo(UUID customerUUID) {

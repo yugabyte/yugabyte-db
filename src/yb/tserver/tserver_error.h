@@ -16,7 +16,7 @@
 #ifndef YB_TSERVER_TSERVER_ERROR_H
 #define YB_TSERVER_TSERVER_ERROR_H
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status_ec.h"

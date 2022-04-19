@@ -40,7 +40,7 @@ TAG_FLAG(cdc_max_apply_batch_size_bytes, runtime);
 DEFINE_test_flag(bool, twodc_write_hybrid_time, false,
                  "Override external_hybrid_time with initialHybridTimeValue for testing.");
 
-DECLARE_int32(consensus_max_batch_size_bytes);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 
 namespace yb {
 
@@ -50,7 +50,7 @@ namespace tserver {
 namespace enterprise {
 
 CHECKED_STATUS CombineExternalIntents(
-    const TransactionStatePB& transaction_state,
+    const tablet::TransactionStatePB& transaction_state,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
     google::protobuf::RepeatedPtrField<docdb::KeyValuePairPB> *out) {
 
@@ -90,7 +90,7 @@ CHECKED_STATUS CombineExternalIntents(
     Uuid involved_tablet_;
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs_;
     docdb::KeyValuePairPB* out_;
-    size_t next_idx_ = 0;
+    int next_idx_ = 0;
   };
 
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_state.transaction_id()));
@@ -142,14 +142,12 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
   ~BatchedWriteImplementation() = default;
 
   Status ProcessRecord(const std::string& tablet_id, const cdc::CDCRecordPB& record) override {
-    WriteRequestPB* write_request;
     auto it = records_.find(tablet_id);
     if (it == records_.end()) {
-      std::deque<std::unique_ptr<WriteRequestPB>> queue;
-      records_.emplace(tablet_id, std::move(queue));
+      it = records_.emplace(tablet_id, std::deque<std::unique_ptr<WriteRequestPB>>()).first;
     }
 
-    auto& queue = records_.at(tablet_id);
+    auto& queue = it->second;
 
     auto max_batch_records = FLAGS_cdc_max_apply_batch_num_records != 0 ?
         FLAGS_cdc_max_apply_batch_num_records : std::numeric_limits<uint32_t>::max();
@@ -157,20 +155,21 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
         FLAGS_cdc_max_apply_batch_size_bytes : FLAGS_consensus_max_batch_size_bytes;
 
     if (queue.empty() ||
-        queue.back()->write_batch().write_pairs_size() >= max_batch_records ||
-        queue.back()->ByteSize() >= max_batch_size) {
+        implicit_cast<size_t>(queue.back()->write_batch().write_pairs_size())
+            >= max_batch_records ||
+        queue.back()->ByteSizeLong() >= max_batch_size) {
       // Create a new batch.
       auto req = std::make_unique<WriteRequestPB>();
       req->set_tablet_id(tablet_id);
       req->set_external_hybrid_time(record.time());
       queue.push_back(std::move(req));
     }
-    write_request = queue.back().get();
+    auto* write_request = queue.back().get();
 
     return AddRecord(record, write_request->mutable_write_batch());
   }
 
-  std::unique_ptr <WriteRequestPB> GetNextWriteRequest() override {
+  std::unique_ptr<WriteRequestPB> GetNextWriteRequest() override {
     if (records_.empty()) {
       return nullptr;
     }
@@ -185,7 +184,6 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
 
  private:
   std::map<std::string, std::deque<std::unique_ptr<WriteRequestPB>>> records_;
-
 };
 
 void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy) {

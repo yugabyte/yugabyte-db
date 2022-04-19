@@ -137,24 +137,9 @@ class CompactionFilter {
   // using a snapshot.
   virtual bool IgnoreSnapshots() const { return false; }
 
-  // Gives the compaction filter an opportunity to return a "user frontier" that will be used to
-  // update the frontier stored in the version edit metadata when the compaction result is
-  // installed.
-  //
-  // As a concrete use case, we use this to pass the history cutoff timestamp from the DocDB
-  // compaction filter into the version edit metadata. See DocDBCompactionFilter.
-  virtual UserFrontierPtr GetLargestUserFrontier() const { return nullptr; }
-
   // Returns a name that identifies this compaction filter.
   // The name will be printed to LOG file on start up for diagnosis.
   virtual const char* Name() const = 0;
-
-  // These methods specify any known lower or upper bounds on the tablet's active keyspace. By
-  // overriding these methods, a compaction filter implementation is instructing the compaction job
-  // that it can assume these bounds to be accurate for the sake of optimizing I/O during
-  // compaction.
-  virtual Slice DropKeysLessThan() const { return Slice(); }
-  virtual Slice DropKeysGreaterOrEqual() const { return Slice(); }
 };
 
 // Each compaction will create a new CompactionFilter allowing the

@@ -56,13 +56,12 @@ YQLVirtualTable::~YQLVirtualTable() = default;
 CHECKED_STATUS YQLVirtualTable::GetIterator(
     const QLReadRequestPB& request,
     const Schema& projection,
-    const Schema& schema,
+      std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const QLScanSpec& spec,
-    std::unique_ptr<YQLRowwiseIteratorIf>* iter)
-    const {
+    std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const {
   // Acquire shared lock on catalog manager to verify it is still the leader and metadata will
   // not change.
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
@@ -110,11 +109,11 @@ CatalogManagerIf& YQLVirtualTable::catalog_manager() const {
 
 Result<std::pair<int, DataType>> YQLVirtualTable::ColumnIndexAndType(
     const std::string& col_name) const {
-  int column_index = schema_->find_column(col_name);
+  auto column_index = schema_->find_column(col_name);
   if (column_index == Schema::kColumnNotFound) {
     return STATUS_SUBSTITUTE(NotFound, "Couldn't find column $0 in schema", col_name);
   }
-  const DataType data_type = schema_->column(column_index).type_info()->type();
+  const DataType data_type = schema_->column(column_index).type_info()->type;
   return std::make_pair(column_index, data_type);
 }
 

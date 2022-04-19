@@ -66,7 +66,7 @@ $ wget --trust-server-names https://get.replicated.com/airgap
 Download the `yugaware` binary and change the following number, as required:
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugaware-2.8.0.0-b37.airgap
+$ wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugaware-{{< yb-version version="stable" format="build">}}-linux-x86_64.airgap
 ```
 
 Switch to the following directory:
@@ -81,7 +81,7 @@ Extract the `replicated` binary, as follows:
 $ tar xzvf replicated.tar.gz
 ```
 
-Install Replicated. If multiple options appear, select the `eth0` network interface, as follows. 
+Install Replicated. If multiple options appear, select the `eth0` network interface, as follows.
 
 ```sh
 $ cat ./install.sh | sudo bash -s airgap
@@ -99,7 +99,7 @@ You should see an output similar to the following:
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-The next step is to install Yugabyte Platform..
+The next step is to install Yugabyte Platform.
 
 ## Set Up HTTPS (optional)
 
@@ -121,7 +121,7 @@ Upload the Yugabyte license file that you received from [Yugabyte](https://www.y
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
-Two options to install Yugabyte Platform are presentedas, shown in the following illustrations:
+Two options to install Yugabyte Platform are presented as shown in the following illustrations:
 
 ![Replicated License Air-gapped Install](/images/replicated/replicated-license-airgapped-install-option.png)
 
@@ -145,9 +145,9 @@ Click **Continue** to configure Yugabyte Platform.
 
 If the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to resolve the issue.
 
-## Set the TLS Version for Nginx Frontend 
+## Set the TLS Version for Nginx Frontend
 
-Specify TLS versions via **Application config**, as shown in the following illustration: 
+Specify TLS versions via **Application config**, as shown in the following illustration:
 
 ![Application Config](/images/replicated/application-config.png)
 

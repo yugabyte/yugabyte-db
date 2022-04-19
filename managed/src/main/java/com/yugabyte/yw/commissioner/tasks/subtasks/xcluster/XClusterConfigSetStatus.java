@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -29,7 +30,7 @@ public class XClusterConfigSetStatus extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    XClusterConfig xClusterConfig = refreshXClusterConfig();
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
 
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
@@ -48,7 +49,8 @@ public class XClusterConfigSetStatus extends XClusterConfigTaskBase {
 
       SetUniverseReplicationEnabledResponse resp =
           client.setUniverseReplicationEnabled(
-              xClusterConfig.sourceUniverseUUID, desiredStatus == XClusterConfigStatusType.Running);
+              xClusterConfig.getReplicationGroupName(),
+              desiredStatus == XClusterConfigStatusType.Running);
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(
@@ -58,6 +60,10 @@ public class XClusterConfigSetStatus extends XClusterConfigTaskBase {
 
       xClusterConfig.status = desiredStatus;
       xClusterConfig.update();
+
+      if (HighAvailabilityConfig.get().isPresent()) {
+        getUniverse(true).incrementVersion();
+      }
 
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

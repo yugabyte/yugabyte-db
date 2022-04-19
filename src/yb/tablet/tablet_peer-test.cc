@@ -38,6 +38,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -45,6 +46,8 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/consensus/multi_raft_batcher.h"
+#include "yb/consensus/state_change_context.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
@@ -55,11 +58,11 @@
 #include "yb/server/clock.h"
 #include "yb/server/logical_clock.h"
 
-#include "yb/tablet/operations/operation.h"
-#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/tserver/tserver.pb.h"
 
@@ -126,10 +129,14 @@ class TabletPeerTest : public YBTabletTest {
 
     RaftPeerPB config_peer;
     config_peer.set_permanent_uuid(tablet()->metadata()->fs_manager()->uuid());
-    config_peer.set_member_type(RaftPeerPB::VOTER);
+    config_peer.set_member_type(consensus::PeerMemberType::VOTER);
     auto addr = config_peer.mutable_last_known_private_addr()->Add();
     addr->set_host("fake-host");
     addr->set_port(0);
+
+    multi_raft_manager_ = std::make_unique<consensus::MultiRaftManager>(messenger_.get(),
+                                                                        proxy_cache_.get(),
+                                                                        config_peer.cloud_info());
 
     // "Bootstrap" and start the TabletPeer.
     tablet_peer_.reset(new TabletPeer(
@@ -181,7 +188,8 @@ class TabletPeerTest : public YBTabletTest {
                                            tablet_metric_entity_,
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
-                                           nullptr /* retryable_requests */));
+                                           nullptr /* retryable_requests */,
+                                           multi_raft_manager_.get()));
   }
 
   CHECKED_STATUS StartPeer(const ConsensusBootstrapInfo& info) {
@@ -206,7 +214,10 @@ class TabletPeerTest : public YBTabletTest {
 
   void TearDown() override {
     messenger_->Shutdown();
-    WARN_NOT_OK(tablet_peer_->Shutdown(), "Tablet peer shutdown failed");
+    WARN_NOT_OK(
+        tablet_peer_->Shutdown(
+            ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse),
+        "Tablet peer shutdown failed");
     YBTabletTest::TearDown();
   }
 
@@ -227,15 +238,14 @@ class TabletPeerTest : public YBTabletTest {
 
   Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
     WriteResponsePB resp;
-    auto operation = std::make_unique<WriteOperation>(
+    auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), &resp);
-    *operation->AllocateRequest() = req;
+    query->set_client_request(req);
 
     CountDownLatch rpc_latch(1);
-    operation->set_completion_callback(
-        MakeLatchOperationCompletionCallback(&rpc_latch, &resp));
+    query->set_callback(MakeLatchOperationCompletionCallback(&rpc_latch, &resp));
 
-    tablet_peer->WriteAsync(std::move(operation));
+    tablet_peer->WriteAsync(std::move(query));
     rpc_latch.Wait();
     CHECK(!resp.has_error())
         << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp.DebugString();
@@ -292,6 +302,7 @@ class TabletPeerTest : public YBTabletTest {
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
+  std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 };
 
 // Ensure that Log::GC() doesn't delete logs with anchors.

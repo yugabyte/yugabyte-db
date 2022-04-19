@@ -43,6 +43,20 @@ public class AccessKey extends Model {
     @ApiModelProperty public Integer nodeExporterPort = 9300;
     @ApiModelProperty public String nodeExporterUser = "prometheus";
     @ApiModelProperty public boolean skipProvisioning = false;
+    @ApiModelProperty public boolean deleteRemote = true;
+    @ApiModelProperty public boolean setUpChrony = false;
+    @ApiModelProperty public List<String> ntpServers;
+
+    // Dictates whether or not to show the set up NTP option in the provider UI
+    // False by default so the old providers can continue to show useTimeSync
+    @ApiModelProperty public boolean showSetUpChrony = false;
+  }
+
+  public static String getDefaultKeyCode(Provider provider) {
+    String sanitizedProviderName = provider.name.replaceAll("\\s+", "-").toLowerCase();
+    return String.format(
+        "yb-%s-%s_%s-key",
+        Customer.get(provider.customerUUID).code, sanitizedProviderName, provider.uuid);
   }
 
   @ApiModelProperty(required = true)

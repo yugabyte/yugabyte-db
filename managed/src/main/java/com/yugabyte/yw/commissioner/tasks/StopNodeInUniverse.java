@@ -11,7 +11,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -47,15 +46,9 @@ public class StopNodeInUniverse extends UniverseTaskBase {
   public void run() {
     NodeDetails currentNode = null;
     boolean hitException = false;
-    isBlacklistLeaders =
-        runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(Util.BLACKLIST_LEADERS);
-    leaderBacklistWaitTimeMs =
-        runtimeConfigFactory.forUniverse(getUniverse()).getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
 
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -65,6 +58,11 @@ public class StopNodeInUniverse extends UniverseTaskBase {
           taskParams().universeUUID,
           universe.name);
 
+      isBlacklistLeaders =
+          runtimeConfigFactory.forUniverse(universe).getBoolean(Util.BLACKLIST_LEADERS);
+      leaderBacklistWaitTimeMs =
+          runtimeConfigFactory.forUniverse(universe).getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
+
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
@@ -73,7 +71,7 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       }
 
       preTaskActions();
-
+      isBlacklistLeaders = isBlacklistLeaders && isLeaderBlacklistValidRF(currentNode.nodeName);
       if (isBlacklistLeaders) {
         List<NodeDetails> tServerNodes = universe.getTServers();
         createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
@@ -143,26 +141,31 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       // Mark universe task state to success
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StoppingNode);
 
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       hitException = true;
       throw t;
     } finally {
-      // Reset the state, on any failure, so that the actions can be retried.
-      if (currentNode != null && hitException) {
-        setNodeState(taskParams().nodeName, currentNode.state);
-      }
+      try {
+        // Reset the state, on any failure, so that the actions can be retried.
+        if (currentNode != null && hitException) {
+          setNodeState(taskParams().nodeName, currentNode.state);
+        }
 
-      // remove leader blacklist for current node if task failed and leader blacklist is not removed
-      if (isBlacklistLeaders) {
-        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-        createModifyBlackListTask(
-                Arrays.asList(currentNode), false /* isAdd */, true /* isLeaderBlacklist */)
-            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-        subTaskGroupQueue.run();
+        // remove leader blacklist for current node if task failed and leader blacklist is not
+        // removed
+        if (isBlacklistLeaders) {
+          // Clear previous subtasks if any.
+          getRunnableTask().reset();
+          createModifyBlackListTask(
+                  Arrays.asList(currentNode), false /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          getRunnableTask().runSubTasks();
+        }
+      } finally {
+        unlockUniverseForUpdate();
       }
-      unlockUniverseForUpdate();
     }
 
     log.info("Finished {} task.", getName());

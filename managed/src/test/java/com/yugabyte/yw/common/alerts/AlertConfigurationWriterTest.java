@@ -9,6 +9,11 @@
  */
 package com.yugabyte.yw.common.alerts;
 
+import static com.yugabyte.yw.common.TestUtils.replaceFirstChar;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -21,18 +26,24 @@ import akka.actor.Scheduler;
 import akka.dispatch.Dispatcher;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -66,12 +77,15 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   private AlertDefinition definition;
 
+  MaintenanceService maintenanceService;
+
   @Before
   public void setUp() {
     when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     when(globalConfig.getInt(AlertConfigurationWriter.CONFIG_SYNC_INTERVAL_PARAM)).thenReturn(1);
     when(configFactory.globalRuntimeConf()).thenReturn(globalConfig);
     when(actorSystem.dispatcher()).thenReturn(mock(Dispatcher.class));
+    maintenanceService = app.injector().instanceOf(MaintenanceService.class);
     configurationWriter =
         new AlertConfigurationWriter(
             executionContext,
@@ -81,7 +95,8 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
             alertConfigurationService,
             swamperHelper,
             queryHelper,
-            configFactory);
+            configFactory,
+            maintenanceService);
 
     customer = ModelFactory.testCustomer();
     universe = ModelFactory.createUniverse(customer.getCustomerId());
@@ -93,7 +108,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
   @Test
   public void testSyncActiveDefinition() {
     when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
-    configurationWriter.syncDefinitions();
+    configurationWriter.process();
 
     AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
 
@@ -119,7 +134,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     alertConfigurationService.save(configuration);
     definition = alertDefinitionService.save(definition);
 
-    configurationWriter.syncDefinitions();
+    configurationWriter.process();
 
     verify(swamperHelper, times(1)).removeAlertDefinition(definition.getUuid());
     verify(queryHelper, times(1)).postManagementCommand("reload");
@@ -142,7 +157,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     UUID missingDefinitionUuid = UUID.randomUUID();
     when(swamperHelper.getAlertDefinitionConfigUuids())
         .thenReturn(ImmutableList.of(missingDefinitionUuid));
-    configurationWriter.syncDefinitions();
+    configurationWriter.process();
 
     AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
 
@@ -171,14 +186,14 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     alertConfigurationService.delete(configuration.getUuid());
 
-    configurationWriter.syncDefinitions();
+    configurationWriter.process();
 
     verify(swamperHelper, never()).writeAlertDefinition(any(), any());
     verify(swamperHelper, never()).removeAlertDefinition(any());
     // Called once after startup
     verify(queryHelper, times(1)).postManagementCommand("reload");
 
-    configurationWriter.syncDefinitions();
+    configurationWriter.process();
 
     verify(swamperHelper, never()).writeAlertDefinition(any(), any());
     verify(swamperHelper, never()).removeAlertDefinition(any());
@@ -204,7 +219,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
   @Test
   public void testPrometheusManagementDisabled() {
     when(queryHelper.isPrometheusManagementEnabled()).thenReturn(false);
-    configurationWriter.syncDefinitions();
+    configurationWriter.process();
 
     AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
 
@@ -221,5 +236,75 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
         metricService,
         MetricKey.builder().name(PlatformMetrics.ALERT_CONFIG_WRITTEN.getMetricName()).build(),
         1.0);
+  }
+
+  @Test
+  public void testSyncDefinitionWithMaintenanceWindow() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
+
+    AlertConfigurationApiFilter filter = new AlertConfigurationApiFilter();
+    filter.setTemplate(AlertTemplate.MEMORY_CONSUMPTION);
+    MaintenanceWindow maintenanceWindow =
+        ModelFactory.createMaintenanceWindow(
+            customer.getUuid(),
+            window ->
+                window
+                    .setUuid(replaceFirstChar(window.getUuid(), 'a'))
+                    .setAlertConfigurationFilter(filter));
+    MaintenanceWindow maintenanceWindow2 =
+        ModelFactory.createMaintenanceWindow(
+            customer.getUuid(),
+            window ->
+                window
+                    .setUuid(replaceFirstChar(window.getUuid(), 'b'))
+                    .setAlertConfigurationFilter(filter));
+
+    configurationWriter.process();
+
+    AlertConfiguration updatedConfiguration =
+        alertConfigurationService.get(configuration.getUuid());
+    AlertDefinition updatedDefinition = alertDefinitionService.get(definition.getUuid());
+
+    assertThat(
+        updatedConfiguration.getMaintenanceWindowUuidsSet(),
+        contains(maintenanceWindow.getUuid(), maintenanceWindow2.getUuid()));
+    assertThat(
+        updatedDefinition.getLabelValue(KnownAlertLabels.MAINTENANCE_WINDOW_UUIDS),
+        equalTo(
+            maintenanceWindow.getUuid().toString()
+                + ","
+                + maintenanceWindow2.getUuid().toString()));
+    verify(swamperHelper, times(1)).writeAlertDefinition(updatedConfiguration, updatedDefinition);
+    verify(queryHelper, times(1)).postManagementCommand("reload");
+
+    maintenanceWindow.setEndTime(CommonUtils.nowMinusWithoutMillis(1, ChronoUnit.HOURS));
+    maintenanceWindow.save();
+
+    configurationWriter.process();
+
+    updatedConfiguration = alertConfigurationService.get(configuration.getUuid());
+    updatedDefinition = alertDefinitionService.get(definition.getUuid());
+
+    assertThat(
+        updatedConfiguration.getMaintenanceWindowUuidsSet(),
+        contains(maintenanceWindow2.getUuid()));
+    assertThat(
+        updatedDefinition.getLabelValue(KnownAlertLabels.MAINTENANCE_WINDOW_UUIDS),
+        equalTo(maintenanceWindow2.getUuid().toString()));
+    verify(swamperHelper, times(1)).writeAlertDefinition(updatedConfiguration, updatedDefinition);
+    verify(queryHelper, times(2)).postManagementCommand("reload");
+
+    maintenanceService.delete(maintenanceWindow2.getUuid());
+
+    configurationWriter.process();
+
+    updatedConfiguration = alertConfigurationService.get(configuration.getUuid());
+    updatedDefinition = alertDefinitionService.get(definition.getUuid());
+
+    assertThat(updatedConfiguration.getMaintenanceWindowUuids(), nullValue());
+    assertThat(
+        updatedDefinition.getLabelValue(KnownAlertLabels.MAINTENANCE_WINDOW_UUIDS), nullValue());
+    verify(swamperHelper, times(1)).writeAlertDefinition(updatedConfiguration, updatedDefinition);
+    verify(queryHelper, times(3)).postManagementCommand("reload");
   }
 }

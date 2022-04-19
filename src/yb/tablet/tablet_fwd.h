@@ -17,6 +17,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/tablet/tablet.fwd.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -47,23 +49,26 @@ class OperationFilter;
 class SnapshotCoordinator;
 class SnapshotOperation;
 class SplitOperation;
-class TableInfoPB;
 class TabletSnapshots;
 class TabletSplitter;
-class TabletStatusPB;
 class TabletStatusListener;
 class TransactionIntentApplier;
 class TransactionCoordinator;
 class TransactionCoordinatorContext;
 class TransactionParticipant;
 class TransactionParticipantContext;
+class TransactionStatePB;
 class TruncateOperation;
+class TruncatePB;
 class UpdateTxnOperation;
 class WriteOperation;
-class WriteOperationContext;
+class WriteQuery;
+class WriteQueryContext;
 
 struct CreateSnapshotData;
 struct DocDbOpIds;
+struct PgsqlReadRequestResult;
+struct QLReadRequestResult;
 struct RemoveIntentsData;
 struct TabletInitData;
 struct TabletMetrics;
@@ -75,6 +80,7 @@ YB_DEFINE_ENUM(RequireLease, (kFalse)(kTrue)(kFallbackToFollower));
 YB_STRONGLY_TYPED_BOOL(Destroy);
 YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
+YB_STRONGLY_TYPED_BOOL(ShouldAbortActiveTransactions);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
 
 // Used to indicate that a transaction-related operation has already been applied to regular RocksDB
@@ -87,8 +93,9 @@ enum class FlushFlags {
 
   kRegular = 1,
   kIntents = 2,
+  kNoScopedOperation = 4,
 
-  kAll = kRegular | kIntents
+  kAllDbs = kRegular | kIntents
 };
 
 }  // namespace tablet

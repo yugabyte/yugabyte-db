@@ -45,6 +45,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -107,12 +108,12 @@ class AlterTableRandomized : public YBTest {
     YBTest::TearDown();
   }
 
-  void RestartTabletServer(int idx) {
+  void RestartTabletServer(size_t idx) {
     LOG(INFO) << "Restarting TS " << idx;
     cluster_->tablet_server(idx)->Shutdown();
     CHECK_OK(cluster_->tablet_server(idx)->Restart());
-    CHECK_OK(cluster_->WaitForTabletsRunning(cluster_->tablet_server(idx),
-        MonoDelta::FromSeconds(60)));
+    CHECK_OK(cluster_->WaitForTabletsRunning(
+        cluster_->tablet_server(idx), MonoDelta::FromSeconds(60)));
   }
 
  protected:
@@ -158,7 +159,7 @@ struct TableState {
     }
     row->clear();
     row->push_back(make_pair("key", key));
-    for (int i = 1; i < col_names_.size(); i++) {
+    for (size_t i = 1; i < col_names_.size(); i++) {
       int32_t val;
       if (col_nullable_[i] && seed % 2 == 1) {
         val = kNullValue;
@@ -200,7 +201,7 @@ struct TableState {
 
   void DropColumn(const string& name) {
     auto col_it = std::find(col_names_.begin(), col_names_.end(), name);
-    int index = col_it - col_names_.begin();
+    auto index = col_it - col_names_.begin();
     col_names_.erase(col_it);
     col_nullable_.erase(col_nullable_.begin() + index);
     for (auto& e : rows_) {
@@ -283,8 +284,8 @@ struct MirrorTable {
 
     vector<pair<string, int32_t>> update;
     update.push_back(make_pair("key", row_key));
-    for (int i = 1; i < num_columns(); i++) {
-      int32_t val = rand * i;
+    for (size_t i = 1; i < num_columns(); i++) {
+      auto val = static_cast<int32_t>(rand * i);
       if (val == kNullValue) val++;
       if (ts_.col_nullable_[i] && val % 2 == 1) {
         val = kNullValue;
@@ -336,7 +337,7 @@ struct MirrorTable {
     DropAColumn(name);
   }
 
-  int num_columns() const {
+  size_t num_columns() const {
     return ts_.col_names_.size();
   }
 
@@ -394,7 +395,7 @@ struct MirrorTable {
         }
       }
       session->Apply(op);
-      const auto flush_status = session->FlushAndGetOpsErrors();
+      const auto flush_status = session->TEST_FlushAndGetOpsErrors();
       const auto& s = flush_status.status;
       if (s.ok()) {
         if (op->response().status() == QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH &&
@@ -465,7 +466,7 @@ TEST_F(AlterTableRandomized, TestRandomSequence) {
     } else if (r < 995) {
       t.DropRandomColumn(rng.Next());
     } else {
-      RestartTabletServer(rng.Uniform(cluster_->num_tablet_servers()));
+      RestartTabletServer(rng.Uniform64(cluster_->num_tablet_servers()));
     }
 
     if (i % 1000 == 0) {

@@ -45,38 +45,37 @@ namespace docdb {
 class DocPath {
  public:
   template<class... T>
-  DocPath(const KeyBytes& encoded_doc_key, T... subkeys) {
+  DocPath(const KeyBytes& encoded_doc_key, T&&... subkeys)
+      : subkeys_{std::forward<T>(subkeys)...} {
     encoded_doc_key_ = encoded_doc_key;
-    AppendPrimitiveValues(&subkeys_, subkeys...);
   }
 
   template<class... T>
-  DocPath(const Slice& encoded_doc_key, T... subkeys)
-      : encoded_doc_key_(encoded_doc_key) {
-    AppendPrimitiveValues(&subkeys_, subkeys...);
+  DocPath(const Slice& encoded_doc_key, T&&... subkeys)
+      : encoded_doc_key_(encoded_doc_key), subkeys_{std::forward<T>(subkeys)...} {
   }
 
-  DocPath(const KeyBytes& encoded_doc_key, const vector<PrimitiveValue>& subkeys)
+  DocPath(const KeyBytes& encoded_doc_key, const vector<KeyEntryValue>& subkeys)
       : encoded_doc_key_(encoded_doc_key),
         subkeys_(subkeys) {
   }
 
   const KeyBytes& encoded_doc_key() const { return encoded_doc_key_; }
 
-  int num_subkeys() const { return subkeys_.size(); }
+  size_t num_subkeys() const { return subkeys_.size(); }
 
-  const PrimitiveValue& subkey(int i) const {
-    assert(0 <= i && i < num_subkeys());
+  const KeyEntryValue& subkey(size_t i) const {
+    assert(i < num_subkeys());
     return subkeys_[i];
   }
 
   std::string ToString() const;
 
-  void AddSubKey(const PrimitiveValue& subkey);
+  void AddSubKey(const KeyEntryValue& subkey);
 
-  void AddSubKey(PrimitiveValue&& subkey);
+  void AddSubKey(KeyEntryValue&& subkey);
 
-  const PrimitiveValue& last_subkey() const {
+  const KeyEntryValue& last_subkey() const {
     assert(!subkeys_.empty());
     return subkeys_.back();
   }
@@ -86,7 +85,7 @@ class DocPath {
   // TODO (akashnil): Add uint16 data type in docdb.
   static DocPath DocPathFromRedisKey(uint16_t hash, const string& key, const string& subkey = "");
 
-  const std::vector<PrimitiveValue>& subkeys() const {
+  const std::vector<KeyEntryValue>& subkeys() const {
     return subkeys_;
   }
 
@@ -96,7 +95,7 @@ class DocPath {
   // TODO(mikhail): should this really be encoded?
   KeyBytes encoded_doc_key_;
 
-  std::vector<PrimitiveValue> subkeys_;
+  std::vector<KeyEntryValue> subkeys_;
 };
 
 inline std::ostream& operator << (std::ostream& out, const DocPath& doc_path) {

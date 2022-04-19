@@ -28,6 +28,7 @@
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/util/sync_point.h"
+#include "yb/rocksdb/util/testutil.h"
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
@@ -2754,7 +2755,7 @@ TEST_P(CompactionPriTest, Test) {
   for (int i = 0; i < kNKeys; i++) {
     keys[i] = i;
   }
-  std::random_shuffle(std::begin(keys), std::end(keys));
+  std::shuffle(std::begin(keys), std::end(keys), yb::ThreadLocalRandom());
 
   for (int i = 0; i < kNKeys; i++) {
     ASSERT_OK(Put(Key(keys[i]), RandomString(&rnd, 102)));
@@ -2767,7 +2768,7 @@ TEST_P(CompactionPriTest, Test) {
 }
 
 // Test that manual compaction is aborted during shutdown.
-TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, testing::Test) {
+TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, RocksDBTest) {
   FLAGS_use_priority_thread_pool_for_compactions = true;
 
   for (const auto use_priority_thread_pool_for_flushes : {false, true}) {

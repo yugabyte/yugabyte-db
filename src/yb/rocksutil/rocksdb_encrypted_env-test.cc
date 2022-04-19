@@ -17,9 +17,10 @@
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
-#include "yb/util/encryption_test_util.h"
-#include "yb/util/header_manager.h"
-#include "yb/util/header_manager_mock_impl.h"
+#include "yb/encryption/encryption_test_util.h"
+#include "yb/encryption/header_manager.h"
+#include "yb/encryption/header_manager_mock_impl.h"
+
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
@@ -31,27 +32,27 @@ constexpr uint32_t kDataSize = 1000;
 class TestRocksDBEncryptedEnv : public YBTest {};
 
 TEST_F(TestRocksDBEncryptedEnv, FileOps) {
-  auto header_manager = GetMockHeaderManager();
-  HeaderManager* hm_ptr = header_manager.get();
+  auto header_manager = encryption::GetMockHeaderManager();
+  encryption::HeaderManager* hm_ptr = header_manager.get();
   auto env = yb::NewRocksDBEncryptedEnv(std::move(header_manager));
   auto fname = "test-file";
   auto bytes = RandomBytes(kDataSize);
   Slice data(bytes.data(), bytes.size());
 
   for (bool encrypted : {false, true}) {
-    down_cast<HeaderManagerMockImpl*>(hm_ptr)->SetFileEncryption(encrypted);
+    down_cast<encryption::HeaderManagerMockImpl*>(hm_ptr)->SetFileEncryption(encrypted);
 
     std::unique_ptr<rocksdb::WritableFile> writable_file;
     ASSERT_OK(env->NewWritableFile(fname, &writable_file, rocksdb::EnvOptions()));
-    TestWrites<rocksdb::WritableFile>(writable_file.get(), data);
+    encryption::TestWrites(writable_file.get(), data);
 
     std::unique_ptr<rocksdb::RandomAccessFile> ra_file;
     ASSERT_OK(env->NewRandomAccessFile(fname, &ra_file, rocksdb::EnvOptions()));
-    TestRandomAccessReads<rocksdb::RandomAccessFile, uint8_t>(ra_file.get(), data);
+    encryption::TestRandomAccessReads<uint8_t>(ra_file.get(), data);
 
     std::unique_ptr<rocksdb::SequentialFile> s_file;
     ASSERT_OK(env->NewSequentialFile(fname, &s_file, rocksdb::EnvOptions()));
-    TestSequentialReads<rocksdb::SequentialFile, uint8_t>(s_file.get(), data);
+    encryption::TestSequentialReads<uint8_t>(s_file.get(), data);
 
     ASSERT_OK(env->DeleteFile(fname));
   }

@@ -35,6 +35,10 @@
 #include <string>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+
+#include "yb/encryption/encryption_fwd.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tserver/tablet_server_options.h"
@@ -44,7 +48,6 @@
 namespace yb {
 
 class FsManager;
-class UniverseKeyManager;
 
 namespace consensus {
 class RaftConfigPB;
@@ -88,7 +91,7 @@ class MiniTabletServer {
   void Shutdown();
   CHECKED_STATUS FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
-      tablet::FlushFlags flags = tablet::FlushFlags::kAll);
+      tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
   CHECKED_STATUS CompactTablets();
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();
@@ -122,6 +125,8 @@ class MiniTabletServer {
 
   Endpoint bound_rpc_addr() const;
   Endpoint bound_http_addr() const;
+  std::string bound_http_addr_str() const;
+  std::string bound_rpc_addr_str() const;
 
   const TabletServer* server() const { return server_.get(); }
   TabletServer* server() { return server_.get(); }
@@ -135,12 +140,14 @@ class MiniTabletServer {
   // Re-enable connections from this server to other servers in the cluster.
   CHECKED_STATUS Reconnect();
 
+  FsManager& fs_manager() const;
+
  private:
   bool started_;
   TabletServerOptions opts_;
   int index_;
 
-  std::unique_ptr<UniverseKeyManager> universe_key_manager_;
+  std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
   std::unique_ptr<yb::Env> encrypted_env_;
   std::unique_ptr<rocksdb::Env> rocksdb_encrypted_env_;
   std::unique_ptr<TabletServer> server_;

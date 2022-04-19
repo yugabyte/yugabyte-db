@@ -35,7 +35,6 @@
 #include <string>
 
 #include "yb/client/schema.h"
-#include "yb/common/common.pb.h"
 
 namespace yb {
 namespace client {
@@ -53,6 +52,7 @@ class YBColumnSpec::Data {
         hash_primary_key(false),
         static_column(false),
         is_counter(false),
+        pg_type_oid(kPgInvalidOid),
         has_rename_to(false) {
   }
 
@@ -78,6 +78,9 @@ class YBColumnSpec::Data {
   bool static_column;
 
   bool is_counter;
+
+  int32_t pg_type_oid;
+  bool has_pg_type_oid;
 
   // For ALTER
   bool has_rename_to;

@@ -127,14 +127,6 @@ void YBSession::SetDeadline(CoarseTimePoint deadline) {
   }
 }
 
-Status YBSession::Flush() {
-  return FlushFuture().get().status;
-}
-
-FlushStatus YBSession::FlushAndGetOpsErrors() {
-  return FlushFuture().get();
-}
-
 namespace {
 
 internal::BatcherPtr CreateBatcher(const YBSession::BatcherConfig& config) {
@@ -192,7 +184,7 @@ void BatcherFlushDone(
   retry_batcher->SetDeadline(done_batcher->deadline());
   for (auto& error : errors) {
     VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
-            << " due to: " << error->status();
+                      << " due to: " << error->status();
     const auto op = error->shared_failed_op();
     op->ResetTablet();
     retry_batcher->Add(op);
@@ -242,11 +234,6 @@ std::future<FlushStatus> YBSession::FlushFuture() {
       promise->set_value(std::move(*status));
   });
   return future;
-}
-
-Status YBSession::ReadSync(std::shared_ptr<YBOperation> yb_op) {
-  CHECK(yb_op->read_only());
-  return ApplyAndFlush(std::move(yb_op));
 }
 
 YBClient* YBSession::client() const {
@@ -315,12 +302,6 @@ void YBSession::Apply(YBOperationPtr yb_op) {
   Batcher().Add(yb_op);
 }
 
-Status YBSession::ApplyAndFlush(YBOperationPtr yb_op) {
-  Apply(std::move(yb_op));
-
-  return FlushFuture().get().status;
-}
-
 bool YBSession::IsInProgress(YBOperationPtr yb_op) const {
   if (batcher_ && batcher_->Has(yb_op)) {
     return true;
@@ -344,12 +325,31 @@ void YBSession::Apply(const std::vector<YBOperationPtr>& ops) {
   }
 }
 
-Status YBSession::ApplyAndFlush(const std::vector<YBOperationPtr>& ops) {
+FlushStatus YBSession::TEST_FlushAndGetOpsErrors() {
+  return FlushFuture().get();
+}
+
+Status YBSession::TEST_Flush() {
+  return FlushFuture().get().status;
+}
+
+Status YBSession::TEST_ApplyAndFlush(YBOperationPtr yb_op) {
+  Apply(std::move(yb_op));
+
+  return FlushFuture().get().status;
+}
+
+Status YBSession::TEST_ApplyAndFlush(const std::vector<YBOperationPtr>& ops) {
   Apply(ops);
   return FlushFuture().get().status;
 }
 
-int YBSession::TEST_CountBufferedOperations() const {
+Status YBSession::TEST_ReadSync(std::shared_ptr<YBOperation> yb_op) {
+  CHECK(yb_op->read_only());
+  return TEST_ApplyAndFlush(std::move(yb_op));
+}
+
+size_t YBSession::TEST_CountBufferedOperations() const {
   return batcher_ ? batcher_->CountBufferedOperations() : 0;
 }
 

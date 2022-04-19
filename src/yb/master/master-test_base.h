@@ -48,12 +48,16 @@
 #include <gflags/gflags_declare.h>
 #include <gtest/gtest.h>
 
+#include "yb/common/common_types.pb.h"
+
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master-test-util.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy_base.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tablet_server.h"
@@ -152,7 +156,8 @@ class MasterTestBase : public YBTest {
   Status CreateTablegroupTable(const NamespaceId& namespace_id,
                                const TableName& table_name,
                                const TablegroupId& tablegroup_id,
-                               const Schema& schema);
+                               const Schema& schema,
+                               TableId* table_id = nullptr);
 
   Status DoCreateTable(const NamespaceName& namespace_name,
                        const TableName& table_name,
@@ -165,6 +170,10 @@ class MasterTestBase : public YBTest {
                        TableId* table_id = nullptr) {
     return DoCreateTable(default_namespace_name, table_name, schema, request, table_id);
   }
+
+  Status TruncateTableById(const TableId& table_id);
+
+  Status DeleteTableById(const TableId& table_id);
 
   Status DeleteTable(const NamespaceName& namespace_name,
                      const TableName& table_name,
@@ -181,7 +190,8 @@ class MasterTestBase : public YBTest {
 
   Status CreateTablegroup(const TablegroupId& tablegroup_id,
                           const NamespaceId& namespace_id,
-                          const NamespaceName& namespace_name);
+                          const NamespaceName& namespace_name,
+                          const TablespaceId& tablespace_id);
 
   Status DeleteTablegroup(const TablegroupId& tablegroup_id,
                           const NamespaceId& namespace_id);
@@ -229,7 +239,11 @@ class MasterTestBase : public YBTest {
   void UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_config);
   std::unique_ptr<Messenger> client_messenger_;
   std::unique_ptr<MiniMaster> mini_master_;
-  std::unique_ptr<MasterServiceProxy> proxy_;
+  std::unique_ptr<MasterClientProxy> proxy_client_;
+  std::unique_ptr<MasterClusterProxy> proxy_cluster_;
+  std::unique_ptr<MasterDdlProxy> proxy_ddl_;
+  std::unique_ptr<MasterHeartbeatProxy> proxy_heartbeat_;
+  std::unique_ptr<MasterReplicationProxy> proxy_replication_;
   shared_ptr<RpcController> controller_;
 };
 

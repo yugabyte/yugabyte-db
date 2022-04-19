@@ -11,6 +11,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX pgwrapper)
+set(YB_PCH_DEP_LIBS opid_proto)
+
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
@@ -24,9 +27,7 @@ ADD_YB_LIBRARY(yb_pgwrapper
 set(PQ_UTILS_SRCS
     libpq_utils.cc)
 set(PQ_UTILS_DEPS
-    pgsql_protocol_proto
     pq
-    ql_protocol_proto
     yb_common_proto
     yb_pggate_flags)
 ADD_YB_LIBRARY(pq_utils
@@ -58,17 +59,22 @@ set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_ba
    ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(pg_catalog_perf-test)
 ADD_YB_TEST(pg_ddl_concurrency-test)
+ADD_YB_TEST(pg_fkey-test)
 ADD_YB_TEST(pg_gin_index-test)
 ADD_YB_TEST(pg_index_backfill-test)
 ADD_YB_TEST(pg_libpq-test)
 ADD_YB_TEST(pg_libpq_err-test)
+ADD_YB_TEST(pg_load_balancer-test)
 ADD_YB_TEST(pg_mini-test)
 ADD_YB_TEST(pg_on_conflict-test)
+ADD_YB_TEST(pg_packed_row-test)
+ADD_YB_TEST(pg_tablet_split-test)
 ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_wrapper-test)
 ADD_YB_TEST(alter_table_with_concurrent_txn-test)
 ADD_YB_TEST(geo_transactions-test)
 ADD_YB_TEST(pg_explicit_lock-test)
+ADD_YB_TEST(alter_schema_abort_txn-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

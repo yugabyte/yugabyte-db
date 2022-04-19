@@ -99,7 +99,7 @@ PTCounter::~PTCounter() {
 
 PTCharBaseType::PTCharBaseType(MemoryContext *memctx,
                                YBLocationPtr loc,
-                               int32_t max_length)
+                               ssize_t max_length)
     : PTSimpleType<InternalType::kStringValue, DataType::STRING>(memctx, loc),
       max_length_(max_length) {
 }

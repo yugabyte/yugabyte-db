@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -70,7 +71,12 @@ public class AllowedActionsHelper {
     if (action == NodeActionType.STOP || action == NodeActionType.REMOVE) {
       String errorMsg = removeMasterErrOrNull(action);
       if (errorMsg != null) return errorMsg;
-      errorMsg = removeSingleNodeErrOrNull1(action);
+      errorMsg = removeSingleNodeErrOrNull(action);
+      if (errorMsg != null) return errorMsg;
+    }
+
+    if (action == NodeActionType.DELETE) {
+      String errorMsg = deleteSingleNodeErrOrNull(action);
       if (errorMsg != null) return errorMsg;
     }
 
@@ -89,7 +95,7 @@ public class AllowedActionsHelper {
     return null;
   }
 
-  private String removeSingleNodeErrOrNull1(NodeActionType action) {
+  private String removeSingleNodeErrOrNull(NodeActionType action) {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
     if (cluster.clusterType == PRIMARY) {
       if (node.isMaster) {
@@ -99,7 +105,7 @@ public class AllowedActionsHelper {
                 .getUniverseDetails()
                 .getNodesInCluster(cluster.uuid)
                 .stream()
-                .filter((n) -> n != node && n.state == Live)
+                .filter(n -> n != node && n.state == Live)
                 .count();
         if (numNodesUp == 0) {
           return errorMsg(action, "It is a last live node in a PRIMARY cluster");
@@ -119,7 +125,7 @@ public class AllowedActionsHelper {
                 .getUniverseDetails()
                 .getNodesInCluster(cluster.uuid)
                 .stream()
-                .filter((n) -> n.isMaster && n.state == Live)
+                .filter(n -> n.isMaster && n.state == Live)
                 .count();
         if (numMasterNodesUp <= (cluster.userIntent.replicationFactor + 1) / 2) {
           return errorMsg(
@@ -130,6 +136,23 @@ public class AllowedActionsHelper {
                   + cluster.userIntent.replicationFactor
                   + ")");
         }
+      }
+    }
+    return null;
+  }
+
+  private String deleteSingleNodeErrOrNull(NodeActionType action) {
+    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+    if ((cluster.clusterType == PRIMARY) && (node.state == NodeState.Decommissioned)) {
+      int nodesInCluster = universe.getUniverseDetails().getNodesInCluster(cluster.uuid).size();
+      if (nodesInCluster <= cluster.userIntent.replicationFactor) {
+        return errorMsg(
+            action,
+            "Unable to have less nodes than RF (count = "
+                + nodesInCluster
+                + ", replicationFactor = "
+                + cluster.userIntent.replicationFactor
+                + ")");
       }
     }
     return null;

@@ -46,6 +46,7 @@
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/util/opid.h"
@@ -95,7 +96,7 @@ TEST_F(TestRaftGroupMetadata, TestLoadFromSuperBlock) {
 
   // Shut down the tablet.
   harness_->tablet()->StartShutdown();
-  harness_->tablet()->CompleteShutdown();
+  harness_->tablet()->CompleteShutdown(DisableFlushOnShutdown::kFalse);
 
   RaftGroupMetadata* meta = harness_->tablet()->metadata();
 

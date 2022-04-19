@@ -13,6 +13,8 @@
 
 #include <memory>
 
+#include "yb/common/ql_type.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/varint.h"

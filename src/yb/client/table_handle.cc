@@ -21,8 +21,11 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
+
+#include "yb/master/master_client.pb.h"
 
 #include "yb/util/format.h"
 #include "yb/util/result.h"
@@ -252,7 +255,8 @@ bool TableIterator::ExecuteOps() {
     session_->Apply(ops_[i]);
   }
 
-  if (!IsFlushStatusOkOrHandleErrors(session_->FlushAndGetOpsErrors())) {
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  if (!IsFlushStatusOkOrHandleErrors(session_->TEST_FlushAndGetOpsErrors())) {
     return false;
   }
 
@@ -288,7 +292,8 @@ void TableIterator::Move() {
         auto& op = ops_[ops_index_];
         *op->mutable_request()->mutable_paging_state() = *paging_state_;
         session_->Apply(op);
-        if (!IsFlushStatusOkOrHandleErrors(session_->FlushAndGetOpsErrors())) {
+        // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+        if (!IsFlushStatusOkOrHandleErrors(session_->TEST_FlushAndGetOpsErrors())) {
           return;
         }
         if (QLResponsePB::YQL_STATUS_OK != op->response().status()) {

@@ -49,13 +49,13 @@ select arr as "new value of arr" from t where k = 1;
 ```
 It shows this:
 ```
- old value of arr 
+ old value of arr
 ------------------
  {3,4,5}
 ```
 and then this:
 ```
- new value of arr 
+ new value of arr
 ------------------
  {1,2,3,4,5,6}
 ```
@@ -152,7 +152,7 @@ declare
   cat_result   constant rt[] := prepend_row||prepend_arr||arr||append_row;
 
   expected_result constant rt[] :=
-    array[(0, 'z')::rt, (1, 'a')::rt, (2, 'b')::rt, (3, 'c')::rt, 
+    array[(0, 'z')::rt, (1, 'a')::rt, (2, 'b')::rt, (3, 'c')::rt,
          (4, 'd')::rt, (5, 'e')::rt, (6, 'f')::rt];
 
 begin
@@ -185,7 +185,7 @@ declare
     ];
 
   -- Notice that this is a 1-d array.
-  -- Its lenth is the same as as that of arr_1
+  -- Its lenth is the same as that of arr_1
   -- along arr_1's SECOND dimension.
   arr_3 constant int[] := array[31, 32, 33];
 

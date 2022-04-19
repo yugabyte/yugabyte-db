@@ -39,12 +39,20 @@
 #include <vector>
 
 #include "yb/client/client.h"
+
+#include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_admin.fwd.h"
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
+
 #include "yb/server/server_base_options.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -55,18 +63,9 @@ namespace yb {
 
 class HostPort;
 
-namespace master {
-class AlterTableRequestPB;
-class CreateTableRequestPB;
-class MasterServiceProxy;
-} // namespace master
-
 namespace client {
 
 YB_STRONGLY_TYPED_BOOL(Retry);
-
-using SyncLeaderMasterFunc = std::function<void(
-    master::MasterServiceProxy*, rpc::RpcController*, const rpc::ResponseCallback& callback)>;
 
 class YBClient::Data {
  public:
@@ -235,6 +234,11 @@ class YBClient::Data {
                                     CoarseTimePoint deadline,
                                     std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback);
+  CHECKED_STATUS GetTablegroupSchemaById(YBClient* client,
+                                         const TablegroupId& parent_tablegroup_table_id,
+                                         CoarseTimePoint deadline,
+                                         std::shared_ptr<std::vector<YBTableInfo>> info,
+                                         StatusCallback callback);
   CHECKED_STATUS GetColocatedTabletSchemaById(YBClient* client,
                                               const TableId& parent_colocated_table_id,
                                               CoarseTimePoint deadline,
@@ -277,6 +281,12 @@ class YBClient::Data {
                        CoarseTimePoint deadline,
                        StatusCallback callback);
 
+  void GetCDCDBStreamInfo(YBClient *client,
+    const std::string &db_stream_id,
+    std::shared_ptr<std::vector<pair<std::string, std::string>>> db_stream_info,
+    CoarseTimePoint deadline,
+    StdStatusCallback callback);
+
   void GetCDCStream(YBClient* client,
                     const CDCStreamId& stream_id,
                     std::shared_ptr<TableId> table_id,
@@ -292,10 +302,6 @@ class YBClient::Data {
       YBClient* client, const TableId& table_id, int32_t max_tablets,
       RequireTabletsRunning require_tablets_running, CoarseTimePoint deadline,
       GetTableLocationsCallback callback);
-
-  CHECKED_STATUS InitLocalHostNames();
-
-  bool IsLocalHostPort(const HostPort& hp) const;
 
   bool IsTabletServerLocal(const internal::RemoteTabletServer& rts) const;
 
@@ -345,7 +351,12 @@ class YBClient::Data {
                                       bool skip_resolution = false,
                                       bool wait_for_leader_election = true);
 
-  std::shared_ptr<master::MasterServiceProxy> master_proxy() const;
+  std::shared_ptr<master::MasterAdminProxy> master_admin_proxy() const;
+  std::shared_ptr<master::MasterClientProxy> master_client_proxy() const;
+  std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy() const;
+  std::shared_ptr<master::MasterDclProxy> master_dcl_proxy() const;
+  std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy() const;
+  std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy() const;
 
   HostPort leader_master_hostport() const;
 
@@ -368,10 +379,14 @@ class YBClient::Data {
       YBClient* client, const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
       bool* retry = nullptr);
 
-  template <class ReqClass, class RespClass>
-  using SyncLeaderMasterFunc = void (master::MasterServiceProxy::*)(
+  // Validate replication info as satisfiable for the cluster data.
+  CHECKED_STATUS ValidateReplicationInfo(
+        const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline);
+
+  template <class ProxyClass, class ReqClass, class RespClass>
+  using SyncLeaderMasterFunc = void (ProxyClass::*)(
       const ReqClass &req, RespClass *response, rpc::RpcController *controller,
-      rpc::ResponseCallback callback);
+      rpc::ResponseCallback callback) const;
 
   // Retry 'func' until either:
   //
@@ -387,10 +402,10 @@ class YBClient::Data {
   // per operation deadline. If 'deadline' is not initialized, 'func' is
   // retried forever. If 'deadline' expires, 'func_name' is included in
   // the resulting Status.
-  template <class ReqClass, class RespClass>
+  template <class ProxyClass, class ReqClass, class RespClass>
   CHECKED_STATUS SyncLeaderMasterRpc(
       CoarseTimePoint deadline, const ReqClass& req, RespClass* resp, const char* func_name,
-      const SyncLeaderMasterFunc<ReqClass, RespClass>& func, int* attempts = nullptr);
+      const SyncLeaderMasterFunc<ProxyClass, ReqClass, RespClass>& func, int* attempts = nullptr);
 
   template <class T, class... Args>
   rpc::RpcCommandPtr StartRpc(Args&&... args);
@@ -410,10 +425,6 @@ class YBClient::Data {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   scoped_refptr<internal::MetaCache> meta_cache_;
   scoped_refptr<MetricEntity> metric_entity_;
-
-  // Set of hostnames and IPs on the local host.
-  // This is initialized at client startup.
-  std::unordered_set<std::string> local_host_names_;
 
   // Flag name to fetch master addresses from flagfile.
   std::string master_address_flag_name_;
@@ -442,7 +453,12 @@ class YBClient::Data {
   HostPort leader_master_hostport_;
 
   // Proxy to the leader master.
-  std::shared_ptr<master::MasterServiceProxy> master_proxy_;
+  std::shared_ptr<master::MasterAdminProxy> master_admin_proxy_;
+  std::shared_ptr<master::MasterClientProxy> master_client_proxy_;
+  std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy_;
+  std::shared_ptr<master::MasterDclProxy> master_dcl_proxy_;
+  std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy_;
+  std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy_;
 
   // Ref-counted RPC instance: since 'SetMasterServerProxyAsync' call
   // is asynchronous, we need to hold a reference in this class
@@ -475,6 +491,7 @@ class YBClient::Data {
   std::unique_ptr<ThreadPool> threadpool_;
 
   const ClientId id_;
+  const std::string log_prefix_;
 
   // Used to track requests that were sent to a particular tablet, so it could track different
   // RPCs related to the same write operation and reject duplicates.
@@ -496,8 +513,8 @@ class YBClient::Data {
 
  private:
   CHECKED_STATUS FlushTablesHelper(YBClient* client,
-                          const CoarseTimePoint deadline,
-                          const master::FlushTablesRequestPB req);
+                                   const CoarseTimePoint deadline,
+                                   const master::FlushTablesRequestPB& req);
 
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
@@ -514,10 +531,6 @@ Status RetryFunc(
     const std::string& timeout_msg,
     const std::function<Status(CoarseTimePoint, bool*)>& func,
     const CoarseDuration max_wait = std::chrono::seconds(2));
-
-// TODO(PgClient) Remove after removing YBTable from postgres.
-CHECKED_STATUS CreateTableInfoFromTableSchemaResp(
-    const master::GetTableSchemaResponsePB& resp, YBTableInfo* info);
 
 } // namespace client
 } // namespace yb

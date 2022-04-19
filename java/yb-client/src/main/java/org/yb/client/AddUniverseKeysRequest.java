@@ -19,9 +19,10 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import java.util.Map;
 import java.util.Iterator;
 import org.yb.util.Pair;
-import org.yb.Encryption;
+import org.yb.encryption.Encryption;
 
-import org.yb.master.Master;
+import org.yb.master.MasterEncryptionOuterClass;
+import org.yb.master.MasterTypes;
 
 public class AddUniverseKeysRequest extends YRpc<AddUniverseKeysResponse> {
   private Map<String, byte[]> universeKeys;
@@ -34,8 +35,8 @@ public class AddUniverseKeysRequest extends YRpc<AddUniverseKeysResponse> {
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final Master.AddUniverseKeysRequestPB.Builder builder =
-            Master.AddUniverseKeysRequestPB.newBuilder();
+    final MasterEncryptionOuterClass.AddUniverseKeysRequestPB.Builder builder =
+            MasterEncryptionOuterClass.AddUniverseKeysRequestPB.newBuilder();
     Encryption.UniverseKeysPB.Builder keysBuilder =  Encryption.UniverseKeysPB.newBuilder();
     Iterator iter = universeKeys.entrySet().iterator();
     while (iter.hasNext()) {
@@ -57,10 +58,10 @@ public class AddUniverseKeysRequest extends YRpc<AddUniverseKeysResponse> {
   @Override
   Pair<AddUniverseKeysResponse, Object> deserialize(
           CallResponse callResponse, String uuid) throws Exception {
-    final Master.AddUniverseKeysResponsePB.Builder respBuilder =
-            Master.AddUniverseKeysResponsePB.newBuilder();
+    final MasterEncryptionOuterClass.AddUniverseKeysResponsePB.Builder respBuilder =
+            MasterEncryptionOuterClass.AddUniverseKeysResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
-    Master.MasterErrorPB serverError = respBuilder.hasError() ? respBuilder.getError() : null;
+    MasterTypes.MasterErrorPB serverError = respBuilder.hasError() ? respBuilder.getError() : null;
     AddUniverseKeysResponse response = new AddUniverseKeysResponse(
             deadlineTracker.getElapsedMillis(), uuid, serverError);
     return new Pair<AddUniverseKeysResponse, Object>(response, serverError);

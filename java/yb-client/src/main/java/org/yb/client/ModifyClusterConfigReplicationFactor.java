@@ -13,7 +13,7 @@
 
 package org.yb.client;
 
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
 
 // This provides the wrapper to read-modify the replication factor.
 public class ModifyClusterConfigReplicationFactor extends AbstractModifyMasterClusterConfig {
@@ -24,9 +24,10 @@ public class ModifyClusterConfigReplicationFactor extends AbstractModifyMasterCl
   }
 
   @Override
-  protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder(config);
+  protected CatalogEntityInfo.SysClusterConfigEntryPB modifyConfig(
+      CatalogEntityInfo.SysClusterConfigEntryPB config) {
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder(config);
 
     // Modify the num_replicas which is the cluster's RF.
     configBuilder.getReplicationInfoBuilder()

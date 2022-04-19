@@ -73,7 +73,7 @@ To build the driver locally, follow this procedure:
        <groupId>com.yugabyte</groupId>
        <artifactId>jdbc-yugabytedb</artifactId>
        <version>42.3.0</version>
-   </dependency> 
+   </dependency>
    ```
 
 
@@ -109,10 +109,10 @@ To use the Smart Driver, do the following:
   ds.setUrl(jdbcUrl);
   // Set topology keys to enable topology-aware distribution
   ds.setTopologyKeys("cloud1.region1.zone1,cloud1.region2.zone2");
-  // Provide more end points to prevent first connection failure 
-  // if an initial contact point is not available 
+  // Provide more end points to prevent first connection failure
+  // if an initial contact point is not available
   ds.setAdditionalEndpoints("127.0.0.2:5433,127.0.0.3:5433");
-  
+
   Connection conn = ds.getConnection();
   ```
 
@@ -133,13 +133,13 @@ To use the Smart Driver, do the following:
   // Load balance between specific geo-locations using topology keys
   String geoLocations = "cloud1.region1.zone1,cloud1.region2.zone2";
   poolProperties.setProperty("dataSource.topologyKeys", geoLocations);
-  
+
   poolProperties.setProperty("poolName", name);
-  
+
   HikariConfig config = new HikariConfig(poolProperties);
   config.validate();
   HikariDataSource ds = new HikariDataSource(config);
-  
+
   Connection conn = ds.getConnection();
   ```
 
@@ -147,9 +147,9 @@ To use the Smart Driver, do the following:
 
 To access a sample application that uses Yugabyte Smart Driver, visit [YugabyteDB JDBC driver](https://github.com/yugabyte/jdbc-yugabytedb).
 
-To be able to use the samples, you need to complete the following steps: 
+To be able to use the samples, you need to complete the following steps:
 
-- Install YugabyteDB by following instructions provided in [Quick Start Guide](/latest/quick-start/install/). 
+- Install YugabyteDB by following instructions provided in [Quick Start Guide](/preview/quick-start/install/).
 
 - Build the examples by running `mvn package`.
 
@@ -167,7 +167,7 @@ To be able to use the samples, you need to complete the following steps:
 
   - *[-v] [-i]* with `-v -i` if you want to run the script in both `VERBOSE` and `INTERACTIVE` mode at the same time.
 
-  - *<path_to_yugabyte_installation>* with the path to the directory where you installed YugabyteDB. 
+  - *<path_to_yugabyte_installation>* with the path to the directory where you installed YugabyteDB.
 
   \
   For more details, you can consult the help for the script.

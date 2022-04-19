@@ -53,8 +53,7 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/tablet/tablet.h"
@@ -139,7 +138,7 @@ Result<bool> GetPgIndexStatus(
   const tablet::Tablet* catalog_tablet =
       catalog_manager->tablet_peer()->tablet();
   const Schema& pg_index_schema =
-      *VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_index_id))->schema;
+      VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_index_id))->schema();
 
   Schema projection;
   RETURN_NOT_OK(pg_index_schema.CreateProjectionByNames({"indexrelid", status_col_name},
@@ -162,7 +161,7 @@ Result<bool> GetPgIndexStatus(
     cond.add_operands()->set_column_id(indexrelid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(idx_oid);
-    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(projection,
                                  rocksdb::kDefaultQueryId,
                                  empty_key_components,
@@ -653,7 +652,7 @@ BackfillTable::BackfillTable(
   if (pb.backfill_jobs_size() > 0 && pb.backfill_jobs(0).has_backfilling_timestamp() &&
       read_time_for_backfill_.FromUint64(pb.backfill_jobs(0).backfilling_timestamp()).ok()) {
     DCHECK(pb.backfill_jobs_size() == 1) << "Expect only 1 outstanding backfill job";
-    DCHECK(pb.backfill_jobs(0).indexes_size() == index_infos_.size())
+    DCHECK(implicit_cast<size_t>(pb.backfill_jobs(0).indexes_size()) == index_infos_.size())
         << "Expect to use the same set of indexes.";
     timestamp_chosen_.store(true, std::memory_order_release);
     VLOG_WITH_PREFIX(1) << "Will be using " << read_time_for_backfill_
@@ -749,7 +748,7 @@ const std::string BackfillTable::GetNamespaceName() const {
   return ns_info_->name();
 }
 
-Status BackfillTable::UpdateRowsProcessedForIndexTable(const int number_rows_processed) {
+Status BackfillTable::UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed) {
   auto l = indexed_table_->LockForWrite();
 
   if (l.data().pb.backfill_jobs_size() == 0) {
@@ -1142,7 +1141,7 @@ void BackfillTablet::LaunchNextChunkOrDone() {
 
 void BackfillTablet::Done(
     const Status& status, const boost::optional<string>& backfilled_until,
-    const int number_rows_processed, const std::unordered_set<TableId>& failed_indexes) {
+    const uint64_t number_rows_processed, const std::unordered_set<TableId>& failed_indexes) {
   if (!status.ok()) {
     LOG(INFO) << "Failed to backfill the tablet " << yb::ToString(tablet_) << ": " << status
               << "\nFailed_indexes are " << yb::ToString(failed_indexes);
@@ -1161,7 +1160,7 @@ void BackfillTablet::Done(
 }
 
 Status BackfillTablet::UpdateBackfilledUntil(
-    const string& backfilled_until, const int number_rows_processed) {
+    const string& backfilled_until, const uint64_t number_rows_processed) {
   backfilled_until_ = backfilled_until;
   VLOG_WITH_PREFIX(2) << "Done backfilling the tablet " << yb::ToString(tablet_) << " until "
                       << yb::ToString(backfilled_until_);
@@ -1266,6 +1265,10 @@ void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
   }
   WARN_NOT_OK(backfill_table_->UpdateSafeTime(status, safe_time),
     "Could not UpdateSafeTime");
+}
+
+TabletServerId GetSafeTimeForTablet::permanent_uuid() {
+  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
 }
 
 BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
@@ -1442,6 +1445,10 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
   } else {
     backfill_tablet_->Done(status, boost::none, resp_.number_rows_processed(), failed_indexes);
   }
+}
+
+TabletServerId BackfillChunk::permanent_uuid() {
+  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
 }
 
 }  // namespace master

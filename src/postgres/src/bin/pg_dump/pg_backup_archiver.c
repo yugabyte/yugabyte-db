@@ -3113,6 +3113,8 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	/*
 	 * Disable timeouts to allow for slow commands, idle parallel workers, etc
 	 */
+	if (AH->public.dopt->include_yb_metadata)
+		ahprintf(AH, "SET yb_binary_restore = true;\n");
 	ahprintf(AH, "SET statement_timeout = 0;\n");
 	ahprintf(AH, "SET lock_timeout = 0;\n");
 	ahprintf(AH, "SET idle_in_transaction_session_timeout = 0;\n");
@@ -3472,6 +3474,7 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te, ArchiveHandle *AH)
 		strcmp(type, "FOREIGN DATA WRAPPER") == 0 ||
 		strcmp(type, "SERVER") == 0 ||
 		strcmp(type, "PUBLICATION") == 0 ||
+		strcmp(type, "TABLEGROUP") == 0 ||
 		strcmp(type, "SUBSCRIPTION") == 0 ||
 		strcmp(type, "USER MAPPING") == 0)
 	{
@@ -3652,6 +3655,7 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 			strcmp(te->desc, "SCHEMA") == 0 ||
 			strcmp(te->desc, "EVENT TRIGGER") == 0 ||
 			strcmp(te->desc, "TABLE") == 0 ||
+			strcmp(te->desc, "TABLEGROUP") == 0 ||
 			strcmp(te->desc, "TYPE") == 0 ||
 			strcmp(te->desc, "VIEW") == 0 ||
 			strcmp(te->desc, "MATERIALIZED VIEW") == 0 ||

@@ -109,7 +109,7 @@ string FormatHexForLoadTestKey(uint64_t x) {
   return buf;
 }
 
-int KeyIndexSet::NumElements() const {
+size_t KeyIndexSet::NumElements() const {
   MutexLock l(mutex_);
   return set_.size();
 }
@@ -139,7 +139,7 @@ int64_t KeyIndexSet::GetRandomKey(std::mt19937_64* random_number_generator) cons
   MutexLock l(mutex_);
   // The set iterator does not support indexing, so we probabilistically choose a random element
   // by iterating the set.
-  int n = set_.size();
+  size_t n = set_.size();
   for (int64_t x : set_) {
     if ((*random_number_generator)() % n == 0) return x;
     --n;  // Decrement the number of remaining elements we are considering.
@@ -266,7 +266,7 @@ void MultiThreadedAction::WaitForCompletion() {
 
 MultiThreadedWriter::MultiThreadedWriter(
     int64_t num_keys, int64_t start_key, int num_writer_threads, SessionFactory* session_factory,
-    atomic_bool* stop_flag, int value_size, int max_num_write_errors)
+    atomic_bool* stop_flag, int value_size, size_t max_num_write_errors)
     : MultiThreadedAction(
           "writers", num_keys, start_key, num_writer_threads, 2, session_factory->ClientId(),
           stop_flag, value_size),
@@ -408,7 +408,7 @@ bool YBSingleThreadedWriter::Write(
   // submit a the put to apply.
   // If successful, add to inserted
   session_->Apply(insert);
-  const auto flush_status = session_->FlushAndGetOpsErrors();
+  const auto flush_status = session_->TEST_FlushAndGetOpsErrors();
   const auto& status = flush_status.status;
   if (!status.ok()) {
     for (const auto& error : flush_status.errors) {
@@ -589,7 +589,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
     auto read_op = table_->NewReadOp();
     QLAddStringHashValue(read_op->mutable_request(), key_str);
     table_->AddColumns({"k", "v"}, read_op->mutable_request());
-    auto status = session_->ApplyAndFlush(read_op);
+    auto status = session_->TEST_ApplyAndFlush(read_op);
     boost::optional<QLRowBlock> row_block;
     if (status.ok()) {
       auto result = read_op->MakeRowBlock();

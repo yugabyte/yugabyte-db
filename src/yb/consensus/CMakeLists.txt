@@ -30,16 +30,18 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX consensus)
+set(YB_PCH_DEP_LIBS opid_proto)
+
 #########################################
 # consensus_metadata_proto
 #########################################
 
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
   METADATA_PROTO_SRCS METADATA_PROTO_HDRS METADATA_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES
-    metadata.proto)
+  NO_SERVICE_MESSAGES_PROTO_FILES metadata.proto)
 set(METADATA_PROTO_LIBS
   yb_common_proto
   fs_proto
@@ -57,6 +59,7 @@ YRPC_GENERATE(
   CONSENSUS_YRPC_SRCS CONSENSUS_YRPC_HDRS CONSENSUS_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  NO_SERVICE_PROTO_FILES consensus_types.proto
   PROTO_FILES consensus.proto)
 list(APPEND CONSENSUS_YRPC_SRCS opid_util.cc)
 set(CONSENSUS_YRPC_LIBS
@@ -67,13 +70,17 @@ set(CONSENSUS_YRPC_LIBS
   rpc_header_proto
   protobuf
   tablet_proto
-  tserver_admin_proto
-  wire_protocol_proto)
+  tserver_admin_proto)
 
 ADD_YB_LIBRARY(consensus_proto
   SRCS ${CONSENSUS_YRPC_SRCS}
   DEPS ${CONSENSUS_YRPC_LIBS}
   NONLINK_DEPS ${CONSENSUS_YRPC_TGTS})
+
+ADD_YB_LIBRARY(
+  consensus_error
+  SRCS consensus_error.cc
+  DEPS consensus_proto yb_util)
 
 #########################################
 # log_proto
@@ -118,6 +125,7 @@ set(CONSENSUS_SRCS
   consensus_round.cc
   leader_election.cc
   log_cache.cc
+  multi_raft_batcher.cc
   peer_manager.cc
   quorum_util.cc
   raft_consensus.cc
@@ -125,12 +133,7 @@ set(CONSENSUS_SRCS
   replicate_msgs_holder.cc
   retryable_requests.cc)
 
-add_library(consensus ${CONSENSUS_SRCS})
-
-ADD_YB_LIBRARY(
-  consensus_error
-  SRCS consensus_error.cc
-  DEPS consensus_proto yb_util)
+ADD_YB_LIBRARY(consensus SRCS ${CONSENSUS_SRCS})
 
 target_link_libraries(consensus
   consensus_error

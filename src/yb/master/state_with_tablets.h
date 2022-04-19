@@ -22,8 +22,10 @@
 #include <boost/range/iterator_range_core.hpp>
 #include <glog/logging.h>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_backup.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -88,7 +90,7 @@ class StateWithTablets {
 
   template <class PB>
   void TabletsToPB(google::protobuf::RepeatedPtrField<PB>* out) {
-    out->Reserve(tablets_.size());
+    out->Reserve(narrow_cast<int>(tablets_.size()));
     for (const auto& tablet : tablets_) {
       auto* tablet_state = out->Add();
       tablet_state->set_id(tablet.id);
@@ -106,10 +108,9 @@ class StateWithTablets {
         // Could exit here, because we have already iterated over all non-running operations.
         break;
       }
-      bool should_run = it->state == initial_state_;
+      bool should_run = it->state == initial_state_ && functor(*it);
       if (should_run) {
         VLOG(4) << "Prepare operation for " << it->ToString();
-        functor(*it);
 
         // Here we modify indexed value, so iterator could be advanced to the next element.
         // Taking next before modify.
@@ -138,6 +139,10 @@ class StateWithTablets {
 
   virtual CHECKED_STATUS CheckDoneStatus(const Status& status) {
     return status;
+  }
+
+  bool Empty() {
+    return tablets().empty();
   }
 
  protected:

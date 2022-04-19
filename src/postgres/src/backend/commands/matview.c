@@ -25,6 +25,7 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "commands/cluster.h"
+#include "commands/dbcommands.h"
 #include "commands/matview.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
@@ -43,6 +44,9 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+/* YB includes. */
+#include "commands/ybccmds.h"
+#include "executor/ybcModifyTable.h"
 
 typedef struct
 {
@@ -334,7 +338,20 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	else
 	{
 		refresh_by_heap_swap(matviewOid, OIDNewHeap, relpersistence);
-
+		/*
+		 * In YB mode, we must also rename the relation in DocDB.
+		 *
+		 */
+		if (IsYugaByteEnabled()) {
+			YBCPgStatement	handle     = NULL;
+			Oid				databaseId = YBCGetDatabaseOidByRelid(matviewOid);
+			char		   *db_name	   = get_database_name(databaseId);
+			HandleYBStatus(YBCPgNewAlterTable(databaseId,
+											  OIDNewHeap,
+											  &handle));
+			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, RelationGetRelationName(matviewRel)));
+			HandleYBStatus(YBCPgExecAlterTable(handle));
+		}
 		/*
 		 * Inform stats collector about our activity: basically, we truncated
 		 * the matview and inserted some new data.  (The concurrent code path
@@ -485,13 +502,25 @@ transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 	 * writable copy
 	 */
 	tuple = ExecMaterializeSlot(slot);
-
-	heap_insert(myState->transientrel,
-				tuple,
-				myState->output_cid,
-				myState->hi_options,
-				myState->bistate);
-
+	if (IsYBRelation(myState->transientrel))
+	{
+		YBCExecuteInsert(myState->transientrel, RelationGetDescr(myState->transientrel), tuple);
+	}
+	else
+	{
+		heap_insert(myState->transientrel,
+					tuple,
+					myState->output_cid,
+					myState->hi_options,
+					myState->bistate);
+		/* 
+		 * In this case when the transient relation is a temporary relation, heap_insert
+		 * will set a transaction id. However, we must clear this transaction id, since
+		 * REFRESH matview should not invoke any TxnWithPGRel code paths 
+		 * (that are used for temp tables).
+		 */
+		YbClearCurrentTransactionId();
+	}
 	/* We know this is a newly created relation, so there are no indexes */
 
 	return true;
@@ -622,13 +651,13 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	 */
 	resetStringInfo(&querybuf);
 	appendStringInfo(&querybuf,
-					 "SELECT newdata FROM %s newdata "
-					 "WHERE newdata IS NOT NULL AND EXISTS "
-					 "(SELECT 1 FROM %s newdata2 WHERE newdata2 IS NOT NULL "
-					 "AND newdata2 OPERATOR(pg_catalog.*=) newdata "
-					 "AND newdata2.ctid OPERATOR(pg_catalog.<>) "
-					 "newdata.ctid)",
-					 tempname, tempname);
+					"SELECT newdata FROM %s newdata "
+					"WHERE newdata IS NOT NULL AND EXISTS "
+					"(SELECT 1 FROM %s newdata2 WHERE newdata2 IS NOT NULL "
+					"AND newdata2 OPERATOR(pg_catalog.*=) newdata "
+					"AND newdata2.ctid OPERATOR(pg_catalog.<>) "
+					"newdata.ctid)",
+					tempname, tempname);
 	if (SPI_execute(querybuf.data, false, 1) != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 	if (SPI_processed > 0)
@@ -653,11 +682,22 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 
 	/* Start building the query for creating the diff table. */
 	resetStringInfo(&querybuf);
-	appendStringInfo(&querybuf,
-					 "CREATE TEMP TABLE %s AS "
-					 "SELECT mv.ctid AS tid, newdata "
-					 "FROM %s mv FULL JOIN %s newdata ON (",
-					 diffname, matviewname, tempname);
+	if (IsYugaByteEnabled())
+	{
+		appendStringInfo(&querybuf,
+						"CREATE TEMP TABLE %s AS "
+						"SELECT mv, newdata "
+						"FROM %s mv FULL JOIN %s newdata ON (",
+						diffname, matviewname, tempname);
+	}
+	else
+	{
+		appendStringInfo(&querybuf,
+						"CREATE TEMP TABLE %s AS "
+						"SELECT mv.ctid AS tid, newdata "
+						"FROM %s mv FULL JOIN %s newdata ON (",
+						diffname, matviewname, tempname);
+	}
 
 	/*
 	 * Get the list of index OIDs for the table from the relcache, and look up
@@ -779,10 +819,20 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	 */
 	Assert(foundUniqueIndex);
 
-	appendStringInfoString(&querybuf,
-						   " AND newdata OPERATOR(pg_catalog.*=) mv) "
-						   "WHERE newdata IS NULL OR mv IS NULL "
-						   "ORDER BY tid");
+	if (IsYugaByteEnabled())
+	{
+		/* Can't use TID in YB mode */
+		appendStringInfoString(&querybuf,
+							   " AND newdata OPERATOR(pg_catalog.*=) mv) "
+							   "WHERE newdata IS NULL OR mv IS NULL ");	
+	}
+	else
+	{
+		appendStringInfoString(&querybuf,
+							   " AND newdata OPERATOR(pg_catalog.*=) mv) "
+							   "WHERE newdata IS NULL OR mv IS NULL "
+							   "ORDER BY tid");
+	}
 
 	/* Create the temporary "diff" table. */
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
@@ -804,23 +854,92 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 
 	OpenMatViewIncrementalMaintenance();
 
+	/*
+	 * In YB mode, we also restrict the data from having rows with all null
+	 * values, because we can't correctly compare fully-null rows to compute
+	 * an accurate diff table.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		resetStringInfo(&querybuf);
+		appendStringInfo(&querybuf, "SELECT newdata, mv FROM %s WHERE ", diffname);
+		TupleDesc tuple_desc = RelationGetDescr(matviewRel);
+
+		for (int i = 1; i <= tuple_desc->natts; i++)
+		{
+			Form_pg_attribute attribute = TupleDescAttr(tuple_desc, i - 1);
+			const char *attribute_name = quote_identifier(NameStr(attribute->attname));
+			appendStringInfo(&querybuf, "(newdata).%s IS NULL AND (mv).%s IS NULL ",
+							 attribute_name, attribute_name);
+			if (i < tuple_desc->natts)
+				appendStringInfo(&querybuf, "AND ");
+
+		}
+		
+		if (SPI_execute(querybuf.data, false, 1) != SPI_OK_SELECT)
+			elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+		if (SPI_processed > 0)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_CARDINALITY_VIOLATION),
+					 errmsg("new data for materialized view \"%s\" contains rows with all null values",
+							RelationGetRelationName(matviewRel)),
+				 	 errdetail("Row: %s",
+							   SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1))));
+		}
+	}
+
 	/* Deletes must come before inserts; do them first. */
 	resetStringInfo(&querybuf);
-	appendStringInfo(&querybuf,
-					 "DELETE FROM %s mv WHERE ctid OPERATOR(pg_catalog.=) ANY "
-					 "(SELECT diff.tid FROM %s diff "
-					 "WHERE diff.tid IS NOT NULL "
-					 "AND diff.newdata IS NULL)",
-					 matviewname, diffname);
+	if (IsYugaByteEnabled())
+	{
+		/* Can't use TID in YB mode */
+		appendStringInfo(&querybuf,
+						 "DELETE FROM %s mv WHERE mv OPERATOR(pg_catalog.=) ANY "
+						 "(SELECT mv FROM %s diff WHERE (", 
+						 matviewname, diffname);
+		TupleDesc tuple_desc = RelationGetDescr(matviewRel);
+
+		for (int i = 1; i <= tuple_desc->natts; i++) {
+			Form_pg_attribute attribute = TupleDescAttr(tuple_desc, i - 1);
+			const char *attribute_name = quote_identifier(NameStr(attribute->attname));
+			appendStringInfo(&querybuf, "(diff.mv).%s IS NOT NULL ", attribute_name);
+			if (i < tuple_desc->natts)
+				appendStringInfo(&querybuf, "OR ");
+		}
+
+		appendStringInfo(&querybuf, ") AND diff.newdata IS NULL)");		
+	}
+	else
+	{
+		appendStringInfo(&querybuf,
+						 "DELETE FROM %s mv WHERE ctid OPERATOR(pg_catalog.=) ANY "
+						 "(SELECT diff.tid FROM %s diff "
+						 "WHERE diff.tid IS NOT NULL "
+						 "AND diff.newdata IS NULL)",
+						 matviewname, diffname);
+	}
+
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_DELETE)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 
 	/* Inserts go last. */
 	resetStringInfo(&querybuf);
-	appendStringInfo(&querybuf,
-					 "INSERT INTO %s SELECT (diff.newdata).* "
-					 "FROM %s diff WHERE tid IS NULL",
-					 matviewname, diffname);
+	if (IsYugaByteEnabled())
+	{
+		appendStringInfo(&querybuf,
+						 "INSERT INTO %s SELECT (diff.newdata).* "
+						 "FROM %s diff WHERE mv IS NULL",
+						 matviewname, diffname);		
+	}
+	else
+	{
+		appendStringInfo(&querybuf,
+						 "INSERT INTO %s SELECT (diff.newdata).* "
+						 "FROM %s diff WHERE tid IS NULL",
+						 matviewname, diffname);
+	}
+
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_INSERT)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 

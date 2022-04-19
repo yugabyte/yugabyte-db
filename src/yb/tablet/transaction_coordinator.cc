@@ -28,6 +28,7 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus_util.h"
@@ -42,7 +43,6 @@
 
 #include "yb/tablet/operations/update_txn_operation.h"
 
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
@@ -61,7 +61,7 @@
 #include "yb/util/yb_pg_errcodes.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
-DEFINE_double(transaction_max_missed_heartbeat_periods, 10.0 * yb::kTimeMultiplier,
+DEFINE_double(transaction_max_missed_heartbeat_periods, 10.0,
               "Maximum heartbeat periods that a pending transaction can miss before the "
               "transaction coordinator expires the transaction. The total expiration time in "
               "microseconds is transaction_heartbeat_usec times "
@@ -129,8 +129,6 @@ class TransactionStateContext {
   virtual TransactionCoordinatorContext& coordinator_context() = 0;
 
   virtual void NotifyApplying(NotifyApplyingData data) = 0;
-
-  virtual Counter& expired_metric() = 0;
 
   // Submits update transaction to the RAFT log. Returns false if was not able to submit.
   virtual MUST_USE_RESULT bool SubmitUpdateTransaction(
@@ -207,7 +205,6 @@ class TransactionState {
     }
     const int64_t passed = now.GetPhysicalValueMicros() - last_touch_.GetPhysicalValueMicros();
     if (std::chrono::microseconds(passed) > GetTransactionTimeout()) {
-      context_.expired_metric().Increment();
       return true;
     }
     return false;
@@ -478,7 +475,7 @@ class TransactionState {
     }
   }
 
-  CHECKED_STATUS AppliedInOneOfInvolvedTablets(const tserver::TransactionStatePB& state) {
+  CHECKED_STATUS AppliedInOneOfInvolvedTablets(const TransactionStatePB& state) {
     if (status_ != TransactionStatus::COMMITTED && status_ != TransactionStatus::SEALED) {
       // We could ignore this request, because it will be re-send if required.
       LOG_WITH_PREFIX(DFATAL)
@@ -629,7 +626,7 @@ class TransactionState {
   void SubmitUpdateStatus(TransactionStatus status) {
     VLOG_WITH_PREFIX(4) << "SubmitUpdateStatus(" << TransactionStatus_Name(status) << ")";
 
-    tserver::TransactionStatePB state;
+    TransactionStatePB state;
     state.set_transaction_id(id_.data(), id_.size());
     state.set_status(status);
 
@@ -819,8 +816,9 @@ class TransactionState {
     for (const auto& tablet_id_and_state : involved_tablets_) {
       if (!tablet_id_and_state.second.all_batches_replicated) {
         expected_tablet_batches->push_back(ExpectedTabletBatches{
-            tablet_id_and_state.first,
-            tablet_id_and_state.second.required_replicated_batches});
+          .tablet = tablet_id_and_state.first,
+          .batches = tablet_id_and_state.second.required_replicated_batches
+        });
       }
     }
   }
@@ -953,7 +951,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         auto txn_status_with_ht = known_txn
             ? VERIFY_RESULT(it->GetStatus(&expected_tablet_batches))
             : TransactionStatusResult(TransactionStatus::ABORTED, HybridTime::kMax);
-        VLOG_WITH_PREFIX(4) << __func__ << ": " << id << " => " << txn_status_with_ht;
+        VLOG_WITH_PREFIX(4) << __func__ << ": " << id << " => " << txn_status_with_ht
+                            << ", last touch: " << it->last_touch();
         if (txn_status_with_ht.status == TransactionStatus::SEALED) {
           // TODO(dtxn) Avoid concurrent resolve
           txn_status_with_ht = VERIFY_RESULT(ResolveSealedStatus(
@@ -1047,7 +1046,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
                 if (status.ok()) {
                   if (resp.aborted()) {
                     write_hybrid_times[idx] = HybridTime::kMin;
-                  } else if (resp.num_replicated_batches() ==
+                  } else if (implicit_cast<size_t>(resp.num_replicated_batches()) ==
                                  expected_tablet_batches[idx].batches) {
                     write_hybrid_times[idx] = HybridTime(resp.status_hybrid_time());
                     LOG_IF_WITH_PREFIX(DFATAL, !write_hybrid_times[idx].is_valid())
@@ -1347,7 +1346,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
                     } else {
                       // Tablet has been deleted (not split), so we should mark it as applied to
                       // be able to cleanup the transaction.
-                      tserver::TransactionStatePB transaction_state;
+                      TransactionStatePB transaction_state;
                       transaction_state.add_tablets(action.tablet);
                       WARN_NOT_OK(
                           state.AppliedInOneOfInvolvedTablets(transaction_state),
@@ -1444,14 +1443,11 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     return postponed_leader_actions_.leader();
   }
 
-  Counter& expired_metric() override {
-    return expired_metric_;
-  }
-
   void Poll() {
     auto now = context_.clock().Now();
 
     auto leader_term = context_.LeaderTerm();
+    bool leader = leader_term != OpId::kUnknownTerm;
     PostponedLeaderActions actions;
     {
       std::lock_guard<std::mutex> lock(managed_mutex_);
@@ -1459,22 +1455,34 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
       auto& index = managed_transactions_.get<LastTouchTag>();
 
+      if (VLOG_IS_ON(4) && leader && !index.empty()) {
+        const auto& txn = *index.begin();
+        LOG_WITH_PREFIX(INFO)
+            << __func__ << ", now: " << now << ", first: " << txn.ToString()
+            << ", expired: " << txn.ExpiredAt(now) << ", timeout: "
+            << MonoDelta(GetTransactionTimeout()) << ", passed: "
+            << MonoDelta::FromMicroseconds(
+                   now.GetPhysicalValueMicros() - txn.last_touch().GetPhysicalValueMicros());
+      }
+
       for (auto it = index.begin(); it != index.end() && it->ExpiredAt(now);) {
         if (it->status() == TransactionStatus::ABORTED) {
           it = index.erase(it);
         } else {
-          bool modified = index.modify(it, [](TransactionState& state) {
-            VLOG(4) << state.LogPrefix() << "Cleanup expired transaction";
-            state.Abort();
-          });
-          DCHECK(modified);
+          if (leader) {
+            expired_metric_.Increment();
+            bool modified = index.modify(it, [](TransactionState& state) {
+              VLOG(4) << state.LogPrefix() << "Cleanup expired transaction";
+              state.Abort();
+            });
+            DCHECK(modified);
+          }
           ++it;
         }
       }
       auto now_physical = MonoTime::Now();
       for (auto& transaction : managed_transactions_) {
-        const_cast<TransactionState&>(transaction).Poll(
-            leader_term != OpId::kUnknownTerm, now_physical);
+        const_cast<TransactionState&>(transaction).Poll(leader, now_physical);
       }
       postponed_leader_actions_.Swap(&actions);
     }

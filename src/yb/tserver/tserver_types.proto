@@ -1,0 +1,159 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.tserver;
+
+option java_package = "org.yb.tserver";
+
+import "yb/common/wire_protocol.proto";
+
+// Tablet-server specific errors use this protobuf.
+message TabletServerErrorPB {
+  enum Code {
+    // An error which has no more specific error code.
+    // The code and message in 'status' may reveal more details.
+    //
+    // RPCs should avoid returning this, since callers will not be
+    // able to easily parse the error.
+    UNKNOWN_ERROR = 1;
+
+    // The schema provided for a request was not well-formed.
+    INVALID_SCHEMA = 2;
+
+    // The row data provided for a request was not well-formed.
+    INVALID_ROW_BLOCK = 3;
+
+    // The mutations or mutation keys provided for a request were
+    // not well formed.
+    INVALID_MUTATION = 4;
+
+    // The schema provided for a request didn't match the actual
+    // schema of the tablet.
+    MISMATCHED_SCHEMA = 5;
+
+    // The requested tablet_id is not currently hosted on this server.
+    TABLET_NOT_FOUND = 6;
+
+    // A request was made against a scanner ID that was either never
+    // created or has expired.
+    SCANNER_EXPIRED = 7;
+
+    // An invalid scan was specified -- e.g the values passed for
+    // predicates were incorrect sizes.
+    INVALID_SCAN_SPEC = 8;
+
+    // The provided configuration was not well-formed and/or
+    // had a sequence number that was below the current config.
+    INVALID_CONFIG = 9;
+
+    // On a create tablet request, signals that the tablet already exists.
+    TABLET_ALREADY_EXISTS = 10;
+
+    // If the tablet has a newer schema than the requested one the "alter"
+    // request will be rejected with this error.
+    TABLET_HAS_A_NEWER_SCHEMA = 11;
+
+    // The tablet is hosted on this server, but not in RUNNING state.
+    TABLET_NOT_RUNNING = 12;
+
+    // Client requested a snapshot read but the snapshot was invalid.
+    INVALID_SNAPSHOT = 13;
+
+    // An invalid scan call sequence ID was specified.
+    INVALID_SCAN_CALL_SEQ_ID = 14;
+
+    // This tserver is not the leader of the consensus configuration.
+    NOT_THE_LEADER = 15;
+
+    // The destination UUID in the request does not match this server.
+    WRONG_SERVER_UUID = 16;
+
+    // The compare-and-swap specified by an atomic RPC operation failed.
+    CAS_FAILED = 17;
+
+    // This server leader is not ready for the change configuration operation.
+    LEADER_NOT_READY_CHANGE_CONFIG = 18;
+
+    // This server leader is not ready to step down.
+    LEADER_NOT_READY_TO_STEP_DOWN = 19;
+
+    // Adding a peer which is already present in the current raft config.
+    ADD_CHANGE_CONFIG_ALREADY_PRESENT = 20;
+
+    // Removing a peer which is not present in the current raft config.
+    REMOVE_CHANGE_CONFIG_NOT_PRESENT = 21;
+
+    // Leader needs to be stepped down before calling change config. This happens
+    // if the server we are trying to remove from the config is currently the leader.
+    LEADER_NEEDS_STEP_DOWN = 22;
+
+    // The operation is not supported.
+    OPERATION_NOT_SUPPORTED = 23;
+
+    // This tserver is the leader of the consensus configuration, but it's not ready to serve
+    // requests. (That means in fact that the elected leader has not yet commited NoOp request.
+    // The client must wait a bit for the end of this replica-operation.)
+    LEADER_NOT_READY_TO_SERVE = 24;
+
+    // This follower hasn't heard from the leader for a specified amount of time.
+    STALE_FOLLOWER = 25;
+
+    // The operation is already in progress. Used for remote bootstrap requests for now.
+    ALREADY_IN_PROGRESS = 26;
+
+    // Tablet server has some tablets pending local bootstraps.
+    PENDING_LOCAL_BOOTSTRAPS = 27;
+
+    // Tablet splitting has been started (after split is completed - tablet stays in this state
+    // until it is deleted).
+    TABLET_SPLIT = 28;
+
+    // Tablet splitting has not been started on this peer yet.
+    TABLET_SPLIT_PARENT_STILL_LIVE = 29;
+
+    // Tablet splitting disabled for this tablet because TTL file expiration feature enabled.
+    TABLET_SPLIT_DISABLED_TTL_EXPIRY = 30;
+
+    // This tablet's partition is too small to split (e.g. if it only contains 1 hash code).
+    TABLET_SPLIT_KEY_RANGE_TOO_SMALL = 31;
+  }
+
+  // The error code.
+  required Code code = 1 [ default = UNKNOWN_ERROR ];
+
+  // The Status object for the error. This will include a textual
+  // message that may be more useful to present in log messages, etc,
+  // though its error code is less specific.
+  required AppStatusPB status = 2;
+}
+
+// Enum of the server's Tablet Manager state: currently this is only
+// used for assertions, but this can also be sent to the master.
+enum TSTabletManagerStatePB {
+  UNKNOWN = 999;
+
+  // Indicates that Tablet Manager is initializing.
+  MANAGER_INITIALIZING = 0;
+
+  // Indicates that Tablet Manager is running and can create new
+  // tablets.
+  MANAGER_RUNNING = 1;
+
+  // Indicates that tablet manager is shutting down and no new tablets
+  // can be created.
+  MANAGER_QUIESCING = 2;
+
+  // Tablet Manager has shutdown.
+  MANAGER_SHUTDOWN = 3;
+}

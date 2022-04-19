@@ -37,9 +37,16 @@
 #include <string>
 
 #include "yb/common/index.h"
+
 #include "yb/consensus/log_fwd.h"
+
 #include "yb/gutil/macros.h"
+
 #include "yb/tablet/operations/operation.h"
+
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_admin.pb.h"
+
 #include "yb/util/locks.h"
 
 namespace yb {
@@ -54,12 +61,12 @@ class TabletPeer;
 // Keeps track of the Operation states (request, result, ...)
 class ChangeMetadataOperation
     : public ExclusiveSchemaOperation<OperationType::kChangeMetadata,
-                                      tserver::ChangeMetadataRequestPB> {
+                                      ChangeMetadataRequestPB> {
  public:
   ChangeMetadataOperation(Tablet* tablet, log::Log* log,
-                          const tserver::ChangeMetadataRequestPB* request = nullptr);
+                          const ChangeMetadataRequestPB* request = nullptr);
 
-  explicit ChangeMetadataOperation(const tserver::ChangeMetadataRequestPB* request);
+  explicit ChangeMetadataOperation(const ChangeMetadataRequestPB* request);
 
   ~ChangeMetadataOperation();
 
@@ -128,7 +135,7 @@ class ChangeMetadataOperation
 };
 
 CHECKED_STATUS SyncReplicateChangeMetadataOperation(
-    const tserver::ChangeMetadataRequestPB* req,
+    const ChangeMetadataRequestPB* req,
     tablet::TabletPeer* tablet_peer,
     int64_t term);
 

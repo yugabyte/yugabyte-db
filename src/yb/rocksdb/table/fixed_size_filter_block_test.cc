@@ -21,9 +21,11 @@
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/env.h"
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
 
-class FixedSizeFilterTest : public testing::Test {
+class FixedSizeFilterTest : public RocksDBTest {
  public:
   BlockBasedTableOptions table_options_;
 

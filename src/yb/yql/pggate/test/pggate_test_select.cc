@@ -13,7 +13,10 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/constants.h"
 #include "yb/common/ybc-internal.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/util/status_log.h"
 
@@ -40,7 +43,10 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
                                        false /* is_shared_table */, true /* if_not_exist */,
                                        false /* add_primary_key */, true /* colocated */,
                                        kInvalidOid /* tablegroup_id */,
-                                       kInvalidOid /* tablespace_id */, &pg_stmt));
+                                       kColocationIdNotSet /* colocation_id */,
+                                       kInvalidOid /* tablespace_id */,
+                                       kInvalidOid /* matview_pg_table_id */,
+                                       &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
                                                DataType::INT64, true, true));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "id", ++col_count,
@@ -178,7 +184,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     // Check result.
     int col_index = 0;
     CHECK_EQ(values[col_index++], 0);  // hash_key : int64
-    int32_t id = values[col_index++];  // id : int32
+    int32_t id = narrow_cast<int32_t>(values[col_index++]);  // id : int32
     CHECK_EQ(id, seed) << "Unexpected result for hash column";
     CHECK_EQ(values[col_index++], id);  // dependent_count : int16
     CHECK_EQ(values[col_index++], 100 + id);  // project_count : int32
@@ -249,7 +255,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     // Check result.
     int col_index = 0;
     CHECK_EQ(values[col_index++], 0);  // hash_key : int64
-    int32_t id = values[col_index++];  // id : int32
+    int32_t id = narrow_cast<int32_t>(values[col_index++]);  // id : int32
     CHECK_EQ(values[col_index++], id);  // dependent_count : int16
     CHECK_EQ(values[col_index++], 100 + id);  // project_count : int32
 

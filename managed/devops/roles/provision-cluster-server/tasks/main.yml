@@ -10,132 +10,86 @@
   assert:
     that:
       - cloud_type is defined
-      - use_chrony is defined
       - mount_points is defined
       - systemd_option is defined
-
-- name: Do we need chrony?
-  set_fact:
-    should_setup_chrony: "{{ ((cloud_type == 'aws' or cloud_type == 'gcp') and \
-                          (use_chrony or \
-                          ((ansible_distribution == 'RedHat') and \
-                          (ansible_distribution_major_version > '7')))) | bool }}"
-    ntp_service_name: "{{ 'ntpd' if ((ansible_distribution != 'Debian') and \
-                      (ansible_distribution != 'Ubuntu')) else 'ntp' }}"
+      - pg_max_mem_mb is defined
+      - use_chrony is defined
 
 - block:
-  - name: Install NTP
-    become: yes
-    become_method: sudo
-    module_defaults:
-      yum:
-        lock_timeout: 600
-    package:
-      name: ntp
-      state: latest
-
-  - block:
-    - name: Provision | Stop NTP service
-      service:
-        enabled: yes
-        name: "{{ ntp_service_name }}"
-        state: stopped
-
-    - name: Force date/time synchronization with NTP
-      become: yes
-      become_method: sudo
-      shell: ntpd -gq
-
-    when: ansible_distribution != "Debian"
-
-  - name: Provision | Restart NTP service
-    service:
-      enabled: yes
-      name: "{{ ntp_service_name }}"
-      state: restarted
-
-  when: "{{ not should_setup_chrony and not air_gap and cloud_type != 'onprem' }}"
-
-- block:
-  - name: Uninstall NTP if available
-    become: yes
-    become_method: sudo
-    module_defaults:
-      yum:
-        lock_timeout: 600
-    package:
-      name: ntp
-      state: absent
-  when: should_setup_chrony and not air_gap
-
-- block:
-  - name: Install and Configure chrony
+  - name: Install and configure chrony with given server list
     include_role:
       name: ansible-chrony
     vars:
-      #  per AWS Time Sync docs: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/set-time.html
-      #  per GCP docs:
-      #     https://cloud.google.com/container-optimized-os/docs/how-to/create-configure-instance
-      chrony_server: "{% if cloud_type == 'aws' %}169.254.169.123 \
-                      {% else %}metadata.google.internal \
-                      {% endif %} prefer iburst minpoll 4 maxpoll 4"
-
+      chrony_server: # Necessary to remove default
+      chrony_server_list: "{{ ntp_servers }}"
+    when: ntp_servers is defined
+  - name: Install and configure chrony to cloud defaults
+    block:
+    - name: Set up default GCP NTP configuration
+      include_role:
+        name: ansible-chrony
+      vars:
+        chrony_server: "metadata.google.internal iburst minpoll 4 maxpoll 4"
+      when: "{{ cloud_type == 'gcp' }}"
+    - name: Set up default AWS NTP configuration
+      include_role:
+        name: ansible-chrony
+      vars:
+        chrony_server: "169.254.169.123 iburst minpoll 4 maxpoll 4"
+      when: "{{ cloud_type == 'aws' }}"
+    - name: Set up default Azure NTP configuratoin
+      include_role:
+        name: ansible-chrony
+      vars:
+        chrony_server: # Necessary to remove default
+        chrony_azure_refclock: true
+      when: "{{ cloud_type == 'azu' }}"
+    when: ntp_servers is not defined
   - name: Force date/time synchronization with chrony
     become: yes
     become_method: sudo
     shell: chronyc makestep
-  when: should_setup_chrony
+  when: use_chrony
+  tags: yb-prebuilt-ami
 
 - name: Provision | Set swappiness off
   sysctl:
     name: vm.swappiness
     value: 0
     state: present
+  tags: yb-prebuilt-ami
 
 - name: Provision | Create core dump kernel pattern
   sysctl:
     name: kernel.core_pattern
     value: "{{ yb_home_dir }}/cores/core_%e.%p"
     state: present
+  tags: yb-prebuilt-ami
 
 - name: Provision | Ensure proper permissions for mount paths.
   file:
     mode: 0755
     path: "{{ item }}"
+    state: directory
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
   with_items: "{{ mount_points.split(',') }}"
 
-# create configure metrics script
-- name: Setup | Create directory for metrics files
-  file:
-    path: "{{ ssh_user_bin_dir }}"
-    state: directory
-    recurse: yes
-    mode: 0755
-    owner: "{{ ssh_user }}"
-    group: "{{ ssh_user }}"
-
-- name: Configure | Add collect metrics wrapper script
-  template:
-    src: collect_metrics_wrapper.sh.j2
-    dest: "{{ ssh_user_bin_dir }}/collect_metrics_wrapper.sh"
-    owner: "{{ ssh_user }}"
-    mode: 0755
-
-- block:
-  - name: Setup cron to collect metrics.
-    cron:
-      name: "metric collection every minute"
-      user: "{{ ssh_user }}"
-      job: "{{ ssh_user_bin_dir }}/collect_metrics_wrapper.sh"
-    register: cron_result
-    failed_when:
-      - cron_result is failed
-      - cloud_type != "onprem"
-  when: not systemd_option
-
 - include_tasks: "setup-cgroup.yml"
+  # setting up cgroup on YB DB nodes requires installing additional packages from external repos.
+  when: not air_gap and pg_max_mem_mb > 0
+  tags: yb-prebuilt-ami
+
+# Give yugabyte user sudo access to start/stop/restart master and tserver
+- name: Add yugabyte sudo user without password for metric collection operations
+  lineinfile:
+    dest: /etc/sudoers.d/yugabyte-metrics
+    line: 'yugabyte ALL=(ALL:ALL) NOPASSWD: /usr/bin/journalctl -k --since 10min\ ago'
+    create: yes
+    state: present
+    mode: 0440
+    validate: 'visudo -cf %s'
+  tags: yb-prebuilt-ami
 
 - block:
   # Give yugabyte user sudo access to start/stop/restart master and tserver
@@ -162,6 +116,11 @@
             /bin/systemctl restart yb-clean_cores.timer,
             /bin/systemctl enable yb-clean_cores.timer,
             /bin/systemctl disable yb-clean_cores.timer,
+            /bin/systemctl start yb-collect_metrics.timer,
+            /bin/systemctl stop yb-collect_metrics.timer,
+            /bin/systemctl restart yb-collect_metrics.timer,
+            /bin/systemctl enable yb-collect_metrics.timer,
+            /bin/systemctl disable yb-collect_metrics.timer,
             /bin/systemctl start yb-zip_purge_yb_logs,
             /bin/systemctl stop yb-zip_purge_yb_logs,
             /bin/systemctl restart yb-zip_purge_yb_logs,
@@ -172,6 +131,11 @@
             /bin/systemctl restart yb-clean_cores,
             /bin/systemctl enable yb-clean_cores,
             /bin/systemctl disable yb-clean_cores,
+            /bin/systemctl start yb-collect_metrics,
+            /bin/systemctl stop yb-collect_metrics,
+            /bin/systemctl restart yb-collect_metrics,
+            /bin/systemctl enable yb-collect_metrics,
+            /bin/systemctl disable yb-collect_metrics,
             /bin/systemctl daemon-reload'
       create: yes
       state: present
@@ -230,39 +194,21 @@
       owner: "{{ user_name }}"
       mode: 0644
 
-  # Remove old cron job for collect_metrics
-  - name: Remove old cron job that collects metrics (for upgrades)
-    cron:
-      name: "metric collection every minute"
-      user: "{{ ssh_user }}"
-      state: absent
-
   # Adding systemd service and timer files for collect_metrics
   - name: Add yb-collect_metrics.service
     template:
       src: yb-collect_metrics.service
       dest: "/etc/systemd/system/yb-collect_metrics.service"
-      owner: "{{ ssh_user }}"
+      owner: "{{ user_name }}"
       mode: 0644
 
   - name: Add yb-collect_metrics.timer
     template:
       src: yb-collect_metrics.timer
       dest: "/etc/systemd/system/yb-collect_metrics.timer"
-      owner: "{{ ssh_user }}"
+      owner: "{{ user_name }}"
       mode: 0644
 
-  - name: Enable yb-collect_metrics.service for collecting metrics
-    shell:
-      cmd: "sudo systemctl enable yb-collect_metrics"
-
-  - name: Enable yb-collect_metrics.timer for collecting metrics
-    shell:
-      cmd: "sudo systemctl enable yb-collect_metrics.timer"
-
-  - name: Run collect_metrics_wrapper.sh (using timer) for collecting metrics
-    shell:
-      cmd: "sudo systemctl start yb-collect_metrics.timer"
   tags: systemd_upgrade
   when: systemd_option
 
@@ -287,3 +233,4 @@
       line: Unattended-Upgrade::Automatic-Reboot "false";
     when: unattendedupgrade_file.stat.exists
   when: ansible_distribution == "Ubuntu"
+  tags: yb-prebuilt-ami

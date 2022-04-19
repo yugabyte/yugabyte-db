@@ -33,26 +33,6 @@ public class AlertingFormData {
   @ApiModelProperty(value = "Features")
   public Map features;
 
-  @ApiModel(description = "Alerting configuration")
-  public static class AlertingData {
-    @Constraints.Email
-    @Constraints.MinLength(5)
-    @ApiModelProperty(value = "Alert email address", example = "test@example.com")
-    public String alertingEmail;
-
-    @ApiModelProperty(value = "Send alerts to YB as well as to customer")
-    public boolean sendAlertsToYb = false;
-
-    @ApiModelProperty(value = "Alert interval, in milliseconds")
-    public long checkIntervalMs = 0;
-
-    @ApiModelProperty(value = "Status update of alert interval, in milliseconds")
-    public long statusUpdateIntervalMs = 0;
-
-    @ApiModelProperty(value = "Trigger an alert only for errors")
-    public Boolean reportOnlyErrors = false;
-  }
-
   public AlertingData alertingData;
 
   public SmtpData smtpData;

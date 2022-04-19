@@ -37,11 +37,13 @@
 
 #include <google/protobuf/repeated_field.h>
 
+#include "yb/common/common_fwd.h"
+
 #include "yb/gutil/macros.h"
 
-#include "yb/tablet/operations/write_operation_context.h"
+#include "yb/tablet/write_query_context.h"
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_fwd.h"
 
 namespace yb {
 namespace tablet {
@@ -51,11 +53,12 @@ namespace tablet {
 //
 // This is useful for unit-testing the Tablet code paths with no consensus
 // implementation or thread pools.
-class LocalTabletWriter : public WriteOperationContext {
+class LocalTabletWriter : public WriteQueryContext {
  public:
   typedef google::protobuf::RepeatedPtrField<QLWriteRequestPB> Batch;
 
   explicit LocalTabletWriter(Tablet* tablet);
+  ~LocalTabletWriter();
 
   CHECKED_STATUS Write(QLWriteRequestPB* req);
   CHECKED_STATUS WriteBatch(Batch* batch);
@@ -66,8 +69,8 @@ class LocalTabletWriter : public WriteOperationContext {
 
   Tablet* const tablet_;
 
-  tserver::WriteRequestPB req_;
-  tserver::WriteResponsePB resp_;
+  std::unique_ptr<tserver::WriteRequestPB> req_;
+  std::unique_ptr<tserver::WriteResponsePB> resp_;
   std::promise<Status> write_promise_;
 
   DISALLOW_COPY_AND_ASSIGN(LocalTabletWriter);

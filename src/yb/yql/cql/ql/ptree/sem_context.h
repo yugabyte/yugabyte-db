@@ -20,7 +20,7 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/ql_datatype.h"
 
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
@@ -200,7 +200,7 @@ class SemContext : public ProcessContext {
 
   bool selecting_from_index() const;
 
-  int index_select_prefix_length() const;
+  size_t index_select_prefix_length() const;
 
   bool processing_column_definition() const;
 

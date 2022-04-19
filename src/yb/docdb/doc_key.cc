@@ -51,17 +51,13 @@ Result<bool> HasPrimitiveValue(Slice* slice, AllowSpecial allow_special) {
   if (PREDICT_FALSE(slice->empty())) {
     return STATUS(Corruption, "Unexpected end of key when decoding document key");
   }
-  ValueType current_value_type = static_cast<ValueType>(*slice->data());
-  if (current_value_type == ValueType::kGroupEnd) {
+  KeyEntryType current_value_type = static_cast<KeyEntryType>(*slice->data());
+  if (current_value_type == KeyEntryType::kGroupEnd) {
     slice->consume_byte();
     return false;
   }
 
-  if (IsPrimitiveValueType(current_value_type)) {
-    return true;
-  }
-
-  if (allow_special && IsSpecialValueType(current_value_type)) {
+  if (allow_special || !IsSpecialKeyEntryType(current_value_type)) {
     return true;
   }
 
@@ -94,7 +90,7 @@ Status ConsumePrimitiveValuesFromKey(Slice* slice, AllowSpecial allow_special,
                                      int n_values_limit = kNumValuesNoLimit) {
   return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result]() -> Status {
     auto begin = slice->data();
-    RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, /* out */ nullptr));
+    RETURN_NOT_OK(KeyEntryValue::DecodeKey(slice, /* out */ nullptr));
     if (result) {
       result->emplace_back(begin, slice->data());
     }
@@ -103,7 +99,7 @@ Status ConsumePrimitiveValuesFromKey(Slice* slice, AllowSpecial allow_special,
 }
 
 Status ConsumePrimitiveValuesFromKey(
-    Slice* slice, AllowSpecial allow_special, std::vector<PrimitiveValue>* result,
+    Slice* slice, AllowSpecial allow_special, std::vector<KeyEntryValue>* result,
     int n_values_limit = kNumValuesNoLimit) {
   return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result] {
     result->emplace_back();
@@ -117,11 +113,11 @@ Result<bool> ConsumePrimitiveValueFromKey(Slice* slice) {
   if (!VERIFY_RESULT(HasPrimitiveValue(slice, AllowSpecial::kFalse))) {
     return false;
   }
-  RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, nullptr /* out */));
+  RETURN_NOT_OK(KeyEntryValue::DecodeKey(slice, nullptr /* out */));
   return true;
 }
 
-Status ConsumePrimitiveValuesFromKey(Slice* slice, std::vector<PrimitiveValue>* result) {
+Status ConsumePrimitiveValuesFromKey(Slice* slice, std::vector<KeyEntryValue>* result) {
   return ConsumePrimitiveValuesFromKey(slice, AllowSpecial::kFalse, result);
 }
 
@@ -131,24 +127,24 @@ Status ConsumePrimitiveValuesFromKey(Slice* slice, std::vector<PrimitiveValue>* 
 
 DocKey::DocKey()
     : cotable_id_(Uuid::Nil()),
-      pgtable_id_(0),
+      colocation_id_(kColocationIdNotSet),
       hash_present_(false),
       hash_(0) {
 }
 
-DocKey::DocKey(std::vector<PrimitiveValue> range_components)
+DocKey::DocKey(std::vector<KeyEntryValue> range_components)
     : cotable_id_(Uuid::Nil()),
-      pgtable_id_(0),
+      colocation_id_(kColocationIdNotSet),
       hash_present_(false),
       hash_(0),
       range_group_(std::move(range_components)) {
 }
 
 DocKey::DocKey(DocKeyHash hash,
-               std::vector<PrimitiveValue> hashed_components,
-               std::vector<PrimitiveValue> range_components)
+               std::vector<KeyEntryValue> hashed_components,
+               std::vector<KeyEntryValue> range_components)
     : cotable_id_(Uuid::Nil()),
-      pgtable_id_(0),
+      colocation_id_(kColocationIdNotSet),
       hash_present_(true),
       hash_(hash),
       hashed_group_(std::move(hashed_components)),
@@ -157,22 +153,22 @@ DocKey::DocKey(DocKeyHash hash,
 
 DocKey::DocKey(const Uuid& cotable_id,
                DocKeyHash hash,
-               std::vector<PrimitiveValue> hashed_components,
-               std::vector<PrimitiveValue> range_components)
+               std::vector<KeyEntryValue> hashed_components,
+               std::vector<KeyEntryValue> range_components)
     : cotable_id_(cotable_id),
-      pgtable_id_(0),
+      colocation_id_(kColocationIdNotSet),
       hash_present_(true),
       hash_(hash),
       hashed_group_(std::move(hashed_components)),
       range_group_(std::move(range_components)) {
 }
 
-DocKey::DocKey(const PgTableOid pgtable_id,
+DocKey::DocKey(const ColocationId colocation_id,
                DocKeyHash hash,
-               std::vector<PrimitiveValue> hashed_components,
-               std::vector<PrimitiveValue> range_components)
+               std::vector<KeyEntryValue> hashed_components,
+               std::vector<KeyEntryValue> range_components)
     : cotable_id_(Uuid::Nil()),
-      pgtable_id_(pgtable_id),
+      colocation_id_(colocation_id),
       hash_present_(true),
       hash_(hash),
       hashed_group_(std::move(hashed_components)),
@@ -181,45 +177,45 @@ DocKey::DocKey(const PgTableOid pgtable_id,
 
 DocKey::DocKey(const Uuid& cotable_id)
     : cotable_id_(cotable_id),
-      pgtable_id_(0),
+      colocation_id_(kColocationIdNotSet),
       hash_present_(false),
       hash_(0) {
 }
 
-DocKey::DocKey(const PgTableOid pgtable_id)
+DocKey::DocKey(const ColocationId colocation_id)
     : cotable_id_(Uuid::Nil()),
-      pgtable_id_(pgtable_id),
+      colocation_id_(colocation_id),
       hash_present_(false),
       hash_(0) {
 }
 
 DocKey::DocKey(const Schema& schema)
     : cotable_id_(schema.cotable_id()),
-      pgtable_id_(schema.pgtable_id()),
+      colocation_id_(schema.colocation_id()),
       hash_present_(false),
       hash_(0) {
 }
 
 DocKey::DocKey(const Schema& schema, DocKeyHash hash)
     : cotable_id_(schema.cotable_id()),
-      pgtable_id_(schema.pgtable_id()),
+      colocation_id_(schema.colocation_id()),
       hash_present_(true),
       hash_(hash) {
 }
 
-DocKey::DocKey(const Schema& schema, std::vector<PrimitiveValue> range_components)
+DocKey::DocKey(const Schema& schema, std::vector<KeyEntryValue> range_components)
     : cotable_id_(schema.cotable_id()),
-      pgtable_id_(schema.pgtable_id()),
+      colocation_id_(schema.colocation_id()),
       hash_present_(false),
       hash_(0),
       range_group_(std::move(range_components)) {
 }
 
 DocKey::DocKey(const Schema& schema, DocKeyHash hash,
-               std::vector<PrimitiveValue> hashed_components,
-               std::vector<PrimitiveValue> range_components)
+               std::vector<KeyEntryValue> hashed_components,
+               std::vector<KeyEntryValue> range_components)
     : cotable_id_(schema.cotable_id()),
-      pgtable_id_(schema.pgtable_id()),
+      colocation_id_(schema.colocation_id()),
       hash_present_(true),
       hash_(hash),
       hashed_group_(std::move(hashed_components)),
@@ -255,7 +251,9 @@ void DocKey::AppendTo(KeyBytes* out) const {
   if (!cotable_id_.IsNil()) {
     encoder.CotableId(cotable_id_).Hash(hash_present_, hash_, hashed_group_).Range(range_group_);
   } else {
-    encoder.PgtableId(pgtable_id_).Hash(hash_present_, hash_, hashed_group_).Range(range_group_);
+    encoder.ColocationId(colocation_id_)
+           .Hash(hash_present_, hash_, hashed_group_)
+           .Range(range_group_);
   }
 }
 
@@ -292,7 +290,7 @@ class DecodeDocKeyCallback {
 
   void SetCoTableId(const Uuid cotable_id) const {}
 
-  void SetPgTableId(const PgTableOid pgtable_id) const {}
+  void SetColocationId(const ColocationId colocation_id) const {}
 
  private:
   boost::container::small_vector_base<Slice>* out_;
@@ -312,9 +310,9 @@ class DummyCallback {
 
   void SetCoTableId(const Uuid cotable_id) const {}
 
-  void SetPgTableId(const PgTableOid pgtable_id) const {}
+  void SetColocationId(const ColocationId colocation_id) const {}
 
-  PrimitiveValue* AddSubkey() const {
+  KeyEntryValue* AddSubkey() const {
     return nullptr;
   }
 };
@@ -336,9 +334,9 @@ class EncodedSizesCallback {
 
   void SetCoTableId(const Uuid cotable_id) const {}
 
-  void SetPgTableId(const PgTableOid pgtable_id) const {}
+  void SetColocationId(const ColocationId colocation_id) const {}
 
-  PrimitiveValue* AddSubkey() const {
+  KeyEntryValue* AddSubkey() const {
     return nullptr;
   }
 
@@ -366,7 +364,7 @@ yb::Status DocKey::PartiallyDecode(Slice *slice,
 Result<DocKeyHash> DocKey::DecodeHash(const Slice& slice) {
   DocKeyDecoder decoder(slice);
   RETURN_NOT_OK(decoder.DecodeCotableId());
-  RETURN_NOT_OK(decoder.DecodePgtableId());
+  RETURN_NOT_OK(decoder.DecodeColocationId());
   uint16_t hash;
   RETURN_NOT_OK(decoder.DecodeHashCode(&hash));
   return hash;
@@ -418,11 +416,11 @@ class DocKey::DecodeFromCallback {
   explicit DecodeFromCallback(DocKey* key) : key_(key) {
   }
 
-  std::vector<PrimitiveValue>* hashed_group() const {
+  std::vector<KeyEntryValue>* hashed_group() const {
     return &key_->hashed_group_;
   }
 
-  std::vector<PrimitiveValue>* range_group() const {
+  std::vector<KeyEntryValue>* range_group() const {
     return &key_->range_group_;
   }
 
@@ -436,8 +434,8 @@ class DocKey::DecodeFromCallback {
     key_->cotable_id_ = cotable_id;
   }
 
-  void SetPgTableId(const PgTableOid pgtable_id) const {
-    key_->pgtable_id_ = pgtable_id;
+  void SetColocationId(const ColocationId colocation_id) const {
+    key_->colocation_id_ = colocation_id;
   }
 
  private:
@@ -486,11 +484,11 @@ yb::Status DocKey::DoDecode(DocKeyDecoder* decoder,
                             AllowSpecial allow_special,
                             const Callback& callback) {
   Uuid cotable_id;
-  PgTableOid pgtable_id;
+  ColocationId colocation_id;
   if (VERIFY_RESULT(decoder->DecodeCotableId(&cotable_id))) {
     callback.SetCoTableId(cotable_id);
-  } else if (VERIFY_RESULT(decoder->DecodePgtableId(&pgtable_id))) {
-    callback.SetPgTableId(pgtable_id);
+  } else if (VERIFY_RESULT(decoder->DecodeColocationId(&colocation_id))) {
+    callback.SetColocationId(colocation_id);
   }
 
   switch (part_to_decode) {
@@ -549,7 +547,7 @@ namespace {
 // auto_decode_keys flag to PrimitiveValue::ToString.
 void AppendVectorToString(
     std::string* dest,
-    const std::vector<PrimitiveValue>& vec,
+    const std::vector<KeyEntryValue>& vec,
     AutoDecodeKeys auto_decode_keys) {
   bool need_comma = false;
   for (const auto& pv : vec) {
@@ -563,7 +561,7 @@ void AppendVectorToString(
 
 void AppendVectorToStringWithBrackets(
     std::string* dest,
-    const std::vector<PrimitiveValue>& vec,
+    const std::vector<KeyEntryValue>& vec,
     AutoDecodeKeys auto_decode_keys) {
   dest->push_back('[');
   AppendVectorToString(dest, vec, auto_decode_keys);
@@ -578,9 +576,9 @@ string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
     result += "CoTableId=";
     result += cotable_id_.ToString();
     result += ", ";
-  } else if (pgtable_id_ > 0) {
-    result += "PgTableId=";
-    result += std::to_string(pgtable_id_);
+  } else if (colocation_id_ != kColocationIdNotSet) {
+    result += "ColocationId=";
+    result += std::to_string(colocation_id_);
     result += ", ";
   }
 
@@ -598,7 +596,7 @@ string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
 
 bool DocKey::operator ==(const DocKey& other) const {
   return cotable_id_ == other.cotable_id_ &&
-         pgtable_id_ == other.pgtable_id_ &&
+         colocation_id_ == other.colocation_id_ &&
          HashedComponentsEqual(other) &&
          range_group_ == other.range_group_;
 }
@@ -609,11 +607,11 @@ bool DocKey::HashedComponentsEqual(const DocKey& other) const {
       (!hash_present_ || (hash_ == other.hash_ && hashed_group_ == other.hashed_group_));
 }
 
-void DocKey::AddRangeComponent(const PrimitiveValue& val) {
+void DocKey::AddRangeComponent(const KeyEntryValue& val) {
   range_group_.push_back(val);
 }
 
-void DocKey::SetRangeComponent(const PrimitiveValue& val, int idx) {
+void DocKey::SetRangeComponent(const KeyEntryValue& val, int idx) {
   DCHECK_LT(idx, range_group_.size());
   range_group_[idx] = val;
 }
@@ -622,7 +620,7 @@ int DocKey::CompareTo(const DocKey& other) const {
   int result = CompareUsingLessThan(cotable_id_, other.cotable_id_);
   if (result != 0) return result;
 
-  result = CompareUsingLessThan(pgtable_id_, other.pgtable_id_);
+  result = CompareUsingLessThan(colocation_id_, other.colocation_id_);
   if (result != 0) return result;
 
   result = CompareUsingLessThan(hash_present_, other.hash_present_);
@@ -649,12 +647,12 @@ DocKey DocKey::FromRedisKey(uint16_t hash, const string &key) {
 
 KeyBytes DocKey::EncodedFromRedisKey(uint16_t hash, const std::string &key) {
   KeyBytes result;
-  result.AppendValueType(ValueType::kUInt16Hash);
+  result.AppendKeyEntryType(KeyEntryType::kUInt16Hash);
   result.AppendUInt16(hash);
-  result.AppendValueType(ValueType::kString);
+  result.AppendKeyEntryType(KeyEntryType::kString);
   result.AppendString(key);
-  result.AppendValueType(ValueType::kGroupEnd);
-  result.AppendValueType(ValueType::kGroupEnd);
+  result.AppendKeyEntryType(KeyEntryType::kGroupEnd);
+  result.AppendKeyEntryType(KeyEntryType::kGroupEnd);
   DCHECK_EQ(result, FromRedisKey(hash, key).Encode());
   return result;
 }
@@ -677,10 +675,10 @@ std::string DocKey::DebugSliceToString(Slice slice) {
 bool DocKey::BelongsTo(const Schema& schema) const {
   if (!cotable_id_.IsNil()) {
     return cotable_id_ == schema.cotable_id();
-  } else if (pgtable_id_ > 0) {
-    return pgtable_id_ == schema.pgtable_id();
+  } else if (colocation_id_ != kColocationIdNotSet) {
+    return colocation_id_ == schema.colocation_id();
   }
-  return schema.cotable_id().IsNil() && schema.pgtable_id() == 0;
+  return schema.cotable_id().IsNil() && schema.colocation_id() == kColocationIdNotSet;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -709,7 +707,7 @@ class DecodeSubDocKeyCallback {
   }
 
   // We don't need subkeys in partial decoding.
-  PrimitiveValue* AddSubkey() const {
+  KeyEntryValue* AddSubkey() const {
     return nullptr;
   }
 
@@ -741,7 +739,7 @@ class SubDocKey::DecodeCallback {
     return key_->doc_key_.DecodeFrom(slice);
   }
 
-  PrimitiveValue* AddSubkey() const {
+  KeyEntryValue* AddSubkey() const {
     key_->subkeys_.emplace_back();
     return &key_->subkeys_.back();
   }
@@ -772,8 +770,8 @@ Result<bool> SubDocKey::DecodeSubkey(Slice* slice) {
 
 template<class Callback>
 Result<bool> SubDocKey::DecodeSubkey(Slice* slice, const Callback& callback) {
-  if (!slice->empty() && *slice->data() != ValueTypeAsChar::kHybridTime) {
-    RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, callback.AddSubkey()));
+  if (!slice->empty() && *slice->data() != KeyEntryTypeAsChar::kHybridTime) {
+    RETURN_NOT_OK(KeyEntryValue::DecodeKey(slice, callback.AddSubkey()));
     return true;
   }
   return false;
@@ -793,7 +791,7 @@ Status SubDocKey::DoDecode(rocksdb::Slice* slice,
   RETURN_NOT_OK(callback.DecodeDocKey(slice));
   for (;;) {
     if (allow_special && !slice->empty() &&
-        IsSpecialValueType(static_cast<ValueType>(slice->cdata()[0]))) {
+        IsSpecialKeyEntryType(static_cast<KeyEntryType>(slice->cdata()[0]))) {
       callback.doc_hybrid_time() = DocHybridTime::kInvalid;
       return Status::OK();
     }
@@ -818,11 +816,11 @@ Status SubDocKey::DoDecode(rocksdb::Slice* slice,
 
   // The reason the following is not handled as a Status is that the logic above (loop + emptiness
   // check) should guarantee this is the only possible case left.
-  DCHECK_EQ(ValueType::kHybridTime, DecodeValueType(*slice));
+  DCHECK_EQ(KeyEntryType::kHybridTime, DecodeKeyEntryType(*slice));
   slice->consume_byte();
 
   auto begin = slice->data();
-  RETURN_NOT_OK(ConsumeHybridTimeFromKey(slice, &callback.doc_hybrid_time()));
+  callback.doc_hybrid_time() = VERIFY_RESULT(DocHybridTime::DecodeFrom(slice));
   callback.DocHybridTimeSlice(Slice(begin, slice->data()));
 
   return Status::OK();
@@ -852,7 +850,7 @@ Status SubDocKey::DecodePrefixLengths(
     out->push_back(slice.data() - begin);
   }
   if (!out->empty()) {
-    if (begin[out->back()] != ValueTypeAsChar::kGroupEnd) {
+    if (begin[out->back()] != KeyEntryTypeAsChar::kGroupEnd) {
       return STATUS_FORMAT(Corruption, "Range keys group end expected at $0 in $1",
                            out->back(), Slice(begin, slice.end()).ToDebugHexString());
     }
@@ -877,10 +875,11 @@ Status SubDocKey::DecodeDocKeyAndSubKeyEnds(
     SCHECK_GE(slice.size(), id_size + 1, Corruption,
               Format("Cannot have exclusively ID in key $0", slice.ToDebugHexString()));
     // Identify table tombstone.
-    if (slice[0] == ValueTypeAsChar::kPgTableOid && slice[id_size] == ValueTypeAsChar::kGroupEnd) {
+    if (slice[0] == KeyEntryTypeAsChar::kColocationId &&
+        slice[id_size] == KeyEntryTypeAsChar::kGroupEnd) {
       SCHECK_GE(slice.size(), id_size + 2, Corruption,
                 Format("Space for kHybridTime expected in key $0", slice.ToDebugHexString()));
-      SCHECK_EQ(slice[id_size + 1], ValueTypeAsChar::kHybridTime, Corruption,
+      SCHECK_EQ(slice[id_size + 1], KeyEntryTypeAsChar::kHybridTime, Corruption,
                 Format("Hybrid time expected in key $0", slice.ToDebugHexString()));
       // Consume kGroupEnd without pushing to out because the empty key of a table tombstone
       // shouldn't count as an end.
@@ -1047,7 +1046,7 @@ std::string BestEffortDocDBKeyToStr(const rocksdb::Slice& slice) {
 
 KeyBytes SubDocKey::AdvanceOutOfSubDoc() const {
   KeyBytes subdoc_key_no_ts = EncodeWithoutHt();
-  subdoc_key_no_ts.AppendValueType(ValueType::kMaxByte);
+  subdoc_key_no_ts.AppendKeyEntryType(KeyEntryType::kMaxByte);
   return subdoc_key_no_ts;
 }
 
@@ -1075,12 +1074,12 @@ KeyBytes SubDocKey::AdvanceOutOfDocKeyPrefix() const {
   // Encoded: H\0x12\0x34$aa\x00\x00$bb\x00\x00!!
   // Result: H\0x12\0x34$aa\x00\x00$bb\x00\x00!\xff
   KeyBytes doc_key_encoded = doc_key_.Encode();
-  doc_key_encoded.RemoveValueTypeSuffix(ValueType::kGroupEnd);
-  doc_key_encoded.AppendValueType(ValueType::kMaxByte);
+  doc_key_encoded.RemoveKeyEntryTypeSuffix(KeyEntryType::kGroupEnd);
+  doc_key_encoded.AppendKeyEntryType(KeyEntryType::kMaxByte);
   return doc_key_encoded;
 }
 
-void SubDocKey::AppendSubKey(PrimitiveValue subkey) {
+void SubDocKey::AppendSubKey(KeyEntryValue subkey) {
   subkeys_.emplace_back(std::move(subkey));
 }
 
@@ -1089,7 +1088,7 @@ void SubDocKey::RemoveLastSubKey() {
   subkeys_.pop_back();
 }
 
-void SubDocKey::KeepPrefix(int num_sub_keys_to_keep) {
+void SubDocKey::KeepPrefix(size_t num_sub_keys_to_keep) {
   if (subkeys_.size() > num_sub_keys_to_keep) {
     subkeys_.resize(num_sub_keys_to_keep);
   }
@@ -1197,30 +1196,30 @@ DocKeyEncoderAfterTableIdStep DocKeyEncoder::CotableId(const Uuid& cotable_id) {
   if (!cotable_id.IsNil()) {
     std::string bytes;
     cotable_id.EncodeToComparable(&bytes);
-    out_->AppendValueType(ValueType::kTableId);
+    out_->AppendKeyEntryType(KeyEntryType::kTableId);
     out_->AppendRawBytes(bytes);
   }
   return DocKeyEncoderAfterTableIdStep(out_);
 }
 
-DocKeyEncoderAfterTableIdStep DocKeyEncoder::PgtableId(const PgTableOid pgtable_id) {
-  if (pgtable_id > 0) {
-    out_->AppendValueType(ValueType::kPgTableOid);
-    out_->AppendUInt32(pgtable_id);
+DocKeyEncoderAfterTableIdStep DocKeyEncoder::ColocationId(const yb::ColocationId colocation_id) {
+  if (colocation_id != kColocationIdNotSet) {
+    out_->AppendKeyEntryType(KeyEntryType::kColocationId);
+    out_->AppendUInt32(colocation_id);
   }
   return DocKeyEncoderAfterTableIdStep(out_);
 }
 
 DocKeyEncoderAfterTableIdStep DocKeyEncoder::Schema(const class Schema& schema) {
-  if (schema.pgtable_id() > 0) {
-    return PgtableId(schema.pgtable_id());
+  if (schema.colocation_id() != kColocationIdNotSet) {
+    return ColocationId(schema.colocation_id());
   } else {
     return CotableId(schema.cotable_id());
   }
 }
 
 Result<bool> DocKeyDecoder::DecodeCotableId(Uuid* uuid) {
-  if (!input_.TryConsumeByte(ValueTypeAsChar::kTableId)) {
+  if (!input_.TryConsumeByte(KeyEntryTypeAsChar::kTableId)) {
     return false;
   }
 
@@ -1237,25 +1236,25 @@ Result<bool> DocKeyDecoder::DecodeCotableId(Uuid* uuid) {
   return true;
 }
 
-Result<bool> DocKeyDecoder::DecodePgtableId(PgTableOid* pgtable_id) {
-  if (input_.empty() || input_[0] != ValueTypeAsChar::kPgTableOid) {
+Result<bool> DocKeyDecoder::DecodeColocationId(ColocationId* colocation_id) {
+  if (input_.empty() || input_[0] != KeyEntryTypeAsChar::kColocationId) {
     return false;
   }
 
   input_.consume_byte();
 
-  if (input_.size() < sizeof(PgTableOid)) {
+  if (input_.size() < sizeof(ColocationId)) {
     return STATUS_FORMAT(
-        Corruption, "Not enough bytes for pgtable id: $0", input_.ToDebugHexString());
+        Corruption, "Not enough bytes for a colocation id: $0", input_.ToDebugHexString());
   }
 
   static_assert(
-      sizeof(PgTableOid) == sizeof(uint32_t),
-      "It looks like the pgtable ID's size has changed -- need to update encoder/decoder.");
-  if (pgtable_id) {
-    *pgtable_id = BigEndian::Load32(input_.data());
+      sizeof(ColocationId) == sizeof(uint32_t),
+      "It looks like the colocation ID's size has changed -- need to update encoder/decoder.");
+  if (colocation_id) {
+    *colocation_id = BigEndian::Load32(input_.data());
   }
-  input_.remove_prefix(sizeof(PgTableOid));
+  input_.remove_prefix(sizeof(ColocationId));
 
   return true;
 }
@@ -1265,21 +1264,20 @@ Result<bool> DocKeyDecoder::DecodeHashCode(uint16_t* out, AllowSpecial allow_spe
     return false;
   }
 
-  auto first_value_type = static_cast<ValueType>(input_[0]);
+  auto first_value_type = static_cast<KeyEntryType>(input_[0]);
 
-  auto good_value_type = allow_special ? IsPrimitiveOrSpecialValueType(first_value_type)
-                                       : IsPrimitiveValueType(first_value_type);
-  if (first_value_type == ValueType::kGroupEnd) {
+  if (first_value_type == KeyEntryType::kGroupEnd) {
     return false;
   }
 
+  auto good_value_type = allow_special || !IsSpecialKeyEntryType(first_value_type);
   if (!good_value_type) {
     return STATUS_FORMAT(Corruption,
         "Expected first value type to be primitive or GroupEnd, got $0 in $1",
         first_value_type, input_.ToDebugHexString());
   }
 
-  if (input_.empty() || input_[0] != ValueTypeAsChar::kUInt16Hash) {
+  if (input_.empty() || input_[0] != KeyEntryTypeAsChar::kUInt16Hash) {
     return false;
   }
 
@@ -1300,22 +1298,22 @@ Result<bool> DocKeyDecoder::DecodeHashCode(uint16_t* out, AllowSpecial allow_spe
   return true;
 }
 
-Status DocKeyDecoder::DecodePrimitiveValue(AllowSpecial allow_special) {
-  return DecodePrimitiveValue(nullptr /* out */, allow_special);
+Status DocKeyDecoder::DecodeKeyEntryValue(AllowSpecial allow_special) {
+  return DecodeKeyEntryValue(nullptr /* out */, allow_special);
 }
 
-Status DocKeyDecoder::DecodePrimitiveValue(PrimitiveValue* out, AllowSpecial allow_special) {
+Status DocKeyDecoder::DecodeKeyEntryValue(KeyEntryValue* out, AllowSpecial allow_special) {
   if (allow_special &&
       !input_.empty() &&
-      (input_[0] == ValueTypeAsChar::kLowest || input_[0] == ValueTypeAsChar::kHighest)) {
+      (input_[0] == KeyEntryTypeAsChar::kLowest || input_[0] == KeyEntryTypeAsChar::kHighest)) {
     input_.consume_byte();
     return Status::OK();
   }
-  return PrimitiveValue::DecodeKey(&input_, out);
+  return KeyEntryValue::DecodeKey(&input_, out);
 }
 
 Status DocKeyDecoder::ConsumeGroupEnd() {
-  if (input_.empty() || input_[0] != ValueTypeAsChar::kGroupEnd) {
+  if (input_.empty() || input_[0] != KeyEntryTypeAsChar::kGroupEnd) {
     return STATUS_FORMAT(Corruption, "Group end expected but $0 found", input_.ToDebugHexString());
   }
   input_.consume_byte();
@@ -1323,7 +1321,7 @@ Status DocKeyDecoder::ConsumeGroupEnd() {
 }
 
 bool DocKeyDecoder::GroupEnded() const {
-  return input_.empty() || input_[0] == ValueTypeAsChar::kGroupEnd;
+  return input_.empty() || input_[0] == KeyEntryTypeAsChar::kGroupEnd;
 }
 
 Result<bool> DocKeyDecoder::HasPrimitiveValue() {
@@ -1332,10 +1330,10 @@ Result<bool> DocKeyDecoder::HasPrimitiveValue() {
 
 Status DocKeyDecoder::DecodeToRangeGroup() {
   RETURN_NOT_OK(DecodeCotableId());
-  RETURN_NOT_OK(DecodePgtableId());
+  RETURN_NOT_OK(DecodeColocationId());
   if (VERIFY_RESULT(DecodeHashCode())) {
     while (VERIFY_RESULT(HasPrimitiveValue())) {
-      RETURN_NOT_OK(DecodePrimitiveValue());
+      RETURN_NOT_OK(DecodeKeyEntryValue());
     }
   }
 
@@ -1350,14 +1348,14 @@ Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special) {
   auto prefix_size = VERIFY_RESULT(
       DocKey::EncodedSize(out->AsSlice(), DocKeyPart::kUpToHash, allow_special));
   auto& str = *out->mutable_data();
-  if (str.size() == prefix_size + 1 && str[prefix_size] == ValueTypeAsChar::kGroupEnd) {
+  if (str.size() == prefix_size + 1 && str[prefix_size] == KeyEntryTypeAsChar::kGroupEnd) {
     return false;
   }
   if (str.size() > prefix_size) {
-    str[prefix_size] = ValueTypeAsChar::kGroupEnd;
+    str[prefix_size] = KeyEntryTypeAsChar::kGroupEnd;
     str.Truncate(prefix_size + 1);
   } else {
-    str.PushBack(ValueTypeAsChar::kGroupEnd);
+    str.PushBack(KeyEntryTypeAsChar::kGroupEnd);
   }
   return true;
 }
@@ -1367,8 +1365,8 @@ Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rh
   DocKeyDecoder rhs_decoder(rhs);
   RETURN_NOT_OK(lhs_decoder.DecodeCotableId());
   RETURN_NOT_OK(rhs_decoder.DecodeCotableId());
-  RETURN_NOT_OK(lhs_decoder.DecodePgtableId());
-  RETURN_NOT_OK(rhs_decoder.DecodePgtableId());
+  RETURN_NOT_OK(lhs_decoder.DecodeColocationId());
+  RETURN_NOT_OK(rhs_decoder.DecodeColocationId());
 
   const bool hash_present = VERIFY_RESULT(lhs_decoder.DecodeHashCode(AllowSpecial::kTrue));
   if (hash_present != VERIFY_RESULT(rhs_decoder.DecodeHashCode(AllowSpecial::kTrue))) {
@@ -1392,12 +1390,8 @@ Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rh
       return false;
     }
 
-    if (PREDICT_FALSE(!IsPrimitiveOrSpecialValueType(static_cast<ValueType>(value_type)))) {
-      return false;
-    }
-
-    RETURN_NOT_OK(lhs_decoder.DecodePrimitiveValue(AllowSpecial::kTrue));
-    RETURN_NOT_OK(rhs_decoder.DecodePrimitiveValue(AllowSpecial::kTrue));
+    RETURN_NOT_OK(lhs_decoder.DecodeKeyEntryValue(AllowSpecial::kTrue));
+    RETURN_NOT_OK(rhs_decoder.DecodeKeyEntryValue(AllowSpecial::kTrue));
     consumed = lhs_decoder.ConsumedSizeFrom(lhs_start);
     if (consumed != rhs_decoder.ConsumedSizeFrom(rhs_start) ||
         !strings::memeq(lhs_start, rhs_start, consumed)) {
@@ -1415,9 +1409,10 @@ Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rh
 
 bool DocKeyBelongsTo(Slice doc_key, const Schema& schema) {
   bool has_table_id = !doc_key.empty() &&
-      (doc_key[0] == ValueTypeAsChar::kTableId || doc_key[0] == ValueTypeAsChar::kPgTableOid);
+       (doc_key[0] == KeyEntryTypeAsChar::kTableId ||
+        doc_key[0] == KeyEntryTypeAsChar::kColocationId);
 
-  if (schema.cotable_id().IsNil() && schema.pgtable_id() == 0) {
+  if (schema.cotable_id().IsNil() && schema.colocation_id() == kColocationIdNotSet) {
     return !has_table_id;
   }
 
@@ -1425,18 +1420,18 @@ bool DocKeyBelongsTo(Slice doc_key, const Schema& schema) {
     return false;
   }
 
-  if (doc_key[0] == ValueTypeAsChar::kTableId) {
+  if (doc_key[0] == KeyEntryTypeAsChar::kTableId) {
     doc_key.consume_byte();
 
     uint8_t bytes[kUuidSize];
     schema.cotable_id().EncodeToComparable(bytes);
     return doc_key.starts_with(Slice(bytes, kUuidSize));
   } else {
-    DCHECK(doc_key[0] == ValueTypeAsChar::kPgTableOid);
+    DCHECK(doc_key[0] == KeyEntryTypeAsChar::kColocationId);
     doc_key.consume_byte();
-    char buf[sizeof(PgTableOid)];
-    BigEndian::Store32(buf, schema.pgtable_id());
-    return doc_key.starts_with(Slice(buf, sizeof(PgTableOid)));
+    char buf[sizeof(ColocationId)];
+    BigEndian::Store32(buf, schema.colocation_id());
+    return doc_key.starts_with(Slice(buf, sizeof(ColocationId)));
   }
 }
 

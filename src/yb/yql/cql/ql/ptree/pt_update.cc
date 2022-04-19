@@ -17,7 +17,10 @@
 
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
@@ -161,8 +164,8 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   sem_state.ResetContextState();
 
   // Set clause can't have primary keys.
-  int num_keys = num_key_columns();
-  for (int idx = 0; idx < num_keys; idx++) {
+  auto num_keys = num_key_columns();
+  for (size_t idx = 0; idx < num_keys; idx++) {
     if (column_args_->at(idx).IsInitialized()) {
       return sem_context->Error(set_clause_, ErrorCode::INVALID_ARGUMENTS);
     }
@@ -271,11 +274,11 @@ ExplainPlanPB PTUpdateStmt::AnalysisResultToPB() {
   string key_conditions = "        Key Conditions: " +
       ConditionsToString<MCVector<ColumnOp>>(key_where_ops());
   update_plan->set_key_conditions(key_conditions);
-  update_plan->set_output_width(max({
+  update_plan->set_output_width(narrow_cast<int32_t>(max({
     update_plan->update_type().length(),
     update_plan->scan_type().length(),
     update_plan->key_conditions().length()
-  }));
+  })));
   return explain_plan;
 }
 

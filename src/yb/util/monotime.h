@@ -80,6 +80,14 @@ class MonoDelta {
   int64_t ToNanoseconds() const;
   std::chrono::steady_clock::duration ToSteadyDuration() const;
 
+  std::chrono::microseconds ToChronoMicroseconds() const {
+    return std::chrono::microseconds(ToMicroseconds());
+  }
+
+  std::chrono::milliseconds ToChronoMilliseconds() const {
+    return std::chrono::milliseconds(ToMilliseconds());
+  }
+
   MonoDelta& operator+=(const MonoDelta& rhs);
   MonoDelta& operator-=(const MonoDelta& rhs);
   MonoDelta& operator*=(int64_t mul);
@@ -267,6 +275,14 @@ class CoarseMonoClock {
   static time_point now();
   static TimePoint Now() { return now(); }
 };
+
+template <class Clock>
+typename Clock::duration ClockResolution() {
+  return typename Clock::duration(1);
+}
+
+template <>
+CoarseMonoClock::Duration ClockResolution<CoarseMonoClock>();
 
 typedef CoarseMonoClock::TimePoint CoarseTimePoint;
 typedef CoarseMonoClock::Duration CoarseDuration;

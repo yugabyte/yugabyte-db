@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import socket
-import time
+import subprocess
 
 import boto3
 from botocore.exceptions import ClientError
@@ -21,15 +21,14 @@ from six.moves.urllib.error import URLError
 from six.moves.urllib.request import urlopen
 from ybops.cloud.aws.command import (AwsAccessCommand, AwsDnsCommand, AwsInstanceCommand,
                                      AwsNetworkCommand, AwsQueryCommand)
-from ybops.cloud.aws.utils import (ROOT_VOLUME_LABEL, AwsBootstrapClient, YbVpcComponents,
+from ybops.cloud.aws.utils import (AwsBootstrapClient, YbVpcComponents,
                                    change_instance_type, create_instance, delete_vpc, get_client,
                                    get_clients, get_device_names, get_spot_pricing,
                                    get_vpc_for_subnet, get_zones, has_ephemerals, modify_tags,
-                                   query_vpc, update_disk)
+                                   query_vpc, update_disk, get_image_arch, get_root_label)
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.common.exceptions import YBOpsRuntimeError
-from ybops.utils import (DEFAULT_SSH_PORT, DEFAULT_SSH_USER, format_rsa_key, get_datafile_path,
-                         is_valid_ip_address, remote_exec_command, scp_to_tmp, validated_key_file)
+from ybops.utils import (format_rsa_key, is_valid_ip_address, validated_key_file)
 
 
 class AwsCloud(AbstractCloud):
@@ -42,6 +41,8 @@ class AwsCloud(AbstractCloud):
 
     def __init__(self):
         super(AwsCloud, self).__init__("aws")
+        self._wait_for_startup_script_command = \
+            "until test -e /var/lib/cloud/instance/boot-finished ; do sleep 1 ; done"
 
     def add_subcommands(self):
         """Override to setup the cloud-specific instances of the subcommands.
@@ -67,6 +68,9 @@ class AwsCloud(AbstractCloud):
         for r in regions:
             output[r] = self.metadata["regions"][r]["image"]
         return output
+
+    def get_image_arch(self, args):
+        return get_image_arch(args.region, args.machine_image)
 
     def get_spot_pricing(self, args):
         return get_spot_pricing(args.region, args.zone, args.instance_type)
@@ -98,12 +102,36 @@ class AwsCloud(AbstractCloud):
                 result[region][vpc.id]["zones"] = subnets
         return result
 
+    def _generate_fingerprints(self, key_file_path):
+        """
+        Method to generate all possible fingerprints of the key_file to match with KeyPair in AWS.
+        https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
+        """
+        try:
+            md5 = subprocess.check_output(
+                "ssh-keygen -ef {} -m PEM | openssl rsa -RSAPublicKey_in -outform DER "
+                "| openssl md5 -c".format(key_file_path), shell=True
+            ).decode('utf-8').strip()
+            sha1 = subprocess.check_output(
+                "openssl pkcs8 -in {} -inform PEM -outform DER -topk8 -nocrypt "
+                "| openssl sha1 -c".format(key_file_path), shell=True
+            ).decode('utf-8').strip()
+            sha256 = subprocess.check_output(
+                "ssh-keygen -ef {} -m PEM | openssl rsa -RSAPublicKey_in -outform DER "
+                "| openssl sha256 -c".format(key_file_path), shell=True
+            ).decode('utf-8').strip()
+        except subprocess.CalledProcessError as e:
+            raise YBOpsRuntimeError("Error generating fingerprints for {}. Shell Output {}"
+                                    .format(key_file_path, e.output))
+        return [md5, sha1, sha256]
+
     def list_key_pair(self, args):
         key_pair_name = args.key_pair_name if args.key_pair_name else '*'
         filters = [{'Name': 'key-name', 'Values': [key_pair_name]}]
         result = {}
         for region, client in self._get_clients(args.region).items():
-            result[region] = [keyInfo.name for keyInfo in client.key_pairs.filter(Filters=filters)]
+            result[region] = [(keyInfo.name, keyInfo.key_fingerprint)
+                              for keyInfo in client.key_pairs.filter(Filters=filters)]
         return result
 
     def delete_key_pair(self, args):
@@ -111,19 +139,17 @@ class AwsCloud(AbstractCloud):
             client.KeyPair(args.key_pair_name).delete()
 
     def add_key_pair(self, args):
+        """
+        Method to add key pair to AWS EC2.
+        True if new key pair with given name is added to AWS by Platform.
+        False if key pair with same name already exists and fingerprint is verified
+        Raises error if key is invalid, fingerprint generation fails, or fingerprint mismatches
+        """
         key_pair_name = args.key_pair_name
         # If we were provided with a private key file, we use that to generate the public
         # key using RSA. If not we will use the public key file (assuming the private key exists).
         key_file = args.private_key_file if args.private_key_file else args.public_key_file
         key_file_path = os.path.join(args.key_file_path, key_file)
-
-        # Make sure the key pair name doesn't exists already.
-        # TODO: may be add extra validation to see if the key exists in specific region
-        # if it doesn't exists in a region add them?. But only after validating the existing
-        # is the same key in other regions.
-        result = list(self.list_key_pair(args).values())[0]
-        if len(result) > 0:
-            raise YBOpsRuntimeError("KeyPair already exists {}".format(key_pair_name))
 
         if not os.path.exists(key_file_path):
             raise YBOpsRuntimeError("Key: {} file not found".format(key_file_path))
@@ -131,13 +157,24 @@ class AwsCloud(AbstractCloud):
         # This call would throw a exception if the file is not valid key file.
         rsa_key = validated_key_file(key_file_path)
 
+        # Validate the key pair if name already exists in AWS
+        result = list(self.list_key_pair(args).values())[0]
+        if len(result) > 0:
+            # Try to validate the keypair with KeyPair fingerprint in AWS
+            fingerprint = result[0][1]
+            possible_fingerprints = self._generate_fingerprints(key_file_path)
+            if fingerprint in possible_fingerprints:
+                return False
+            raise YBOpsRuntimeError("KeyPair {} already exists but fingerprint is invalid."
+                                    .format(key_pair_name))
+
         result = {}
         for region, client in self._get_clients(args.region).items():
             result[region] = client.import_key_pair(
                 KeyName=key_pair_name,
                 PublicKeyMaterial=format_rsa_key(rsa_key, public_key=True)
             )
-        return result
+        return True
 
     def _subset_region_data(self, per_region_meta):
         metadata_subset = {k: v for k, v in self.metadata["regions"].items()
@@ -287,7 +324,7 @@ class AwsCloud(AbstractCloud):
         return self.get_host_info_specific_args(region, search_pattern, get_all, private_ip)
 
     def get_host_info_specific_args(self, region, search_pattern, get_all=False,
-                                    private_ip=None, filters=None):
+                                    private_ip=None, filters=None, node_uuid=None):
         if not filters:
             filters = [
                 {
@@ -307,7 +344,11 @@ class AwsCloud(AbstractCloud):
                 "Name": "tag:Name",
                 "Values": [search_pattern]
             })
-
+        if node_uuid:
+            filters.append({
+                "Name": "tag:node-uuid",
+                "Values": [node_uuid]
+            })
         instances = []
         for _, client in self._get_clients(region=region).items():
             instances.extend(list(client.instances.filter(Filters=filters)))
@@ -330,9 +371,6 @@ class AwsCloud(AbstractCloud):
                 node_uuid_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "node-uuid"]
                 universe_uuid_tags = [t["Value"] for t in data["Tags"]
                                       if t["Key"] == "universe-uuid"]
-
-            disks = data.get("BlockDeviceMappings")
-            root_vol = next(disk for disk in disks if disk.get("DeviceName") == ROOT_VOLUME_LABEL)
 
             primary_private_ip = None
             secondary_private_ip = None
@@ -366,18 +404,24 @@ class AwsCloud(AbstractCloud):
                 node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 vpc=data["VpcId"],
-                root_volume=root_vol["Ebs"]["VolumeId"]
+                ami=data.get("ImageId", None)
             )
+
+            disks = data.get("BlockDeviceMappings")
+            root_vol = next(d for d in disks if
+                            d.get("DeviceName") == get_root_label(result["region"], result["ami"]))
+            result["root_volume"] = root_vol["Ebs"]["VolumeId"]
+
             if not get_all:
                 return result
             results.append(result)
         return results
 
     def get_device_names(self, args):
-        if has_ephemerals(args.instance_type):
+        if has_ephemerals(args.instance_type, args.region):
             return []
         else:
-            return get_device_names(args.instance_type, args.num_volumes)
+            return get_device_names(args.instance_type, args.num_volumes, args.region)
 
     def get_subnet_cidr(self, args, subnet_id):
         ec2 = boto3.resource('ec2', args.region)
@@ -395,23 +439,28 @@ class AwsCloud(AbstractCloud):
         create_instance(args)
 
     def delete_instance(self, region, instance_id, has_elastic_ip=False):
-        logging.info("Deleting AWS instance {} in region {}".format(instance_id, region))
+        logging.info("[app] Deleting AWS instance {} in region {}".format(
+            instance_id, region))
         ec2 = boto3.resource('ec2', region)
         instance = ec2.Instance(instance_id)
         if has_elastic_ip:
             client = boto3.client('ec2', region)
-            elastic_ip_list = client.describe_addresses(
-                Filters=[{'Name': 'public-ip', 'Values': [instance.public_ip_address]}]
-            )["Addresses"]
-            for elastic_ip in elastic_ip_list:
-                client.disassociate_address(
-                    AssociationId=elastic_ip["AssociationId"]
-                )
-                client.release_address(
-                    AllocationId=elastic_ip["AllocationId"]
-                )
-            logging.info(
-                "Deleted elastic ip at {} from VM {}".format(elastic_ip["PublicIp"], instance_id))
+            for network_interfaces in instance.network_interfaces_attribute:
+                if 'Association' not in network_interfaces:
+                    continue
+                public_ip_address = network_interfaces['Association'].get('PublicIp')
+                if public_ip_address:
+                    elastic_ip_list = client.describe_addresses(
+                        Filters=[{'Name': 'public-ip', 'Values': [public_ip_address]}]
+                    )["Addresses"]
+                    for elastic_ip in elastic_ip_list:
+                        client.disassociate_address(
+                            AssociationId=elastic_ip["AssociationId"]
+                        )
+                        client.release_address(
+                            AllocationId=elastic_ip["AllocationId"]
+                        )
+                logging.info("[app] Deleted elastic ip {}".format(public_ip_address))
         instance.terminate()
         instance.wait_until_terminated()
 
@@ -436,17 +485,33 @@ class AwsCloud(AbstractCloud):
         snapshot = None
 
         try:
+            resource_tags = []
+            tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+            for tag in tags:
+                resource_tags.append({
+                    'Key': tag,
+                    'Value': tags[tag]
+                })
+            snapshot_tag_specs = [{
+                'ResourceType': 'snapshot',
+                'Tags': resource_tags
+            }]
+            volume_tag_specs = [{
+                'ResourceType': 'volume',
+                'Tags': resource_tags
+            }]
             ec2 = boto3.resource('ec2', args.region)
             volume = ec2.Volume(volume_id)
             logging.info("==> Going to create a snapshot from {}".format(volume_id))
-            snapshot = volume.create_snapshot()
+            snapshot = volume.create_snapshot(TagSpecifications=snapshot_tag_specs)
             snapshot.wait_until_completed()
             logging.info("==> Created a snapshot {}".format(snapshot.id))
 
             for _ in range(num_disks):
                 vol = ec2.create_volume(
                     AvailabilityZone=args.zone,
-                    SnapshotId=snapshot.id
+                    SnapshotId=snapshot.id,
+                    TagSpecifications=volume_tag_specs
                 )
                 output.append(vol.id)
         finally:
@@ -470,26 +535,93 @@ class AwsCloud(AbstractCloud):
     def change_instance_type(self, args, newInstanceType):
         change_instance_type(args["region"], args["id"], newInstanceType)
 
-    def stop_instance(self, args):
-        ec2 = boto3.resource('ec2', args["region"])
+    def stop_instance(self, host_info):
+        ec2 = boto3.resource('ec2', host_info["region"])
         try:
-            instance = ec2.Instance(id=args["id"])
+            instance = ec2.Instance(id=host_info["id"])
             instance.stop()
             instance.wait_until_stopped()
         except ClientError as e:
             logging.error(e)
 
-    def start_instance(self, args, ssh_port):
-        ec2 = boto3.resource('ec2', args["region"])
+    def start_instance(self, host_info, ssh_ports):
+        ec2 = boto3.resource('ec2', host_info["region"])
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            instance = ec2.Instance(id=args["id"])
+            instance = ec2.Instance(id=host_info["id"])
             instance.start()
             instance.wait_until_running()
             # The OS boot up may take some time,
             # so retry until the instance allows SSH connection.
-            self.wait_for_ssh_port(args["private_ip"], args["id"], ssh_port)
+            self.wait_for_ssh_ports(host_info["private_ip"], host_info["id"], ssh_ports)
         except ClientError as e:
             logging.error(e)
         finally:
             sock.close()
+
+    def get_console_output(self, args):
+        instance = self.get_host_info(args)
+
+        if not instance:
+            logging.warning('Could not find instance {}, no console output available'.format(
+                args.search_pattern))
+            return ''
+
+        try:
+            ec2 = boto3.client('ec2', region_name=instance['region'])
+            return ec2.get_console_output(InstanceId=instance['id'], Latest=True).get('Output', '')
+        except ClientError:
+            logging.exception('Failed to get console output from {}'.format(args.search_pattern))
+
+        return ''
+
+    def delete_volumes(self, args):
+        tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        if not tags:
+            raise YBOpsRuntimeError('Tags must be specified')
+        universe_uuid = tags.get('universe-uuid')
+        if universe_uuid is None:
+            raise YBOpsRuntimeError('Universe UUID must be specified')
+        node_uuid = tags.get('node-uuid')
+        if node_uuid is None:
+            raise YBOpsRuntimeError('Node UUID must be specified')
+        filters = []
+        tagPairs = {}
+        tagPairs['universe-uuid'] = universe_uuid
+        tagPairs['node-uuid'] = node_uuid
+        for tag in tagPairs:
+            value = tagPairs[tag]
+            filters.append({
+                'Name': "tag:{}".format(tag),
+                'Values': [value]
+            })
+        volume_ids = []
+        describe_volumes_args = {
+            'Filters': filters
+        }
+        client = boto3.client('ec2', args.region)
+        while True:
+            response = client.describe_volumes(**describe_volumes_args)
+            for volume in response.get('Volumes', []):
+                status = volume['State']
+                volume_id = volume['VolumeId']
+                present_tags = volume['Tags']
+                if status.lower() != 'available':
+                    continue
+                tag_match_count = 0
+                # Extra caution to make sure tags are present.
+                for tag in tagPairs:
+                    value = tagPairs[tag]
+                    for present_tag in present_tags:
+                        if present_tag['Key'] == tag and present_tag['Value'] == value:
+                            tag_match_count += 1
+                            break
+                if tag_match_count == len(tagPairs):
+                    volume_ids.append(volume_id)
+            if 'NextToken' in response:
+                describe_volumes_args['NextToken'] = response['NextToken']
+            else:
+                break
+        for volume_id in volume_ids:
+            logging.info('[app] Deleting volume {}'.format(volume_id))
+            client.delete_volume(VolumeId=volume_id)

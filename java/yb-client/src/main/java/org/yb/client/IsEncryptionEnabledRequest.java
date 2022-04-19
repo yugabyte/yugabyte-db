@@ -17,7 +17,8 @@ import com.google.protobuf.Message;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.util.Pair;
 
-import org.yb.master.Master;
+import org.yb.master.MasterEncryptionOuterClass;
+import org.yb.master.MasterTypes;
 
 public class IsEncryptionEnabledRequest extends YRpc<IsEncryptionEnabledResponse> {
 
@@ -28,8 +29,8 @@ public class IsEncryptionEnabledRequest extends YRpc<IsEncryptionEnabledResponse
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final Master.IsEncryptionEnabledRequestPB.Builder builder =
-            Master.IsEncryptionEnabledRequestPB.newBuilder();
+    final MasterEncryptionOuterClass.IsEncryptionEnabledRequestPB.Builder builder =
+            MasterEncryptionOuterClass.IsEncryptionEnabledRequestPB.newBuilder();
     return toChannelBuffer(header, builder.build());
   }
 
@@ -44,10 +45,10 @@ public class IsEncryptionEnabledRequest extends YRpc<IsEncryptionEnabledResponse
   @Override
   Pair<IsEncryptionEnabledResponse, Object> deserialize(
           CallResponse callResponse, String uuid) throws Exception {
-    final Master.IsEncryptionEnabledResponsePB.Builder respBuilder =
-            Master.IsEncryptionEnabledResponsePB.newBuilder();
+    final MasterEncryptionOuterClass.IsEncryptionEnabledResponsePB.Builder respBuilder =
+            MasterEncryptionOuterClass.IsEncryptionEnabledResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
-    Master.MasterErrorPB serverError = respBuilder.hasError() ? respBuilder.getError() : null;
+    MasterTypes.MasterErrorPB serverError = respBuilder.hasError() ? respBuilder.getError() : null;
     IsEncryptionEnabledResponse response = new IsEncryptionEnabledResponse(
             deadlineTracker.getElapsedMillis(), uuid, respBuilder.getEncryptionEnabled(),
             respBuilder.getKeyId(), serverError);

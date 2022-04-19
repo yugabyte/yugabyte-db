@@ -27,11 +27,13 @@ namespace yb {
 namespace tools {
 
 Status RunBackupCommand(
-    const HostPort& pg_hp, const std::string& master_addresses, const std::string& tmp_dir,
+    const HostPort& pg_hp, const std::string& master_addresses,
+    const std::string& tserver_http_addresses, const std::string& tmp_dir,
     const std::vector<std::string>& extra_args) {
   std::vector <std::string> args = {
       "python3", GetToolPath("../../../managed/devops/bin", "yb_backup.py"),
       "--masters", master_addresses,
+      "--ts_web_hosts_ports", tserver_http_addresses,
       "--remote_yb_admin_binary", GetToolPath("yb-admin"),
       "--remote_ysql_dump_binary", GetPgToolPath("ysql_dump"),
       "--remote_ysql_shell_binary", GetPgToolPath("ysqlsh"),

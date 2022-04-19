@@ -3,6 +3,8 @@ package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
+import static com.yugabyte.yw.models.helpers.CommonUtils.encryptProviderConfig;
+import static com.yugabyte.yw.models.helpers.CommonUtils.decryptProviderConfig;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -12,14 +14,17 @@ import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import com.yugabyte.yw.common.PlatformServiceException;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +59,11 @@ public class Provider extends Model {
   @Constraints.Required()
   public String code;
 
+  @JsonIgnore
+  public CloudType getCloudCode() {
+    return CloudType.valueOf(this.code);
+  }
+
   @Column(nullable = false)
   @ApiModelProperty(value = "Provider name", accessMode = READ_WRITE)
   @Constraints.Required()
@@ -67,7 +77,6 @@ public class Provider extends Model {
   @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   public UUID customerUUID;
 
-  public static final Set<String> HostedZoneEnabledProviders = ImmutableSet.of("aws", "azu");
   public static final Set<Common.CloudType> InstanceTagsEnabledProviders =
       ImmutableSet.of(Common.CloudType.aws, Common.CloudType.azu, Common.CloudType.gcp);
   public static final Set<Common.CloudType> InstanceTagsModificationEnabledProviders =
@@ -145,13 +154,39 @@ public class Provider extends Model {
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public String destVpcId = null;
 
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public boolean overrideKeyValidate = false;
+
+  // Whether or not to set up NTP
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public boolean setUpChrony = false;
+
+  // NTP servers to connect to
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public List<String> ntpServers = new ArrayList<>();
+
+  // Hosted Zone for the deployment
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String hostedZoneId = null;
+
   // End Transient Properties
 
+  // Set and encrypt config
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
     Map<String, String> newConfigMap = this.getUnmaskedConfig();
     newConfigMap.putAll(configMap);
-    this.config = newConfigMap;
+    if (this.customerUUID != null) {
+      this.config = encryptProviderConfig(newConfigMap, this.customerUUID, this.code);
+    } else {
+      // When a Provider object is not being persisted, it may not have a customer ID. In this
+      // case, we can't encrypt.
+      this.config = newConfigMap;
+    }
   }
 
   @JsonProperty("config")
@@ -159,13 +194,23 @@ public class Provider extends Model {
     return maskConfigNew(this.getUnmaskedConfig());
   }
 
+  // Get the decrypted config
   @JsonIgnore
   public Map<String, String> getUnmaskedConfig() {
     if (this.config == null) {
       return new HashMap<>();
-    } else {
+    } else if (!this.config.containsKey("encrypted")) {
+      // When a Provider object is not being persisted, it may not be encrypted.
       return new HashMap<>(this.config);
+    } else {
+      return decryptProviderConfig(this.config, this.customerUUID, this.code);
     }
+  }
+
+  // Get the raw config
+  @JsonIgnore
+  public Map<String, String> getConfig() {
+    return this.config;
   }
 
   @JsonIgnore
@@ -249,6 +294,24 @@ public class Provider extends Model {
    */
   public static List<Provider> getAll(UUID customerUUID) {
     return find.query().where().eq("customer_uuid", customerUUID).findList();
+  }
+
+  /**
+   * Get a list of providers filtered by name and code (if not null) for a given customer uuid
+   *
+   * @param customerUUID
+   * @param name
+   * @return
+   */
+  public static List<Provider> getAll(UUID customerUUID, String name, Common.CloudType code) {
+    ExpressionList<Provider> query = find.query().where().eq("customer_uuid", customerUUID);
+    if (name != null) {
+      query.eq("name", name);
+    }
+    if (code != null) {
+      query.eq("code", code.toString());
+    }
+    return query.findList();
   }
 
   /**

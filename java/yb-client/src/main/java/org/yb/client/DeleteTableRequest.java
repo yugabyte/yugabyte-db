@@ -33,7 +33,8 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 import org.jboss.netty.buffer.ChannelBuffer;
 
@@ -57,12 +58,13 @@ class DeleteTableRequest extends YRpc<DeleteTableResponse> {
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final Master.DeleteTableRequestPB.Builder builder = Master.DeleteTableRequestPB.newBuilder();
-    Master.TableIdentifierPB.Builder tbuilder = Master.TableIdentifierPB.newBuilder();
-    Master.TableIdentifierPB tableID;
+    final MasterDdlOuterClass.DeleteTableRequestPB.Builder builder =
+        MasterDdlOuterClass.DeleteTableRequestPB.newBuilder();
+    MasterTypes.TableIdentifierPB.Builder tbuilder = MasterTypes.TableIdentifierPB.newBuilder();
+    MasterTypes.TableIdentifierPB tableID;
     tbuilder.setTableName(name);
     tableID = tbuilder
-              .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName(this.keyspace))
+              .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName(this.keyspace))
               .build();
     builder.setTable(tableID);
     return toChannelBuffer(header, builder.build());
@@ -79,7 +81,8 @@ class DeleteTableRequest extends YRpc<DeleteTableResponse> {
   @Override
   Pair<DeleteTableResponse, Object> deserialize(CallResponse callResponse,
                                                 String tsUUID) throws Exception {
-    final Master.DeleteTableResponsePB.Builder builder = Master.DeleteTableResponsePB.newBuilder();
+    final MasterDdlOuterClass.DeleteTableResponsePB.Builder builder =
+        MasterDdlOuterClass.DeleteTableResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), builder);
     DeleteTableResponse response =
         new DeleteTableResponse(deadlineTracker.getElapsedMillis(), tsUUID);

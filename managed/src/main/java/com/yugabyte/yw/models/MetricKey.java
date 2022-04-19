@@ -2,8 +2,9 @@
 
 package com.yugabyte.yw.models;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
@@ -13,12 +14,13 @@ import lombok.Value;
 @EqualsAndHashCode
 public class MetricKey {
   MetricSourceKey sourceKey;
-  String sourceLabels;
+  Map<String, String> sourceLabels;
 
   public static class MetricKeyBuilder {
     private UUID customerUuid;
     private String name;
     private UUID sourceUuid;
+    Map<String, String> sourceLabels = new HashMap<>();
 
     public MetricKeyBuilder customerUuid(UUID customerUuid) {
       this.customerUuid = customerUuid;
@@ -32,6 +34,16 @@ public class MetricKey {
 
     public MetricKeyBuilder targetUuid(UUID targetUuid) {
       this.sourceUuid = targetUuid;
+      return this;
+    }
+
+    public MetricKeyBuilder sourceLabels(Map<String, String> sourceLabels) {
+      this.sourceLabels = sourceLabels;
+      return this;
+    }
+
+    public MetricKeyBuilder sourceLabel(String name, String value) {
+      this.sourceLabels.put(name, value);
       return this;
     }
 
@@ -52,13 +64,7 @@ public class MetricKey {
   public static MetricKey from(Metric metric) {
     return MetricKey.builder()
         .sourceKey(MetricSourceKey.from(metric))
-        .sourceLabels(
-            Metric.getSourceLabelsStr(
-                metric
-                    .getLabels()
-                    .stream()
-                    .filter(MetricLabel::isSourceLabel)
-                    .collect(Collectors.toList())))
+        .sourceLabels(metric.getKeyLabelValues())
         .build();
   }
 }

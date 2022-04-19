@@ -18,9 +18,10 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/roles_permissions.h"
 
-#include "yb/master/master_fwd.h"
+#include "yb/master/master_dcl.fwd.h"
 
 #include "yb/rpc/io_thread_pool.h"
 
@@ -78,11 +79,6 @@ struct RoleAuthInfo {
 
 using RolesPermissionsMap = std::unordered_map<RoleName, RolePermissions>;
 using RolesAuthInfoMap = std::unordered_map<RoleName, RoleAuthInfo>;
-
-enum class CacheCheckMode {
-  NO_RETRY,
-  RETRY,
-};
 
 class PermissionsCache {
  public:

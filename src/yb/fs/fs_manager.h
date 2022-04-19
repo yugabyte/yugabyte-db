@@ -44,6 +44,7 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/env.h"
+#include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -120,6 +121,7 @@ class FsManager {
   static const char *kWalFileNamePrefix;
   static const char *kWalsRecoveryDirSuffix;
   static const char *kRocksDBDirName;
+  static const char *kDataDirName;
 
   // Only for unit tests.
   FsManager(Env* env, const std::string& root_path, const std::string& server_type);
@@ -131,7 +133,7 @@ class FsManager {
   // If the file system has not been initialized, returns NotFound.
   // In that case, CreateInitialFileSystemLayout may be used to initialize
   // the on-disk structures.
-  CHECKED_STATUS Open();
+  CHECKED_STATUS CheckAndOpenFileSystemRoots();
 
   //
   // Returns an error if the file system is already initialized.
@@ -230,6 +232,13 @@ class FsManager {
   // Initializes, sanitizes, and canonicalizes the filesystem roots.
   CHECKED_STATUS Init();
 
+  // Creates filesystem roots, writing new on-disk instances using 'metadata'.
+  CHECKED_STATUS CreateFileSystemRoots(bool create_metadata_dir,
+                                       const InstanceMetadataPB& metadata,
+                                       bool create_lock = false);
+
+  std::set<std::string> GetAncillaryDirs(bool add_metadata_dirs) const;
+
   // Create a new InstanceMetadataPB.
   void CreateInstanceMetadata(InstanceMetadataPB* metadata);
 
@@ -245,6 +254,11 @@ class FsManager {
   // accordingly.
   CHECKED_STATUS IsDirectoryEmpty(const std::string& path, bool* is_empty);
 
+  // Checks write to temporary file on root.
+  CHECKED_STATUS CheckWrite(const std::string& path);
+
+  void CreateAndSetFaultDriveMetric(const std::string& path);
+
   // ==========================================================================
   //  file-system helpers
   // ==========================================================================
@@ -252,16 +266,6 @@ class FsManager {
                           const std::string& prefix,
                           const std::string& path,
                           const std::vector<std::string>& objects);
-
-  static const char *kDataDirName;
-  static const char *kRaftGroupMetadataDirName;
-  static const char *kCorruptedSuffix;
-  static const char *kInstanceMetadataFileName;
-  static const char *kFsLockFileName;
-  static const char *kInstanceMetadataMagicNumber;
-  static const char *kTabletSuperBlockMagicNumber;
-  static const char *kConsensusMetadataDirName;
-  static const char *kLogsDirName;
 
   Env *env_;
 
@@ -287,6 +291,8 @@ class FsManager {
   std::string canonicalized_metadata_fs_root_;
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;
+
+  std::map<std::string, scoped_refptr<Counter>> counters_;
 
   std::unique_ptr<InstanceMetadataPB> metadata_;
 

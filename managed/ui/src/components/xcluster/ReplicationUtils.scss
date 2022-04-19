@@ -5,6 +5,9 @@
   i {
     margin-right: 5px;
   }
+  &.updating{
+    color: #1A44A5;
+  }
   &.success {
     color: green;
   }
@@ -12,7 +15,15 @@
     color: #f00000;
   }
   &.paused {
-    color: #ff9933;
+    color: $YB_WARNING_COLOR;
+  }
+}
+.replication-lag-value{
+  &.above-threshold {
+    color: #f00000;
+  }
+  &.below-threshold {
+    color: green;
   }
 }
 

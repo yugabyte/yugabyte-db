@@ -41,28 +41,18 @@ namespace docdb {
 class SubDocument : public PrimitiveValue {
  public:
 
-  explicit SubDocument(ValueType value_type);
-  SubDocument() : SubDocument(ValueType::kObject) {}
+  explicit SubDocument(ValueEntryType value_type);
+  SubDocument();
 
   ~SubDocument();
 
-  explicit SubDocument(ListExtendOrder extend_order) : SubDocument(ValueType::kArray) {
-    extend_order_ = extend_order;
-  }
+  explicit SubDocument(ListExtendOrder extend_order);
 
   // Copy constructor. This is potentially very expensive!
   SubDocument(const SubDocument& other);
 
   explicit SubDocument(const std::vector<PrimitiveValue> &elements,
-                       ListExtendOrder extend_order = ListExtendOrder::APPEND) {
-    type_ = ValueType::kArray;
-    extend_order_ = extend_order;
-    complex_data_structure_ = new ArrayContainer();
-    array_container().reserve(elements.size());
-    for (auto& elt : elements) {
-      array_container().emplace_back(elt);
-    }
-  }
+                       ListExtendOrder extend_order = ListExtendOrder::APPEND);
 
   SubDocument& operator =(const SubDocument& other) {
     this->~SubDocument();
@@ -74,18 +64,16 @@ class SubDocument : public PrimitiveValue {
   // for tests.
   template<typename T>
   SubDocument(std::initializer_list<std::initializer_list<T>> elements) {
-    type_ = ValueType::kObject;
     complex_data_structure_ = nullptr;
-    EnsureContainerAllocated();
+    EnsureObjectAllocated();
     for (const auto& key_value : elements) {
       CHECK_EQ(2, key_value.size());
       auto iter = key_value.begin();
-      const auto& key = *iter;
+      KeyEntryValue key(KeyEntryValue::Create(*iter));
       ++iter;
       const auto& value = *iter;
-      CHECK_EQ(0, object_container().count(PrimitiveValue(key)))
-          << "Duplicate key: " << PrimitiveValue(key).ToString();
-      object_container().emplace(PrimitiveValue(key), SubDocument(PrimitiveValue(value)));
+      CHECK_EQ(0, object_container().count(key)) << "Duplicate key: " << key.ToString();
+      object_container().emplace(key, SubDocument(PrimitiveValue::Create(value)));
     }
   }
 
@@ -107,16 +95,16 @@ class SubDocument : public PrimitiveValue {
   bool operator!=(const SubDocument& other) const { return !(*this == other); }
 
   // "using" did not let us use the alias when instantiating these classes, so we're using typedef.
-  typedef std::map<PrimitiveValue, SubDocument> ObjectContainer;
+  typedef std::map<KeyEntryValue, SubDocument> ObjectContainer;
   typedef std::vector<SubDocument> ArrayContainer;
 
   ObjectContainer& object_container() const {
-    assert(has_valid_object_container());
+    DCHECK(has_valid_object_container());
     return *reinterpret_cast<ObjectContainer*>(complex_data_structure_);
   }
 
   ArrayContainer& array_container() const {
-    assert(has_valid_array_container());
+    DCHECK(has_valid_array_container());
     return *reinterpret_cast<ArrayContainer*>(complex_data_structure_);
   }
 
@@ -138,30 +126,30 @@ class SubDocument : public PrimitiveValue {
 
   // @return The child subdocument of an object at the given key, or nullptr if this subkey does not
   //         exist or this subdocument is not an object.
-  SubDocument* GetChild(const PrimitiveValue& key);
+  SubDocument* GetChild(const KeyEntryValue& key);
 
   // Returns the number of children for this subdocument.
   CHECKED_STATUS NumChildren(size_t *num_children);
 
-  const SubDocument* GetChild(const PrimitiveValue& key) const;
+  const SubDocument* GetChild(const KeyEntryValue& key) const;
 
   // Returns the child of this object at the given subkey, or default-constructs one if it does not
   // exist. Fatals if this is not an object. Never returns nullptr.
   // @return A pair of the child at the requested subkey, and a boolean flag indicating whether a
   //         new child subdocument has been added.
-  std::pair<SubDocument*, bool> GetOrAddChild(const PrimitiveValue& key);
+  std::pair<SubDocument*, bool> GetOrAddChild(const KeyEntryValue& key);
 
   // Add a list element child of the given value.
   void AddListElement(SubDocument&& value);
 
   // Set the child subdocument of an object to the given value.
-  void SetChild(const PrimitiveValue& key, SubDocument&& value);
+  void SetChild(const KeyEntryValue& key, SubDocument&& value);
 
-  void SetChildPrimitive(const PrimitiveValue& key, PrimitiveValue&& value) {
+  void SetChildPrimitive(const KeyEntryValue& key, PrimitiveValue&& value) {
     SetChild(key, SubDocument(value));
   }
 
-  void SetChildPrimitive(const PrimitiveValue& key, const PrimitiveValue& value) {
+  void SetChildPrimitive(const KeyEntryValue& key, const PrimitiveValue& value) {
     SetChild(key, SubDocument(value));
   }
 
@@ -171,52 +159,37 @@ class SubDocument : public PrimitiveValue {
   // Attempts to delete a child subdocument of an object with the given key. Fatals if this is not
   // an object.
   // @return true if a child object was deleted, false if it did not exist.
-  bool DeleteChild(const PrimitiveValue& key);
+  bool DeleteChild(const KeyEntryValue& key);
 
-  int object_num_keys() const {
-    DCHECK(IsObjectType(type_));
-    if (!has_valid_object_container()) {
-      return 0;
-    }
-    assert(object_container().size() <= std::numeric_limits<int>::max());
-    return static_cast<int>(object_container().size());
-  }
+  int object_num_keys() const;
 
   // Construct a SubDocument from a QLValuePB.
   static SubDocument FromQLValuePB(const QLValuePB& value,
                                    SortingType sorting_type,
-                                   yb::bfql::TSOpcode write_instr = bfql::TSOpcode::kScalarInsert);
+                                   bfql::TSOpcode write_instr = bfql::TSOpcode::kScalarInsert);
 
   // Construct a QLValuePB from a SubDocument.
-  static void ToQLValuePB(const SubDocument& doc,
-                          const std::shared_ptr<QLType>& ql_type,
-                          QLValuePB* v);
+  void ToQLValuePB(const std::shared_ptr<QLType>& ql_type, QLValuePB* v) const;
 
  private:
 
-  CHECKED_STATUS ConvertToCollection(ValueType value_type);
+  CHECKED_STATUS ConvertToCollection(ValueEntryType value_type);
 
   // Common code used by move constructor and move assignment.
   void MoveFrom(SubDocument* other);
 
   void EnsureContainerAllocated();
+  void EnsureObjectAllocated();
 
-  bool container_allocated() const {
-    CHECK(IsCollectionType(type_));
-    return complex_data_structure_ != nullptr;
-  }
+  bool container_allocated() const;
 
   bool has_valid_container() const {
     return complex_data_structure_ != nullptr;
   }
 
-  bool has_valid_object_container() const {
-    return (IsObjectType(type_)) && has_valid_container();
-  }
+  bool has_valid_object_container() const;
 
-  bool has_valid_array_container() const {
-    return type_ == ValueType::kArray && has_valid_container();
-  }
+  bool has_valid_array_container() const;
 
   friend void SubDocumentToStreamInternal(ostream& out, const SubDocument& subdoc, int indent);
   friend void SubDocCollectionToStreamInternal(ostream& out,

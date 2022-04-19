@@ -30,15 +30,25 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX rpc)
+set(YB_PCH_DEP_LIBS cds gmock gutil libev protoc snappy yb_test_util yb_util)
+
+ADD_YB_LIBRARY(
+    yrpc_base
+    SRCS lightweight_message.cc
+    DEPS yb_util)
+
 #### Global header protobufs
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
   RPC_HEADER_PROTO_SRCS RPC_HEADER_PROTO_HDRS RPC_HEADER_PROTO_TGTS
+  MESSAGES TRUE
+  SERVICE FALSE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES rpc_header.proto)
 ADD_YB_LIBRARY(rpc_header_proto
   SRCS ${RPC_HEADER_PROTO_SRCS}
-  DEPS protobuf
+  DEPS protobuf yrpc_base
   NONLINK_DEPS ${RPC_HEADER_PROTO_TGTS})
 
 PROTOBUF_GENERATE_CPP(
@@ -47,7 +57,7 @@ PROTOBUF_GENERATE_CPP(
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES rpc_introspection.proto)
 set(RPC_INTROSPECTION_PROTO_LIBS
-  rpc_header_proto
+  rpc_header_proto  
   protobuf)
 ADD_YB_LIBRARY(rpc_introspection_proto
   SRCS ${RPC_INTROSPECTION_PROTO_SRCS}
@@ -66,6 +76,7 @@ set(YRPC_SRCS
     inbound_call.cc
     io_thread_pool.cc
     messenger.cc
+    network_error.cc
     outbound_call.cc
     local_call.cc
     rpc_call.cc
@@ -98,7 +109,6 @@ set(YRPC_LIBS
   gutil
   libev
   lz4
-  redis_protocol_proto
   rpc_header_proto
   rpc_introspection_proto
   snappy
@@ -110,42 +120,53 @@ ADD_YB_LIBRARY(yrpc
   SRCS ${YRPC_SRCS}
   DEPS ${YRPC_LIBS})
 
-### RPC generator tool
-add_executable(protoc-gen-yrpc protoc-gen-yrpc.cc)
-target_link_libraries(protoc-gen-yrpc
-    ${YB_BASE_LIBS}
-    protoc
-    protobuf
-    gutil
-    yb_util)
-
-add_library(rpc_test_util rpc_test_util.cc)
-target_link_libraries(rpc_test_util yrpc)
+ADD_YB_TEST_LIBRARY(rpc_test_util SRCS rpc_test_util.cc DEPS yrpc)
 
 #### RPC test
 PROTOBUF_GENERATE_CPP(
+  RPC_BASE_SRCS RPC_BASE_HDRS RPC_BASE_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES lightweight_message.proto service.proto)
+add_library(rpc_base_proto ${RPC_BASE_SRCS} ${RPC_BASE_HDRS})
+target_link_libraries(rpc_base_proto protobuf)
+
+YRPC_GENERATE(
   RPC_TEST_DIFF_PACKAGE_SRCS RPC_TEST_DIFF_PACKAGE_HDRS RPC_TEST_DIFF_PACKAGE_TGTS
+  MESSAGES TRUE
+  SERVICE FALSE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES rtest_diff_package.proto)
-add_library(rtest_diff_package_proto ${RPC_TEST_DIFF_PACKAGE_SRCS} ${RPC_TEST_DIFF_PACKAGE_HDRS})
+ADD_YB_LIBRARY(
+    rtest_diff_package_proto
+    SRCS ${RPC_TEST_DIFF_PACKAGE_SRCS} ${RPC_TEST_DIFF_PACKAGE_HDRS})
 target_link_libraries(rtest_diff_package_proto rpc_header_proto)
 
 YRPC_GENERATE(
   RTEST_YRPC_SRCS RTEST_YRPC_HDRS RTEST_YRPC_TGTS
+  MESSAGES TRUE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES rtest.proto)
-add_library(rtest_yrpc rpc-test-base.cc ${RTEST_YRPC_SRCS} ${RTEST_YRPC_HDRS})
-target_link_libraries(rtest_yrpc
-  yb_test_util
-  yrpc
-  rpc_header_proto
-  rpc_test_util
-  rtest_diff_package_proto)
+ADD_YB_LIBRARY(
+  rtest_yrpc
+  SRCS rpc-test-base.cc ${RTEST_YRPC_SRCS} ${RTEST_YRPC_HDRS}
+  DEPS yb_test_util any_yrpc yrpc rpc_header_proto rpc_test_util rtest_diff_package_proto
+       rpc_base_proto)
+
+YRPC_GENERATE(
+  ANY_YRPC_SRCS ANY_YRPC_HDRS ANY_YRPC_TGTS
+  MESSAGES TRUE
+  SERVICE FALSE
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES any.proto)
+add_library(any_yrpc ${ANY_YRPC_SRCS} ${ANY_YRPC_HDRS})
+target_link_libraries(any_yrpc yrpc rpc_base_proto)
 
 # Tests
-set(YB_TEST_LINK_LIBS rtest_yrpc yrpc rpc_test_util ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS rtest_yrpc yrpc rpc_test_util any_yrpc ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(growable_buffer-test)
 ADD_YB_TEST(mt-rpc-test RUN_SERIAL true)
 ADD_YB_TEST(periodic-test)

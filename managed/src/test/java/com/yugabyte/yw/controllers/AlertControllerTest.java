@@ -64,7 +64,6 @@ import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedResponse;
 import com.yugabyte.yw.models.paging.AlertPagedResponse;
@@ -321,9 +320,8 @@ public class AlertControllerTest extends FakeDBApplication {
             .setCustomerUUID(customer.getUuid())
             .setSourceUuid(createdChannel.getUuid())
             .setLabels(MetricLabelsBuilder.create().appendSource(createdChannel).getMetricLabels())
-            .setValue(0.0)
-            .setLabel(KnownAlertLabels.ERROR_MESSAGE, "Some error");
-    metricService.cleanAndSave(Collections.singletonList(channelStatus));
+            .setValue(0.0);
+    metricService.save(channelStatus);
 
     Result result =
         doRequestWithAuthToken(
@@ -1150,14 +1148,16 @@ public class AlertControllerTest extends FakeDBApplication {
               authToken);
       assertThat(result.status(), equalTo(OK));
       JsonNode resultJson = Json.parse(contentAsString(result));
-      assertThat(resultJson.get("message").asText(), equalTo("Alert sent successfully"));
+      assertThat(
+          resultJson.get("message").asText(),
+          equalTo("Result: Some channel - Alert sent successfully"));
       RecordedRequest request = server.takeRequest();
       assertThat(request.getPath(), is("/some/path"));
       assertThat(
           request.getBody().readString(Charset.defaultCharset()),
           equalTo(
               "{\"username\":\"Slack Bot\","
-                  + "\"text\":\"*Yugabyte Platform Alert - <[test@customer.com][tc]>*\\n"
+                  + "\"text\":\"*YugabyteDB Anywhere Alert - <[test@customer.com][tc]>*\\n"
                   + "alertConfiguration Alert for Test Universe is firing.\\n"
                   + "\\n[TEST ALERT!!!] Average memory usage for universe 'Test Universe' "
                   + "is above 1%. Current value is 2%\",\"icon_url\":null}"));

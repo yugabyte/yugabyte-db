@@ -26,6 +26,8 @@
 
 #include "yb/integration-tests/cdc_test_util.h"
 
+#include "yb/master/master_client.pb.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 
@@ -259,7 +261,7 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
 
   // Commit transaction.
   ASSERT_OK(txn->CommitFuture().get());
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
 
   auto checkpoint = change_resp.checkpoint();
 

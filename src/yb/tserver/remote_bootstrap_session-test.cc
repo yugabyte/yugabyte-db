@@ -13,16 +13,23 @@
 
 #include "yb/tserver/remote_bootstrap_session-test.h"
 
+#include <memory>
+
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/state_change_context.h"
 
 #include "yb/gutil/bind.h"
 
-#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/write_query.h"
+
+#include "yb/tserver/tserver.pb.h"
 
 namespace yb {
 namespace tserver {
@@ -40,7 +47,10 @@ void RemoteBootstrapSessionTest::SetUp() {
 void RemoteBootstrapSessionTest::TearDown() {
   messenger_->Shutdown();
   session_.reset();
-  WARN_NOT_OK(tablet_peer_->Shutdown(), "Tablet peer shutdown failed");
+  WARN_NOT_OK(
+    tablet_peer_->Shutdown(
+        tablet::ShouldAbortActiveTransactions::kTrue, tablet::DisableFlushOnShutdown::kFalse),
+    "Tablet peer shutdown failed");
   YBTabletTest::TearDown();
 }
 
@@ -66,7 +76,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
 
   RaftPeerPB config_peer;
   config_peer.set_permanent_uuid(fs_manager()->uuid());
-  config_peer.set_member_type(RaftPeerPB::VOTER);
+  config_peer.set_member_type(consensus::PeerMemberType::VOTER);
   auto hp = config_peer.mutable_last_known_private_addr()->Add();
   hp->set_host("fake-host");
   hp->set_port(0);
@@ -94,6 +104,9 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
   MessengerBuilder mbuilder(CURRENT_TEST_NAME());
   messenger_ = ASSERT_RESULT(mbuilder.Build());
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+  multi_raft_manager_ = std::make_unique<consensus::MultiRaftManager>(messenger_.get(),
+                                                                      proxy_cache_.get(),
+                                                                      config_peer.cloud_info());
 
   log_anchor_registry_.reset(new LogAnchorRegistry());
   ASSERT_OK(tablet_peer_->SetBootstrapping());
@@ -107,7 +120,8 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       tablet_metric_entity,
       raft_pool_.get(),
       tablet_prepare_pool_.get(),
-      nullptr /* retryable_requests */));
+      nullptr /* retryable_requests */,
+      multi_raft_manager_.get()));
   consensus::ConsensusBootstrapInfo boot_info;
   ASSERT_OK(tablet_peer_->Start(boot_info));
 
@@ -139,13 +153,12 @@ void RemoteBootstrapSessionTest::PopulateTablet() {
     WriteResponsePB resp;
     CountDownLatch latch(1);
 
-    auto operation = std::make_unique<tablet::WriteOperation>(
+    auto query = std::make_unique<tablet::WriteQuery>(
         kLeaderTerm, CoarseTimePoint::max() /* deadline */, tablet_peer_.get(),
         tablet_peer_->tablet(), &resp);
-    *operation->AllocateRequest() = req;
-    operation->set_completion_callback(
-        tablet::MakeLatchOperationCompletionCallback(&latch, &resp));
-    tablet_peer_->WriteAsync(std::move(operation));
+    query->set_client_request(req);
+    query->set_callback(tablet::MakeLatchOperationCompletionCallback(&latch, &resp));
+    tablet_peer_->WriteAsync(std::move(query));
     latch.Wait();
     ASSERT_FALSE(resp.has_error()) << "Request failed: " << resp.error().ShortDebugString();
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, resp.ql_response_batch(0).status()) <<

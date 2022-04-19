@@ -1,7 +1,3 @@
-- assert:
-    that:
-      - yb_process_type is defined
-      - systemd_option is defined
 
 - name: Setup | Create config directory for {{ yb_process_type }}
   file:
@@ -10,13 +6,16 @@
     mode: 0755
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
+  tags: yb-prebuilt-ami
 
 - set_fact:
     _mount_points: "{{ mount_points.split(',') }}"
   when: _mount_points is not defined
+  tags: always
 
 - set_fact:
     _mount_logs_dir: "{{ _mount_points[0] }}/yb-data/{{ yb_process_type }}/logs"
+  tags: always
 
 - name: Setup | Create {{ yb_process_type }} logs directory
   file:
@@ -34,64 +33,26 @@
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
     state: link
+    force: yes
+  tags: yb-prebuilt-ami
 
+# Remove existing gflags present in conf file
 - name: Configure | Remove {{ yb_process_type }} gflags
   file:
     path: "{{ yb_conf_file }}"
     state: absent
-  when: replace_gflags is defined
   tags:
     - override_gflags
 
-# Get the list of default gflags based on server type along with common gflags.
-- set_fact:
-    _gflags: "{{ common_gflags | combine(process_specific_gflags[yb_process_type]) }}"
-  tags:
-    - override_gflags
-
-# Combines the default gflags with extra gflags when defined.
-- set_fact:
-    _gflags: "{{ _gflags | combine(dict(extra_gflags)) }}"
-  when: extra_gflags is defined
-  tags:
-    - override_gflags
-
-# Delete the gflags from the server conf file.
-- name: Configure | Delete {{ yb_process_type }} gflags
-  lineinfile:
-    dest: "{{ yb_conf_file }}"
-    regexp: "^--{{ item }}=(.*)"
-    state: absent
-  with_items: "{{ gflags_to_remove }}"
-  when: gflags_to_remove is defined
-  tags:
-    - override_gflags
-
-# Get the final gflags list which contains default gflags with the user's
-# applied gflags. This is required only during gflags upgradation task.
-- name: Configure | Add Default {{ yb_process_type }} gflags
-  set_fact:
-    final_gflags: "{{ _gflags | combine(dict(gflags) | default({})) }}"
-  when: (add_default_gflags is defined) and (gflags is defined)
-  tags:
-    - override_gflags
-
-# Get the final gflags list which contains the user's defined gflags only.
-- name: Configure | Set final gflags if {{ yb_process_type }} gflags are present.
-  set_fact:
-    final_gflags: "{{ final_gflags | default(gflags) }}"
-  when: (add_default_gflags is not defined) and (gflags is defined)
-  tags:
-    - override_gflags
-
-# Set the user defined gflags if present otherwise set's default gflags.
+# Set the gflags in conf file
+# gflags has greater precedence over extra_gflags
 - name: Configure | Set {{ yb_process_type }} gflags
   lineinfile:
     dest: "{{ yb_conf_file }}"
     regexp: "^--{{ item.key }}=(.*)"
     line: "--{{item.key}}={{item.value}}"
     create: yes
-  with_dict: "{{ final_gflags | default(_gflags) }}"
+  with_dict: "{{ extra_gflags | combine(gflags | default({})) }}"
   tags:
     - override_gflags
 
@@ -109,6 +70,7 @@
     - cron_result is failed
     - cloud_type != "onprem"
   when: not systemd_option
+  tags: yb-prebuilt-ami
 
 - block:
   # Remove old cron jobs and its tasks that start master and tserver
@@ -123,6 +85,14 @@
       name: "Check liveness of tserver"
       user: "yugabyte"
       state: absent
+
+  - name: Stop existing running master
+    shell:
+      cmd: "sudo systemctl stop yb-master"
+
+  - name: Stop existing running tserver
+    shell:
+      cmd: "sudo systemctl stop yb-tserver"
 
   # Systemd daemon-reload for yb-master and yb-tserver service files
   - name: Perform daemon-reload for the new services
@@ -146,5 +116,7 @@
   - name: Run yb-tserver.service to start the tserver
     shell:
       cmd: "sudo systemctl start yb-tserver"
-  tags: systemd_upgrade
+  tags:
+    - override_gflags
+    - systemd_upgrade
   when: systemd_option

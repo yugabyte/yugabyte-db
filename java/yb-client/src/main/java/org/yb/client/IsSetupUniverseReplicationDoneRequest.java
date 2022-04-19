@@ -4,7 +4,8 @@ import com.google.protobuf.Message;
 import java.util.UUID;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.WireProtocol.AppStatusPB;
-import org.yb.master.Master;
+import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 
 public class IsSetupUniverseReplicationDoneRequest
@@ -21,8 +22,8 @@ public class IsSetupUniverseReplicationDoneRequest
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
-    final Master.IsSetupUniverseReplicationDoneRequestPB.Builder builder =
-      Master.IsSetupUniverseReplicationDoneRequestPB.newBuilder()
+    final MasterReplicationOuterClass.IsSetupUniverseReplicationDoneRequestPB.Builder builder =
+      MasterReplicationOuterClass.IsSetupUniverseReplicationDoneRequestPB.newBuilder()
         .setProducerId(producerId.toString());
 
     return toChannelBuffer(header, builder.build());
@@ -41,12 +42,12 @@ public class IsSetupUniverseReplicationDoneRequest
   @Override
   Pair<IsSetupUniverseReplicationDoneResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
-    final Master.IsSetupUniverseReplicationDoneResponsePB.Builder builder =
-      Master.IsSetupUniverseReplicationDoneResponsePB.newBuilder();
+    final MasterReplicationOuterClass.IsSetupUniverseReplicationDoneResponsePB.Builder builder =
+      MasterReplicationOuterClass.IsSetupUniverseReplicationDoneResponsePB.newBuilder();
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
     final boolean done = builder.hasDone() ? builder.getDone() : false;
     final AppStatusPB replicationError =
       builder.hasReplicationError() ? builder.getReplicationError() : null;

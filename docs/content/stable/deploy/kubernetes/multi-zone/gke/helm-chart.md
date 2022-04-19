@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/multi-zone/gke/helm-chart" class="nav-link active">
+    <a href="/preview/deploy/kubernetes/multi-zone/gke/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
@@ -48,7 +48,7 @@ $ gcloud config set project yugabyte
 
 - Install `kubectl`
 
-After installing the Google Cloud SDK, install the `kubectl` command line tool by running the following command. 
+After installing the Google Cloud SDK, install the `kubectl` command line tool by running the following command.
 
 ```sh
 $ gcloud components install kubectl
@@ -156,12 +156,12 @@ $ helm repo update
 Validate that you have the updated Chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
 ```
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
-yugabytedb/yugabyte     2.8.0           2.8.0.0-b37    YugabyteDB is the high-performance distributed ...
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION
+yugabytedb/yugabyte     2.12.2           2.12.2.0-b58    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -228,7 +228,7 @@ gflags:
     placement_zone: "us-central1-b"
 ```
 
-Copy the contents below to a file named `overrides-us-central1-b.yaml`.
+Copy the contents below to a file named `overrides-us-central1-c.yaml`.
 
 ```yaml
 isMultiAz: True
@@ -276,19 +276,25 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 ```sh
 $ helm install yb-demo-us-central1-a yugabytedb/yugabyte \
  --namespace yb-demo-us-central1-a \
- -f overrides-us-central1-a.yaml --wait
+ -f overrides-us-central1-a.yaml \
+ --version {{<yb-version version="stable" format="short">}} \
+ --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
  --namespace yb-demo-us-central1-b \
- -f overrides-us-central1-b.yaml --wait
+ -f overrides-us-central1-b.yaml \
+ --version {{<yb-version version="stable" format="short">}} \
+ --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-c yugabytedb/yugabyte \
  --namespace yb-demo-us-central1-c \
- -f overrides-us-central1-c.yaml --wait
+ -f overrides-us-central1-c.yaml \
+ --version {{<yb-version version="stable" format="short">}} \
+ --wait
 ```
 
 ## 3. Check the cluster status
@@ -337,7 +343,7 @@ yb-demo-us-central1-c   yb-tservers            ClusterIP      None            <n
 
 Access the yb-master Admin UI for the cluster at `http://<external-ip>:7000` where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above three services for this purpose since all of them will show the same cluster metadata.
 
-![mz-ybmaster](/images/deploy/kubernetes/gke-multizone-ybmaster.png)  
+![mz-ybmaster](/images/deploy/kubernetes/gke-multizone-ybmaster.png)
 
 ## 4. Configure zone-aware replica placement
 

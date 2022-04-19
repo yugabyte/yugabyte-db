@@ -14,7 +14,7 @@
 #ifndef YB_COMMON_QL_DATATYPE_H
 #define YB_COMMON_QL_DATATYPE_H
 
-#include "yb/common/common.pb.h"
+#include "yb/common/value.pb.h"
 
 namespace yb {
 

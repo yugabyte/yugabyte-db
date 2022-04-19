@@ -15,10 +15,11 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/ql_value.h"
 #include "yb/common/transaction.h"
 
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 
 #include "yb/util/status_log.h"
@@ -447,7 +448,7 @@ TEST_F(TestQLCreateTable, TestMetrics) {
     auto row_block = processor->row_block();
 
     std::unordered_set<std::string> t;
-    for (int i = 0; i < row_block->row_count(); i++) {
+    for (size_t i = 0; i < row_block->row_count(); i++) {
       QLRow &row = row_block->row(i);
       t.insert(row.column(0).string_value());
     }
@@ -466,7 +467,7 @@ TEST_F(TestQLCreateTable, TestMetrics) {
     auto row_block = processor->row_block();
 
     std::unordered_set<std::string> t;
-    for (int i = 0; i < row_block->row_count(); i++) {
+    for (size_t i = 0; i < row_block->row_count(); i++) {
       QLRow &row = row_block->row(i);
       t.insert(row.column(0).string_value());
     }

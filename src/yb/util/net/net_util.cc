@@ -55,10 +55,11 @@
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/locks.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/random.h"
+#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -84,9 +85,6 @@ DEFINE_string(
     "prefer external IPv4 "
     "addresses first. Other options include ipv6_external,ipv6_non_link_local");
 
-DEFINE_test_flag(string, fail_to_fast_resolve_address, "",
-                 "A hostname to fail to fast resolve for tests.");
-
 namespace yb {
 
 namespace {
@@ -101,11 +99,18 @@ HostPort::HostPort()
     : port_(0) {
 }
 
+HostPort::HostPort(Slice host, uint16_t port)
+    : host_(host.cdata(), host.size()), port_(port) {}
+
 HostPort::HostPort(std::string host, uint16_t port)
     : host_(std::move(host)), port_(port) {}
 
 HostPort::HostPort(const Endpoint& endpoint)
     : host_(endpoint.address().to_string()), port_(endpoint.port()) {
+}
+
+HostPort::HostPort(const char* host, uint16_t port)
+    : HostPort(Slice(host), port) {
 }
 
 Status HostPort::RemoveAndGetHostPortList(
@@ -544,10 +549,9 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
   // Now, find a unused port in the [kMinPort..kMaxPort] range.
   constexpr uint16_t kMinPort = 15000;
   constexpr uint16_t kMaxPort = 30000;
-  static yb::Random rand(GetCurrentTimeMicros());
   Status s;
   for (int i = 0; i < 1000; ++i) {
-    const uint16_t random_port = kMinPort + rand.Next() % (kMaxPort - kMinPort + 1);
+    const uint16_t random_port = RandomUniformInt(kMinPort, kMaxPort);
     VLOG(1) << "Trying to bind to port " << random_port;
 
     Endpoint sock_addr(boost::asio::ip::address_v4::loopback(), random_port);
@@ -648,6 +652,17 @@ Result<IpAddress> ParseIpAddress(const std::string& host) {
   return addr;
 }
 
+simple_spinlock fail_to_fast_resolve_address_mutex;
+std::string fail_to_fast_resolve_address;
+
+void TEST_SetFailToFastResolveAddress(const std::string& address) {
+  {
+    std::lock_guard<simple_spinlock> lock(fail_to_fast_resolve_address_mutex);
+    fail_to_fast_resolve_address = address;
+  }
+  LOG(INFO) << "Setting fail_to_fast_resolve_address to: " << address;
+}
+
 boost::optional<IpAddress> TryFastResolve(const std::string& host) {
   auto result = ParseIpAddress(host);
   if (result.ok()) {
@@ -657,8 +672,11 @@ boost::optional<IpAddress> TryFastResolve(const std::string& host) {
   // For testing purpose we resolve A.B.C.D.ip.yugabyte to A.B.C.D.
   static const std::string kYbIpSuffix = ".ip.yugabyte";
   if (boost::ends_with(host, kYbIpSuffix)) {
-    if (PREDICT_FALSE(host == FLAGS_TEST_fail_to_fast_resolve_address)) {
-      return boost::none;
+    {
+      std::lock_guard<simple_spinlock> lock(fail_to_fast_resolve_address_mutex);
+      if (PREDICT_FALSE(host == fail_to_fast_resolve_address)) {
+        return boost::none;
+      }
     }
     boost::system::error_code ec;
     auto address = IpAddress::from_string(

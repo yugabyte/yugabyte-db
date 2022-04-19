@@ -38,7 +38,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
 
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/flag_tags.h"
@@ -105,7 +105,7 @@ class GetMasterRegistrationRpc: public rpc::Rpc {
 };
 
 void GetMasterRegistrationRpc::SendRpc() {
-  MasterServiceProxy proxy(&retrier().proxy_cache(), addr_);
+  MasterClusterProxy proxy(&retrier().proxy_cache(), addr_);
   GetMasterRegistrationRequestPB req;
   proxy.GetMasterRegistrationAsync(
       req, &resp_, PrepareController(),
@@ -127,7 +127,7 @@ void GetMasterRegistrationRpc::Finished(const Status& status) {
       // If CatalogManager is not initialized, treat the node as a
       // FOLLOWER for the time being, as currently this RPC is only
       // used for the purposes of finding the leader master.
-      resp_.set_role(RaftPeerPB::FOLLOWER);
+      resp_.set_role(PeerRole::FOLLOWER);
       new_status = Status::OK();
     } else {
       out_->mutable_error()->CopyFrom(resp_.error().status());
@@ -187,7 +187,7 @@ void GetLeaderMasterRpc::SendRpc() {
   {
     std::lock_guard<simple_spinlock> l(lock_);
     pending_responses_ = size;
-    for (int i = 0; i < size; i++) {
+    for (size_t i = 0; i < size; i++) {
       auto handle = rpcs_.Prepare();
       if (handle == rpcs_.InvalidHandle()) {
         GetMasterRegistrationRpcCbForNode(i, STATUS(Aborted, "Stopping"), self, handle);
@@ -242,7 +242,7 @@ void GetLeaderMasterRpc::Finished(const Status& status) {
 }
 
 void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
-    int idx, const Status& status, const std::shared_ptr<rpc::RpcCommand>& self,
+    size_t idx, const Status& status, const std::shared_ptr<rpc::RpcCommand>& self,
     rpc::Rpcs::Handle handle) {
   rpcs_.Unregister(handle);
 
@@ -264,7 +264,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
     }
     auto& resp = responses_[idx];
     if (new_status.ok()) {
-      if (resp.role() != RaftPeerPB::LEADER) {
+      if (resp.role() != PeerRole::LEADER) {
         // Use a STATUS(NotFound, "") to indicate that the node is not
         // the leader: this way, we can handle the case where we've
         // received a reply from all of the nodes in the cluster (no

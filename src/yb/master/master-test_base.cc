@@ -42,7 +42,11 @@
 
 #include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_heartbeat.proxy.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 
@@ -55,6 +59,7 @@
 #include "yb/util/test_util.h"
 
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
+DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 
 namespace yb {
 namespace master {
@@ -72,6 +77,8 @@ void MasterTestBase::SetUp() {
   // In this test, we create tables to test catalog manager behavior,
   // but we have no tablet servers. Typically this would be disallowed.
   FLAGS_catalog_manager_check_ts_count_for_create_table = false;
+  // Since this is a master-only test, don't do any operations on cdc state for xCluster tests.
+  FLAGS_TEST_disable_cdc_state_insert_on_setup = true;
 
   // Start master with the create flag on.
   mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"),
@@ -82,7 +89,16 @@ void MasterTestBase::SetUp() {
   // Create a client proxy to it.
   client_messenger_ = ASSERT_RESULT(MessengerBuilder("Client").Build());
   rpc::ProxyCache proxy_cache(client_messenger_.get());
-  proxy_.reset(new MasterServiceProxy(&proxy_cache, mini_master_->bound_rpc_addr()));
+  proxy_client_ = std::make_unique<MasterClientProxy>(
+      &proxy_cache, mini_master_->bound_rpc_addr());
+  proxy_cluster_ = std::make_unique<MasterClusterProxy>(
+      &proxy_cache, mini_master_->bound_rpc_addr());
+  proxy_ddl_ = std::make_unique<MasterDdlProxy>(
+      &proxy_cache, mini_master_->bound_rpc_addr());
+  proxy_heartbeat_ = std::make_unique<MasterHeartbeatProxy>(
+      &proxy_cache, mini_master_->bound_rpc_addr());
+  proxy_replication_ = std::make_unique<MasterReplicationProxy>(
+      &proxy_cache, mini_master_->bound_rpc_addr());
 
   // Create the default test namespace.
   CreateNamespaceResponsePB resp;
@@ -101,7 +117,7 @@ void MasterTestBase::TearDown() {
 Status MasterTestBase::CreateTable(const NamespaceName& namespace_name,
                                    const TableName& table_name,
                                    const Schema& schema,
-                                   TableId *table_id /* = nullptr */) {
+                                   TableId* table_id /* = nullptr */) {
   CreateTableRequestPB req;
   return DoCreateTable(namespace_name, table_name, schema, &req, table_id);
 }
@@ -125,7 +141,7 @@ Status MasterTestBase::CreatePgsqlTable(const NamespaceId& namespace_id,
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
   // though, as that helps with readability and standardization.
-  RETURN_NOT_OK(proxy_->CreateTable(*request, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_ddl_->CreateTable(*request, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -135,7 +151,8 @@ Status MasterTestBase::CreatePgsqlTable(const NamespaceId& namespace_id,
 Status MasterTestBase::CreateTablegroupTable(const NamespaceId& namespace_id,
                                              const TableName& table_name,
                                              const TablegroupId& tablegroup_id,
-                                             const Schema& schema) {
+                                             const Schema& schema,
+                                             TableId* table_id /* = nullptr */) {
   CreateTableRequestPB req, *request;
   request = &req;
   CreateTableResponsePB resp;
@@ -152,7 +169,10 @@ Status MasterTestBase::CreateTablegroupTable(const NamespaceId& namespace_id,
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
   // though, as that helps with readability and standardization.
-  RETURN_NOT_OK(proxy_->CreateTable(*request, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_ddl_->CreateTable(*request, &resp, ResetAndGetController()));
+  if (table_id) {
+    *table_id = resp.table_id();
+  }
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -163,7 +183,7 @@ Status MasterTestBase::DoCreateTable(const NamespaceName& namespace_name,
                                      const TableName& table_name,
                                      const Schema& schema,
                                      CreateTableRequestPB* request,
-                                     TableId *table_id /* = nullptr */) {
+                                     TableId* table_id /* = nullptr */) {
   CreateTableResponsePB resp;
 
   request->set_name(table_name);
@@ -177,7 +197,7 @@ Status MasterTestBase::DoCreateTable(const NamespaceName& namespace_name,
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
   // though, as that helps with readability and standardization.
-  RETURN_NOT_OK(proxy_->CreateTable(*request, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_ddl_->CreateTable(*request, &resp, ResetAndGetController()));
   if (table_id) {
     *table_id = resp.table_id();
   }
@@ -189,7 +209,7 @@ Status MasterTestBase::DoCreateTable(const NamespaceName& namespace_name,
 }
 
 void MasterTestBase::DoListTables(const ListTablesRequestPB& req, ListTablesResponsePB* resp) {
-  ASSERT_OK(proxy_->ListTables(req, resp, ResetAndGetController()));
+  ASSERT_OK(proxy_ddl_->ListTables(req, resp, ResetAndGetController()));
   SCOPED_TRACE(resp->DebugString());
   ASSERT_FALSE(resp->has_error());
 }
@@ -205,18 +225,43 @@ void MasterTestBase::DoListAllTables(ListTablesResponsePB* resp,
   DoListTables(req, resp);
 }
 
+Status MasterTestBase::TruncateTableById(const TableId& table_id) {
+  TruncateTableRequestPB req;
+  TruncateTableResponsePB resp;
+  req.add_table_ids(table_id);
+
+  RETURN_NOT_OK(proxy_ddl_->TruncateTable(req, &resp, ResetAndGetController()));
+  SCOPED_TRACE(resp.DebugString());
+
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+  return Status::OK();
+}
+
+Status MasterTestBase::DeleteTableById(const TableId& table_id) {
+  DeleteTableRequestPB req;
+  DeleteTableResponsePB resp;
+  req.mutable_table()->set_table_id(table_id);
+  RETURN_NOT_OK(proxy_ddl_->DeleteTable(req, &resp, ResetAndGetController()));
+  SCOPED_TRACE(resp.DebugString());
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+  return Status::OK();
+}
+
 Status MasterTestBase::DeleteTable(const NamespaceName& namespace_name,
                                    const TableName& table_name,
                                    TableId* table_id /* = nullptr */) {
+  SCHECK(!namespace_name.empty(), InvalidArgument, "Namespace name was empty");
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   req.mutable_table()->set_table_name(table_name);
 
-  if (!namespace_name.empty()) {
-    req.mutable_table()->mutable_namespace_()->set_name(namespace_name);
-  }
+  req.mutable_table()->mutable_namespace_()->set_name(namespace_name);
 
-  RETURN_NOT_OK(proxy_->DeleteTable(req, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_ddl_->DeleteTable(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
   if (table_id) {
     *table_id = resp.table_id();
@@ -230,7 +275,8 @@ Status MasterTestBase::DeleteTable(const NamespaceName& namespace_name,
 
 Status MasterTestBase::CreateTablegroup(const TablegroupId& tablegroup_id,
                                         const NamespaceId& namespace_id,
-                                        const NamespaceName& namespace_name) {
+                                        const NamespaceName& namespace_name,
+                                        const TablespaceId& tablespace_id) {
   CreateTablegroupRequestPB req, *request;
   request = &req;
   CreateTablegroupResponsePB resp;
@@ -238,10 +284,11 @@ Status MasterTestBase::CreateTablegroup(const TablegroupId& tablegroup_id,
   request->set_id(tablegroup_id);
   request->set_namespace_id(namespace_id);
   request->set_namespace_name(namespace_name);
+  request->set_tablespace_id(tablespace_id);
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
   // though, as that helps with readability and standardization.
-  RETURN_NOT_OK(proxy_->CreateTablegroup(*request, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_ddl_->CreateTablegroup(*request, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -255,7 +302,7 @@ Status MasterTestBase::DeleteTablegroup(const TablegroupId& tablegroup_id,
   req.set_id(tablegroup_id);
   req.set_namespace_id(namespace_id);
 
-  RETURN_NOT_OK(proxy_->DeleteTablegroup(req, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_ddl_->DeleteTablegroup(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -264,7 +311,7 @@ Status MasterTestBase::DeleteTablegroup(const TablegroupId& tablegroup_id,
 
 void MasterTestBase::DoListTablegroups(const ListTablegroupsRequestPB& req,
                                        ListTablegroupsResponsePB* resp) {
-  ASSERT_OK(proxy_->ListTablegroups(req, resp, ResetAndGetController()));
+  ASSERT_OK(proxy_ddl_->ListTablegroups(req, resp, ResetAndGetController()));
   SCOPED_TRACE(resp->DebugString());
   ASSERT_FALSE(resp->has_error());
 }
@@ -280,7 +327,7 @@ void MasterTestBase::DoListAllNamespaces(const boost::optional<YQLDatabase>& dat
     req.set_database_type(*database_type);
   }
 
-  ASSERT_OK(proxy_->ListNamespaces(req, resp, ResetAndGetController()));
+  ASSERT_OK(proxy_ddl_->ListNamespaces(req, resp, ResetAndGetController()));
   SCOPED_TRACE(resp->DebugString());
   ASSERT_FALSE(resp->has_error());
 }
@@ -306,7 +353,7 @@ Status MasterTestBase::CreateNamespaceAsync(const NamespaceName& ns_name,
     req.set_database_type(*database_type);
   }
 
-  RETURN_NOT_OK(proxy_->CreateNamespace(req, resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_ddl_->CreateNamespace(req, resp, ResetAndGetController()));
   if (resp->has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp->error().status()));
   }
@@ -325,7 +372,7 @@ Status MasterTestBase::CreateNamespaceWait(const NamespaceId& ns_id,
 
   return LoggedWaitFor([&]() -> Result<bool> {
     IsCreateNamespaceDoneResponsePB is_resp;
-    status = proxy_->IsCreateNamespaceDone(is_req, &is_resp, ResetAndGetController());
+    status = proxy_ddl_->IsCreateNamespaceDone(is_req, &is_resp, ResetAndGetController());
     WARN_NOT_OK(status, "IsCreateNamespaceDone returned unexpected error");
     if (!status.ok()) {
       return status;
@@ -353,7 +400,7 @@ Status MasterTestBase::AlterNamespace(const NamespaceName& ns_name,
   }
   req.set_new_name(new_name);
 
-  RETURN_NOT_OK(proxy_->AlterNamespace(req, resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_ddl_->AlterNamespace(req, resp, ResetAndGetController()));
   if (resp->has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp->error().status()));
   }
@@ -365,7 +412,7 @@ Status MasterTestBase::AlterNamespace(const NamespaceName& ns_name,
 Status MasterTestBase::DeleteNamespaceWait(IsDeleteNamespaceDoneRequestPB const& del_req) {
   return LoggedWaitFor([&]() -> Result<bool> {
     IsDeleteNamespaceDoneResponsePB del_resp;
-    auto status = proxy_->IsDeleteNamespaceDone(del_req, &del_resp, ResetAndGetController());
+    auto status = proxy_ddl_->IsDeleteNamespaceDone(del_req, &del_resp, ResetAndGetController());
     if (!status.ok()) {
       WARN_NOT_OK(status, "IsDeleteNamespaceDone returned unexpected error");
       return status;
@@ -390,7 +437,7 @@ Status MasterTestBase::DeleteTableSync(const NamespaceName& ns_name, const Table
   bool delete_done = false;
 
   for (int num_retries = 0; num_retries < 30; ++num_retries) {
-    RETURN_NOT_OK(proxy_->IsDeleteTableDone(done_req, &done_resp, ResetAndGetController()));
+    RETURN_NOT_OK(proxy_ddl_->IsDeleteTableDone(done_req, &done_resp, ResetAndGetController()));
     if (!done_resp.has_done()) {
       return STATUS_FORMAT(
           IllegalState, "Expected IsDeleteTableDone response to set value for done ($0.$1)",
@@ -459,7 +506,9 @@ void MasterTestBase::UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_
   ChangeMasterClusterConfigRequestPB change_req;
   change_req.mutable_cluster_config()->CopyFrom(*cluster_config);
   ChangeMasterClusterConfigResponsePB change_resp;
-  ASSERT_OK(proxy_->ChangeMasterClusterConfig(change_req, &change_resp, ResetAndGetController()));
+  rpc::ProxyCache proxy_cache(client_messenger_.get());
+  master::MasterClusterProxy proxy(&proxy_cache, mini_master_->bound_rpc_addr());
+  ASSERT_OK(proxy.ChangeMasterClusterConfig(change_req, &change_resp, ResetAndGetController()));
   // Bump version number by 1, so we do not have to re-query.
   cluster_config->set_version(cluster_config->version() + 1);
   LOG(INFO) << "Update cluster config to: " << cluster_config->ShortDebugString();

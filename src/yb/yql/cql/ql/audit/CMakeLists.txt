@@ -18,3 +18,5 @@ target_link_libraries(ql_audit
                       ql_parser
                       yb_util)
 add_dependencies(ql_audit ql_parser)
+
+yb_use_pch(ql_audit ql)

@@ -14,25 +14,35 @@
 #ifndef YB_CONSENSUS_LOG_FWD_H
 #define YB_CONSENSUS_LOG_FWD_H
 
+#include <vector>
+
 #include "yb/gutil/ref_counted.h"
 
 namespace yb {
 namespace log {
 
 class Log;
+class LogAnchorRegistry;
 using LogPtr = scoped_refptr<Log>;
 class LogEntryBatch;
+class LogEntryBatchPB;
+class LogEntryPB;
 class LogIndex;
 class LogReader;
+class LogSegmentFooterPB;
+class LogSegmentHeaderPB;
 class ReadableLogSegment;
-using ReadableLogSegmentPtr = scoped_refptr<ReadableLogSegment>;
+class WritableLogSegment;
 
 struct LogAnchor;
+struct LogEntryMetadata;
 struct LogIndexEntry;
 struct LogMetrics;
+struct LogOptions;
 
-class LogAnchorRegistry;
 using LogAnchorRegistryPtr = scoped_refptr<LogAnchorRegistry>;
+using ReadableLogSegmentPtr = scoped_refptr<ReadableLogSegment>;
+using SegmentSequence = std::vector<ReadableLogSegmentPtr>;
 
 }  // namespace log
 }  // namespace yb

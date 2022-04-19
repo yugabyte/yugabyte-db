@@ -22,12 +22,13 @@
 
 #include <cctype>
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/test_util.h"
 
 namespace rocksdb {
 
-class GeoDBTest : public testing::Test {
+class GeoDBTest : public RocksDBTest {
  public:
   static const std::string kDefaultDbName;
   static Options options;

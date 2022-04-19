@@ -1,0 +1,73 @@
+.create-maintenance-window {
+  div.rw-datetime-picker {
+    margin-left: 0 !important;
+  }
+
+  div.rw-calendar-header {
+    display: flex;
+    align-items: center;
+
+    button.rw-calendar-btn-right,
+    button.rw-calendar-btn-left:hover {
+      background: #fff !important;
+      color: #000 !important;
+    }
+  }
+
+  .time-label {
+    margin-bottom: 5px;
+  }
+
+  .field-error {
+    color: #a94442;
+  }
+
+  .row {
+    margin-bottom: 16px;
+  }
+
+  label.btn-group-radio,
+  .form-item-custom-label,
+  .form-item-label {
+    font-weight: 100 !important;
+  }
+
+  .alert-notice {
+    padding: 8px;
+    border: 1px solid #e5e5e6;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    margin-top: 5px;
+    color: #333333;
+
+    .icon {
+      margin-right: 8px;
+      margin-top: 5px;
+    }
+  }
+
+  .action-btns-margin {
+    margin-bottom: 71px;
+  }
+
+  .maintenance-action-button-container {
+    position: absolute !important;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    min-height: 30px;
+    padding: 14px 12px;
+    border-top: 1px solid #ececea;
+    background-color: #f6f6f5;
+    margin-bottom: 0 !important;
+
+    .btn {
+      margin: 0 6px;
+      min-width: 120px !important;
+    }
+  }
+  .date-picker-start {
+    min-width: 250px;
+  }
+}

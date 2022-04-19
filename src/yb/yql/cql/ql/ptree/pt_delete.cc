@@ -17,6 +17,10 @@
 
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
 
+#include "yb/common/common.pb.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
@@ -169,12 +173,12 @@ ExplainPlanPB PTDeleteStmt::AnalysisResultToPB() {
     std::string filter = "        Filter: " + ConditionsToString(where_ops());
     delete_plan->set_filter(filter);
   }
-  delete_plan->set_output_width(max({
+  delete_plan->set_output_width(narrow_cast<int32_t>(max({
     delete_plan->delete_type().length(),
     delete_plan->scan_type().length(),
     delete_plan->key_conditions().length(),
     delete_plan->filter().length()
-  }));
+  })));
   return explain_plan;
 }
 

@@ -19,7 +19,6 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
-DECLARE_int32(max_group_replicate_batch_size);
 DECLARE_int32(prepare_queue_max_size);
 
 namespace yb {

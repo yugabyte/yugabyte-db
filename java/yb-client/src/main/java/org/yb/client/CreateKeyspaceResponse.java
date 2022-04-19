@@ -14,14 +14,14 @@
 package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 
 @InterfaceAudience.Public
 public class CreateKeyspaceResponse extends YRpcResponse {
-  private Master.MasterErrorPB serverError;
+  private MasterTypes.MasterErrorPB serverError;
 
   CreateKeyspaceResponse(long ellapsedMillis, String masterUUID,
-      Master.MasterErrorPB error) {
+      MasterTypes.MasterErrorPB error) {
     super(ellapsedMillis, masterUUID);
     serverError = error;
   }

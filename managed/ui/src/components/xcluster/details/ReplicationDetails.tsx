@@ -3,6 +3,7 @@ import { ButtonGroup, Col, DropdownButton, MenuItem, Row, Tab } from 'react-boot
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router';
+import { toast } from 'react-toastify';
 import { useMount } from 'react-use';
 import { IReplicationStatus } from '..';
 import { closeDialog, openDialog } from '../../../actions/modal';
@@ -10,16 +11,19 @@ import { fetchUniverseList } from '../../../actions/universe';
 import {
   getXclusterConfig,
   changeXClusterStatus,
-  deleteXclusterConfig
+  deleteXclusterConfig,
+  fetchTaskUntilItCompletes
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
+import { YBConfirmModal } from '../../modals';
 import { YBTabsPanel } from '../../panels';
-import { ReplicationAlertModalBtn } from '../../tables/Replication/ReplicationAlertModalBtn';
+import { ReplicationContainer } from '../../tables';
 import { IReplication } from '../IClusterReplication';
 import { GetConfiguredThreshold, GetCurrentLag, getReplicationStatus } from '../ReplicationUtils';
 import { AddTablesToClusterModal } from './AddTablesToClusterModal';
 import { EditReplicationDetails } from './EditReplicationDetails';
+import { LagGraph } from './LagGraph';
 
 import './ReplicationDetails.scss';
 import { ReplicationDetailsTable } from './ReplicationDetailsTable';
@@ -52,19 +56,39 @@ export function ReplicationDetails({ params }: Props) {
     setUniversesList((await resp.payload).data);
   });
 
-  const switchReplicationStatus = useMutation((replication: IReplication) => {
-    changeXClusterStatus(
-      replication,
-      replication.status === IReplicationStatus.PAUSED
-        ? IReplicationStatus.RUNNING
-        : IReplicationStatus.PAUSED
-    );
-    return queryClient.invalidateQueries(['Xcluster', replication.uuid]);
-  });
+  const switchReplicationStatus = useMutation(
+    (replication: IReplication) => {
+      return changeXClusterStatus(
+        replication,
+        replication.status === IReplicationStatus.PAUSED
+          ? IReplicationStatus.RUNNING
+          : IReplicationStatus.PAUSED
+      );
+    },
+    {
+      onSuccess: (resp, replication) => {
+        fetchTaskUntilItCompletes(resp.data.taskUUID, (err: boolean) => {
+          if (!err) {
+            queryClient.invalidateQueries(['Xcluster', replication.uuid]);
+          } else {
+            toast.error(
+              <span className="alertMsg">
+                <i className="fa fa-exclamation-circle" />
+                <span>Task Failed.</span>
+                <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+                  View Details
+                </a>
+              </span>
+            );
+          }
+        });
+      }
+    }
+  );
 
   const deleteReplication = useMutation((uuid: string) => {
     return deleteXclusterConfig(uuid).then(() => {
-      window.location.href = `/universes/${replication?.sourceUniverseUUID}/replication`;
+      window.location.href = `/universes/${params.uuid}/replication`;
     });
   });
 
@@ -83,10 +107,10 @@ export function ReplicationDetails({ params }: Props) {
     <>
       <div className="replication-details">
         <h2 className="content-title">
-          <Link to={`/universes/${params.uuid}`}>{sourceUniverse.name}</Link>
+          <Link to={`/universes/${sourceUniverse.universeUUID}`}>{sourceUniverse.name}</Link>
           <span className="subtext">
             <i className="fa fa-chevron-right submenu-icon" />
-            <Link to={`/universes/${params.uuid}/replication/`}>Replication</Link>
+            <Link to={`/universes/${sourceUniverse.universeUUID}/replication/`}>Replication</Link>
             <i className="fa fa-chevron-right submenu-icon" />
             {replication.name}
           </span>
@@ -96,71 +120,80 @@ export function ReplicationDetails({ params }: Props) {
             <Col lg={7}>
               <h3>{replication.name}</h3>
             </Col>
-            <Col lg={4} lgPush={2}>
-              <YBButton
-                btnText={`${
-                  replication.status === IReplicationStatus.RUNNING ? 'Pause' : 'Enable'
-                } Replication`}
-                btnClass={'btn btn-orange replication-status-button'}
-                disabled={
-                  replication.status === IReplicationStatus.FAILED ||
-                  replication.status === IReplicationStatus.INIT
-                }
-                onClick={() => {
-                  switchReplicationStatus.mutateAsync(replication);
-                }}
-              />
-              <ReplicationAlertModalBtn
-                universeUUID={replication.sourceUniverseUUID}
-                disabled={replication.status !== IReplicationStatus.RUNNING}
-              />
-              <ButtonGroup className="more-actions-button">
-                <DropdownButton pullRight id="alert-mark-as-button" title="Actions">
-                  <MenuItem
-                    eventKey="1"
-                    onClick={(e) => {
-                      dispatch(openDialog('editReplicationConfiguration'));
-                    }}
-                  >
-                    Edit replication configurations
-                  </MenuItem>
-                  <MenuItem
-                    eventKey="2"
-                    onClick={(e) => {
-                      deleteReplication.mutateAsync(replication.uuid);
-                    }}
-                  >
-                    Delete replication
-                  </MenuItem>
-                </DropdownButton>
-              </ButtonGroup>
+            <Col lg={5} className="noPadding">
+              <Row className="details-actions-button">
+                <YBButton
+                  btnText={`${
+                    replication.status === IReplicationStatus.RUNNING ? 'Pause' : 'Enable'
+                  } Replication`}
+                  btnClass={'btn btn-orange replication-status-button'}
+                  disabled={
+                    replication.status === IReplicationStatus.FAILED ||
+                    replication.status === IReplicationStatus.INIT
+                  }
+                  onClick={() => {
+                    toast.success('Please wait...');
+                    switchReplicationStatus.mutateAsync(replication);
+                  }}
+                />
+                <ButtonGroup className="more-actions-button">
+                  <DropdownButton pullRight id="alert-mark-as-button" title="Actions">
+                    <MenuItem
+                      eventKey="1"
+                      onClick={(e) => {
+                        dispatch(openDialog('editReplicationConfiguration'));
+                      }}
+                    >
+                      Edit replication configurations
+                    </MenuItem>
+                    <MenuItem
+                      eventKey="2"
+                      onClick={() => {
+                        dispatch(openDialog('deleteReplicationModal'));
+                      }}
+                    >
+                      Delete replication
+                    </MenuItem>
+                  </DropdownButton>
+                </ButtonGroup>
+              </Row>
             </Col>
           </Row>
           <Row className="replication-status">
             <Col lg={4}>Replication Status {getReplicationStatus(replication.status)}</Col>
-            <Col lg={8}>
-              <Row>
-                <Col lg={2}>Current Lag</Col>
-                <Col lg={6}>
-                  <span className="lag-text">
-                    <GetCurrentLag
-                      replicationUUID={replication.uuid}
-                      sourceUniverseUUID={replication.sourceUniverseUUID}
-                    />
-                  </span>
-                  <span> ms</span>
-                </Col>
-              </Row>
-              <div className="replication-divider" />
-              <Row>
-                <Col lg={2}>Max acceptable lag</Col>
-                <Col lg={6}>
-                  <span className="lag-value">
-                    <GetConfiguredThreshold currentUniverseUUID={replication.sourceUniverseUUID} />
-                  </span>{' '}
-                  ms
-                </Col>
-              </Row>
+            <Col lg={8} className="lag-status-graph">
+              <div className="lag-stats">
+                <Row>
+                  <Col lg={6}>Current Lag</Col>
+                  <Col lg={6}>
+                    <span className="lag-text">
+                      <GetCurrentLag
+                        replicationUUID={replication.uuid}
+                        sourceUniverseUUID={replication.sourceUniverseUUID}
+                      />
+                    </span>
+                    <span> ms</span>
+                  </Col>
+                </Row>
+                <div className="replication-divider" />
+                <Row>
+                  <Col lg={6}>Max acceptable lag</Col>
+                  <Col lg={6}>
+                    <span className="lag-value">
+                      <GetConfiguredThreshold
+                        currentUniverseUUID={replication.sourceUniverseUUID}
+                      />
+                    </span>{' '}
+                    ms
+                  </Col>
+                </Row>
+              </div>
+              <div>
+                <LagGraph
+                  replicationUUID={replication.uuid}
+                  sourceUniverseUUID={replication.sourceUniverseUUID}
+                />
+              </div>
             </Col>
           </Row>
           <Row className="replication-details-panel noPadding">
@@ -174,6 +207,13 @@ export function ReplicationDetails({ params }: Props) {
                 </Tab>
                 <Tab eventKey={'tables'} title={'Tables'}>
                   <ReplicationDetailsTable replication={replication} />
+                </Tab>
+                <Tab eventKey={'metrics'} title="Metrics" id="universe-tab-panel">
+                  <ReplicationContainer
+                    sourceUniverseUUID={replication.sourceUniverseUUID}
+                    hideHeader={true}
+                    replicationUUID={params.replicationUUID}
+                  />
                 </Tab>
               </YBTabsPanel>
             </Col>
@@ -189,6 +229,16 @@ export function ReplicationDetails({ params }: Props) {
           visible={showModal && visibleModal === 'editReplicationConfiguration'}
           onHide={hideModal}
         />
+        <YBConfirmModal
+          name="delete-replication"
+          title="Confirm Delete"
+          onConfirm={() => deleteReplication.mutateAsync(replication.uuid)}
+          currentModal={'deleteReplicationModal'}
+          visibleModal={visibleModal}
+          hideConfirmModal={hideModal}
+        >
+          Are you sure you want to delete "{replication.name}"?
+        </YBConfirmModal>
       </div>
     </>
   );

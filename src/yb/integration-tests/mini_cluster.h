@@ -33,6 +33,7 @@
 #ifndef YB_INTEGRATION_TESTS_MINI_CLUSTER_H_
 #define YB_INTEGRATION_TESTS_MINI_CLUSTER_H_
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <thread>
@@ -46,46 +47,37 @@
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_client.fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tablet_server_options.h"
 
 #include "yb/util/env.h"
 #include "yb/util/port_picker.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 
-namespace client {
-class YBClient;
-class YBClientBuilder;
-}
-
 namespace master {
 class MiniMaster;
-class TSDescriptor;
-class TabletLocationsPB;
 }
 
 namespace server {
 class SkewedClockDeltaChanger;
 }
 
-namespace tablet {
-class TabletPeer;
-}
-
 namespace tserver {
 class MiniTabletServer;
-class TSTabletManager;
 }
 
 struct MiniClusterOptions {
   // Number of master servers.
-  int num_masters = 1;
+  size_t num_masters = 1;
 
   // Number of TS to start.
-  int num_tablet_servers = 1;
+  size_t num_tablet_servers = 1;
 
   // Number of drives to use on TS.
   int num_drives = 1;
@@ -135,7 +127,7 @@ class MiniCluster : public MiniClusterBase {
   void Shutdown();
   CHECKED_STATUS FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
-      tablet::FlushFlags flags = tablet::FlushFlags::kAll);
+      tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
   CHECKED_STATUS CompactTablets();
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();
@@ -170,38 +162,41 @@ class MiniCluster : public MiniClusterBase {
   // elected within kMasterLeaderElectionWaitTimeSeconds. May block until a leader Master is ready.
   Result<master::MiniMaster*> GetLeaderMiniMaster();
 
-  int LeaderMasterIdx();
+  ssize_t LeaderMasterIdx();
 
   // Returns the Master at index 'idx' for this MiniCluster.
-  master::MiniMaster* mini_master(int idx);
+  master::MiniMaster* mini_master(size_t idx);
 
   // Return number of mini masters.
-  int num_masters() const { return mini_masters_.size(); }
+  size_t num_masters() const { return mini_masters_.size(); }
 
   // Returns the TabletServer at index 'idx' of this MiniCluster.
   // 'idx' must be between 0 and 'num_tablet_servers' -1.
-  tserver::MiniTabletServer* mini_tablet_server(int idx);
+  tserver::MiniTabletServer* mini_tablet_server(size_t idx);
 
   tserver::MiniTabletServer* find_tablet_server(const std::string& uuid);
 
   const MiniTabletServers& mini_tablet_servers() { return mini_tablet_servers_; }
 
-  int num_tablet_servers() const { return mini_tablet_servers_.size(); }
+  size_t num_tablet_servers() const { return mini_tablet_servers_.size(); }
 
   const Ports& tserver_web_ports() const { return tserver_web_ports_; }
 
-  std::string GetMasterFsRoot(int indx);
+  std::string GetMasterFsRoot(size_t indx);
 
-  std::string GetTabletServerFsRoot(int idx);
+  std::string GetTabletServerFsRoot(size_t idx);
 
-  std::string GetTabletServerDrive(int idx, int drive_index);
+  std::string GetTabletServerDrive(size_t idx, int drive_index);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
   std::string GetMasterAddresses() const;
 
-  std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(int idx);
+    // The comma separated string of the tserver adresses host/ports from current list of tservers.
+  std::string GetTserverHTTPAddresses() const;
 
-  tserver::TSTabletManager* GetTabletManager(int idx);
+  std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(size_t idx);
+
+  tserver::TSTabletManager* GetTabletManager(size_t idx);
 
   // Wait for the given tablet to have 'expected_count' replicas
   // reported on the master. Returns the locations in '*locations'.
@@ -209,15 +204,15 @@ class MiniCluster : public MiniClusterBase {
   // Returns a bad Status if the tablet does not reach the required count
   // within kTabletReportWaitTimeSeconds.
   CHECKED_STATUS WaitForReplicaCount(const std::string& tablet_id,
-                             int expected_count,
-                             master::TabletLocationsPB* locations);
+                                     int expected_count,
+                                     master::TabletLocationsPB* locations);
 
   // Wait until the number of registered tablet servers reaches the given
   // count. Returns Status::TimedOut if the desired count is not achieved
   // within kRegistrationWaitTimeSeconds.
-  CHECKED_STATUS WaitForTabletServerCount(int count);
-  CHECKED_STATUS WaitForTabletServerCount(int count,
-                                  std::vector<std::shared_ptr<master::TSDescriptor> >* descs);
+  CHECKED_STATUS WaitForTabletServerCount(size_t count);
+  CHECKED_STATUS WaitForTabletServerCount(
+      size_t count, std::vector<std::shared_ptr<master::TSDescriptor>>* descs);
 
   // Wait for all tablet servers to be registered. Returns Status::TimedOut if the desired count is
   // not achieved within kRegistrationWaitTimeSeconds.
@@ -236,14 +231,14 @@ class MiniCluster : public MiniClusterBase {
   // Allocates ports for the given daemon type and saves them to the ports vector. Does not
   // overwrite values in the ports vector that are non-zero already.
   void AllocatePortsForDaemonType(std::string daemon_type,
-                                  int num_daemons,
+                                  size_t num_daemons,
                                   std::string port_type,
                                   std::vector<uint16_t>* ports);
 
   // Picks free ports for the necessary number of masters / tservers and saves those ports in
   // {master,tserver}_{rpc,web}_ports_ vectors. Values of 0 for the number of masters / tservers
   // mean we pick the maximum number of masters/tservers that we already know we'll need.
-  void EnsurePortsAllocated(int new_num_masters = 0, int num_tservers = 0);
+  void EnsurePortsAllocated(size_t new_num_masters = 0, size_t num_tservers = 0);
 
   const MiniClusterOptions options_;
   const std::string fs_root_;
@@ -261,6 +256,9 @@ class MiniCluster : public MiniClusterBase {
 
 MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew);
+
+MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> JumpClocks(
+    MiniCluster* cluster, std::chrono::milliseconds delta);
 
 void StepDownAllTablets(MiniCluster* cluster);
 void StepDownRandomTablet(MiniCluster* cluster);
@@ -295,6 +293,10 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
 
 std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(
     MiniCluster* cluster);
+
+Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
+    MiniCluster* cluster, const TableId& table_id, size_t num_active_leaders,
+    MonoDelta timeout = std::chrono::seconds(30) * kTimeMultiplier);
 
 CHECKED_STATUS WaitUntilTabletHasLeader(
     MiniCluster* cluster, const std::string& tablet_id, MonoTime deadline);
@@ -345,14 +347,17 @@ CHECKED_STATUS StartAllMasters(MiniCluster* cluster);
 
 YB_DEFINE_ENUM(Connectivity, (kOn)(kOff));
 
-CHECKED_STATUS BreakConnectivity(MiniCluster* cluster, int idx1, int idx2);
+CHECKED_STATUS BreakConnectivity(MiniCluster* cluster, size_t idx1, size_t idx2);
 CHECKED_STATUS SetupConnectivity(
-    MiniCluster* cluster, int idx1, int idx2, Connectivity connectivity);
-Result<int> ServerWithLeaders(MiniCluster* cluster);
+    MiniCluster* cluster, size_t idx1, size_t idx2, Connectivity connectivity);
+Result<size_t> ServerWithLeaders(MiniCluster* cluster);
 
 // Sets FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and also adjusts rate limiter
 // for already created tablets.
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_sec);
+
+CHECKED_STATUS WaitAllReplicasSynchronizedWithLeader(
+    MiniCluster* cluster, CoarseTimePoint deadline);
 
 }  // namespace yb
 

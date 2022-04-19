@@ -111,7 +111,7 @@ extern bool g_ref_counted_debug_enabled;
 // This callback is called for type names matching the regex to do the actual reporting of refcount
 // increase/decrease.
 // Parameters: type name, instance pointer, current refcount, refcount delta (+1 or -1).
-typedef void RefCountedDebugFn(const char*, const void*, int32_t, int32_t);
+typedef void RefCountedDebugFn(const char*, const void*, int64_t, int64_t);
 
 // Configure logging on reference count increments/decrements.
 // type_name_regex - regular expression for type names that we'll be logging for.

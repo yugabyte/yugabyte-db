@@ -35,7 +35,7 @@ class TraceClusterTest : public ExternalMiniClusterITestBase {
     WaitForInserts(100);
   }
 
-  void WaitForInserts(int num_rows) {
+  void WaitForInserts(int64_t num_rows) {
     while (workload_->rows_inserted() < num_rows) {
       SleepFor(MonoDelta::FromMilliseconds(10));
     }

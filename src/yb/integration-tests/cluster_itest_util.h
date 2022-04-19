@@ -61,57 +61,53 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/leader_lease.h"
+#include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_client.fwd.h"
 
 #include "yb/rpc/rpc_controller.h"
 
-#include "yb/server/server_base.pb.h"
-#include "yb/server/server_base.proxy.h"
+#include "yb/server/server_fwd.h"
 
-#include "yb/tserver/tserver_admin.proxy.h"
-#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tablet/metadata.pb.h"
+
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/opid.h"
 
 using namespace std::literals;
 
 namespace yb {
+
+class ExternalMiniCluster;
 class HostPort;
 class MonoDelta;
 class Schema;
 class Status;
 
-namespace client {
-class YBClient;
-class YBSchema;
-class YBTable;
-class YBTableName;
-}
-
-namespace tserver {
-class ListTabletsResponsePB_StatusAndSchemaPB;
-class TabletServerErrorPB;
-}
-
-using consensus::ConsensusServiceProxy;
-using consensus::OpIdType;
+using yb::OpId;
 
 namespace itest {
 
 struct TServerDetails {
   NodeInstancePB instance_id;
-  master::TSRegistrationPB registration;
+  std::unique_ptr<master::TSRegistrationPB> registration;
   std::unique_ptr<tserver::TabletServerServiceProxy> tserver_proxy;
   std::unique_ptr<tserver::TabletServerAdminServiceProxy> tserver_admin_proxy;
   std::unique_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
   std::unique_ptr<server::GenericServiceProxy> generic_proxy;
+
+  TServerDetails();
+  ~TServerDetails();
 
   // Convenience function to get the UUID from the instance_id struct.
   const std::string& uuid() const;
@@ -134,9 +130,9 @@ client::YBSchema SimpleIntKeyYBSchema();
 // Create a populated TabletServerMap by interrogating the master.
 // Note: The bare-pointer TServerDetails values must be deleted by the caller!
 // Consider using ValueDeleter (in gutil/stl_util.h) for that.
-Status CreateTabletServerMap(master::MasterServiceProxy* master_proxy,
-                             rpc::ProxyCache* proxy_cache,
-                             TabletServerMap* ts_map);
+Result<TabletServerMap> CreateTabletServerMap(
+    const master::MasterClusterProxy& proxy, rpc::ProxyCache* cache);
+Result<TabletServerMap> CreateTabletServerMap(ExternalMiniCluster* cluster);
 
 template <class Getter>
 auto GetForEachReplica(const std::vector<TServerDetails*>& replicas,
@@ -178,9 +174,16 @@ Result<OpId> GetLastOpIdForReplica(
 vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);
 vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& tablet_servers);
 
-// Creates copy of tablet server map, which does not own TServerDetails.
+// Creates copy of tablet server map, which does n  ot own TServerDetails.
 TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& tablet_servers,
                                                     const std::set<std::string>& exclude = {});
+
+// Wait until the latest op on the target replica is from the current term.
+Status WaitForOpFromCurrentTerm(TServerDetails* replica,
+                                const std::string& tablet_id,
+                                consensus::OpIdType opid_type,
+                                const MonoDelta& timeout,
+                                yb::OpId* opid = nullptr);
 
 // Wait until all of the servers have converged on the same log index.
 // The converged index must be at least equal to 'minimum_index'.
@@ -229,7 +232,7 @@ Status WaitUntilAllReplicasHaveOp(const int64_t log_index,
 // that has heartbeated the master at least once in the last FLAGS_raft_heartbeat_interval_ms
 // milliseconds.
 Status WaitUntilNumberOfAliveTServersEqual(int n_tservers,
-                                           master::MasterServiceProxy* master_proxy,
+                                           const master::MasterClusterProxy& master_proxy,
                                            const MonoDelta& timeout);
 
 // Get the consensus state from the given replica.
@@ -242,18 +245,34 @@ Status GetConsensusState(const TServerDetails* replica,
 
 // Wait until the number of servers with the specified member type in the committed consensus
 // configuration is equal to config_size.
-Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
+Status WaitUntilCommittedConfigMemberTypeIs(size_t config_size,
                                             const TServerDetails* replica,
                                             const TabletId& tablet_id,
                                             const MonoDelta& timeout,
-                                            consensus::RaftPeerPB::MemberType member_type);
+                                            consensus::PeerMemberType member_type);
 
 // Wait until the number of voters in the committed consensus configuration is
 // 'quorum_size', according to the specified replica.
-Status WaitUntilCommittedConfigNumVotersIs(int config_size,
+Status WaitUntilCommittedConfigNumVotersIs(size_t config_size,
                                            const TServerDetails* replica,
                                            const TabletId& tablet_id,
                                            const MonoDelta& timeout);
+
+enum WaitForLeader {
+  DONT_WAIT_FOR_LEADER = 0,
+  WAIT_FOR_LEADER = 1
+};
+
+// Wait for the specified number of replicas to be reported by the master for
+// the given tablet. Fails when leader is not found or number of replicas
+// did not match up, or timeout waiting for leader.
+Status WaitForReplicasReportedToMaster(
+    ExternalMiniCluster* cluster,
+    int num_replicas, const std::string& tablet_id,
+    const MonoDelta& timeout,
+    WaitForLeader wait_for_leader,
+    bool* has_leader,
+    master::TabletLocationsPB* tablet_locations);
 
 // Used to specify committed entry type.
 enum class CommittedEntryType {
@@ -325,6 +344,12 @@ Status FindTabletLeader(const vector<TServerDetails*>& tservers,
                         const MonoDelta& timeout,
                         TServerDetails** leader);
 
+// Grabs list of followers using FindTabletLeader() above.
+Status FindTabletFollowers(const TabletServerMapUnowned& tablet_servers,
+                           const string& tablet_id,
+                           const MonoDelta& timeout,
+                           vector<TServerDetails*>* followers);
+
 // Start an election on the specified tserver.
 // 'timeout' only refers to the RPC asking the peer to start an election. The
 // StartElection() RPC does not block waiting for the results of the election,
@@ -379,7 +404,7 @@ Status WriteSimpleTestRow(const TServerDetails* replica,
 Status AddServer(const TServerDetails* leader,
                  const TabletId& tablet_id,
                  const TServerDetails* replica_to_add,
-                 consensus::RaftPeerPB::MemberType member_type,
+                 consensus::PeerMemberType member_type,
                  const boost::optional<int64_t>& cas_config_opid_index,
                  const MonoDelta& timeout,
                  tserver::TabletServerErrorPB::Code* error_code = nullptr,
@@ -406,13 +431,13 @@ Status ListRunningTabletIds(const TServerDetails* ts,
                             std::vector<TabletId>* tablet_ids);
 
 // Get the list of tablet locations for the specified tablet from the Master.
-Status GetTabletLocations(const std::shared_ptr<master::MasterServiceProxy>& master_proxy,
+Status GetTabletLocations(ExternalMiniCluster* cluster,
                           const TabletId& tablet_id,
                           const MonoDelta& timeout,
                           master::TabletLocationsPB* tablet_locations);
 
 // Get the list of tablet locations for all tablets in the specified table from the Master.
-Status GetTableLocations(const std::shared_ptr<master::MasterServiceProxy>& master_proxy,
+Status GetTableLocations(ExternalMiniCluster* cluster,
                          const client::YBTableName& table_name,
                          const MonoDelta& timeout,
                          RequireTabletsRunning require_tablets_running,
@@ -421,7 +446,7 @@ Status GetTableLocations(const std::shared_ptr<master::MasterServiceProxy>& mast
 // Wait for the specified number of voters to be reported to the config on the
 // master for the specified tablet.
 Status WaitForNumVotersInConfigOnMaster(
-    const std::shared_ptr<master::MasterServiceProxy>& master_proxy,
+    ExternalMiniCluster* cluster,
     const TabletId& tablet_id,
     int num_voters,
     const MonoDelta& timeout);
@@ -430,9 +455,9 @@ Status WaitForNumVotersInConfigOnMaster(
 // specified 'count' number of replicas.
 Status WaitForNumTabletsOnTS(
     TServerDetails* ts,
-    int count,
+    size_t count,
     const MonoDelta& timeout,
-    std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB>* tablets);
+    std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>* tablets);
 
 // Wait until the specified replica is in the specified state.
 Status WaitUntilTabletInState(TServerDetails* ts,
@@ -465,12 +490,13 @@ Status StartRemoteBootstrap(const TServerDetails* ts,
 
 // Get the latest OpId for the given master replica proxy. Note that this works for tablet servers
 // also, though GetLastOpIdForReplica is customized for tablet server for now.
-Status GetLastOpIdForMasterReplica(const std::shared_ptr<ConsensusServiceProxy>& consensus_proxy,
-                                   const TabletId& tablet_id,
-                                   const std::string& dest_uuid,
-                                   const OpIdType opid_type,
-                                   const MonoDelta& timeout,
-                                   OpIdPB* op_id);
+Status GetLastOpIdForMasterReplica(
+    const std::shared_ptr<consensus::ConsensusServiceProxy>& consensus_proxy,
+    const TabletId& tablet_id,
+    const std::string& dest_uuid,
+    const consensus::OpIdType opid_type,
+    const MonoDelta& timeout,
+    OpIdPB* op_id);
 
 } // namespace itest
 } // namespace yb

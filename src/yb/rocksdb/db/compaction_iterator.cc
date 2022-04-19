@@ -69,6 +69,18 @@ CompactionIterator::CompactionIterator(
   }
 }
 
+void CompactionIterator::AddLiveRanges(const std::vector<std::pair<Slice, Slice>>& ranges) {
+  for (auto it = ranges.rbegin(); it != ranges.rend(); ++it) {
+    const auto& range = *it;
+    DCHECK(range.first.Less(range.second));
+    if (!live_key_ranges_stack_.empty()) {
+      DCHECK(live_key_ranges_stack_.back().first.GreaterOrEqual(range.second));
+    }
+    auto user_key_pair = std::make_pair(range.first, range.second);
+    live_key_ranges_stack_.push_back(user_key_pair);
+  }
+}
+
 void CompactionIterator::ResetRecordCounts() {
   iter_stats_.num_record_drop_user = 0;
   iter_stats_.num_record_drop_hidden = 0;
@@ -76,16 +88,6 @@ void CompactionIterator::ResetRecordCounts() {
 }
 
 void CompactionIterator::SeekToFirst() {
-  if (compaction_filter_) {
-    auto drop_keys_before = compaction_filter_->DropKeysLessThan();
-
-    if (!drop_keys_before.empty()) {
-      IterKey start_iter;
-      start_iter.SetInternalKey(drop_keys_before, kMaxSequenceNumber, kValueTypeForSeek);
-      input_->Seek(start_iter.GetKey());
-    }
-  }
-
   NextFromInput();
   PrepareOutput();
 }
@@ -160,12 +162,31 @@ void CompactionIterator::NextFromInput() {
       break;
     }
 
-    if (compaction_filter_) {
-      auto drop_keys_greater_or_equal = compaction_filter_->DropKeysGreaterOrEqual();
-      if (!drop_keys_greater_or_equal.empty() &&
-          cmp_->Compare(drop_keys_greater_or_equal, key_) <= 0) {
-        valid_ = false;
-        return;
+    {
+      auto updated_live_range = false;
+      while (!live_key_ranges_stack_.empty() &&
+             !live_key_ranges_stack_.back().second.empty() &&
+             live_key_ranges_stack_.back().second.Less(ikey_.user_key)) {
+        // As long as the active range is before the compaction iterator's current progress, pop to
+        // the next active range.
+        live_key_ranges_stack_.pop_back();
+        updated_live_range = true;
+      }
+      if (updated_live_range) {
+        if (live_key_ranges_stack_.empty()) {
+          // If we've iterated past the last active range, we're done.
+          valid_ = false;
+          return;
+        }
+
+        auto next_range_start = live_key_ranges_stack_.back().first;
+        if (ikey_.user_key.Less(next_range_start)) {
+          // If the next active range starts after the current key, then seek to it and continue.
+          IterKey iter_key;
+          iter_key.SetInternalKey(next_range_start, kMaxSequenceNumber, kValueTypeForSeek);
+          input_->Seek(iter_key.GetKey());
+          continue;
+        }
       }
     }
 

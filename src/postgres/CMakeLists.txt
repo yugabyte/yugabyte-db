@@ -17,7 +17,7 @@ get_property(yb_cmake_include_dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 foreach(include_dir ${yb_cmake_include_dirs})
   set(POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} -I${include_dir}")
 endforeach(include_dir)
-if("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "8.0")
+if(IS_GCC AND "${COMPILER_VERSION}" VERSION_GREATER "8.0")
   string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
          " -Wno-format-truncation"
          " -Wno-maybe-uninitialized"
@@ -32,7 +32,7 @@ endif()
 set(POSTGRES_EXTRA_LD_FLAGS "")
 if(NOT APPLE AND
    "${YB_BUILD_TYPE}" STREQUAL "asan" AND
-   "${COMPILER_FAMILY}" STREQUAL "clang" AND
+   IS_CLANG AND
    "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0")
   set(POSTGRES_EXTRA_LD_FLAGS "${POSTGRES_EXTRA_LD_FLAGS} -ldl")
 endif()

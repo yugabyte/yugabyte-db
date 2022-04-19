@@ -52,7 +52,7 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_rpc.h"
 
 #include "yb/rpc/rpc.h"
@@ -199,7 +199,7 @@ void LeaderMasterCallback(Synchronizer* sync,
 
 void RepeatGetLeaderMaster(ExternalMiniCluster* cluster) {
   server::MasterAddresses master_addrs;
-  for (auto i = 0; i != cluster->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster->num_masters(); ++i) {
     master_addrs.push_back({cluster->master(i)->bound_rpc_addr()});
   }
   auto stop_time = std::chrono::steady_clock::now() + 60s;
@@ -304,7 +304,7 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
     // appear on every server. Rather than explicitly wait for that above,
     // we'll just treat the lack of a metric as non-fatal. If the entity
     // or metric is truly missing, we'll eventually timeout and fail.
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       for (const auto* metric : { &METRIC_leader_memory_pressure_rejections,
                                   &METRIC_follower_memory_pressure_rejections }) {
         auto result = cluster_->tablet_server(i)->GetInt64Metric(
@@ -453,6 +453,10 @@ class ClientStressTest_FollowerOom : public ClientStressTest {
         // Turn off exponential backoff and lagging follower threshold in order to hit soft memory
         // limit and check throttling.
         "--enable_consensus_exponential_backoff=false",
+        // The global log cache limit should only have to be set on the restarting tserver for
+        // the PauseFollower test, but it does not seem to pass without the limit set on all
+        // tservers. See GitHub issue #10689.
+        "--global_log_cache_size_limit_percentage=100",
         "--consensus_lagging_follower_threshold=-1"
     };
 
@@ -503,6 +507,7 @@ TEST_F_EX(ClientStressTest, PauseFollower, ClientStressTest_FollowerOom) {
   ts->mutable_flags()->push_back("--TEST_yb_inbound_big_calls_parse_delay_ms=30000");
   ts->mutable_flags()->push_back("--binary_call_parser_reject_on_mem_tracker_hard_limit=true");
   ts->mutable_flags()->push_back(Format("--rpc_throttle_threshold_bytes=$0", 1_MB));
+  // Read buffer should be large enough to accept the large RPCs.
   ts->mutable_flags()->push_back("--read_buffer_memory_limit=-10");
   ASSERT_OK(ts->Restart());
 

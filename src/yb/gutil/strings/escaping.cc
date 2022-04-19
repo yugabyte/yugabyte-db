@@ -53,8 +53,8 @@ static bool kLeaveNullsEscaped = true;
 //
 //    Example: [some "string" to test] --> [some ""string"" to test]
 // ----------------------------------------------------------------------
-int EscapeStrForCSV(const char* src, char* dest, int dest_len) {
-  int used = 0;
+size_t EscapeStrForCSV(const char* src, char* dest, size_t dest_len) {
+  size_t used = 0;
 
   while (true) {
     if (*src == '\0' && used < dest_len) {
@@ -91,12 +91,11 @@ int EscapeStrForCSV(const char* src, char* dest, int dest_len) {
 
 #define IS_OCTAL_DIGIT(c) (((c) >= '0') && ((c) <= '7'))
 
-int UnescapeCEscapeSequences(const char* source, char* dest) {
+size_t UnescapeCEscapeSequences(const char* source, char* dest) {
   return UnescapeCEscapeSequences(source, dest, nullptr);
 }
 
-int UnescapeCEscapeSequences(const char* source, char* dest,
-                             vector<string> *errors) {
+size_t UnescapeCEscapeSequences(const char* source, char* dest, vector<string> *errors) {
   char* d = dest;
   const char* p = source;
 
@@ -231,23 +230,21 @@ int UnescapeCEscapeSequences(const char* source, char* dest,
 //    *** DEPRECATED: Use CUnescape() in new code ***
 //
 // ----------------------------------------------------------------------
-int UnescapeCEscapeString(const string& src, string* dest) {
+size_t UnescapeCEscapeString(const string& src, string* dest) {
   return UnescapeCEscapeString(src, dest, nullptr);
 }
 
-int UnescapeCEscapeString(const string& src, string* dest,
-                          vector<string> *errors) {
+size_t UnescapeCEscapeString(const string& src, string* dest, vector<string> *errors) {
   CHECK(dest);
   dest->resize(src.size() + 1);
-  int len = UnescapeCEscapeSequences(src.c_str(),
-      const_cast<char*>(dest->data()), errors);
+  auto len = UnescapeCEscapeSequences(src.c_str(), const_cast<char*>(dest->data()), errors);
   dest->resize(len);
   return len;
 }
 
 string UnescapeCEscapeString(const string& src) {
   std::unique_ptr<char[]> unescaped(new char[src.size() + 1]);
-  int len = UnescapeCEscapeSequences(src.c_str(), unescaped.get(), nullptr);
+  auto len = UnescapeCEscapeSequences(src.c_str(), unescaped.get(), nullptr);
   return string(unescaped.get(), len);
 }
 
@@ -271,7 +268,7 @@ string UnescapeCEscapeString(const string& src) {
 static bool CUnescapeInternal(const GStringPiece& source,
                               bool leave_nulls_escaped,
                               char* dest,
-                              int* dest_len,
+                              size_t* dest_len,
                               string* error) {
   char* d = dest;
   const char* p = source.data();
@@ -320,7 +317,7 @@ static bool CUnescapeInternal(const GStringPiece& source,
           }
           if ((ch == 0) && leave_nulls_escaped) {
             // Copy the escape sequence for the null character
-            const int octal_size = p + 1 - octal_start;
+            const size_t octal_size = p + 1 - octal_start;
             *d++ = '\\';
             memcpy(d, octal_start, octal_size);
             d += octal_size;
@@ -351,7 +348,7 @@ static bool CUnescapeInternal(const GStringPiece& source,
           }
           if ((ch == 0) && leave_nulls_escaped) {
             // Copy the escape sequence for the null character
-            const int hex_size = p + 1 - hex_start;
+            const size_t hex_size = p + 1 - hex_start;
             *d++ = '\\';
             memcpy(d, hex_start, hex_size);
             d += hex_size;
@@ -461,7 +458,7 @@ bool CUnescapeInternal(const GStringPiece& source,
                        string* dest,
                        string* error) {
   dest->resize(source.size());
-  int dest_size;
+  size_t dest_size;
   if (!CUnescapeInternal(source,
                          leave_nulls_escaped,
                          const_cast<char*>(dest->data()),
@@ -478,8 +475,7 @@ bool CUnescapeInternal(const GStringPiece& source,
 //
 // See CUnescapeInternal() for implementation details.
 // ----------------------------------------------------------------------
-bool CUnescape(const GStringPiece& source, char* dest, int* dest_len,
-               string* error) {
+bool CUnescape(const GStringPiece& source, char* dest, size_t* dest_len, string* error) {
   return CUnescapeInternal(source, kUnescapeNulls, dest, dest_len, error);
 }
 
@@ -494,7 +490,7 @@ bool CUnescape(const GStringPiece& source, string* dest, string* error) {
 // ----------------------------------------------------------------------
 bool CUnescapeForNullTerminatedString(const GStringPiece& source,
                                       char* dest,
-                                      int* dest_len,
+                                      size_t* dest_len,
                                       string* error) {
   return CUnescapeInternal(source, kLeaveNullsEscaped, dest, dest_len, error);
 }
@@ -520,10 +516,10 @@ bool CUnescapeForNullTerminatedString(const GStringPiece& source,
 //
 //    Currently only \n, \r, \t, ", ', \ and !ascii_isprint() chars are escaped.
 // ----------------------------------------------------------------------
-int CEscapeInternal(const char* src, int src_len, char* dest,
-                    int dest_len, bool use_hex, bool utf8_safe) {
+size_t CEscapeInternal(
+    const char* src, size_t src_len, char* dest, size_t dest_len, bool use_hex, bool utf8_safe) {
   const char* src_end = src + src_len;
-  int used = 0;
+  size_t used = 0;
   bool last_hex_escape = false;  // true if last output char was \xNN
 
   for (; src < src_end; src++) {
@@ -531,7 +527,8 @@ int CEscapeInternal(const char* src, int src_len, char* dest,
       return -1;
 
     bool is_hex_escape = false;
-    switch (*src) {
+    unsigned char cur = *src;
+    switch (cur) {
       case '\n': dest[used++] = '\\'; dest[used++] = 'n';  break;
       case '\r': dest[used++] = '\\'; dest[used++] = 'r';  break;
       case '\t': dest[used++] = '\\'; dest[used++] = 't';  break;
@@ -542,16 +539,16 @@ int CEscapeInternal(const char* src, int src_len, char* dest,
         // Note that if we emit \xNN and the src character after that is a hex
         // digit then that digit must be escaped too to prevent it being
         // interpreted as part of the character code by C.
-        if ((!utf8_safe || *src < 0x80) &&
-            (!ascii_isprint(*src) ||
-             (last_hex_escape && ascii_isxdigit(*src)))) {
+        if ((!utf8_safe || cur < 0x80) &&
+            (!ascii_isprint(cur) ||
+             (last_hex_escape && ascii_isxdigit(cur)))) {
           if (dest_len - used < 4)  // need space for 4 letter escape
             return -1;
-          snprintf(dest + used, dest_len - used, (use_hex ? "\\x%02x" : "\\%03o"), *src);
+          snprintf(dest + used, dest_len - used, (use_hex ? "\\x%02x" : "\\%03o"), cur);
           is_hex_escape = use_hex;
           used += 4;
         } else {
-          dest[used++] = *src;
+          dest[used++] = cur;
           break;
         }
     }
@@ -565,21 +562,19 @@ int CEscapeInternal(const char* src, int src_len, char* dest,
   return used;
 }
 
-int CEscapeString(const char* src, int src_len, char* dest, int dest_len) {
+size_t CEscapeString(const char* src, size_t src_len, char* dest, size_t dest_len) {
   return CEscapeInternal(src, src_len, dest, dest_len, false, false);
 }
 
-int CHexEscapeString(const char* src, int src_len, char* dest, int dest_len) {
+size_t CHexEscapeString(const char* src, size_t src_len, char* dest, size_t dest_len) {
   return CEscapeInternal(src, src_len, dest, dest_len, true, false);
 }
 
-int Utf8SafeCEscapeString(const char* src, int src_len, char* dest,
-                          int dest_len) {
+size_t Utf8SafeCEscapeString(const char* src, size_t src_len, char* dest, size_t dest_len) {
   return CEscapeInternal(src, src_len, dest, dest_len, false, true);
 }
 
-int Utf8SafeCHexEscapeString(const char* src, int src_len, char* dest,
-                             int dest_len) {
+size_t Utf8SafeCHexEscapeString(const char* src, size_t src_len, char* dest, size_t dest_len) {
   return CEscapeInternal(src, src_len, dest, dest_len, true, true);
 }
 
@@ -597,37 +592,37 @@ int Utf8SafeCHexEscapeString(const char* src, int src_len, char* dest,
 //    Currently only \n, \r, \t, ", ', \ and !ascii_isprint() chars are escaped.
 // ----------------------------------------------------------------------
 string CEscape(const GStringPiece& src) {
-  const int dest_length = src.size() * 4 + 1;  // Maximum possible expansion
+  const auto dest_length = src.size() * 4 + 1;  // Maximum possible expansion
   std::unique_ptr<char[]> dest(new char[dest_length]);
-  const int len = CEscapeInternal(src.data(), src.size(),
-                                  dest.get(), dest_length, false, false);
+  const auto len = CEscapeInternal(src.data(), src.size(),
+                                   dest.get(), dest_length, false, false);
   DCHECK_GE(len, 0);
   return string(dest.get(), len);
 }
 
 string CHexEscape(const GStringPiece& src) {
-  const int dest_length = src.size() * 4 + 1;  // Maximum possible expansion
+  const auto dest_length = src.size() * 4 + 1;  // Maximum possible expansion
   std::unique_ptr<char[]> dest(new char[dest_length]);
-  const int len = CEscapeInternal(src.data(), src.size(),
-                                  dest.get(), dest_length, true, false);
+  const auto len = CEscapeInternal(src.data(), src.size(),
+                                   dest.get(), dest_length, true, false);
   DCHECK_GE(len, 0);
   return string(dest.get(), len);
 }
 
 string Utf8SafeCEscape(const GStringPiece& src) {
-  const int dest_length = src.size() * 4 + 1;  // Maximum possible expansion
+  const auto dest_length = src.size() * 4 + 1;  // Maximum possible expansion
   std::unique_ptr<char[]> dest(new char[dest_length]);
-  const int len = CEscapeInternal(src.data(), src.size(),
-                                  dest.get(), dest_length, false, true);
+  const auto len = CEscapeInternal(src.data(), src.size(),
+                                   dest.get(), dest_length, false, true);
   DCHECK_GE(len, 0);
   return string(dest.get(), len);
 }
 
 string Utf8SafeCHexEscape(const GStringPiece& src) {
-  const int dest_length = src.size() * 4 + 1;  // Maximum possible expansion
+  const auto dest_length = src.size() * 4 + 1;  // Maximum possible expansion
   std::unique_ptr<char[]> dest(new char[dest_length]);
-  const int len = CEscapeInternal(src.data(), src.size(),
-                                  dest.get(), dest_length, true, true);
+  const auto len = CEscapeInternal(src.data(), src.size(),
+                                   dest.get(), dest_length, true, true);
   DCHECK_GE(len, 0);
   return string(dest.get(), len);
 }
@@ -705,8 +700,7 @@ void BackslashUnescape(const GStringPiece& src,
 // See QEncodingUnescape().
 // ----------------------------------------------------------------------
 
-int QuotedPrintableUnescape(const char *source, int slen,
-                            char *dest, int szdest) {
+size_t QuotedPrintableUnescape(const char *source, size_t slen, char *dest, size_t szdest) {
   char* d = dest;
   const char* p = source;
 
@@ -738,13 +732,12 @@ int QuotedPrintableUnescape(const char *source, int slen,
 }
 
 // ----------------------------------------------------------------------
-// int QEncodingUnescape()
+// size_t QEncodingUnescape()
 //
 // This is very similar to QuotedPrintableUnescape except that we convert
 // '_'s into spaces. (See RFC 2047)
 // ----------------------------------------------------------------------
-int QEncodingUnescape(const char *source, int slen,
-                      char *dest, int szdest) {
+size_t QEncodingUnescape(const char *source, size_t slen, char *dest, size_t szdest) {
   char* d = dest;
   const char* p = source;
 
@@ -776,7 +769,7 @@ int QEncodingUnescape(const char *source, int slen,
   return (d-dest);
 }
 
-int CalculateBase64EscapedLen(int input_len, bool do_padding) {
+size_t CalculateBase64EscapedLen(size_t input_len, bool do_padding) {
   // Base64 encodes three bytes of input at a time. If the input is not
   // divisible by three, we pad as appropriate.
   //
@@ -792,7 +785,7 @@ int CalculateBase64EscapedLen(int input_len, bool do_padding) {
 
 
   // Base64 encodes each three bytes of input into four bytes of output.
-  int len = (input_len / 3) * 4;
+  auto len = (input_len / 3) * 4;
 
   if (input_len % 3 == 0) {
     // (from http://www.ietf.org/rfc/rfc3548.txt)
@@ -824,15 +817,15 @@ int CalculateBase64EscapedLen(int input_len, bool do_padding) {
 }
 
 // Base64Escape does padding, so this calculation includes padding.
-int CalculateBase64EscapedLen(int input_len) {
+size_t CalculateBase64EscapedLen(size_t input_len) {
   return CalculateBase64EscapedLen(input_len, true);
 }
 
 // ----------------------------------------------------------------------
-// int Base64Unescape() - base64 decoder
-// int Base64Escape() - base64 encoder
-// int WebSafeBase64Unescape() - Google's variation of base64 decoder
-// int WebSafeBase64Escape() - Google's variation of base64 encoder
+// size_t Base64Unescape() - base64 decoder
+// size_t Base64Escape() - base64 encoder
+// size_t WebSafeBase64Unescape() - Google's variation of base64 decoder
+// size_t WebSafeBase64Escape() - Google's variation of base64 encoder
 //
 // Check out
 // http://www.cis.ohio-state.edu/htbin/rfc/rfc2045.html for formal
@@ -861,13 +854,13 @@ int CalculateBase64EscapedLen(int input_len) {
 // filename-safe.
 // ----------------------------------------------------------------------
 
-int Base64UnescapeInternal(const char *src, int szsrc,
-                           char *dest, int szdest,
-                           const signed char* unbase64) {
+size_t Base64UnescapeInternal(
+    const char *signed_src, size_t szsrc, char *dest, size_t szdest, const signed char* unbase64) {
   static const char kPad64 = '=';
+  auto* src = static_cast<const unsigned char*>(static_cast<const void*>(signed_src));
 
   int decode = 0;
-  int destidx = 0;
+  size_t destidx = 0;
   int state = 0;
   unsigned int ch = 0;
   unsigned int temp = 0;
@@ -1032,7 +1025,7 @@ int Base64UnescapeInternal(const char *src, int szsrc,
   }
 
   // Process the leftover data contained in 'temp' at the end of the input.
-  int expected_equals = 0;
+  size_t expected_equals = 0;
   switch (state) {
     case 0:
       // Nothing left over; output is a multiple of 3 bytes.
@@ -1076,7 +1069,7 @@ int Base64UnescapeInternal(const char *src, int szsrc,
   // signs.  (Always accepting 0 equals signs is a google extension
   // not covered in the RFC.)
 
-  int equals = 0;
+  size_t equals = 0;
   while (szsrc > 0 && *src) {
     if (*src == kPad64)
       ++equals;
@@ -1187,28 +1180,27 @@ static const signed char kUnWebSafeBase64[] = {
   -1,      -1,      -1,      -1,      -1,      -1,      -1,      -1
 };
 
-int Base64Unescape(const char *src, int szsrc, char *dest, int szdest) {
+size_t Base64Unescape(const char *src, size_t szsrc, char *dest, size_t szdest) {
   return Base64UnescapeInternal(src, szsrc, dest, szdest, kUnBase64);
 }
 
-int WebSafeBase64Unescape(const char *src, int szsrc, char *dest, int szdest) {
+size_t WebSafeBase64Unescape(const char *src, size_t szsrc, char *dest, size_t szdest) {
   return Base64UnescapeInternal(src, szsrc, dest, szdest, kUnWebSafeBase64);
 }
 
-static bool Base64UnescapeInternal(const char* src, int slen, string* dest,
+static bool Base64UnescapeInternal(const char* src, size_t slen, string* dest,
                                    const signed char* unbase64) {
   // Determine the size of the output string.  Base64 encodes every 3 bytes into
   // 4 characters.  any leftover chars are added directly for good measure.
   // This is documented in the base64 RFC: http://www.ietf.org/rfc/rfc3548.txt
-  const int dest_len = 3 * (slen / 4) + (slen % 4);
+  const size_t dest_len = 3 * (slen / 4) + (slen % 4);
 
   dest->clear();
   dest->resize(dest_len);
 
   // We are getting the destination buffer by getting the beginning of the
   // string and converting it into a char *.
-  const int len = Base64UnescapeInternal(src, slen, string_as_array(dest),
-                                         dest->size(), unbase64);
+  const auto len = Base64UnescapeInternal(src, slen, string_as_array(dest), dest->size(), unbase64);
   if (len < 0) {
     dest->clear();
     return false;
@@ -1221,17 +1213,17 @@ static bool Base64UnescapeInternal(const char* src, int slen, string* dest,
   return true;
 }
 
-bool Base64Unescape(const char *src, int slen, string* dest) {
+bool Base64Unescape(const char *src, size_t slen, string* dest) {
   return Base64UnescapeInternal(src, slen, dest, kUnBase64);
 }
 
-bool WebSafeBase64Unescape(const char *src, int slen, string* dest) {
+bool WebSafeBase64Unescape(const char *src, size_t slen, string* dest) {
   return Base64UnescapeInternal(src, slen, dest, kUnWebSafeBase64);
 }
 
-int Base64EscapeInternal(const unsigned char *src, int szsrc,
-                         char *dest, int szdest, const char *base64,
-                         bool do_padding) {
+size_t Base64EscapeInternal(
+    const unsigned char *src, size_t szsrc, char *dest, size_t szdest, const char *base64,
+    bool do_padding) {
   static const char kPad64 = '=';
 
   if (szsrc <= 0) return 0;
@@ -1301,36 +1293,36 @@ static const char kBase64Chars[] =
 static const char kWebSafeBase64Chars[] =
 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-int Base64Escape(const unsigned char *src, int szsrc, char *dest, int szdest) {
+size_t Base64Escape(const unsigned char *src, size_t szsrc, char *dest, size_t szdest) {
   return Base64EscapeInternal(src, szsrc, dest, szdest, kBase64Chars, true);
 }
-int WebSafeBase64Escape(const unsigned char *src, int szsrc, char *dest,
-                        int szdest, bool do_padding) {
+size_t WebSafeBase64Escape(
+    const unsigned char *src, size_t szsrc, char *dest, size_t szdest, bool do_padding) {
   return Base64EscapeInternal(src, szsrc, dest, szdest,
                               kWebSafeBase64Chars, do_padding);
 }
 
-void Base64EscapeInternal(const unsigned char* src, int szsrc,
+void Base64EscapeInternal(const unsigned char* src, size_t szsrc,
                           string* dest, bool do_padding,
                           const char* base64_chars) {
-  const int calc_escaped_size =
+  const auto calc_escaped_size =
     CalculateBase64EscapedLen(szsrc, do_padding);
   dest->clear();
   dest->resize(calc_escaped_size, '\0');
-  const int escaped_len = Base64EscapeInternal(src, szsrc,
-                                               string_as_array(dest),
-                                               dest->size(),
-                                               base64_chars,
-                                               do_padding);
+  const auto escaped_len = Base64EscapeInternal(src, szsrc,
+                                                string_as_array(dest),
+                                                dest->size(),
+                                                base64_chars,
+                                                do_padding);
   DCHECK_EQ(calc_escaped_size, escaped_len);
 }
 
-void Base64Escape(const unsigned char *src, int szsrc,
+void Base64Escape(const unsigned char *src, size_t szsrc,
                   string* dest, bool do_padding) {
   Base64EscapeInternal(src, szsrc, dest, do_padding, kBase64Chars);
 }
 
-void WebSafeBase64Escape(const unsigned char *src, int szsrc,
+void WebSafeBase64Escape(const unsigned char *src, size_t szsrc,
                          string *dest, bool do_padding) {
   Base64EscapeInternal(src, szsrc, dest, do_padding, kWebSafeBase64Chars);
 }
@@ -1365,20 +1357,20 @@ bool ValidBase32Byte(char c) {
 // the length of the buffer to hold unescaped data.
 //
 // See http://tools.ietf.org/html/rfc4648#section-6 for details.
-static const int kBase32NumUnescapedBytes[] = {
+static const size_t kBase32NumUnescapedBytes[] = {
   0, 5, 1, 5, 2, 3, 5, 4, 5
 };
 
-int Base32Unescape(const char* src, int slen, char* dest, int szdest) {
-  int destidx = 0;
+size_t Base32Unescape(const char* src, size_t slen, char* dest, size_t szdest) {
+  size_t destidx = 0;
   char escaped_bytes[8];
   unsigned char unescaped_bytes[5];
   while (slen > 0) {
     // Collect the next 8 escaped bytes and convert to upper case.  If there
     // are less than 8 bytes left, pad with '=', but keep track of the number
     // of non-padded bytes for later.
-    int non_padded_len = 8;
-    for (int i = 0; i < 8; ++i) {
+    size_t non_padded_len = 8;
+    for (size_t i = 0; i < 8; ++i) {
       escaped_bytes[i] = (i < slen) ? ascii_toupper(src[i]) : '=';
       if (!ValidBase32Byte(escaped_bytes[i])) {
         return -1;
@@ -1391,8 +1383,8 @@ int Base32Unescape(const char* src, int slen, char* dest, int szdest) {
 
     // Convert the 8 escaped bytes to 5 unescaped bytes and copy to dest.
     EightBase32DigitsToFiveBytes(escaped_bytes, unescaped_bytes);
-    const int num_unescaped = kBase32NumUnescapedBytes[non_padded_len];
-    for (int i = 0; i < num_unescaped; ++i) {
+    const auto num_unescaped = kBase32NumUnescapedBytes[non_padded_len];
+    for (size_t i = 0; i < num_unescaped; ++i) {
       if (destidx == szdest) {
         // No more room in dest, so terminate early.
         return -1;
@@ -1406,17 +1398,16 @@ int Base32Unescape(const char* src, int slen, char* dest, int szdest) {
   return destidx;
 }
 
-bool Base32Unescape(const char* src, int slen, string* dest) {
+bool Base32Unescape(const char* src, size_t slen, string* dest) {
   // Determine the size of the output string.
-  const int dest_len = 5 * (slen / 8) + kBase32NumUnescapedBytes[slen % 8];
+  const auto dest_len = 5 * (slen / 8) + kBase32NumUnescapedBytes[slen % 8];
 
   dest->clear();
   dest->resize(dest_len);
 
   // We are getting the destination buffer by getting the beginning of the
   // string and converting it into a char *.
-  const int len = Base32Unescape(src, slen,
-                                 string_as_array(dest), dest->size());
+  const auto len = Base32Unescape(src, slen, string_as_array(dest), dest->size());
   if (len < 0) {
     dest->clear();
     return false;
@@ -1449,9 +1440,8 @@ void GeneralFiveBytesToEightBase32Digits(const unsigned char *in_bytes,
   out[7] = alphabet[(in_bytes[4] & 0x1F)];
 }
 
-static int GeneralBase32Escape(const unsigned char *src, size_t szsrc,
-                               char *dest, size_t szdest,
-                               const char *alphabet) {
+static size_t GeneralBase32Escape(
+    const unsigned char *src, size_t szsrc, char *dest, size_t szdest, const char *alphabet) {
   static const char kPad32 = '=';
 
   if (szsrc == 0) return 0;
@@ -1484,11 +1474,11 @@ static int GeneralBase32Escape(const unsigned char *src, size_t szsrc,
     }
 
     GeneralFiveBytesToEightBase32Digits(last_chunk, cur_dest, alphabet);
-    int filled = (szsrc * 8) / 5 + 1;
+    auto filled = (szsrc * 8) / 5 + 1;
     cur_dest += filled;
 
     // Add on the padding.
-    for (int i = 0; i < (8 - filled); ++i) {
+    for (size_t i = 0; i < (8 - filled); ++i) {
       *(cur_dest++) = kPad32;
     }
   }
@@ -1498,10 +1488,10 @@ static int GeneralBase32Escape(const unsigned char *src, size_t szsrc,
 
 static bool GeneralBase32Escape(const string& src, string* dest,
                                 const char *alphabet) {
-  const int max_escaped_size = CalculateBase32EscapedLen(src.length());
+  const auto max_escaped_size = CalculateBase32EscapedLen(src.length());
   dest->clear();
   dest->resize(max_escaped_size + 1, '\0');
-  const int escaped_len =
+  const auto escaped_len =
       GeneralBase32Escape(reinterpret_cast<const unsigned char *>(src.c_str()),
                           src.length(),  &*dest->begin(), dest->size(),
                           alphabet);
@@ -1524,8 +1514,7 @@ static const char Base32Alphabet[] = {
   'Y', 'Z', '2', '3', '4', '5', '6', '7'
   };
 
-int Base32Escape(const unsigned char* src, size_t szsrc,
-                 char* dest, size_t szdest) {
+size_t Base32Escape(const unsigned char* src, size_t szsrc, char* dest, size_t szdest) {
   return GeneralBase32Escape(src, szsrc, dest, szdest, Base32Alphabet);
 }
 
@@ -1544,8 +1533,7 @@ static const char Base32HexAlphabet[] = {
   'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
   };
 
-int Base32HexEscape(const unsigned char* src, size_t szsrc,
-                 char* dest, size_t szdest) {
+size_t Base32HexEscape(const unsigned char* src, size_t szsrc, char* dest, size_t szdest) {
   return GeneralBase32Escape(src, szsrc, dest, szdest, Base32HexAlphabet);
 }
 
@@ -1553,7 +1541,7 @@ bool Base32HexEscape(const string& src, string* dest) {
   return GeneralBase32Escape(src, dest, Base32HexAlphabet);
 }
 
-int CalculateBase32EscapedLen(size_t input_len) {
+size_t CalculateBase32EscapedLen(size_t input_len) {
   DCHECK_LE(input_len, numeric_limits<size_t>::max() / 8);
   size_t intermediate_result = 8 * input_len + 4;
   size_t len = intermediate_result / 5;
@@ -1580,7 +1568,9 @@ void EightBase32DigitsToTenHexDigits(const char *in, char *out) {
   b2a_hex(bytes, out, 5);
 }
 
-void EightBase32DigitsToFiveBytes(const char *in, unsigned char *bytes_out) {
+void EightBase32DigitsToFiveBytes(const char *signed_in, unsigned char *bytes_out) {
+  auto* in = static_cast<const unsigned char*>(static_cast<const void*>(signed_in));
+
   static const char Base32InverseAlphabet[] = {
     99,      99,      99,      99,      99,      99,      99,      99,
     99,      99,      99,      99,      99,      99,      99,      99,
@@ -1685,8 +1675,8 @@ void EscapeFileName(const GStringPiece& src, string* dst) {
 
 void UnescapeFileName(const GStringPiece& src_piece, string* dst) {
   const char* src = src_piece.data();
-  const int len = src_piece.size();
-  for (int i = 0; i < len; ++i) {
+  const auto len = src_piece.size();
+  for (size_t i = 0; i < len; ++i) {
     const char c = src[i];
     if (c == '~') {
       dst->push_back('/');
@@ -1728,8 +1718,8 @@ static char hex_char[] = "0123456789abcdef";
 // or a string.  This works because we use the [] operator to access
 // individual characters at a time.
 template <typename T>
-static void a2b_hex_t(const char* a, T b, int num) {
-  for (int i = 0; i < num; i++) {
+static void a2b_hex_t(const char* a, T b, size_t num) {
+  for (size_t i = 0; i < num; i++) {
     b[i] = (hex_value[a[i * 2] & 0xFF] << 4)
          + (hex_value[a[i * 2 + 1] & 0xFF]);
   }
@@ -1738,14 +1728,14 @@ static void a2b_hex_t(const char* a, T b, int num) {
 string a2b_bin(const string& a, bool byte_order_msb) {
   string result;
   const char *data = a.c_str();
-  int num_bytes = (a.size()+7)/8;
-  for (int byte_offset = 0; byte_offset < num_bytes; ++byte_offset) {
+  auto num_bytes = (a.size()+7)/8;
+  for (size_t byte_offset = 0; byte_offset < num_bytes; ++byte_offset) {
     unsigned char c = 0;
-    for (int bit_offset = 0; bit_offset < 8; ++bit_offset) {
+    for (size_t bit_offset = 0; bit_offset < 8; ++bit_offset) {
       if (*data == '\0')
         break;
       if (*data++ != '0') {
-        int bits_to_shift = (byte_order_msb) ? 7-bit_offset : bit_offset;
+        size_t bits_to_shift = (byte_order_msb) ? 7-bit_offset : bit_offset;
         c |= (1 << bits_to_shift);
       }
     }
@@ -1758,8 +1748,8 @@ string a2b_bin(const string& a, bool byte_order_msb) {
 // or a string.  This works because we use the [] operator to access
 // individual characters at a time.
 template <typename T>
-static void b2a_hex_t(const unsigned char* b, T a, int num) {
-  for (int i = 0; i < num; i++) {
+static void b2a_hex_t(const unsigned char* b, T a, size_t num) {
+  for (size_t i = 0; i < num; i++) {
     a[i * 2 + 0] = hex_char[b[i] >> 4];
     a[i * 2 + 1] = hex_char[b[i] & 0xf];
   }
@@ -1768,27 +1758,27 @@ static void b2a_hex_t(const unsigned char* b, T a, int num) {
 string b2a_bin(const string& b, bool byte_order_msb) {
   string result;
   for (char c : b) {
-    for (int bit_offset = 0; bit_offset < 8; ++bit_offset) {
-      int x = (byte_order_msb) ? 7-bit_offset : bit_offset;
+    for (size_t bit_offset = 0; bit_offset < 8; ++bit_offset) {
+      auto x = (byte_order_msb) ? 7-bit_offset : bit_offset;
       result.append(1, (c & (1 << x)) ? '1' : '0');
     }
   }
   return result;
 }
 
-void b2a_hex(const unsigned char* b, char* a, int num) {
+void b2a_hex(const unsigned char* b, char* a, size_t num) {
   b2a_hex_t<char*>(b, a, num);
 }
 
-void a2b_hex(const char* a, unsigned char* b, int num) {
+void a2b_hex(const char* a, unsigned char* b, size_t num) {
   a2b_hex_t<unsigned char*>(a, b, num);
 }
 
-void a2b_hex(const char* a, char* b, int num) {
+void a2b_hex(const char* a, char* b, size_t num) {
   a2b_hex_t<char*>(a, b, num);
 }
 
-string b2a_hex(const char* b, int len) {
+string b2a_hex(const char* b, size_t len) {
   string result;
   result.resize(len << 1);
   b2a_hex_t<string&>(reinterpret_cast<const unsigned char*>(b), result, len);
@@ -1806,12 +1796,12 @@ string a2b_hex(const string& a) {
   return result;
 }
 
-void b2a_hex(const unsigned char* from, string* to, int num) {
+void b2a_hex(const unsigned char* from, string* to, size_t num) {
   to->resize(num << 1);
   b2a_hex_t<string&>(from, *to, num);
 }
 
-void a2b_hex(const char* from, string* to, int num) {
+void a2b_hex(const char* from, string* to, size_t num) {
   to->resize(num);
   a2b_hex_t<string&>(from, *to, num);
 }
@@ -1868,8 +1858,7 @@ static const char kHexTable[513]=
 //  Reads at most bytes_to_read from binary_string and prints it to
 //  ascii_string in downcased hex.
 //------------------------------------------------------------------------
-void ByteStringToAscii(string const &binary_string, int bytes_to_read,
-                       string* ascii_string) {
+void ByteStringToAscii(string const &binary_string, size_t bytes_to_read, string* ascii_string) {
   if (binary_string.size() < bytes_to_read) {
     bytes_to_read = binary_string.size();
   }
@@ -1880,7 +1869,7 @@ void ByteStringToAscii(string const &binary_string, int bytes_to_read,
   string::const_iterator in = binary_string.begin();
   string::iterator out = ascii_string->begin();
 
-  for (int i = 0; i < bytes_to_read; i++) {
+  for (size_t i = 0; i < bytes_to_read; i++) {
     *out++ = kHexTable[(*in)*2];
     *out++ = kHexTable[(*in)*2 + 1];
     ++in;
@@ -1903,7 +1892,7 @@ bool ByteStringFromAscii(string const& hex_string, string* binary_string) {
   }
 
   int value = 0;
-  for (int i = 0; i < hex_string.size(); i++) {
+  for (size_t i = 0; i < hex_string.size(); i++) {
     char c = hex_string[i];
 
     if (!ascii_isxdigit(c)) {
@@ -1975,13 +1964,13 @@ void CleanStringLineEndings(const string& src, string* dst,
 }
 
 void CleanStringLineEndings(string* str, bool auto_end_last_line) {
-  int output_pos = 0;
+  size_t output_pos = 0;
   bool r_seen = false;
-  int len = str->size();
+  auto len = str->size();
 
   char* p = string_as_array(str);
 
-  for (int input_pos = 0; input_pos < len;) {
+  for (size_t input_pos = 0; input_pos < len;) {
     if (!r_seen && input_pos + 8 < len) {
       uint64 v = UNALIGNED_LOAD64(p + input_pos);
       // Loop over groups of 8 bytes at a time until we come across

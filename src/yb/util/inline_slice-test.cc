@@ -44,7 +44,7 @@ static void TestRoundTrip(InlineSlice<N> *slice,
                           Arena *arena,
                           size_t test_size) {
   std::unique_ptr<uint8_t[]> buf(new uint8_t[test_size]);
-  for (int i = 0; i < test_size; i++) {
+  for (size_t i = 0; i < test_size; i++) {
     buf[i] = i & 0xff;
   }
 

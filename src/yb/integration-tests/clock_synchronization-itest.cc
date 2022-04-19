@@ -18,8 +18,14 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/column_id.h"
+#include "yb/common/ql_protocol.pb.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
+// RepeatedPtrField would NOT call dtor if class is not defined, so need this include below.
+#include "yb/master/master_client.pb.h" // for TabletLocationsPB
 
 #include "yb/rpc/messenger.h"
 
@@ -101,7 +107,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
       QLColumnValuePB *column = req->add_column_values();
       column->set_column_id(kFirstColumnId + 1);
       column->mutable_expr()->mutable_value()->set_int64_value(val);
-      EXPECT_OK(session->ApplyAndFlush(ql_write));
+      EXPECT_OK(session->TEST_ApplyAndFlush(ql_write));
       EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, ql_write->response().status());
     }
   }

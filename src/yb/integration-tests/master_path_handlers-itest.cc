@@ -18,6 +18,8 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/partition.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -168,7 +170,7 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
     const auto uuid = replica.ts_info().permanent_uuid();
     auto* tserver = cluster_->find_tablet_server(uuid);
     ASSERT_NOTNULL(tserver);
-    if (replica.role() == consensus::RaftPeerPB::LEADER) {
+    if (replica.role() == PeerRole::LEADER) {
       leader = tserver;
     } else {
       followers.push_back(tserver);
@@ -307,7 +309,7 @@ TEST_F_EX(MasterPathHandlersItest, Forward, MultiMasterPathHandlersItest) {
   FLAGS_TEST_master_extra_list_host_port = RandomHumanReadableString(16) + ".com";
   EasyCurl curl;
   faststring content;
-  for (int i = 0; i != cluster_->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
     auto url = Format("http://$0/tablet-servers", cluster_->mini_master(i)->bound_http_addr());
     content.clear();
     ASSERT_OK(curl.FetchURL(url, &content));

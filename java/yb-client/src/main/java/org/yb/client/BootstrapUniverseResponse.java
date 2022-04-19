@@ -2,7 +2,6 @@ package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
 import org.yb.cdc.CdcService;
-import org.yb.master.Master;
 
 import java.util.List;
 

@@ -237,6 +237,12 @@ class DBImpl : public DB {
       ColumnFamilyHandle* column_family,
       ColumnFamilyMetaData* metadata) override;
 
+  // Obtains all column family options and corresponding names,
+  // dropped columns are not included into the resulting collections.
+  virtual void GetColumnFamiliesOptions(
+      std::vector<std::string>* column_family_names,
+      std::vector<ColumnFamilyOptions>* column_family_options) override;
+
   // experimental API
   Status SuggestCompactRange(ColumnFamilyHandle* column_family,
                              const Slice* begin, const Slice* end);
@@ -486,8 +492,7 @@ class DBImpl : public DB {
   const std::string dbname_;
   unique_ptr<VersionSet> versions_;
   const DBOptions db_options_;
-  Statistics* stats_;
-
+  std::shared_ptr<Statistics> stats_;
   InternalIterator* NewInternalIterator(const ReadOptions&,
                                         ColumnFamilyData* cfd,
                                         SuperVersion* super_version,
@@ -590,9 +595,6 @@ class DBImpl : public DB {
 
   // Wait for memtable flushed
   Status WaitForFlushMemTable(ColumnFamilyData* cfd);
-
-  void RecordFlushIOStats();
-  void RecordCompactionIOStats();
 
 #ifndef ROCKSDB_LITE
   Status CompactFilesImpl(
@@ -1015,6 +1017,12 @@ class DBImpl : public DB {
       ColumnFamilyHandle* column_family, const Range* range, std::size_t n,
       TablePropertiesCollection* props) override;
 
+  // Obtains all column family options and corresponding names,
+  // dropped columns are not included into the resulting collections.
+  // REQUIREMENT: mutex_ must be held when calling this function.
+  void GetColumnFamiliesOptionsUnlocked(
+      std::vector<std::string>* column_family_names,
+      std::vector<ColumnFamilyOptions>* column_family_options);
 #endif  // ROCKSDB_LITE
 
   // Function that Get and KeyMayExist call with no_io true or false

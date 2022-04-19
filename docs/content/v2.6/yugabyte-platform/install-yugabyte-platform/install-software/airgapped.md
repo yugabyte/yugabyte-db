@@ -13,29 +13,24 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link">
-      <i class="fas fa-cloud"></i>
-      Default
-    </a>
-  </li>
-  <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/openshift" class="nav-link">
-      <i class="fas fa-cubes"></i> OpenShift </a>
+  <li>
+    <a href="../default/" class="nav-link">
+      <i class="fas fa-cloud"></i>Default</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Kubernetes
-    </a>
+    <a href="../kubernetes/" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
-  <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link active">
-      <i class="fas fa-unlink"></i>
-      Airgapped
-    </a>
+  <li>
+    <a href="../airgapped/" class="nav-link active">
+      <i class="fas fa-unlink"></i>Airgapped</a>
+  </li>
+
+  <li>
+    <a href="../openshift/" class="nav-link">
+      <i class="fas fa-cubes"></i>OpenShift</a>
   </li>
 
 </ul>
@@ -71,7 +66,7 @@ $ wget --trust-server-names https://get.replicated.com/airgap
 Download the `yugaware` binary and change the following number, as required:
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugaware-2.7.1.1-b1.airgap
+$ wget https://downloads.yugabyte.com/releases/2.6.16.0/yugabyte-2.6.16.0-b14-linux-x86_64.airgap
 ```
 
 Switch to the following directory:
@@ -86,7 +81,7 @@ Extract the `replicated` binary, as follows:
 $ tar xzvf replicated.tar.gz
 ```
 
-Install Replicated. If multiple options appear, select the `eth0` network interface, as follows. 
+Install Replicated. If multiple options appear, select the `eth0` network interface, as follows.
 
 ```sh
 $ cat ./install.sh | sudo bash -s airgap
@@ -126,7 +121,7 @@ Upload the Yugabyte license file that you received from [Yugabyte](https://www.y
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
-Two options to install Yugabyte Platform are presentedas, shown in the following illustrations:
+Two options to install Yugabyte Platform are presented as shown in the following illustrations:
 
 ![Replicated License Air-gapped Install](/images/replicated/replicated-license-airgapped-install-option.png)
 
@@ -150,9 +145,9 @@ Click **Continue** to configure Yugabyte Platform.
 
 If the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to resolve the issue.
 
-## Set the TLS Version for Nginx Frontend 
+## Set the TLS Version for Nginx Frontend
 
-Specify TLS versions via **Application config**, as shown in the following illustration: 
+Specify TLS versions via **Application config**, as shown in the following illustration:
 
 ![Application Config](/images/replicated/application-config.png)
 

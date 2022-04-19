@@ -250,14 +250,28 @@ lnext:
 
 			case HeapTupleUpdated:
 				/*
-				 * TODO(Piyush): Right now in YB, READ COMMITTED isolation level maps to REPEATABLE READ and
-				 * hence we should error out always. Once we implement READ COMMITTED in YB, we will have to
-				 * add EvalQualPlan related handling specific to YB.
+				 * TODO(Piyush): If handling using EvalPlanQual for READ COMMITTED in future, replace true
+				 * with IsolationUsesXactSnapshot().
 				 */
-				if (true) // Replace with IsolationUsesXactSnapshot() once we truly support READ COMMITTED.
+				if (true)
+				{
+					if (erm->waitPolicy == LockWaitError)
+					{
+						// In case the user has specified NOWAIT, the intention is to error out immediately. If
+						// we raise TransactionErrorCode::kConflict, the statement might be retried by our
+						// retry logic in yb_attempt_to_restart_on_error().
+						ereport(ERROR,
+							(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+							 errmsg("could not obtain lock on row in relation \"%s\"",
+											RelationGetRelationName(erm->relation))));
+					}
+
 					ereport(ERROR,
 							(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-							errmsg("could not serialize access due to concurrent update")));
+							errmsg("could not serialize access due to concurrent update"),
+							yb_txn_errcode(YBCGetTxnConflictErrorCode())));
+				}
+
 				if (ItemPointerIndicatesMovedPartitions(&hufd.ctid))
 					ereport(ERROR,
 							(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),

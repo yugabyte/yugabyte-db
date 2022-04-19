@@ -13,20 +13,23 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import java.util.UUID;
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.yb.master.Master;
+import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 
 public class SetUniverseReplicationEnabledRequest
   extends YRpc<SetUniverseReplicationEnabledResponse> {
 
-  private final UUID sourceUniverseUUID;
+  private final String replicationGroupName;
   private final boolean enabled;
 
-  SetUniverseReplicationEnabledRequest(YBTable table, UUID sourceUniverseUUID, boolean enabled) {
+  SetUniverseReplicationEnabledRequest(
+    YBTable table,
+    String replicationGroupName,
+    boolean enabled) {
     super(table);
-    this.sourceUniverseUUID = sourceUniverseUUID;
+    this.replicationGroupName = replicationGroupName;
     this.enabled = enabled;
   }
 
@@ -34,9 +37,9 @@ public class SetUniverseReplicationEnabledRequest
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
-    final Master.SetUniverseReplicationEnabledRequestPB.Builder builder =
-      Master.SetUniverseReplicationEnabledRequestPB.newBuilder()
-        .setProducerId(sourceUniverseUUID.toString())
+    final MasterReplicationOuterClass.SetUniverseReplicationEnabledRequestPB.Builder builder =
+      MasterReplicationOuterClass.SetUniverseReplicationEnabledRequestPB.newBuilder()
+        .setProducerId(replicationGroupName)
         .setIsEnabled(enabled);
 
     return toChannelBuffer(header, builder.build());
@@ -55,16 +58,15 @@ public class SetUniverseReplicationEnabledRequest
   @Override
   Pair<SetUniverseReplicationEnabledResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
-    final Master.SetUniverseReplicationEnabledResponsePB.Builder builder =
-      Master.SetUniverseReplicationEnabledResponsePB.newBuilder();
+    final MasterReplicationOuterClass.SetUniverseReplicationEnabledResponsePB.Builder builder =
+      MasterReplicationOuterClass.SetUniverseReplicationEnabledResponsePB.newBuilder();
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
 
     SetUniverseReplicationEnabledResponse response =
-      new SetUniverseReplicationEnabledResponse(deadlineTracker.getElapsedMillis(),
-        tsUUID, error);
+      new SetUniverseReplicationEnabledResponse(deadlineTracker.getElapsedMillis(), tsUUID, error);
 
     return new Pair<>(response, error);
   }

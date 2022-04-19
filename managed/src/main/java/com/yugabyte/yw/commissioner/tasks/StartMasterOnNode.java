@@ -12,16 +12,15 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -51,8 +50,6 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
     boolean hitException = false;
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the DB to prevent other changes from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -110,22 +107,26 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Starting)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
-      // Set default gflags.
-      addDefaultGFlags(taskParams().getClusterByUuid(currentNode.placementUuid).userIntent);
+      List<NodeDetails> nodeAsList = Arrays.asList(currentNode);
 
       // Set gflags for master.
-      createGFlagsOverrideTasks(ImmutableList.of(currentNode), ServerType.MASTER);
+      createGFlagsOverrideTasks(
+          nodeAsList,
+          ServerType.MASTER,
+          true /* isShell */,
+          VmUpgradeTaskType.None,
+          false /*ignoreUseCustomImageConfig*/);
+
+      // Check that installed MASTER software version is consistent.
+      createSoftwareInstallTasks(nodeAsList, ServerType.MASTER, null);
 
       // Update master configuration on the node.
       createConfigureServerTasks(
-              Arrays.asList(currentNode),
-              true /* isShell */,
-              true /* updateMasterAddrs */,
-              true /* isMaster */)
+              nodeAsList, true /* isShell */, true /* updateMasterAddrs */, true /* isMaster */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start a master process.
-      createStartMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
+      createStartMasterTasks(nodeAsList)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // Mark node as isMaster in YW DB.
@@ -133,8 +134,7 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // Wait for the master to be responsive.
-      createWaitForServersTasks(
-              new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.MASTER)
+      createWaitForServersTasks(nodeAsList, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Add master to the quorum.
@@ -155,20 +155,22 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       hitException = true;
       throw t;
     } finally {
-      // Reset the state, on any failure, so that the actions can be retried.
-      if (currentNode != null && hitException) {
-        setNodeState(taskParams().nodeName, currentNode.state);
+      try {
+        // Reset the state, on any failure, so that the actions can be retried.
+        if (currentNode != null && hitException) {
+          setNodeState(taskParams().nodeName, currentNode.state);
+        }
+      } finally {
+        // Mark the update of the universe as done. This will allow future updates to
+        // the universe.
+        unlockUniverseForUpdate();
       }
-
-      // Mark the update of the universe as done. This will allow future updates to
-      // the universe.
-      unlockUniverseForUpdate();
     }
     log.info(
         "Finished {} task for node {} in univ uuid={}",

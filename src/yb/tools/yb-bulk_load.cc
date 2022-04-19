@@ -18,6 +18,7 @@
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 
 #include "yb/common/entity_ids.h"
@@ -25,13 +26,15 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_operation.h"
+#include "yb/docdb/doc_read_context.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
 
 #include "yb/rocksdb/db.h"
@@ -76,7 +79,7 @@ DEFINE_string(table_name, "", "Name of the table to generate partitions for");
 DEFINE_string(namespace_name, "", "Namespace of the table");
 DEFINE_string(base_dir, "", "Base directory where we will store all the SSTable files");
 DEFINE_int64(memtable_size_bytes, 1_GB, "Amount of bytes to use for the rocksdb memtable");
-DEFINE_int32(row_batch_size, 1000, "The number of rows to batch together in each rocksdb write");
+DEFINE_uint64(row_batch_size, 1000, "The number of rows to batch together in each rocksdb write");
 DEFINE_bool(flush_batch_for_tests, false, "Option used only in tests to flush after each batch. "
     "Used to generate multiple SST files in conjuction with small row_batch_size");
 DEFINE_string(bulk_load_helper_script, "./bulk_load_helper.sh", "Relative path for bulk load helper"
@@ -113,6 +116,7 @@ class BulkLoadTask : public Runnable {
                                      QLExpressionPB *column_value);
   CHECKED_STATUS InsertRow(const string &row,
                            const Schema &schema,
+                           uint32_t schema_version,
                            const IndexMap& index_map,
                            BulkLoadDocDBUtil *const db_fixture,
                            docdb::DocWriteBatch *const doc_write_batch,
@@ -187,8 +191,8 @@ void BulkLoadTask::Run() {
     const string &row = entry.second;
 
     // Populate the row.
-    CHECK_OK(InsertRow(row, table_->InternalSchema(), table_->index_map(), db_fixture_,
-                       &doc_write_batch, partition_generator_));
+    CHECK_OK(InsertRow(row, table_->InternalSchema(), table_->schema().version(),
+                       table_->index_map(), db_fixture_, &doc_write_batch, partition_generator_));
   }
 
   // Flush the batch.
@@ -250,6 +254,7 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
 
 Status BulkLoadTask::InsertRow(const string &row,
                                const Schema &schema,
+                               uint32_t schema_version,
                                const IndexMap& index_map,
                                BulkLoadDocDBUtil *const db_fixture,
                                docdb::DocWriteBatch *const doc_write_batch,
@@ -270,7 +275,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   int col_id = 0;
   auto it = tokenizer.begin();
   // Process the hash keys first.
-  for (int i = 0; i < schema.num_key_columns(); it++, col_id++) {
+  for (size_t i = 0; i < schema.num_key_columns(); it++, col_id++) {
     if (skipped_cols_.find(col_id) != skipped_cols_.end()) {
       continue;
     }
@@ -285,22 +290,22 @@ Status BulkLoadTask::InsertRow(const string &row,
       column_value = req.add_range_column_values();
     }
 
-    RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type(), column_value));
+    RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type, column_value));
     i++;  // Avoid this if we are skipping the column.
   }
 
   // Finally process the regular columns.
-  for (int i = schema.num_key_columns(); i < schema.num_columns(); it++, col_id++) {
+  for (auto i = schema.num_key_columns(); i < schema.num_columns(); it++, col_id++) {
     if (skipped_cols_.find(col_id) != skipped_cols_.end()) {
       continue;
     }
     QLColumnValuePB *column_value = req.add_column_values();
-    column_value->set_column_id(kFirstColumnId + i);
+    column_value->set_column_id(narrow_cast<int32_t>(kFirstColumnId + i));
     if (IsNull(*it)) {
       // Use empty value for null.
       column_value->mutable_expr()->mutable_value();
     } else {
-      RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type(),
+      RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type,
                                         column_value->mutable_expr()));
     }
     i++;  // Avoid this if we are skipping the column.
@@ -319,9 +324,9 @@ Status BulkLoadTask::InsertRow(const string &row,
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
   // as well.
   docdb::QLWriteOperation op(
-      std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
+      req, std::make_shared<docdb::DocReadContext>(schema, schema_version),
       index_map, nullptr /* unique_index_key_schema */, TransactionOperationContext());
-  RETURN_NOT_OK(op.Init(&req, &resp));
+  RETURN_NOT_OK(op.Init(&resp));
   RETURN_NOT_OK(op.Apply({
       doc_write_batch,
       CoarseTimePoint::max() /* deadline */,

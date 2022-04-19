@@ -29,19 +29,23 @@
 
 						<h1>{{ if .Page.Params.headerTitle }}{{ .Page.Params.headerTitle }}{{ else }}{{ .Page.Title }}{{ end }} {{ if .Draft }} (Draft){{ end }}{{ if .Page.Params.beta }}<a class="tag-beta" href="{{ .Page.Params.beta }}">Beta</a>{{ end }}</h1>
 
+						<div class="single-contribute-text">
+							{{ partial "contribute_list" . }}
+						</div>
+
 						{{ $urlArray := split (urls.Parse .Permalink).Path "/" }}
-						{{ $latestUrl := path.Join "latest" (after 2 $urlArray) }}
-						{{ $latestUrl = add (add "/" $latestUrl) "/" }}
+						{{ $previewUrl := path.Join "preview" (after 2 $urlArray) }}
+						{{ $previewUrl = add (add "/" $previewUrl) "/" }}
 						{{ if eq (index $urlArray 1) "stable" }}
 						<div class="admonition warning">
 							<p class="admonition-title">Attention</p>
-							This page documents the stable (production) version. For testing and development with the latest features, use <a href="{{ $latestUrl }}">the latest (v2.11) version.</a>
+							This page documents the stable (production) version. For testing and development with the latest features, use <a href="{{ $previewUrl }}">the preview (v2.13) version.</a>
 						</div>
-						{{ else if eq (index $urlArray 1) "latest" }}
+						{{ else if eq (index $urlArray 1) "preview" }}
 						{{ else }}
 						<div class="admonition warning">
 							<p class="admonition-title">Attention</p>
-							This page documents an earlier version. <a href="{{ $latestUrl }}">Go to the latest (v2.11) version.</a>
+							This page documents an earlier version. <a href="{{ $previewUrl }}">Go to the preview (v2.13) version.</a>
 						</div>
 						{{ end }}
 

@@ -18,6 +18,9 @@
 #include <mutex>
 #include <unordered_set>
 
+#include "yb/encryption/encryption.fwd.h"
+
+#include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -27,15 +30,13 @@
 
 namespace yb {
 
-class UniverseKeysPB;
-
 namespace client {
 
 class UniverseKeyClient {
  public:
   UniverseKeyClient(const std::vector<HostPort>& hps,
                     rpc::ProxyCache* proxy_cache,
-                    std::function<void(const UniverseKeysPB&)> callback)
+                    std::function<void(const encryption::UniverseKeysPB&)> callback)
         : hps_(hps), proxy_cache_(proxy_cache), callback_(std::move(callback)) {}
 
   void GetUniverseKeyRegistryAsync();
@@ -56,7 +57,7 @@ class UniverseKeyClient {
 
   std::vector<HostPort> hps_;
   rpc::ProxyCache* proxy_cache_;
-  std::function<void(const UniverseKeysPB&)> callback_;
+  std::function<void(const encryption::UniverseKeysPB&)> callback_;
 
   bool callback_triggered_ = false;
 };

@@ -2,38 +2,48 @@
 
 package com.yugabyte.yw.commissioner;
 
-import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
-import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
-import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
-import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.Builder;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
 @Slf4j
 public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
+  protected static final UpgradeContext DEFAULT_CONTEXT =
+      UpgradeContext.builder()
+          .reconfigureMaster(false)
+          .runBeforeStopping(false)
+          .processInactiveMaster(false)
+          .build();
+  protected static final UpgradeContext RUN_BEFORE_STOPPING =
+      UpgradeContext.builder()
+          .reconfigureMaster(false)
+          .runBeforeStopping(true)
+          .processInactiveMaster(false)
+          .build();
+
   // Variable to mark if the loadbalancer state was changed.
   protected boolean isLoadBalancerOn = true;
   protected boolean isBlacklistLeaders;
@@ -55,7 +65,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   // Wrapper that takes care of common pre and post upgrade tasks and user has
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
-  public void runUpgrade(IUpgradeTaskWrapper upgradeLambda) {
+  public void runUpgrade(Runnable upgradeLambda) {
     try {
       isBlacklistLeaders =
           runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(Util.BLACKLIST_LEADERS);
@@ -64,9 +74,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               .forUniverse(getUniverse())
               .getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
       lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -79,44 +86,48 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
 
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+      // This clears all the previously added subtasks.
+      getRunnableTask().reset();
       // If the task failed, we don't want the loadbalancer to be
       // disabled, so we enable it again in case of errors.
       if (!isLoadBalancerOn) {
         createLoadBalancerStateChangeTask(true)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
 
       throw t;
     } finally {
-      if (isBlacklistLeaders) {
-        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-        List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
-        createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-        subTaskGroupQueue.run();
+      try {
+        if (isBlacklistLeaders) {
+          // This clears all the previously added subtasks.
+          getRunnableTask().reset();
+          List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
+          createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          getRunnableTask().runSubTasks();
+        }
+      } finally {
+        unlockUniverseForUpdate();
       }
-      unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
   }
 
   public void createUpgradeTaskFlow(
       IUpgradeSubTask lambda,
-      UpgradeOption upgradeOption,
       Pair<List<NodeDetails>, List<NodeDetails>> mastersAndTServers,
-      boolean runBeforeStopping) {
-    switch (upgradeOption) {
+      UpgradeContext context) {
+    switch (taskParams().upgradeOption) {
       case ROLLING_UPGRADE:
-        createRollingUpgradeTaskFlow(lambda, mastersAndTServers, runBeforeStopping);
+        createRollingUpgradeTaskFlow(lambda, mastersAndTServers, context);
         break;
       case NON_ROLLING_UPGRADE:
-        createNonRollingUpgradeTaskFlow(lambda, mastersAndTServers, runBeforeStopping);
+        createNonRollingUpgradeTaskFlow(lambda, mastersAndTServers, context);
         break;
       case NON_RESTART_UPGRADE:
         createNonRestartUpgradeTaskFlow(lambda, mastersAndTServers);
@@ -124,94 +135,167 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
-  public void createUpgradeTaskFlow(
-      IUpgradeSubTask lambda,
-      UpgradeOption upgradeOption,
-      List<NodeDetails> masterNodes,
-      List<NodeDetails> tServerNodes,
-      boolean runBeforeStopping) {
-    switch (upgradeOption) {
-      case ROLLING_UPGRADE:
-        createRollingUpgradeTaskFlow(lambda, masterNodes, tServerNodes, runBeforeStopping);
-        break;
-      case NON_ROLLING_UPGRADE:
-        createNonRollingUpgradeTaskFlow(lambda, masterNodes, tServerNodes, runBeforeStopping);
-        break;
-      case NON_RESTART_UPGRADE:
-        createNonRestartUpgradeTaskFlow(lambda, masterNodes, tServerNodes);
-        break;
-    }
-  }
-
   public void createRollingUpgradeTaskFlow(
       IUpgradeSubTask rollingUpgradeLambda,
       Pair<List<NodeDetails>, List<NodeDetails>> mastersAndTServers,
-      boolean runBeforeStopping) {
+      UpgradeContext context) {
     createRollingUpgradeTaskFlow(
-        rollingUpgradeLambda,
-        mastersAndTServers.getLeft(),
-        mastersAndTServers.getRight(),
-        runBeforeStopping);
+        rollingUpgradeLambda, mastersAndTServers.getLeft(), mastersAndTServers.getRight(), context);
   }
 
   public void createRollingUpgradeTaskFlow(
       IUpgradeSubTask rollingUpgradeLambda,
       List<NodeDetails> masterNodes,
       List<NodeDetails> tServerNodes,
-      boolean runBeforeStopping) {
-    if (masterNodes != null && !masterNodes.isEmpty()) {
+      UpgradeContext context) {
+    createRollingUpgradeTaskFlow(
+        rollingUpgradeLambda, masterNodes, ServerType.MASTER, context, true);
+    if (context.processInactiveMaster) {
       createRollingUpgradeTaskFlow(
-          rollingUpgradeLambda, masterNodes, ServerType.MASTER, runBeforeStopping);
+          rollingUpgradeLambda,
+          getInactiveMasters(masterNodes, tServerNodes),
+          ServerType.MASTER,
+          context,
+          false);
     }
-    if (tServerNodes != null && !tServerNodes.isEmpty()) {
-      createRollingUpgradeTaskFlow(
-          rollingUpgradeLambda, tServerNodes, ServerType.TSERVER, runBeforeStopping);
-    }
+    createRollingUpgradeTaskFlow(
+        rollingUpgradeLambda, tServerNodes, ServerType.TSERVER, context, true);
   }
 
-  public void createRollingUpgradeTaskFlow(
+  /**
+   * Used for full node upgrades (for example resize) where all processes are stopped.
+   *
+   * @param lambda - for performing upgrade actions
+   * @param mastersAndTServers - pair of masters and servers, sorted in appropriate order.
+   */
+  public void createRollingNodesUpgradeTaskFlow(
+      IUpgradeSubTask lambda,
+      Pair<List<NodeDetails>, List<NodeDetails>> mastersAndTServers,
+      UpgradeContext context) {
+    Set<NodeDetails> nodeSet = new LinkedHashSet<>();
+    nodeSet.addAll(mastersAndTServers.getLeft());
+    nodeSet.addAll(mastersAndTServers.getRight());
+
+    createRollingUpgradeTaskFlow(
+        lambda,
+        nodeSet,
+        nodeDetails -> {
+          Set<ServerType> result = new LinkedHashSet<>();
+          if (nodeDetails.isMaster) {
+            result.add(ServerType.MASTER);
+          }
+          if (nodeDetails.isTserver) {
+            result.add(ServerType.TSERVER);
+          }
+          return result;
+        },
+        context,
+        true);
+  }
+
+  private void createRollingUpgradeTaskFlow(
       IUpgradeSubTask rollingUpgradeLambda,
-      List<NodeDetails> nodes,
-      ServerType processType,
-      boolean runBeforeStopping) {
-    SubTaskGroupType subGroupType = getTaskSubGroupType();
-    NodeState nodeState = getNodeState();
-    int sleepTime = getSleepTimeForProcess(processType);
-    // Need load balancer on to perform leader blacklist
-    if (processType == ServerType.TSERVER && !isBlacklistLeaders) {
-      createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subGroupType);
-      isLoadBalancerOn = false;
+      Collection<NodeDetails> nodes,
+      ServerType baseProcessType,
+      UpgradeContext context,
+      boolean activeRole) {
+    createRollingUpgradeTaskFlow(
+        rollingUpgradeLambda,
+        nodes,
+        node -> Collections.singleton(baseProcessType),
+        context,
+        activeRole);
+  }
+
+  private void createRollingUpgradeTaskFlow(
+      IUpgradeSubTask rollingUpgradeLambda,
+      Collection<NodeDetails> nodes,
+      Function<NodeDetails, Set<ServerType>> processTypesFunction,
+      UpgradeContext context,
+      boolean activeRole) {
+    if ((nodes == null) || nodes.isEmpty()) {
+      return;
     }
 
-    if (processType == ServerType.TSERVER && isBlacklistLeaders) {
-      createModifyBlackListTask(nodes, false /* isAdd */, true /* isLeaderBlacklist */)
-          .setSubTaskGroupType(subGroupType);
+    SubTaskGroupType subGroupType = getTaskSubGroupType();
+    Map<NodeDetails, Set<ServerType>> typesByNode = new HashMap<>();
+    boolean hasTServer = false;
+    for (NodeDetails node : nodes) {
+      Set<ServerType> serverTypes = processTypesFunction.apply(node);
+      hasTServer = hasTServer || serverTypes.contains(ServerType.TSERVER);
+      typesByNode.put(node, serverTypes);
+    }
+
+    NodeState nodeState = getNodeState();
+
+    // Need load balancer on to perform leader blacklist.
+    if (hasTServer) {
+      if (!isBlacklistLeaders) {
+        createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subGroupType);
+        isLoadBalancerOn = false;
+      } else {
+        createModifyBlackListTask(nodes, false /* isAdd */, true /* isLeaderBlacklist */)
+            .setSubTaskGroupType(subGroupType);
+      }
     }
 
     for (NodeDetails node : nodes) {
+      Set<ServerType> processTypes = typesByNode.get(node);
       List<NodeDetails> singletonNodeList = Collections.singletonList(node);
+      boolean isLeaderBlacklistValidRF = isLeaderBlacklistValidRF(node.nodeName);
       createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
-      if (runBeforeStopping) rollingUpgradeLambda.run(singletonNodeList, processType);
+      if (context.runBeforeStopping) {
+        rollingUpgradeLambda.run(singletonNodeList, processTypes);
+      }
       // set leader blacklist and poll
-      if (processType == ServerType.TSERVER && isBlacklistLeaders) {
+      if (processTypes.contains(ServerType.TSERVER)
+          && isBlacklistLeaders
+          && isLeaderBlacklistValidRF) {
         createModifyBlackListTask(
-                Arrays.asList(node), true /* isAdd */, true /* isLeaderBlacklist */)
+                Collections.singletonList(node), true /* isAdd */, true /* isLeaderBlacklist */)
             .setSubTaskGroupType(subGroupType);
         createWaitForLeaderBlacklistCompletionTask(leaderBacklistWaitTimeMs)
             .setSubTaskGroupType(subGroupType);
       }
-      createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
-      if (!runBeforeStopping) rollingUpgradeLambda.run(singletonNodeList, processType);
-      createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
-      createWaitForServersTasks(singletonNodeList, processType).setSubTaskGroupType(subGroupType);
-      createWaitForServerReady(node, processType, sleepTime).setSubTaskGroupType(subGroupType);
-      createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
+      for (ServerType processType : processTypes) {
+        createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
+        if (processType == ServerType.MASTER && context.reconfigureMaster && activeRole) {
+          createWaitForMasterLeaderTask().setSubTaskGroupType(subGroupType);
+          createChangeConfigTask(node, false /* isAdd */, subGroupType, true /* useHostPort */);
+        }
+      }
+      if (!context.runBeforeStopping) {
+        rollingUpgradeLambda.run(singletonNodeList, processTypes);
+      }
+      if (activeRole) {
+        for (ServerType processType : processTypes) {
+          createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+          createWaitForServersTasks(singletonNodeList, processType)
+              .setSubTaskGroupType(subGroupType);
+          if (processType == ServerType.MASTER && context.reconfigureMaster) {
+            // Add stopped master to the quorum.
+            createChangeConfigTask(node, true /* isAdd */, subGroupType);
+          }
+          createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
+              .setSubTaskGroupType(subGroupType);
+        }
+        createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
+      }
+
       // remove leader blacklist
-      if (processType == ServerType.TSERVER && isBlacklistLeaders) {
+      if (processTypes.contains(ServerType.TSERVER)
+          && isBlacklistLeaders
+          && isLeaderBlacklistValidRF) {
         createModifyBlackListTask(
-                Arrays.asList(node), false /* isAdd */, true /* isLeaderBlacklist */)
+                Collections.singletonList(node), false /* isAdd */, true /* isLeaderBlacklist */)
             .setSubTaskGroupType(subGroupType);
       }
+      if (activeRole) {
+        for (ServerType processType : processTypes) {
+          createWaitForFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
+        }
+      }
+
       createSetNodeStateTask(node, NodeState.Live).setSubTaskGroupType(subGroupType);
     }
 
@@ -224,46 +308,77 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   public void createNonRollingUpgradeTaskFlow(
       IUpgradeSubTask nonRollingUpgradeLambda,
       Pair<List<NodeDetails>, List<NodeDetails>> mastersAndTServers,
-      boolean runBeforeStopping) {
+      UpgradeContext context) {
     createNonRollingUpgradeTaskFlow(
         nonRollingUpgradeLambda,
         mastersAndTServers.getLeft(),
         mastersAndTServers.getRight(),
-        runBeforeStopping);
+        context);
   }
 
   public void createNonRollingUpgradeTaskFlow(
       IUpgradeSubTask nonRollingUpgradeLambda,
       List<NodeDetails> masterNodes,
       List<NodeDetails> tServerNodes,
-      boolean runBeforeStopping) {
-    if (masterNodes != null && !masterNodes.isEmpty()) {
+      UpgradeContext context) {
+
+    createNonRollingUpgradeTaskFlow(
+        nonRollingUpgradeLambda, masterNodes, ServerType.MASTER, context, true);
+
+    if (context.processInactiveMaster) {
       createNonRollingUpgradeTaskFlow(
-          nonRollingUpgradeLambda, masterNodes, ServerType.MASTER, runBeforeStopping);
+          nonRollingUpgradeLambda,
+          getInactiveMasters(masterNodes, tServerNodes),
+          ServerType.MASTER,
+          context,
+          false);
     }
-    if (tServerNodes != null && !tServerNodes.isEmpty()) {
-      createNonRollingUpgradeTaskFlow(
-          nonRollingUpgradeLambda, tServerNodes, ServerType.TSERVER, runBeforeStopping);
-    }
+    createNonRollingUpgradeTaskFlow(
+        nonRollingUpgradeLambda, tServerNodes, ServerType.TSERVER, context, true);
   }
 
-  public void createNonRollingUpgradeTaskFlow(
+  private List<NodeDetails> getInactiveMasters(
+      List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
+    Universe universe = getUniverse();
+    UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    return tServerNodes != null
+        ? tServerNodes
+            .stream()
+            .filter(node -> node.placementUuid.equals(primaryClusterUuid))
+            .filter(node -> masterNodes == null || !masterNodes.contains(node))
+            .collect(Collectors.toList())
+        : null;
+  }
+
+  private void createNonRollingUpgradeTaskFlow(
       IUpgradeSubTask nonRollingUpgradeLambda,
       List<NodeDetails> nodes,
       ServerType processType,
-      boolean runBeforeStopping) {
+      UpgradeContext context,
+      boolean activeRole) {
+    if ((nodes == null) || nodes.isEmpty()) {
+      return;
+    }
+
     SubTaskGroupType subGroupType = getTaskSubGroupType();
     NodeState nodeState = getNodeState();
 
     createSetNodeStateTasks(nodes, nodeState).setSubTaskGroupType(subGroupType);
-    if (runBeforeStopping) nonRollingUpgradeLambda.run(nodes, processType);
+    if (context.runBeforeStopping) {
+      nonRollingUpgradeLambda.run(nodes, Collections.singleton(processType));
+    }
     createServerControlTasks(nodes, processType, "stop").setSubTaskGroupType(subGroupType);
-    if (!runBeforeStopping) nonRollingUpgradeLambda.run(nodes, processType);
-    createServerControlTasks(nodes, processType, "start").setSubTaskGroupType(subGroupType);
-    createSetNodeStateTasks(nodes, NodeState.Live).setSubTaskGroupType(subGroupType);
+    if (!context.runBeforeStopping) {
+      nonRollingUpgradeLambda.run(nodes, Collections.singleton(processType));
+    }
 
-    createWaitForServersTasks(nodes, processType)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    if (activeRole) {
+      createServerControlTasks(nodes, processType, "start").setSubTaskGroupType(subGroupType);
+      createWaitForServersTasks(nodes, processType)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
+    createSetNodeStateTasks(nodes, NodeState.Live).setSubTaskGroupType(subGroupType);
   }
 
   public void createNonRestartUpgradeTaskFlow(
@@ -277,20 +392,20 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       IUpgradeSubTask nonRestartUpgradeLambda,
       List<NodeDetails> masterNodes,
       List<NodeDetails> tServerNodes) {
-    if (masterNodes != null && !masterNodes.isEmpty()) {
-      createNonRestartUpgradeTaskFlow(nonRestartUpgradeLambda, masterNodes, ServerType.MASTER);
-    }
-    if (tServerNodes != null && !tServerNodes.isEmpty()) {
-      createNonRestartUpgradeTaskFlow(nonRestartUpgradeLambda, tServerNodes, ServerType.TSERVER);
-    }
+    createNonRestartUpgradeTaskFlow(nonRestartUpgradeLambda, masterNodes, ServerType.MASTER);
+    createNonRestartUpgradeTaskFlow(nonRestartUpgradeLambda, tServerNodes, ServerType.TSERVER);
   }
 
-  public void createNonRestartUpgradeTaskFlow(
+  private void createNonRestartUpgradeTaskFlow(
       IUpgradeSubTask nonRestartUpgradeLambda, List<NodeDetails> nodes, ServerType processType) {
+    if ((nodes == null) || nodes.isEmpty()) {
+      return;
+    }
+
     SubTaskGroupType subGroupType = getTaskSubGroupType();
     NodeState nodeState = getNodeState();
     createSetNodeStateTasks(nodes, nodeState).setSubTaskGroupType(subGroupType);
-    nonRestartUpgradeLambda.run(nodes, processType);
+    nonRestartUpgradeLambda.run(nodes, Collections.singleton(processType));
     createSetNodeStateTasks(nodes, NodeState.Live).setSubTaskGroupType(subGroupType);
   }
 
@@ -299,7 +414,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     createRestartTasks(mastersAndTServers.getLeft(), mastersAndTServers.getRight(), upgradeOption);
   }
 
-  public void createRestartTasks(
+  private void createRestartTasks(
       List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes, UpgradeOption upgradeOption) {
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE
         && upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
@@ -308,11 +423,33 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
       createRollingUpgradeTaskFlow(
-          (List<NodeDetails> nodes, ServerType processType) -> {}, masterNodes, tServerNodes, true);
+          (nodes, processType) -> {}, masterNodes, tServerNodes, DEFAULT_CONTEXT);
     } else {
       createNonRollingUpgradeTaskFlow(
-          (List<NodeDetails> nodes, ServerType processType) -> {}, masterNodes, tServerNodes, true);
+          (nodes, processType) -> {}, masterNodes, tServerNodes, DEFAULT_CONTEXT);
     }
+  }
+
+  protected ServerType getSingle(Set<ServerType> processTypes) {
+    if (processTypes.size() != 1) {
+      throw new IllegalArgumentException("Expected to have single element, got " + processTypes);
+    }
+    return processTypes.iterator().next();
+  }
+
+  private List<NodeDetails> filterForClusters(List<NodeDetails> nodes) {
+    Set<UUID> clusterUUIDs =
+        taskParams().clusters.stream().map(c -> c.uuid).collect(Collectors.toSet());
+    return nodes
+        .stream()
+        .filter(n -> clusterUUIDs.contains(n.placementUuid))
+        .collect(Collectors.toList());
+  }
+
+  public ImmutablePair<List<NodeDetails>, List<NodeDetails>> fetchNodesForCluster() {
+    return new ImmutablePair<>(
+        filterForClusters(fetchMasterNodes(taskParams().upgradeOption)),
+        filterForClusters(fetchTServerNodes(taskParams().upgradeOption)));
   }
 
   public ImmutablePair<List<NodeDetails>, List<NodeDetails>> fetchNodes(
@@ -335,64 +472,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       return sortTServersInRestartOrder(getUniverse(), tServerNodes);
     }
     return tServerNodes;
-  }
-
-  public AnsibleConfigureServers.Params getAnsibleConfigureServerParams(
-      NodeDetails node,
-      ServerType processType,
-      UpgradeTaskType type,
-      UpgradeTaskSubType taskSubType) {
-    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    UserIntent userIntent =
-        getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
-    // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = userIntent.deviceInfo;
-    // Add the node name.
-    params.nodeName = node.nodeName;
-    // Add the universe uuid.
-    params.universeUUID = taskParams().universeUUID;
-    // Add the az uuid.
-    params.azUuid = node.azUuid;
-    // Add in the node placement uuid.
-    params.placementUuid = node.placementUuid;
-    // Sets the isMaster field
-    params.isMaster = node.isMaster;
-    params.enableYSQL = userIntent.enableYSQL;
-    params.enableYCQL = userIntent.enableYCQL;
-    params.enableYCQLAuth = userIntent.enableYCQLAuth;
-    params.enableYSQLAuth = userIntent.enableYSQLAuth;
-
-    // The software package to install for this cluster.
-    params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
-    // Set the InstanceType
-    params.instanceType = node.cloudInfo.instance_type;
-    params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
-    params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
-    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
-
-    params.allowInsecure = taskParams().allowInsecure;
-    params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
-    params.enableYEDIS = userIntent.enableYEDIS;
-
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    UUID custUUID = Customer.get(universe.customerId).uuid;
-    params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
-    params.rootCA = universe.getUniverseDetails().rootCA;
-    params.clientRootCA = universe.getUniverseDetails().clientRootCA;
-    params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
-
-    // Add testing flag.
-    params.itestS3PackagePath = taskParams().itestS3PackagePath;
-    // Add task type
-    params.type = type;
-    params.setProperty("processType", processType.toString());
-    params.setProperty("taskSubType", taskSubType.toString());
-
-    if (userIntent.providerType.equals(CloudType.onprem)) {
-      params.instanceType = node.cloudInfo.instance_type;
-    }
-
-    return params;
   }
 
   public int getSleepTimeForProcess(ServerType processType) {
@@ -450,5 +529,13 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
                     })
                 .thenComparing(NodeDetails::getNodeIdx))
         .collect(Collectors.toList());
+  }
+
+  @Value
+  @Builder
+  protected static class UpgradeContext {
+    boolean reconfigureMaster;
+    boolean runBeforeStopping;
+    boolean processInactiveMaster;
   }
 }

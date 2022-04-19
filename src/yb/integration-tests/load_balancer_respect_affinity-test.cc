@@ -18,9 +18,13 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+
+#include "yb/master/master_cluster.proxy.h"
 
 #include "yb/tools/yb-admin_client.h"
 
@@ -39,12 +43,22 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
 
   bool use_external_mini_cluster() override { return true; }
 
-  int num_masters() override {
+  size_t num_masters() override {
     return 3;
   }
 
-  int num_tablet_servers() override {
+  size_t num_tablet_servers() override {
     return 3;
+  }
+
+  Result<bool> IsLoadBalanced() {
+    return client_->IsLoadBalanced(narrow_cast<uint32_t>(num_tablet_servers()));
+  }
+
+  CHECKED_STATUS WaitLoadBalanced(MonoDelta timeout) {
+    return WaitFor([&]() -> Result<bool> {
+      return IsLoadBalanced();
+    }, timeout, "IsLoadBalanced");
   }
 
   Result<bool> AreLeadersOnPreferredOnly() {
@@ -52,8 +66,8 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
     master::AreLeadersOnPreferredOnlyResponsePB resp;
     rpc::RpcController rpc;
     rpc.set_timeout(kDefaultTimeout);
-    auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
-    RETURN_NOT_OK(proxy->AreLeadersOnPreferredOnly(req, &resp, &rpc));
+    auto proxy = GetMasterLeaderProxy<master::MasterClusterProxy>();
+    RETURN_NOT_OK(proxy.AreLeadersOnPreferredOnly(req, &resp, &rpc));
     return !resp.has_error();
   }
 
@@ -72,9 +86,7 @@ TEST_F(LoadBalancerRespectAffinityTest,
 
   // First test whether load is correctly balanced when transaction tablet leaders are not
   // using preferred zones.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return client_->IsLoadBalanced(num_tablet_servers());
-  }, kDefaultTimeout * 2, "IsLoadBalanced"));
+  ASSERT_OK(WaitLoadBalanced(kDefaultTimeout * 2));
 
   ASSERT_OK(WaitFor([&]() {
     return AreLeadersOnPreferredOnly();
@@ -87,9 +99,7 @@ TEST_F(LoadBalancerRespectAffinityTest,
       SetFlag(daemon, "transaction_tables_use_preferred_zones", "1"));
   }
 
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return client_->IsLoadBalanced(num_tablet_servers());
-  },  kDefaultTimeout * 2, "IsLoadBalanced"));
+  ASSERT_OK(WaitLoadBalanced(kDefaultTimeout * 2));
 
   ASSERT_OK(WaitFor([&]() {
     return AreLeadersOnPreferredOnly();
@@ -102,9 +112,7 @@ TEST_F(LoadBalancerRespectAffinityTest,
       SetFlag(daemon, "transaction_tables_use_preferred_zones", "0"));
   }
 
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return client_->IsLoadBalanced(num_tablet_servers());
-  },  kDefaultTimeout * 2, "IsLoadBalanced"));
+  ASSERT_OK(WaitLoadBalanced(kDefaultTimeout * 2));
 
   ASSERT_OK(WaitFor([&]() {
     return AreLeadersOnPreferredOnly();

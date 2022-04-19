@@ -318,6 +318,7 @@
 #enable_parallel_hash = on
 #enable_partition_pruning = on
 #yb_enable_geolocation_costing = on
+#yb_enable_expression_pushdown = off
 
 # - Planner Cost Constants -
 
@@ -480,6 +481,13 @@
 					#   %q = stop here in non-session
 					#        processes
 					#   %% = '%'
+					#	The following are yugabyte options
+					#   %C = cloud name 
+					#   %R = region / data center name
+					#   %Z = availability zone / rack name
+					#   %U = cluster UUID
+					#   %N = node and cluster name 
+					#   %H = current hostname
 					# e.g. '<%u%%%d> '
 #log_lock_waits = off			# log lock waits >= deadlock_timeout
 #log_statement = 'none'			# none, ddl, mod, all

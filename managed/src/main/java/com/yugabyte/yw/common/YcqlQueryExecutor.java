@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.common;
 
 import static play.libs.Json.newObject;
@@ -8,6 +10,7 @@ import com.datastax.driver.core.ColumnDefinitions;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.exceptions.AuthenticationException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Singleton;
@@ -49,6 +52,21 @@ public class YcqlQueryExecutor {
     if (ycqlResponse.has("error")) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
+    }
+  }
+
+  public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
+    RunQueryFormData ycqlQuery = new RunQueryFormData();
+    ycqlQuery.query = "SELECT now() FROM system.local";
+    try {
+      JsonNode ycqlResponse =
+          executeQuery(universe, ycqlQuery, true, data.ycqlAdminUsername, data.ycqlAdminPassword);
+      if (ycqlResponse.has("error")) {
+        throw new PlatformServiceException(
+            Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
+      }
+    } catch (AuthenticationException e) {
+      throw new PlatformServiceException(Http.Status.UNAUTHORIZED, e.getMessage());
     }
   }
 

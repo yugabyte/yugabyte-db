@@ -78,7 +78,14 @@ export function successStringFormatter(cell, row) {
           <i className="fa fa-warning" /> Deleted
         </span>
       );
+    case 'Abort':
+      return (
+        <span className="yb-warn-color">
+          <i className="fa fa-ban" /> Aborting
+        </span>
+      );
     case 'Stopped':
+    case 'Aborted':
       return (
         <span className="yb-warn-color">
           <i className="fa fa-ban" /> Aborted

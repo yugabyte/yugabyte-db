@@ -103,9 +103,9 @@ void TSStressTest::InserterThread(int thread_idx) {
   start_latch_.Wait();
   LOG(INFO) << "Starting inserter thread " << thread_idx << " complete";
 
-  uint64_t max_rows = FLAGS_num_inserts_per_thread;
-  int start_row = thread_idx * max_rows;
-  for (int i = start_row; i < start_row + max_rows ; i++) {
+  uint32_t max_rows = FLAGS_num_inserts_per_thread;
+  auto start_row = thread_idx * max_rows;
+  for (auto i = start_row; i < start_row + max_rows ; i++) {
     MonoTime before = MonoTime::Now();
     InsertTestRowsRemote(thread_idx, i, 1);
     MonoTime after = MonoTime::Now();

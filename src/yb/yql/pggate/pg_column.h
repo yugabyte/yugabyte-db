@@ -30,33 +30,33 @@ class PgColumn {
   PgColumn(std::reference_wrapper<const Schema> schema, size_t index);
 
   // Bindings for write requests.
-  PgsqlExpressionPB *AllocPrimaryBindPB(PgsqlWriteRequestPB *write_req);
-  PgsqlExpressionPB *AllocBindPB(PgsqlWriteRequestPB *write_req);
+  LWPgsqlExpressionPB *AllocPrimaryBindPB(LWPgsqlWriteRequestPB *write_req);
+  LWPgsqlExpressionPB *AllocBindPB(LWPgsqlWriteRequestPB *write_req);
 
   // Bindings for read requests.
-  PgsqlExpressionPB *AllocPrimaryBindPB(PgsqlReadRequestPB *write_req);
-  PgsqlExpressionPB *AllocBindPB(PgsqlReadRequestPB *read_req);
+  LWPgsqlExpressionPB *AllocPrimaryBindPB(LWPgsqlReadRequestPB *write_req);
+  LWPgsqlExpressionPB *AllocBindPB(LWPgsqlReadRequestPB *read_req);
 
   // Bindings for read requests.
-  PgsqlExpressionPB *AllocBindConditionExprPB(PgsqlReadRequestPB *read_req);
+  LWPgsqlExpressionPB *AllocBindConditionExprPB(LWPgsqlReadRequestPB *read_req);
 
   // Assign values for write requests.
-  PgsqlExpressionPB *AllocAssignPB(PgsqlWriteRequestPB *write_req);
+  LWPgsqlExpressionPB *AllocAssignPB(LWPgsqlWriteRequestPB *write_req);
 
   void ResetBindPB();
 
   // Access functions.
   const ColumnSchema& desc() const;
 
-  const PgsqlExpressionPB *bind_pb() const {
+  const LWPgsqlExpressionPB *bind_pb() const {
     return bind_pb_;
   }
 
-  PgsqlExpressionPB *bind_pb() {
+  LWPgsqlExpressionPB *bind_pb() {
     return bind_pb_;
   }
 
-  PgsqlExpressionPB *assign_pb() {
+  LWPgsqlExpressionPB *assign_pb() {
     return assign_pb_;
   }
 
@@ -88,6 +88,28 @@ class PgColumn {
   bool is_primary() const;
   bool is_virtual_column() const;
 
+  void set_pg_type_info(int typid, int typmod, int collid) {
+    pg_typid_ = typid;
+    pg_typmod_ = typmod;
+    pg_collid_ = collid;
+  }
+
+  bool has_pg_type_info() const {
+    return pg_typid_ != 0;
+  }
+
+  int pg_typid() const {
+    return pg_typid_;
+  }
+
+  int pg_typmod() const {
+    return pg_typmod_;
+  }
+
+  int pg_collid() const {
+    return pg_collid_;
+  }
+
  private:
   const Schema& schema_;
   const size_t index_;
@@ -100,17 +122,23 @@ class PgColumn {
   //   structures for associated expressions of the primary columns in the specified order.
   // - During DML execution, the reserved expression spaces will be filled with actual values.
   // - The data-member "primary_exprs" is to map column id with the reserved expression spaces.
-  PgsqlExpressionPB *bind_pb_ = nullptr;
-  PgsqlExpressionPB *bind_condition_expr_pb_ = nullptr;
+  LWPgsqlExpressionPB *bind_pb_ = nullptr;
+  LWPgsqlExpressionPB *bind_condition_expr_pb_ = nullptr;
 
   // Protobuf for new-values of a column in the tuple.
-  PgsqlExpressionPB *assign_pb_ = nullptr;
+  LWPgsqlExpressionPB *assign_pb_ = nullptr;
 
   // Wether or not this column must be read from DB for the SQL request.
   bool read_requested_ = false;
 
   // Wether or not this column will be written for the request.
   bool write_requested_ = false;
+
+  int pg_typid_ = 0;
+
+  int pg_typmod_ = -1;
+
+  int pg_collid_ = 0;
 };
 
 }  // namespace pggate

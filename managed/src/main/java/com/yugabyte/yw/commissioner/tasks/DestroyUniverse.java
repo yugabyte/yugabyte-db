@@ -12,8 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
@@ -23,6 +22,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.List;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -50,9 +50,6 @@ public class DestroyUniverse extends UniverseTaskBase {
   @Override
   public void run() {
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe;
@@ -64,7 +61,7 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       if (params().isDeleteBackups) {
         List<Backup> backupList =
-            Backup.fetchByUniverseUUID(params().customerUUID, universe.universeUUID);
+            Backup.fetchBackupToDeleteByUniverseUUID(params().customerUUID, universe.universeUUID);
         createDeleteBackupTasks(backupList, params().customerUUID)
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
@@ -90,9 +87,15 @@ public class DestroyUniverse extends UniverseTaskBase {
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
 
+        // Set the node states to Removing.
+        createSetNodeStateTasks(universe.getNodes(), NodeDetails.NodeState.Terminating)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
         // Create tasks to destroy the existing nodes.
         createDestroyServerTasks(
-                universe.getNodes(), params().isForceDelete, true /* delete node */)
+                universe.getNodes(),
+                params().isForceDelete,
+                true /* delete node */,
+                true /* deleteRootVolumes */)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 
@@ -108,7 +111,7 @@ public class DestroyUniverse extends UniverseTaskBase {
       }
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       // If for any reason destroy fails we would just unlock the universe for update
       try {
@@ -123,7 +126,8 @@ public class DestroyUniverse extends UniverseTaskBase {
   }
 
   public SubTaskGroup createRemoveUniverseEntryTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("RemoveUniverseEntry", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("RemoveUniverseEntry", executor);
     Params params = new Params();
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
@@ -134,21 +138,22 @@ public class DestroyUniverse extends UniverseTaskBase {
     RemoveUniverseEntry task = createTask(RemoveUniverseEntry.class);
     task.initialize(params);
     // Add it to the task list.
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   public SubTaskGroup createDeleteCertificatesTaskGroup(
       UniverseDefinitionTaskParams universeDetails) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("DeleteCertificates", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("DeleteCertificates", executor);
 
     // Create the task to delete rootCerts.
     DeleteCertificate rootCertDeletiontask =
         createDeleteCertificateTask(params().customerUUID, universeDetails.rootCA);
     // Add it to the task list.
     if (rootCertDeletiontask != null) {
-      subTaskGroup.addTask(rootCertDeletiontask);
+      subTaskGroup.addSubTask(rootCertDeletiontask);
     }
 
     if (!universeDetails.rootAndClientRootCASame) {
@@ -157,12 +162,12 @@ public class DestroyUniverse extends UniverseTaskBase {
           createDeleteCertificateTask(params().customerUUID, universeDetails.clientRootCA);
       // Add it to the task list.
       if (clientRootCertDeletiontask != null) {
-        subTaskGroup.addTask(clientRootCertDeletiontask);
+        subTaskGroup.addSubTask(clientRootCertDeletiontask);
       }
     }
 
-    if (subTaskGroup.getNumTasks() > 0) {
-      subTaskGroupQueue.add(subTaskGroup);
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
     return subTaskGroup;
   }

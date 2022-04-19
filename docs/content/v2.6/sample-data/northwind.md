@@ -37,7 +37,7 @@ Follow the steps here to download and install the Northwind sample database.
 
 ### Before you begin
 
-To use the Northwind sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
+To use the Northwind sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/preview/quick-start/).
 
 ### 1. Download the SQL scripts
 

@@ -26,7 +26,7 @@
 namespace yb {
 namespace docdb {
 
-#define DOCDB_VALUE_TYPES \
+#define DOCDB_KEY_ENTRY_TYPES \
     /* This ValueType is used as -infinity for scanning purposes only. */\
     ((kLowest, 0)) \
     /* Prefix for transaction apply state records. */ \
@@ -73,18 +73,11 @@ namespace docdb {
     /* Forward and reverse mappings for sorted sets. */ \
     ((kSSForward, '&')) /* ASCII code 38 */ \
     ((kSSReverse, '\'')) /* ASCII code 39 */ \
-    ((kRedisSet, '(')) /* ASCII code 40 */ \
-    ((kRedisList, ')')) /* ASCII code 41*/ \
-    /* This is the redis timeseries type. */ \
-    ((kRedisTS, '+')) /* ASCII code 43 */ \
-    ((kRedisSortedSet, ',')) /* ASCII code 44 */ \
     ((kInetaddress, '-'))  /* ASCII code 45 */ \
     ((kInetaddressDescending, '.'))  /* ASCII code 46 */ \
-    ((kPgTableOid, '0')) /* ASCII code 48 */ \
-    ((kJsonb, '2')) /* ASCII code 50 */ \
+    ((kColocationId, '0')) /* ASCII code 48 */ \
     ((kFrozen, '<')) /* ASCII code 60 */ \
     ((kFrozenDescending, '>')) /* ASCII code 62 */ \
-    ((kArray, 'A'))  /* ASCII code 65 */ \
     ((kVarInt, 'B')) /* ASCII code 66 */ \
     ((kFloat, 'C'))  /* ASCII code 67 */ \
     ((kDouble, 'D'))  /* ASCII code 68 */ \
@@ -101,7 +94,6 @@ namespace docdb {
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \
-    ((kTombstone, 'X'))  /* ASCII code 88 */ \
     ((kExternalIntents, 'Z')) /* ASCII code 90 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
     ((kCollString, '\\'))  /* ASCII code 92 */ \
@@ -135,11 +127,8 @@ namespace docdb {
     ((kTtl, 't'))  /* ASCII code 116 */ \
     ((kUserTimestamp, 'u'))  /* ASCII code 117 */ \
     ((kGinNull, 'v')) /* ASCII code 118 */ \
-    ((kWriteId, 'w')) /* ASCII code 119 */ \
     ((kTransactionId, 'x')) /* ASCII code 120 */ \
     ((kTableId, 'y')) /* ASCII code 121 */ \
-    \
-    ((kObject, '{'))  /* ASCII code 123 */ \
     \
     /* Null desc must be higher than the other descending primitive types so that it compares */ \
     /* as bigger than them. It is used for frozen CQL user-defined types (which can contain */ \
@@ -159,107 +148,164 @@ namespace docdb {
     /* encoding value type. */ \
     ((kMaxByte, '\xff'))
 
-YB_DEFINE_ENUM(ValueType, DOCDB_VALUE_TYPES);
+#define DOCDB_VALUE_ENTRY_TYPES \
+    /* Primitive value types */ \
+    /* Null must be lower than the other primitive types so that it compares as smaller than */ \
+    /* them. It is used for frozen CQL user-defined types (which can contain null elements) on */ \
+    /* ASC columns. */ \
+    ((kNullLow, '$')) /* ASCII code 36 */ \
+    /* Forward and reverse mappings for sorted sets. */ \
+    ((kRedisSet, '(')) /* ASCII code 40 */ \
+    ((kRedisList, ')')) /* ASCII code 41*/ \
+    /* This is the redis timeseries type. */ \
+    ((kRedisTS, '+')) /* ASCII code 43 */ \
+    ((kRedisSortedSet, ',')) /* ASCII code 44 */ \
+    ((kInetaddress, '-'))  /* ASCII code 45 */ \
+    ((kColocationId, '0')) /* ASCII code 48 */ \
+    ((kJsonb, '2')) /* ASCII code 50 */ \
+    ((kFrozen, '<')) /* ASCII code 60 */ \
+    ((kArray, 'A'))  /* ASCII code 65 */ \
+    ((kVarInt, 'B')) /* ASCII code 66 */ \
+    ((kFloat, 'C'))  /* ASCII code 67 */ \
+    ((kDouble, 'D'))  /* ASCII code 68 */ \
+    ((kDecimal, 'E'))  /* ASCII code 69 */ \
+    ((kFalse, 'F'))  /* ASCII code 70 */ \
+    ((kInt32, 'H'))  /* ASCII code 72 */ \
+    ((kInt64, 'I'))  /* ASCII code 73 */ \
+    ((kUInt32, 'O'))  /* ASCII code 79 */ \
+    ((kString, 'S'))  /* ASCII code 83 */ \
+    ((kTrue, 'T'))  /* ASCII code 84 */ \
+    ((kUInt64, 'U')) /* ASCII code 85 */ \
+    ((kTombstone, 'X'))  /* ASCII code 88 */ \
+    ((kArrayIndex, '['))  /* ASCII code 91 */ \
+    ((kCollString, '\\'))  /* ASCII code 92 */ \
+    \
+    /* We allow putting a 32-bit hash in front of the document key. This hash is computed based */ \
+    /* on the "hashed" components of the document key that precede "range" components. */ \
+    \
+    ((kUuid, '_')) /* ASCII code 95 */ \
+    \
+    /* Indicator for whether an intent is for a row lock. */ \
+    ((kSubTransactionId, 'n')) /* ASCII code 110 */ \
+    /* Timestamp value in microseconds */ \
+    ((kTimestamp, 's'))  /* ASCII code 115 */ \
+    /* TTL value in milliseconds, optionally present at the start of a value. */ \
+    ((kGinNull, 'v')) /* ASCII code 118 */ \
+    ((kWriteId, 'w')) /* ASCII code 119 */ \
+    ((kTransactionId, 'x')) /* ASCII code 120 */ \
+    ((kTableId, 'y')) /* ASCII code 121 */ \
+    ((kPackedRow, 'z')) /* ASCII code 122 */ \
+    \
+    ((kObject, '{'))  /* ASCII code 123 */ \
+    \
+    /* Null desc must be higher than the other descending primitive types so that it compares */ \
+    /* as bigger than them. It is used for frozen CQL user-defined types (which can contain */ \
+    /* null elements) on DESC columns. */ \
+    ((kNullHigh, '|')) /* ASCII code 124 */ \
+    \
+    /* This is used for sanity checking. */ \
+    ((kInvalid, 127)) \
+    \
+    /* ValueType which lexicographically higher than any other byte and is not used for */ \
+    /* encoding value type. */ \
+    ((kMaxByte, '\xff'))
+
+YB_DEFINE_ENUM(KeyEntryType, DOCDB_KEY_ENTRY_TYPES);
+YB_DEFINE_ENUM(ValueEntryType, DOCDB_VALUE_ENTRY_TYPES);
 
 #define DOCDB_VALUE_TYPE_AS_CHAR_IMPL(name, value) static constexpr char name = value;
 #define DOCDB_VALUE_TYPE_AS_CHAR(i, data, entry) DOCDB_VALUE_TYPE_AS_CHAR_IMPL entry
 
-struct ValueTypeAsChar {
-  BOOST_PP_SEQ_FOR_EACH(DOCDB_VALUE_TYPE_AS_CHAR, ~, DOCDB_VALUE_TYPES)
+struct KeyEntryTypeAsChar {
+  BOOST_PP_SEQ_FOR_EACH(DOCDB_VALUE_TYPE_AS_CHAR, ~, DOCDB_KEY_ENTRY_TYPES)
 };
 
-// "Intent types" are used for single-tablet operations and cross-shard transactions. For example,
-// multiple write-only operations don't need to conflict. However, if one operation is a
-// read-modify-write snapshot isolation operation, then a write-only operation cannot proceed in
-// parallel with it. Conflicts between intent types are handled according to the conflict matrix at
-// https://goo.gl/Wbc663.
-
-// "Weak" intents are obtained for parent nodes of a node that is a transaction is working with.
-// E.g. if we're writing "a.b.c", we'll obtain weak write intents on "a" and "a.b", but a strong
-// write intent on "a.b.c".
-constexpr int kWeakIntentFlag         = 0b000;
-
-// "Strong" intents are obtained on the node that an operation is working with. See the example
-// above.
-constexpr int kStrongIntentFlag       = 0b010;
-
-constexpr int kReadIntentFlag         = 0b000;
-constexpr int kWriteIntentFlag        = 0b001;
-
-// We put weak intents before strong intents to be able to skip weak intents while checking for
-// conflicts.
-//
-// This was not always the case.
-// kObsoleteIntentTypeSet corresponds to intent type set values stored in such a way that
-// strong/weak and read/write bits are swapped compared to the current format.
-YB_DEFINE_ENUM(IntentType,
-    ((kWeakRead,      kWeakIntentFlag |  kReadIntentFlag))
-    ((kWeakWrite,     kWeakIntentFlag | kWriteIntentFlag))
-    ((kStrongRead,  kStrongIntentFlag |  kReadIntentFlag))
-    ((kStrongWrite, kStrongIntentFlag | kWriteIntentFlag))
-);
-
-constexpr int kIntentTypeSetMapSize = 1 << kIntentTypeMapSize;
-typedef EnumBitSet<IntentType> IntentTypeSet;
+struct ValueEntryTypeAsChar {
+  BOOST_PP_SEQ_FOR_EACH(DOCDB_VALUE_TYPE_AS_CHAR, ~, DOCDB_VALUE_ENTRY_TYPES)
+};
 
 // All primitive value types fall into this range, but not all value types in this range are
 // primitive (e.g. object and tombstone are not).
 
-constexpr ValueType kMinPrimitiveValueType = ValueType::kNullLow;
-constexpr ValueType kMaxPrimitiveValueType = ValueType::kNullHigh;
+constexpr ValueEntryType kMinPrimitiveValueEntryType = ValueEntryType::kNullLow;
+constexpr ValueEntryType kMaxPrimitiveValueEntryType = ValueEntryType::kNullHigh;
 
 // kArray is handled slightly differently and hence we only have
 // kObject, kRedisTS, kRedisSet, and kRedisList.
-constexpr inline bool IsObjectType(const ValueType value_type) {
-  return value_type == ValueType::kRedisTS || value_type == ValueType::kObject ||
-      value_type == ValueType::kRedisSet || value_type == ValueType::kRedisSortedSet ||
-      value_type == ValueType::kSSForward || value_type == ValueType::kSSReverse ||
-      value_type == ValueType::kRedisList;
+constexpr inline bool IsObjectType(const ValueEntryType value_type) {
+  return value_type == ValueEntryType::kRedisTS || value_type == ValueEntryType::kObject ||
+      value_type == ValueEntryType::kRedisSet || value_type == ValueEntryType::kRedisSortedSet ||
+      value_type == ValueEntryType::kRedisList;
 }
 
-constexpr inline bool IsCollectionType(const ValueType value_type) {
-  return IsObjectType(value_type) || value_type == ValueType::kArray;
+constexpr inline bool IsCollectionType(const ValueEntryType value_type) {
+  return IsObjectType(value_type) || value_type == ValueEntryType::kArray;
 }
 
-constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
-  return (kMinPrimitiveValueType <= value_type && value_type <= kMaxPrimitiveValueType &&
-          !IsCollectionType(value_type) &&
-          value_type != ValueType::kTombstone) ||
-         value_type == ValueType::kTransactionApplyState ||
-         value_type == ValueType::kExternalTransactionId;
+constexpr inline bool IsRegulaDBInternalRecordKeyType(const KeyEntryType value_type) {
+  // For regular db:
+  // - transaction apply state records.
+  return value_type == KeyEntryType::kTransactionApplyState;
 }
 
-constexpr inline bool IsSpecialValueType(ValueType value_type) {
-  return value_type == ValueType::kLowest || value_type == ValueType::kHighest ||
-         value_type == ValueType::kMaxByte || value_type == ValueType::kIntentTypeSet ||
-         value_type == ValueType::kGreaterThanIntentType;
+constexpr inline bool IsIntentsDBInternalRecordKeyType(const KeyEntryType value_type) {
+  // For intents db:
+  // - reverse index from transaction id to keys of write intents belonging to that transaction.
+  // - external transaction records (transactions that originated on a CDC producer).
+  return value_type == KeyEntryType::kExternalTransactionId ||
+         value_type == KeyEntryType::kTransactionId;
 }
 
-constexpr inline bool IsPrimitiveOrSpecialValueType(ValueType value_type) {
-  return IsPrimitiveValueType(value_type) || IsSpecialValueType(value_type);
+constexpr inline bool IsInternalRecordKeyType(const KeyEntryType value_type) {
+  return IsRegulaDBInternalRecordKeyType(value_type) ||
+         IsIntentsDBInternalRecordKeyType(value_type);
+}
+
+constexpr inline bool IsPrimitiveValueType(const ValueEntryType value_type) {
+  return kMinPrimitiveValueEntryType <= value_type && value_type <= kMaxPrimitiveValueEntryType &&
+         !IsCollectionType(value_type) && value_type != ValueEntryType::kTombstone;
+}
+
+constexpr inline bool IsSpecialKeyEntryType(KeyEntryType value_type) {
+  return value_type == KeyEntryType::kLowest || value_type == KeyEntryType::kHighest ||
+         value_type == KeyEntryType::kMaxByte || value_type == KeyEntryType::kIntentTypeSet ||
+         value_type == KeyEntryType::kGreaterThanIntentType;
 }
 
 // Decode the first byte of the given slice as a ValueType.
-inline ValueType DecodeValueType(const rocksdb::Slice& value) {
-  return value.empty() ? ValueType::kInvalid: static_cast<ValueType>(value.data()[0]);
+inline ValueEntryType DecodeValueEntryType(const Slice& value) {
+  return value.empty() ? ValueEntryType::kInvalid : static_cast<ValueEntryType>(value.data()[0]);
+}
+
+constexpr inline ValueEntryType DecodeValueEntryType(char value_type_byte) {
+  return static_cast<ValueEntryType>(value_type_byte);
 }
 
 // Decode the first byte of the given slice as a ValueType and consume it.
-inline ValueType ConsumeValueType(rocksdb::Slice* slice) {
-  return slice->empty() ? ValueType::kInvalid
-                        : static_cast<ValueType>(slice->consume_byte());
+inline ValueEntryType ConsumeValueEntryType(Slice* slice) {
+  return slice->empty() ? ValueEntryType::kInvalid
+                        : DecodeValueEntryType(slice->consume_byte());
 }
 
-inline ValueType DecodeValueType(char value_type_byte) {
-  return static_cast<ValueType>(value_type_byte);
+inline KeyEntryType DecodeKeyEntryType(const Slice& value) {
+  return value.empty() ? KeyEntryType::kInvalid : static_cast<KeyEntryType>(value.data()[0]);
+}
+
+constexpr inline KeyEntryType DecodeKeyEntryType(char value_type_byte) {
+  return static_cast<KeyEntryType>(value_type_byte);
+}
+
+inline KeyEntryType ConsumeKeyEntryType(Slice* slice) {
+  return slice->empty() ? KeyEntryType::kInvalid
+                        : DecodeKeyEntryType(slice->consume_byte());
 }
 
 // Checks if a value is a merge record, meaning it begins with the
 // kMergeFlags value type. Currently, the only merge records supported are
 // TTL records, when the flags value is 0x1. In the future, value
 // merge records may be implemented, such as a +1 merge record for INCR.
-inline bool IsMergeRecord(const rocksdb::Slice& value) {
-  return DecodeValueType(value) == ValueType::kMergeFlags;
+inline bool IsMergeRecord(const Slice& value) {
+  return DecodeKeyEntryType(value) == KeyEntryType::kMergeFlags;
 }
 
 }  // namespace docdb

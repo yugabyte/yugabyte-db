@@ -1257,8 +1257,7 @@ set yb_enable_create_with_table_oid=1;
 CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 0);
 ERROR:  user indexes must have an OID >= 16384
 CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = -1);
-ERROR:  value -1 out of bounds for option "table_oid"
-DETAIL:  Valid values are between "1" and "2147483647".
+ERROR:  invalid value for OID option "table_oid": -1
 CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 123);
 ERROR:  user indexes must have an OID >= 16384
 CREATE INDEX index_with_invalid_oid ON test_index_with_oids (v1) with (table_oid = 'test');

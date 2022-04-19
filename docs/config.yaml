@@ -3,7 +3,6 @@ baseurl: https://docs.yugabyte.com
 languageCode: en-us
 title: YugabyteDB Docs
 metadataformat: yaml
-canonifyurls: false
 googleAnalytics: UA-104956980-3
 pygmentsCodefences: true
 pygmentsStyle: "pygments"
@@ -35,8 +34,8 @@ params:
     code: Inconsolata
   algolia:
     index: yugabyte
-    appID: BH4D9OD16A
-    apiKey: 12bc78d612b87db0163597f245889f18
+    appID: UMBCUJCBE8
+    apiKey: a879f0ab89b677264d0c6e087b714fd8
   bigpicture:
     projectId: 1064
   ui:

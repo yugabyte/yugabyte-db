@@ -20,6 +20,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyObject;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.eq;
@@ -45,13 +47,19 @@ import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.controllers.TablesController.PlacementBlock;
+import com.yugabyte.yw.controllers.TablesController.TableSpaceInfo;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
@@ -76,6 +84,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.Ignore;
@@ -84,14 +96,14 @@ import org.mockito.Matchers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
-import org.yb.master.Master.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterTypes;
 import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 import play.mvc.Http;
@@ -105,6 +117,7 @@ public class TablesControllerTest extends FakeDBApplication {
   private AuditService auditService;
   private ListTablesResponse mockListTablesResponse;
   private GetTableSchemaResponse mockSchemaResponse;
+  private NodeUniverseManager mockNodeUniverseManager;
 
   private Schema getFakeSchema() {
     List<ColumnSchema> columnSchemas = new LinkedList<>();
@@ -123,6 +136,7 @@ public class TablesControllerTest extends FakeDBApplication {
     mockListTablesResponse = mock(ListTablesResponse.class);
     mockSchemaResponse = mock(GetTableSchemaResponse.class);
     when(mockService.getClient(any(), any())).thenReturn(mockClient);
+    mockNodeUniverseManager = mock(NodeUniverseManager.class);
 
     auditService = new AuditService();
     Commissioner commissioner = app.injector().instanceOf(Commissioner.class);
@@ -130,7 +144,12 @@ public class TablesControllerTest extends FakeDBApplication {
     CustomerConfigService customerConfigService =
         app.injector().instanceOf(CustomerConfigService.class);
     tablesController =
-        new TablesController(commissioner, mockService, metricQueryHelper, customerConfigService);
+        new TablesController(
+            commissioner,
+            mockService,
+            metricQueryHelper,
+            customerConfigService,
+            mockNodeUniverseManager);
     tablesController.setAuditService(auditService);
   }
 
@@ -143,14 +162,14 @@ public class TablesControllerTest extends FakeDBApplication {
     TableInfo ti1 =
         TableInfo.newBuilder()
             .setName("Table1")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
             .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString().replace("-", "")))
             .setTableType(TableType.REDIS_TABLE_TYPE)
             .build();
     TableInfo ti2 =
         TableInfo.newBuilder()
             .setName("Table2")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
             .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString().replace("-", "")))
             .setTableType(TableType.YQL_TABLE_TYPE)
             .build();
@@ -158,7 +177,7 @@ public class TablesControllerTest extends FakeDBApplication {
     TableInfo ti3 =
         TableInfo.newBuilder()
             .setName("Table3")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("system"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("system"))
             .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
             .setTableType(TableType.YQL_TABLE_TYPE)
             .setRelationType(RelationType.SYSTEM_TABLE_RELATION)
@@ -555,7 +574,6 @@ public class TablesControllerTest extends FakeDBApplication {
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
     assertErrorNodeValue(resultJson, "storageConfigUUID", "This field is required");
-    assertErrorNodeValue(resultJson, "actionType", "This field is required");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -707,6 +725,7 @@ public class TablesControllerTest extends FakeDBApplication {
     doThrow(new PlatformServiceException(BAD_REQUEST, "bad request"))
         .when(mockTablesController)
         .validateTables(any(), any());
+
     UUID uuid = UUID.randomUUID();
     Result r =
         assertPlatformException(
@@ -977,21 +996,21 @@ public class TablesControllerTest extends FakeDBApplication {
     TableInfo ti1 =
         TableInfo.newBuilder()
             .setName("Table1")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
             .setId(ByteString.copyFromUtf8(table1Uuid.toString()))
             .setTableType(TableType.YQL_TABLE_TYPE)
             .build();
     TableInfo ti2 =
         TableInfo.newBuilder()
             .setName("Table2")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
             .setId(ByteString.copyFromUtf8(table2Uuid.toString()))
             .setTableType(TableType.YQL_TABLE_TYPE)
             .build();
     TableInfo ti3 =
         TableInfo.newBuilder()
             .setName("TableIndex")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
             .setId(ByteString.copyFromUtf8(indexUuid.toString()))
             .setTableType(TableType.YQL_TABLE_TYPE)
             .setRelationType(RelationType.INDEX_TABLE_RELATION)
@@ -999,7 +1018,7 @@ public class TablesControllerTest extends FakeDBApplication {
     TableInfo ti4 =
         TableInfo.newBuilder()
             .setName("TableYsql")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
             .setId(ByteString.copyFromUtf8(ysqlUuid.toString()))
             .setTableType(TableType.PGSQL_TABLE_TYPE)
             .build();
@@ -1031,5 +1050,64 @@ public class TablesControllerTest extends FakeDBApplication {
     tablesController.validateTables(Arrays.asList(table1Uuid, table2Uuid), universe);
 
     tablesController.validateTables(new ArrayList<>(), universe);
+  }
+
+  @Test
+  public void testListTableSpaces() throws Exception {
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
+    Universe u1 = createUniverse(customer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(u1.universeUUID);
+    customer.save();
+    LOG.info("new code");
+    final String shellResponseString =
+        TestUtils.readResource("com/yugabyte/yw/controllers/tablespaces_shell_response.txt");
+
+    ShellResponse shellResponse1 =
+        ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, shellResponseString);
+    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyString(), anyObject()))
+        .thenReturn(shellResponse1);
+
+    Result r = tablesController.listTableSpaces(customer.uuid, u1.universeUUID);
+    assertEquals(OK, r.status());
+    JsonNode json = Json.parse(contentAsString(r));
+    ObjectMapper objectMapper = new ObjectMapper();
+
+    List<TableSpaceInfo> tableSpaceInfoRespList =
+        objectMapper.readValue(json.toString(), new TypeReference<List<TableSpaceInfo>>() {});
+    Assert.assertNotNull(tableSpaceInfoRespList);
+    Assert.assertEquals(4, tableSpaceInfoRespList.size());
+
+    Map<String, TableSpaceInfo> tableSpacesMap =
+        tableSpaceInfoRespList.stream().collect(Collectors.toMap(x -> x.name, Function.identity()));
+
+    TableSpaceInfo ap_south_1_tablespace = tableSpacesMap.get("ap_south_1_tablespace");
+    TableSpaceInfo us_west_2_tablespace = tableSpacesMap.get("us_west_2_tablespace");
+    TableSpaceInfo us_west_1_tablespace = tableSpacesMap.get("us_west_1_tablespace");
+    TableSpaceInfo us_west_3_tablespace = tableSpacesMap.get("us_west_3_tablespace");
+    Assert.assertNotNull(ap_south_1_tablespace);
+    Assert.assertNotNull(us_west_2_tablespace);
+    Assert.assertNotNull(us_west_1_tablespace);
+    Assert.assertNotNull(us_west_3_tablespace);
+
+    Assert.assertEquals(3, ap_south_1_tablespace.numReplicas);
+    Assert.assertEquals(3, ap_south_1_tablespace.placementBlocks.size());
+    Map<String, PlacementBlock> ap_south_1_tablespace_zones =
+        ap_south_1_tablespace
+            .placementBlocks
+            .stream()
+            .collect(Collectors.toMap(x -> x.zone, Function.identity()));
+    Assert.assertNotNull(ap_south_1_tablespace_zones.get("ap-south-1a"));
+    Assert.assertEquals("ap-south-1", ap_south_1_tablespace_zones.get("ap-south-1a").region);
+    Assert.assertEquals("aws", ap_south_1_tablespace_zones.get("ap-south-1a").cloud);
+    Assert.assertEquals(1, ap_south_1_tablespace_zones.get("ap-south-1a").minNumReplicas);
+
+    Assert.assertEquals(3, us_west_2_tablespace.numReplicas);
+    Assert.assertEquals(3, us_west_2_tablespace.placementBlocks.size());
+    Assert.assertEquals(1, us_west_1_tablespace.numReplicas);
+    Assert.assertEquals(1, us_west_1_tablespace.placementBlocks.size());
+    Assert.assertEquals(1, us_west_3_tablespace.numReplicas);
+    Assert.assertEquals(1, us_west_3_tablespace.placementBlocks.size());
   }
 }

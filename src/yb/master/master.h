@@ -37,6 +37,9 @@
 #include <string>
 #include <vector>
 
+#include "yb/consensus/consensus.fwd.h"
+#include "yb/consensus/metadata.fwd.h"
+
 #include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/macros.h"
 
@@ -54,8 +57,6 @@ class MaintenanceManager;
 class RpcServer;
 class ServerEntryPB;
 class ThreadPool;
-
-using yb::consensus::RaftConfigPB;
 
 namespace server {
 
@@ -133,7 +134,7 @@ class Master : public tserver::DbServerBase {
   }
 
   // Recreates the master list based on the new config peers
-  CHECKED_STATUS ResetMemoryState(const RaftConfigPB& new_config);
+  CHECKED_STATUS ResetMemoryState(const consensus::RaftConfigPB& new_config);
 
   void DumpMasterOptionsInfo(std::ostream* out);
 
@@ -149,6 +150,10 @@ class Master : public tserver::DbServerBase {
 
   yb::client::AsyncClientInitialiser& async_client_initializer() {
     return *async_client_init_;
+  }
+
+  yb::client::AsyncClientInitialiser& cdc_state_client_initializer() {
+    return *cdc_state_client_init_;
   }
 
   enum MasterMetricType {
@@ -209,9 +214,7 @@ class Master : public tserver::DbServerBase {
 
   MasterOptions opts_;
 
-  ServerRegistrationPB registration_;
-  // True once registration_ has been initialized.
-  std::atomic<bool> registration_initialized_;
+  AtomicUniquePtr<ServerRegistrationPB> registration_;
 
   // The maintenance manager for this master.
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
@@ -223,6 +226,7 @@ class Master : public tserver::DbServerBase {
   std::unique_ptr<MasterTabletServer> master_tablet_server_;
 
   std::unique_ptr<yb::client::AsyncClientInitialiser> async_client_init_;
+  std::unique_ptr<yb::client::AsyncClientInitialiser> cdc_state_client_init_;
   std::mutex master_metrics_mutex_;
   std::map<std::string, scoped_refptr<Histogram>> master_metrics_ GUARDED_BY(master_metrics_mutex_);
 

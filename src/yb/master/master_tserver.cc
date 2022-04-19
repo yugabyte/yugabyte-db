@@ -28,6 +28,8 @@
 
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"

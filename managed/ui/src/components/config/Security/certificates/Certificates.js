@@ -26,6 +26,11 @@ const initialValues = {
   username: 'postgres'
 };
 
+export const MODES = {
+  CREATE: 'CREATE',
+  EDIT: 'EDIT'
+};
+
 const downloadAllFilesInObject = (data) => {
   Object.entries(data).forEach((file) => {
     const [filename, content] = file;
@@ -91,7 +96,8 @@ class Certificates extends Component {
     showSubmitting: false,
     selectedCert: {},
     associatedUniverses: [],
-    isVisibleModal: false
+    isVisibleModal: false,
+    mode: MODES.CREATE
   };
   getDateColumn = (key) => (item, row) => {
     if (key in row) {
@@ -124,7 +130,25 @@ class Certificates extends Component {
   showDeleteCertificateModal = (certificateModal) => {
     this.setState({ certificateModal });
     this.props.showConfirmDeleteModal();
-  }
+  };
+
+  showCertProperties = (item, row) => {
+    return (
+      <div>
+        <a
+          className="show_details"
+          onClick={(e) => {
+            this.setState({ selectedCert: row });
+            this.props.showCertificateDetailsModal();
+            e.preventDefault();
+          }}
+          href="/"
+        >
+          Show details
+        </a>
+      </div>
+    );
+  };
 
   /**
    * Delete the root certificate if certificate is safe to remove,
@@ -144,7 +168,7 @@ class Certificates extends Component {
   };
 
   formatActionButtons = (cell, row) => {
-    const downloadDisabled = row.type !== 'SelfSigned';
+    const downloadEnabled = ['SelfSigned', 'HashicorpVault'].includes(row.type);
     const deleteDisabled = row.inUse;
     const payload = {
       name: row.name,
@@ -153,6 +177,7 @@ class Certificates extends Component {
       expiryDate: row.expiryDate,
       universeDetails: row.universeDetails
     };
+    const disableCertEdit = row.type !== 'HashicorpVault';
     // TODO: Replace dropdown option + modal with a side panel
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
@@ -161,28 +186,40 @@ class Certificates extends Component {
             if (row.customCertInfo) {
               Object.assign(payload, row.customCertInfo);
             }
-            this.setState({ selectedCert: payload });
+            this.setState({ selectedCert: row });
             this.props.showCertificateDetailsModal();
           }}
         >
           <i className="fa fa-info-circle"></i> Details
         </MenuItem>
         <MenuItem
+          disabled={disableCertEdit}
           onClick={() => {
-            if (!downloadDisabled) {
+            if (!disableCertEdit) {
+              this.setState({ mode: MODES.EDIT, selectedCert: row }, () => {
+                this.props.showAddCertificateModal();
+              });
+            }
+          }}
+        >
+          <i className="fa fa-edit"></i> Edit Certificate
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (downloadEnabled) {
               this.setState({ selectedCert: payload });
               this.props.showDownloadCertificateModal();
             }
           }}
-          disabled={downloadDisabled}
+          disabled={!downloadEnabled}
         >
           <i className="fa fa-download"></i> Download YSQL Cert
         </MenuItem>
         <MenuItem
           onClick={() => {
-            !downloadDisabled && this.downloadRootCertificate(row);
+            downloadEnabled && this.downloadRootCertificate(row);
           }}
-          disabled={downloadDisabled}
+          disabled={!downloadEnabled}
         >
           <i className="fa fa-download"></i> Download Root CA Cert
         </MenuItem>
@@ -213,35 +250,48 @@ class Certificates extends Component {
    * Close the modal by setting the local flag.
    */
   closeModal = () => {
-    this.setState({ isVisibleModal: false });
+    this.setState({ isVisibleModal: false, mode: MODES.CREATE });
   };
 
   render() {
     const {
       customer: { currentCustomer, userCertificates },
       modal: { showModal, visibleModal },
-      showAddCertificateModal
+      showAddCertificateModal,
+      featureFlags
     } = this.props;
 
     const { showSubmitting, associatedUniverses, isVisibleModal } = this.state;
 
+    //feature flagging
+    const isHCVaultEnabled =
+      featureFlags.test.enableHCVaultEAT || featureFlags.released.enableHCVaultEAT;
+
     const certificateArray = getPromiseState(userCertificates).isSuccess()
-    ? userCertificates.data
-        .map((cert) => {
-          return {
-            type: cert.certType,
-            uuid: cert.uuid,
-            name: cert.label,
-            expiryDate: cert.expiryDate,
-            certificate: cert.certificate,
-            creationTime: cert.startDate,
-            privateKey: cert.privateKey,
-            customCertInfo: cert.customCertInfo,
-            inUse: cert.inUse,
-            universeDetails: cert.universeDetails
-          };
-        })
-        .sort((a, b) => (new Date(b.creationTime) - new Date(a.creationTime)))
+      ? userCertificates.data
+          .reduce((allCerts, cert) => {
+            const certInfo = {
+              type: cert.certType,
+              uuid: cert.uuid,
+              name: cert.label,
+              expiryDate: cert.expiryDate,
+              certificate: cert.certificate,
+              creationTime: cert.startDate,
+              privateKey: cert.privateKey,
+              customCertInfo: cert.customCertInfo,
+              inUse: cert.inUse,
+              universeDetails: cert.universeDetails,
+              hcVaultCertParams: cert.customHCPKICertInfo
+            };
+
+            const isVaultCert = cert.certType === 'HashicorpVault';
+            if (isVaultCert) {
+              isHCVaultEnabled && allCerts.push(certInfo);
+            } else allCerts.push(certInfo);
+
+            return allCerts;
+          }, [])
+          .sort((a, b) => new Date(b.creationTime) - new Date(a.creationTime))
       : [];
 
     return (
@@ -256,7 +306,11 @@ class Certificates extends Component {
                 {isNotHidden(currentCustomer.data.features, 'universe.create') && (
                   <YBButton
                     btnClass="universe-button btn btn-lg btn-orange"
-                    onClick={showAddCertificateModal}
+                    onClick={() => {
+                      this.setState({ mode: MODES.CREATE }, () => {
+                        showAddCertificateModal();
+                      });
+                    }}
                     disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
                     btnText="Add Certificate"
                     btnIcon="fa fa-plus"
@@ -276,49 +330,52 @@ class Certificates extends Component {
                 className="bs-table-certs"
                 trClassName="tr-cert-name"
               >
-                <TableHeaderColumn dataField="name" width="300px" isKey={true}>
+                <TableHeaderColumn
+                  dataField="name"
+                  isKey={true}
+                  columnClassName="no-border name-column"
+                  className="no-border"
+                >
                   Name
                 </TableHeaderColumn>
                 <TableHeaderColumn
                   dataField="creationTime"
-                  dataAlign="left"
                   dataFormat={this.getDateColumn('creationTime')}
-                  width="120px"
+                  columnClassName="no-border name-column"
+                  className="no-border"
                 >
                   Creation Time
                 </TableHeaderColumn>
                 <TableHeaderColumn
                   dataField="expiryDate"
-                  dataAlign="left"
                   dataFormat={this.getDateColumn('expiryDate')}
-                  width="120px"
+                  columnClassName="no-border name-column"
+                  className="no-border"
                 >
                   Expiration
                 </TableHeaderColumn>
-                <TableHeaderColumn dataField="certificate" width="240px" dataAlign="left">
-                  Certificate
-                </TableHeaderColumn>
                 <TableHeaderColumn
-                  dataField="privateKey"
-                  width="240px"
-                  headerAlign="left"
-                  dataAlign="left"
+                  dataField="base_url"
+                  dataFormat={this.showCertProperties}
+                  columnClassName="no-border name-column"
+                  className="no-border"
                 >
-                  Private Key
+                  Properties
                 </TableHeaderColumn>
                 <TableHeaderColumn
                   dataField="actions"
                   width="120px"
                   columnClassName="yb-actions-cell"
                   dataFormat={this.formatActionButtons}
-                >
-                  Actions
-                </TableHeaderColumn>
+                />
               </BootstrapTable>
               <AddCertificateFormContainer
                 visible={showModal && visibleModal === 'addCertificateModal'}
                 onHide={this.props.closeModal}
                 fetchCustomerCertificates={this.props.fetchCustomerCertificates}
+                isHCVaultEnabled={isHCVaultEnabled}
+                certificate={this.state.selectedCert}
+                mode={this.state.mode}
               />
               <CertificateDetails
                 visible={showModal && visibleModal === 'certificateDetailsModal'}
@@ -349,15 +406,15 @@ class Certificates extends Component {
         <YBConfirmModal
           name="deleteCertificateModal"
           title="Delete Certificate"
-          hideConfirmModal={ this.props.closeModal }
+          hideConfirmModal={this.props.closeModal}
           currentModal="deleteCertificateModal"
-          visibleModal={ visibleModal }
-          onConfirm={ () => this.deleteCertificate(this.state.certificateModal?.uuid) }
+          visibleModal={visibleModal}
+          onConfirm={() => this.deleteCertificate(this.state.certificateModal?.uuid)}
           confirmLabel="Delete"
           cancelLabel="Cancel"
         >
           Are you sure you want to delete certificate{' '}
-          <strong>{ this.state.certificateModal?.name }</strong> ?
+          <strong>{this.state.certificateModal?.name}</strong> ?
         </YBConfirmModal>
       </div>
     );

@@ -78,6 +78,7 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
       }
 
       final String encodedKeyRef = Base64.getEncoder().encodeToString(universeKeyRef);
+
       List<HostAndPort> masterAddrs =
           Arrays.stream(hostPorts.split(","))
               .map(addr -> HostAndPort.fromString(addr))
@@ -100,6 +101,7 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
       }
 
       universe.incrementVersion();
+      log.info("Incremented universe version to {} ", universe.version);
 
       EncryptionAtRestUtil.activateKeyRef(
           taskParams().universeUUID,

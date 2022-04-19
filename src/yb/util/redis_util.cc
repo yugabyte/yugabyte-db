@@ -19,9 +19,11 @@ namespace yb {
 
 using std::string;
 
+namespace {
+
 // Returns whether a given string matches a redis pattern. Ported from Redis.
-bool RedisUtil::RedisPatternMatchWithLen(
-    const char* pattern, int pattern_len, const char* string, int str_len, bool ignore_case) {
+bool RedisPatternMatchWithLen(
+    const char* pattern, size_t pattern_len, const char* string, size_t str_len, bool ignore_case) {
   while (pattern_len > 0) {
     switch (pattern[0]) {
       case '*':
@@ -149,7 +151,9 @@ bool RedisUtil::RedisPatternMatchWithLen(
   return pattern_len == 0 && str_len == 0;
 }
 
-bool RedisUtil::RedisPatternMatch(const string& pattern, const string& string, bool ignore_case) {
+} // namespace
+
+bool RedisPatternMatch(const string& pattern, const string& string, bool ignore_case) {
   return RedisPatternMatchWithLen(
       pattern.c_str(), pattern.length(), string.c_str(), string.length(), ignore_case);
 }

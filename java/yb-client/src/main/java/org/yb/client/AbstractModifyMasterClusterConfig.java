@@ -16,7 +16,7 @@ package org.yb.client;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
 
 
 @InterfaceAudience.Public
@@ -27,7 +27,7 @@ public abstract class AbstractModifyMasterClusterConfig {
     ybClient = client;
   }
 
-  private Master.SysClusterConfigEntryPB getConfig() throws Exception {
+  private CatalogEntityInfo.SysClusterConfigEntryPB getConfig() throws Exception {
     GetMasterClusterConfigResponse getResponse = ybClient.getMasterClusterConfig();
     if (getResponse.hasError()) {
       throw new RuntimeException("Get config hit error: " + getResponse.errorMessage());
@@ -36,8 +36,8 @@ public abstract class AbstractModifyMasterClusterConfig {
     return getResponse.getConfig();
   }
 
-  public Master.SysClusterConfigEntryPB doCall() throws Exception {
-    Master.SysClusterConfigEntryPB newConfig = modifyConfig(getConfig());
+  public CatalogEntityInfo.SysClusterConfigEntryPB doCall() throws Exception {
+    CatalogEntityInfo.SysClusterConfigEntryPB newConfig = modifyConfig(getConfig());
     ChangeMasterClusterConfigResponse changeResp = ybClient.changeMasterClusterConfig(newConfig);
     if (changeResp.hasError()) {
       throw new RuntimeException("ChangeConfig hit error: " + changeResp.errorMessage());
@@ -46,6 +46,6 @@ public abstract class AbstractModifyMasterClusterConfig {
     return getConfig();
   }
 
-  abstract protected Master.SysClusterConfigEntryPB modifyConfig(
-    Master.SysClusterConfigEntryPB config);
+  abstract protected CatalogEntityInfo.SysClusterConfigEntryPB modifyConfig(
+    CatalogEntityInfo.SysClusterConfigEntryPB config);
 }

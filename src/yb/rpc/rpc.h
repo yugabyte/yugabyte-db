@@ -152,6 +152,10 @@ class RpcRetrier {
     return state_.load(std::memory_order_acquire) == RpcRetrierState::kFinished;
   }
 
+  CoarseTimePoint start() const {
+    return start_;
+  }
+
  private:
   CHECKED_STATUS DoDelayedRetry(RpcCommand* rpc, const Status& why_status);
 

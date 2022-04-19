@@ -321,6 +321,7 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'thirdparty_url.txt',
     'postgres_build/contrib',
     'postgres_build/src/test/regress',
+    'postgres_build/src/test/isolation',
 ]
 
 ARCHIVED_PATHS_IN_SRC_DIR = [
@@ -489,7 +490,7 @@ def compute_sha256sum(file_path: str) -> str:
     if sys.platform.startswith('linux'):
         cmd_line = ['sha256sum', file_path]
     elif sys.platform.startswith('darwin'):
-        cmd_line = ['shasum', '--portable', '--algorithm', '256', file_path]
+        cmd_line = ['shasum', '--algorithm', '256', file_path]
     else:
         raise ValueError("Don't know how to compute SHA256 checksum on platform %s" % sys.platform)
 

@@ -131,6 +131,11 @@ pre code.copy + textarea, .copy pre textarea {
   padding: 0 0 1px 1px;
   border: none;
 }
+
+.single-contribute-text {
+  margin-top: 40px;
+}
+
 .content-flex-wrapper {
   display: flex;
   flex-direction: row;

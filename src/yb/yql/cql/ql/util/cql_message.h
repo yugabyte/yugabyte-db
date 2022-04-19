@@ -43,6 +43,7 @@
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/callback_internal.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/template_util.h"
 
 #include "yb/rpc/server_event.h"
@@ -96,6 +97,8 @@ class CQLMessage {
   static constexpr Flags kTracingFlag       = 0x02;
   static constexpr Flags kCustomPayloadFlag = 0x04; // Since V4
   static constexpr Flags kWarningFlag       = 0x08; // Since V4
+  // Not specified by CQL protocol - YB custom flag
+  static constexpr Flags kMetadataFlag      = 0x80;
 
   using StreamId = uint16_t;
   static constexpr StreamId kEventStreamId = 0xffff; // Special stream id for events.
@@ -130,6 +133,32 @@ class CQLMessage {
     Header(const Version version, const StreamId stream_id, const Opcode opcode)
        : version(version), flags(0), stream_id(stream_id), opcode(opcode) { }
   };
+
+  // The CQL metadata consists of the first 8 bytes of the request body.
+  // The format of the request metadata is
+  //   0        16        32        48        64
+  //   +---------+---------+---------+---------+
+  //   |           unused            | Q limit |
+  //   +---------+---------+---------+---------+
+  // The format of the response metadata is
+  //   0        16        32        48        64
+  //   +---------+---------+---------+---------+
+  //   |           unused            |  Q pos  |
+  //   +---------+---------+---------+---------+
+  //
+  // The RPC queue limit ("Q limit") is a unsigned 16-bit integer indicating
+  // whether the request should be dropped. If the queue position of the
+  // incoming RPC is greater than the queue limit, then the request gets
+  // dropped immediately and an ERROR_SERVER_TOO_BUSY response is sent back
+  // to the client. If the queue limit is 0, then the request is not dropped
+  // based on the queue position.
+  //
+  // The RPC queue position ("Q pos") is a signed 16-bit integer indicating
+  // the queue position of the corresponding inbound RPC. If for some reason
+  // the queue position could not be determined, then a value of -1 is returned.
+  static constexpr size_t kMetadataSize = 8;
+  static constexpr size_t kMetadataQueueLimitOffset = 6;
+  static constexpr size_t kMetadataQueuePosOffset = 6;
 
   // STARTUP options.
   static constexpr char kCQLVersionOption[] = "CQL_VERSION";
@@ -247,7 +276,7 @@ class CQLMessage {
 
    private:
     CHECKED_STATUS GetBindVariableValue(const std::string& name,
-                                        const int64_t pos,
+                                        size_t pos,
                                         const Value** value) const;
   };
 
@@ -285,6 +314,8 @@ class CQLRequest : public CQLMessage {
   size_t body_size() const {
     return body_.size();
   }
+
+  static int64_t ParseRpcQueueLimit(const Slice& mesg);
 
   virtual ~CQLRequest();
 
@@ -498,6 +529,10 @@ class CQLResponse : public CQLMessage {
   Events registered_events() const { return registered_events_; }
   void set_registered_events(Events events) { registered_events_ = events; }
 
+  void set_rpc_queue_position(int64_t rpc_queue_position) {
+    rpc_queue_position_ = trim_cast<int16_t>(rpc_queue_position);
+  }
+
  protected:
   CQLResponse(const CQLRequest& request, Opcode opcode);
   CQLResponse(StreamId stream_id, Opcode opcode);
@@ -508,6 +543,7 @@ class CQLResponse : public CQLMessage {
 
  private:
   Events registered_events_ = kNoEvents;
+  int16_t rpc_queue_position_ = -1;
 };
 
 // ------------------------------ Individual CQL responses -----------------------------------

@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
@@ -20,8 +21,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -60,7 +62,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
   @InjectMocks private TlsToggle tlsToggle;
 
-  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
@@ -69,6 +71,22 @@ public class TlsToggleTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.WaitForFollowerLag,
+          TaskType.SetNodeState);
+
+  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.AnsibleConfigureServers,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForFollowerLag,
           TaskType.SetNodeState);
 
   private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE =
@@ -77,8 +95,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
-          TaskType.SetNodeState,
-          TaskType.WaitForServer);
+          TaskType.WaitForServer,
+          TaskType.SetNodeState);
 
   private static final List<TaskType> NON_RESTART_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
@@ -93,6 +111,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     super.setUp();
 
     MockitoAnnotations.initMocks(this);
+
     try {
       when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))
           .thenReturn(true);
@@ -112,9 +131,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
       boolean isMetadataUpdateStep) {
     int position = startPosition;
     List<TaskType> commonNodeTasks = new ArrayList<>();
-    if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
-      commonNodeTasks.add(TaskType.LoadBalancerStateChange);
-    }
+
     if (isMetadataUpdateStep) {
       commonNodeTasks.addAll(ImmutableList.of(TaskType.UniverseSetTlsParams));
     }
@@ -134,7 +151,10 @@ public class TlsToggleTest extends UpgradeTaskTest {
       UpgradeOption option) {
     int position = startPosition;
     if (option == UpgradeOption.ROLLING_UPGRADE) {
-      List<TaskType> taskSequence = ROLLING_UPGRADE_TASK_SEQUENCE;
+      List<TaskType> taskSequence =
+          serverType == MASTER
+              ? ROLLING_UPGRADE_TASK_SEQUENCE_MASTER
+              : ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER;
       List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
 
       for (int nodeIdx : nodeOrder) {
@@ -173,6 +193,12 @@ public class TlsToggleTest extends UpgradeTaskTest {
           if (taskType.equals(TaskType.AnsibleConfigureServers)) {
             assertValues.putAll(ImmutableMap.of("processType", serverType.toString()));
           }
+          // Remove ModifyBlackList task from tasks.
+          tasks =
+              tasks
+                  .stream()
+                  .filter(t -> t.getTaskType() != TaskType.ModifyBlackList)
+                  .collect(Collectors.toList());
           assertEquals(3, tasks.size());
           assertNodeSubTask(tasks, assertValues);
         }
@@ -213,6 +239,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
       UUID rootCA,
       UUID clientRootCA)
       throws IOException, NoSuchAlgorithmException {
+    createTempFile("tls_toggle_test_ca.crt", "test data");
+
     CertificateInfo.create(
         rootCA,
         defaultCustomer.uuid,
@@ -220,8 +248,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
         new Date(),
         new Date(),
         "privateKey",
-        TestHelper.TMP_PATH + "/ca.crt",
-        CertificateInfo.Type.SelfSigned);
+        TestHelper.TMP_PATH + "/tls_toggle_test_ca.crt",
+        CertConfigType.SelfSigned);
 
     CertificateInfo.create(
         clientRootCA,
@@ -230,8 +258,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
         new Date(),
         new Date(),
         "privateKey",
-        TestHelper.TMP_PATH + "/ca.crt",
-        CertificateInfo.Type.SelfSigned);
+        TestHelper.TMP_PATH + "/tls_toggle_test_ca.crt",
+        CertConfigType.SelfSigned);
 
     defaultUniverse =
         Universe.saveDetails(
@@ -245,12 +273,12 @@ public class TlsToggleTest extends UpgradeTaskTest {
               universeDetails.allowInsecure = true;
               universeDetails.rootAndClientRootCASame = rootAndClientRootCASame;
               universeDetails.rootCA = null;
-              if (CertificateHelper.isRootCARequired(
+              if (EncryptionInTransitUtil.isRootCARequired(
                   nodeToNode, clientToNode, rootAndClientRootCASame)) {
                 universeDetails.rootCA = rootCA;
               }
               universeDetails.clientRootCA = null;
-              if (CertificateHelper.isClientRootCARequired(
+              if (EncryptionInTransitUtil.isClientRootCARequired(
                   nodeToNode, clientToNode, rootAndClientRootCASame)) {
                 universeDetails.clientRootCA = clientRootCA;
               }
@@ -311,10 +339,10 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     if (taskParams.upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
       if (nodeToNodeChange != 0) {
-        expectedPosition += 58;
+        expectedPosition += 72;
         expectedNumberOfInvocations += 24;
       } else {
-        expectedPosition += 50;
+        expectedPosition += 64;
         expectedNumberOfInvocations += 18;
       }
     } else {
@@ -354,7 +382,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
-    assertEquals(0, taskInfo.getSubTasks().size());
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -368,7 +396,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
-    assertEquals(0, taskInfo.getSubTasks().size());
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -383,7 +411,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
-    assertEquals(0, taskInfo.getSubTasks().size());
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -498,12 +526,13 @@ public class TlsToggleTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(expectedValues.getSecond())).nodeCommand(any(), any());
 
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
-    if (CertificateHelper.isRootCARequired(nodeToNode, clientToNode, rootAndClientRootCASame)) {
+    if (EncryptionInTransitUtil.isRootCARequired(
+        nodeToNode, clientToNode, rootAndClientRootCASame)) {
       assertEquals(rootCA, universe.getUniverseDetails().rootCA);
     } else {
       assertNull(universe.getUniverseDetails().rootCA);
     }
-    if (CertificateHelper.isClientRootCARequired(
+    if (EncryptionInTransitUtil.isClientRootCARequired(
         nodeToNode, clientToNode, rootAndClientRootCASame)) {
       assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
     } else {
@@ -616,15 +645,20 @@ public class TlsToggleTest extends UpgradeTaskTest {
     }
     // First round gflag update tasks
     position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());
-    position = assertCommonTasks(subTasksByPosition, position, upgrade.getFirst(), false);
+    // Assert for ModifyBlackListTask before TSERVER rolling upgrade.
+    if (upgrade.getFirst() == UpgradeOption.ROLLING_UPGRADE) {
+      assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
+    }
     position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getFirst());
     position = assertCommonTasks(subTasksByPosition, position, upgrade.getFirst(), true);
     if (nodeToNodeChange != 0) {
       // Second round gflag update tasks
       position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getSecond());
-      position = assertCommonTasks(subTasksByPosition, position, upgrade.getSecond(), false);
+      // Assert for ModifyBlackListTask before TSERVER rolling upgrade.
+      if (upgrade.getSecond() == UpgradeOption.ROLLING_UPGRADE) {
+        assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
+      }
       position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getSecond());
-      position = assertCommonTasks(subTasksByPosition, position, upgrade.getSecond(), false);
     }
 
     assertEquals((int) expectedValues.getFirst(), position);
@@ -633,12 +667,13 @@ public class TlsToggleTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(expectedValues.getSecond())).nodeCommand(any(), any());
 
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
-    if (CertificateHelper.isRootCARequired(nodeToNode, clientToNode, rootAndClientRootCASame)) {
+    if (EncryptionInTransitUtil.isRootCARequired(
+        nodeToNode, clientToNode, rootAndClientRootCASame)) {
       assertEquals(rootCA, universe.getUniverseDetails().rootCA);
     } else {
       assertNull(universe.getUniverseDetails().rootCA);
     }
-    if (CertificateHelper.isClientRootCARequired(
+    if (EncryptionInTransitUtil.isClientRootCARequired(
         nodeToNode, clientToNode, rootAndClientRootCASame)) {
       assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
     } else {

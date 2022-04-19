@@ -22,7 +22,8 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/util/net/net_fwd.h"

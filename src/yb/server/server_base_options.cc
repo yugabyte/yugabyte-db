@@ -42,6 +42,8 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/common_net.pb.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/join.h"
@@ -140,16 +142,22 @@ ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
       placement_cloud_(options.placement_cloud_),
       placement_region_(options.placement_region_),
       placement_zone_(options.placement_zone_) {
-  if (options.webserver_opts.bind_interface.empty()) {
+  CompleteWebserverOptions();
+  SetMasterAddressesNoValidation(options.GetMasterAddresses());
+}
+
+WebserverOptions& ServerBaseOptions::CompleteWebserverOptions() {
+  if (webserver_opts.bind_interface.empty()) {
     std::vector<HostPort> bind_addresses;
-    auto status = HostPort::ParseStrings(options.rpc_opts.rpc_bind_addresses, 0, &bind_addresses);
+    auto status = HostPort::ParseStrings(rpc_opts.rpc_bind_addresses, 0, &bind_addresses);
     LOG_IF(DFATAL, !status.ok()) << "Invalid rpc_bind_address "
-                                 << options.rpc_opts.rpc_bind_addresses << ": " << status;
+                                 << rpc_opts.rpc_bind_addresses << ": " << status;
     if (!bind_addresses.empty()) {
       webserver_opts.bind_interface = bind_addresses.at(0).host();
     }
   }
-  SetMasterAddressesNoValidation(options.GetMasterAddresses());
+
+  return webserver_opts;
 }
 
 void ServerBaseOptions::SetMasterAddressesNoValidation(MasterAddressesPtr master_addresses) {
@@ -314,6 +322,14 @@ std::string MasterAddressesToString(const MasterAddresses& addresses) {
     }
     result += '}';
   }
+  return result;
+}
+
+CloudInfoPB GetPlacementFromGFlags() {
+  CloudInfoPB result;
+  result.set_placement_cloud(FLAGS_placement_cloud);
+  result.set_placement_region(FLAGS_placement_region);
+  result.set_placement_zone(FLAGS_placement_zone);
   return result;
 }
 

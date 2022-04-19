@@ -58,6 +58,12 @@ constexpr size_t kCdcCheckpointIdx = 2;
 static const char* const kCdcData = "data";
 static const char* const kCdcLastReplicationTime = "last_replication_time";
 constexpr size_t kCdcLastReplicationTimeIdx = 4;
+static const char* const kCdcStreamIdMappingTableName = "cdc_stream_id_mapping";
+constexpr size_t kCdcTabletIdIdxforStreamIdMap = 1;
+static const char* const kCdcDbStreamId = "db_stream_id";
+constexpr size_t kCdcDbStreamIdIdx = 0;
+static const char* const kCdcTableId = "table_id";
+constexpr size_t kCdcTableIdIdx = 3;
 
 static const char* const kSystemAuthRolesTableName = "roles";
 static const char* const kSystemAuthRolePermissionsTableName = "role_permissions";
@@ -68,6 +74,7 @@ static const char* const kDefaultSchemaVersion = "00000000-0000-0000-0000-000000
 
 static const char* const kSecurityConfigType = "security-configuration";
 static const char* const kYsqlCatalogConfigType = "ysql-catalog-configuration";
+static const char* const kTransactionTablesConfigType = "transaction-tables-configuration";
 static const char* const kColocatedParentTableIdSuffix = ".colocated.parent.uuid";
 static const char* const kColocatedParentTableNameSuffix = ".colocated.parent.tablename";
 static const char* const kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";

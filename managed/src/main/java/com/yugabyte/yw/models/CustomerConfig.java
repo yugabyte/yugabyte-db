@@ -16,11 +16,18 @@ import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import javax.persistence.Transient;
 import javax.validation.constraints.NotNull;
@@ -30,6 +37,7 @@ import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.CollectionUtils;
 import play.libs.Json;
 
 @Entity
@@ -74,6 +82,14 @@ public class CustomerConfig extends Model {
     }
   }
 
+  public enum ConfigState {
+    @EnumValue("Active")
+    Active,
+
+    @EnumValue("QueuedForDeletion")
+    QueuedForDeletion
+  }
+
   @Id
   @ApiModelProperty(value = "Config UUID", accessMode = READ_ONLY)
   public UUID configUUID;
@@ -110,11 +126,26 @@ public class CustomerConfig extends Model {
       example = "{\"AWS_ACCESS_KEY_ID\": \"AK****************ZD\"}")
   public ObjectNode data;
 
+  @ApiModelProperty(
+      value = "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
+      accessMode = READ_ONLY)
+  @Column(nullable = false)
+  @Enumerated(EnumType.STRING)
+  private ConfigState state = ConfigState.Active;
+
   public static final Finder<UUID, CustomerConfig> find =
       new Finder<UUID, CustomerConfig>(CustomerConfig.class) {};
 
   public Map<String, String> dataAsMap() {
-    return new ObjectMapper().convertValue(data, Map.class);
+    Map<String, String> result = new ObjectMapper().convertValue(data, Map.class);
+    // Remove not String values.
+    Map<String, String> r = new HashMap<>();
+    for (Entry<String, String> entry : result.entrySet()) {
+      if (entry.getValue() instanceof String) {
+        r.put(entry.getKey(), entry.getValue());
+      }
+    }
+    return r;
   }
 
   public CustomerConfig generateUUID() {
@@ -212,6 +243,10 @@ public class CustomerConfig extends Model {
     return getConfig(customerUUID, ConfigType.ALERTS, ALERTS_PREFERENCES);
   }
 
+  public static List<CustomerConfig> getAlertConfigs(Collection<UUID> customerUUIDs) {
+    return getConfigs(customerUUIDs, ConfigType.ALERTS, ALERTS_PREFERENCES);
+  }
+
   public static CustomerConfig getSmtpConfig(UUID customerUUID) {
     return getConfig(customerUUID, ConfigType.ALERTS, SMTP_INFO);
   }
@@ -228,6 +263,32 @@ public class CustomerConfig extends Model {
         .eq("type", type.toString())
         .eq("name", name)
         .findOne();
+  }
+
+  public static List<CustomerConfig> getConfigs(
+      Collection<UUID> customerUUIDs, ConfigType type, String name) {
+    if (CollectionUtils.isEmpty(customerUUIDs)) {
+      return Collections.emptyList();
+    }
+    return CustomerConfig.find
+        .query()
+        .where()
+        .in("customer_uuid", customerUUIDs)
+        .eq("type", type.toString())
+        .eq("name", name)
+        .findList();
+  }
+
+  public static List<CustomerConfig> getAllStorageConfigsQueuedForDeletion(UUID customerUUID) {
+    List<CustomerConfig> configList =
+        CustomerConfig.find
+            .query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .eq("type", ConfigType.STORAGE)
+            .eq("state", ConfigState.QueuedForDeletion)
+            .findList();
+    return configList;
   }
 
   public static CustomerConfig createCallHomeConfig(UUID customerUUID) {
@@ -272,5 +333,23 @@ public class CustomerConfig extends Model {
       callhomeConfig.update();
     }
     return callhomeConfig;
+  }
+
+  public ConfigState getState() {
+    return this.state;
+  }
+
+  public void setState(ConfigState newState) {
+    if (this.state == newState) {
+      LOG.debug("Invalid State transition as no change requested");
+      return;
+    }
+    if (this.state == ConfigState.QueuedForDeletion) {
+      LOG.debug("Invalid State transition {} to {}", this.state, newState);
+      return;
+    }
+    LOG.info("Customer config: transitioned from {} to {}", this.state, newState);
+    this.state = newState;
+    save();
   }
 }

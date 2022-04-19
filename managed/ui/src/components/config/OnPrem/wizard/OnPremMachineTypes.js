@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, FieldArray } from 'redux-form';
 import { YBInputField, YBButton } from '../../../common/forms/fields';
-import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
+import { get, isDefinedNotNull } from '../../../../utils/ObjectUtils';
 
 class OnPremListMachineTypes extends Component {
   UNSAFE_componentWillMount() {
@@ -36,6 +36,13 @@ class OnPremListMachineTypes extends Component {
       (!isDefinedNotNull(fields.get(fieldIdx).isBeingEdited) || !fields.get(fieldIdx).isBeingEdited)
     );
   }
+
+  validateMountPath = (value) => {
+    const MOUNT_PATH = get(this.props.onPremJsonFormData, 'provider.config.YB_HOME_DIR');
+    return MOUNT_PATH && value === MOUNT_PATH
+      ? 'Mount Path cannot be same as Desired Home Directory Path'
+      : undefined;
+  };
 
   render() {
     const { fields } = this.props;
@@ -94,7 +101,7 @@ class OnPremListMachineTypes extends Component {
                 <Field
                   name={`${fieldItem}.mountPath`}
                   component={YBInputField}
-                  insetError={true}
+                  validate={self.validateMountPath}
                   isReadOnly={isReadOnly}
                 />
               </Col>
@@ -153,6 +160,7 @@ export default class OnPremMachineTypes extends Component {
                 name="machineTypeList"
                 component={OnPremListMachineTypes}
                 isEditProvider={this.props.isEditProvider}
+                onPremJsonFormData={this.props.onPremJsonFormData}
               />
             </div>
           </div>

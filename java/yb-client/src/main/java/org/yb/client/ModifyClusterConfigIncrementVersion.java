@@ -13,7 +13,7 @@
 
 package org.yb.client;
 
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
 
 public class ModifyClusterConfigIncrementVersion extends AbstractModifyMasterClusterConfig {
   // The current version of the cluster config
@@ -26,9 +26,10 @@ public class ModifyClusterConfigIncrementVersion extends AbstractModifyMasterClu
   }
 
   @Override
-  public Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
-    Master.SysClusterConfigEntryPB.Builder builder =
-      Master.SysClusterConfigEntryPB.newBuilder(config);
+  public CatalogEntityInfo.SysClusterConfigEntryPB modifyConfig(
+      CatalogEntityInfo.SysClusterConfigEntryPB config) {
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder builder =
+      CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder(config);
     if (version > 0) {
       builder = builder.setVersion(version);
     }

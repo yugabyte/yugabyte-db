@@ -50,6 +50,7 @@ Axios
 Azure
 B-tree
 backfilling
+backoff
 backport
 backported
 backporting
@@ -254,6 +255,7 @@ Haml
 hardcode
 hardcoded
 hardcodes
+Hashicorp
 Haswell
 heatmap
 heatmaps
@@ -436,7 +438,6 @@ polyfills
 pooler
 postfixed
 postgres.ai
-PostgreSQL
 precompile
 precompiled
 preconfigure
@@ -469,6 +470,7 @@ proxying
 pseudocode
 pseudonymized
 pseudonymizer
+psql
 Puma
 pytest
 Python
@@ -535,6 +537,7 @@ reverifies
 reverify
 roadmap
 roadmaps
+rollback
 rollout
 rollouts
 rsync
@@ -564,6 +567,7 @@ scrollable
 Semgrep
 Sendmail
 Sentry
+serializable
 serializer
 serializers
 serializing
@@ -824,6 +828,8 @@ Worldline
 Xcode
 Xeon
 YouTrack
+ycqlsh
+ysqlsh
 ytt
 Yubico
 Yugabyte

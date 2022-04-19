@@ -14,7 +14,7 @@
 package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.tserver.Tserver.TabletServerErrorPB;
+import org.yb.tserver.TserverTypes.TabletServerErrorPB;
 
 @InterfaceAudience.Public
 public class ChangeConfigResponse extends YRpcResponse {

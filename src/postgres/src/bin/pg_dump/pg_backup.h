@@ -162,6 +162,8 @@ typedef struct _dumpOptions
 	int			no_subscriptions;
 	int			no_synchronized_snapshots;
 	int			no_unlogged_table_data;
+	int			no_tablegroups;
+	int			no_tablegroup_creations;
 	int			serializable_deferrable;
 	int			quote_all_identifiers;
 	int			disable_triggers;
@@ -171,7 +173,6 @@ typedef struct _dumpOptions
 	int			load_via_partition_root;
 	int			include_yb_metadata;	/* In this mode DDL statements include YB specific
 										 * metadata such as tablet partitions. */
-
 	/* default, if no "inclusion" switches appear, is to dump everything */
 	bool		include_everything;
 

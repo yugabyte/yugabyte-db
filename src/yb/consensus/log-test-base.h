@@ -97,7 +97,7 @@ YB_STRONGLY_TYPED_BOOL(AppendSync);
 static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
                                            Log* log, OpIdPB* op_id,
                                            int count,
-                                           int* size = nullptr) {
+                                           ssize_t* size = nullptr) {
   ReplicateMsgs replicates;
   for (int i = 0; i < count; i++) {
     auto replicate = std::make_shared<ReplicateMsg>();
@@ -133,7 +133,7 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
 
 static CHECKED_STATUS AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
                                           Log* log, OpIdPB* op_id,
-                                          int* size = nullptr) {
+                                          ssize_t* size = nullptr) {
   return AppendNoOpsToLogSync(clock, log, op_id, 1, size);
 }
 
@@ -161,7 +161,7 @@ class LogTestBase : public YBTest {
     tablet_metric_entity_ = METRIC_ENTITY_tablet.Instantiate(
                                 metric_registry_.get(), "log-test-base-tablet");
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     tablet_wal_path_ = fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet);
     clock_.reset(new server::HybridClock());
     ASSERT_OK(clock_->Init());
@@ -245,7 +245,7 @@ class LogTestBase : public YBTest {
     replicate->mutable_id()->CopyFrom(opid);
     replicate->mutable_committed_op_id()->CopyFrom(committed_opid);
     replicate->set_hybrid_time(clock_->Now().ToUint64());
-    WriteRequestPB *batch_request = replicate->mutable_write_request();
+    auto *batch_request = replicate->mutable_write();
 
     if (op_type == consensus::OperationType::UPDATE_TRANSACTION_OP) {
       ASSERT_TRUE(!txn_id.IsNil());
@@ -277,7 +277,6 @@ class LogTestBase : public YBTest {
       FAIL() << "Unexpected operation type: " << consensus::OperationType_Name(op_type);
     }
 
-    batch_request->set_tablet_id(kTestTablet);
     AppendReplicateBatch(replicate, sync);
   }
 
@@ -301,8 +300,8 @@ class LogTestBase : public YBTest {
   }
 
   // Appends 'count' ReplicateMsgs to the log as committed entries.
-  void AppendReplicateBatchToLog(int count, AppendSync sync = AppendSync::kTrue) {
-    for (int i = 0; i < count; i++) {
+  void AppendReplicateBatchToLog(size_t count, AppendSync sync = AppendSync::kTrue) {
+    for (size_t i = 0; i < count; i++) {
       OpIdPB opid = consensus::MakeOpId(1, current_index_);
       AppendReplicateBatch(opid, opid, /* writes */ {}, sync);
       current_index_ += 1;
@@ -311,14 +310,14 @@ class LogTestBase : public YBTest {
 
   // Append a single NO_OP entry. Increments op_id by one.  If non-nullptr, and if the write is
   // successful, 'size' is incremented by the size of the written operation.
-  CHECKED_STATUS AppendNoOp(OpIdPB* op_id, int* size = nullptr) {
+  CHECKED_STATUS AppendNoOp(OpIdPB* op_id, ssize_t* size = nullptr) {
     return AppendNoOpToLogSync(clock_, log_.get(), op_id, size);
   }
 
   // Append a number of no-op entries to the log.  Increments op_id's index by the number of records
   // written.  If non-nullptr, 'size' keeps track of the size of the operations successfully
   // written.
-  CHECKED_STATUS AppendNoOps(OpIdPB* op_id, int num, int* size = nullptr) {
+  CHECKED_STATUS AppendNoOps(OpIdPB* op_id, int num, ssize_t* size = nullptr) {
     for (int i = 0; i < num; i++) {
       RETURN_NOT_OK(AppendNoOp(op_id, size));
     }
@@ -371,7 +370,7 @@ enum CorruptionType {
 };
 
 Status CorruptLogFile(Env* env, const string& log_path,
-                      CorruptionType type, int corruption_offset) {
+                      CorruptionType type, size_t corruption_offset) {
   faststring buf;
   RETURN_NOT_OK_PREPEND(ReadFileToString(env, log_path, &buf),
                         "Couldn't read log");

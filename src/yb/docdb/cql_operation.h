@@ -35,14 +35,15 @@ class QLWriteOperation :
     public DocOperationBase<DocOperationType::QL_WRITE_OPERATION, QLWriteRequestPB>,
     public DocExprExecutor {
  public:
-  QLWriteOperation(std::shared_ptr<const Schema> schema,
+  QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
+                   DocReadContextPtr doc_read_context,
                    std::reference_wrapper<const IndexMap> index_map,
                    const Schema* unique_index_key_schema,
                    const TransactionOperationContext& txn_op_context);
   ~QLWriteOperation();
 
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
-  CHECKED_STATUS Init(QLWriteRequestPB* request, QLResponsePB* response);
+  CHECKED_STATUS Init(QLResponsePB* response);
 
   bool RequireReadSnapshot() const override { return require_read_; }
 
@@ -51,13 +52,15 @@ class QLWriteOperation :
 
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
-  CHECKED_STATUS ApplyForJsonOperators(const QLColumnValuePB& column_value,
-                                       const DocOperationApplyData& data,
-                                       const DocPath& sub_path, const MonoDelta& ttl,
-                                       const UserTimeMicros& user_timestamp,
-                                       const ColumnSchema& column,
-                                       QLTableRow* current_row,
-                                       bool is_insert);
+  CHECKED_STATUS ApplyForJsonOperators(
+    const ColumnSchema& column,
+    const ColumnIdRep col_id,
+    const std::unordered_map<ColumnIdRep, vector<int>>& col_map,
+    const DocOperationApplyData& data,
+    const DocPath& sub_path, const MonoDelta& ttl,
+    const UserTimeMicros& user_timestamp,
+    QLTableRow* current_row,
+    bool is_insert);
 
   CHECKED_STATUS ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
                                        const QLTableRow& current_row,
@@ -131,7 +134,7 @@ class QLWriteOperation :
 
   CHECKED_STATUS UpdateIndexes(const QLTableRow& current_row, const QLTableRow& new_row);
 
-  std::shared_ptr<const Schema> schema_;
+  docdb::DocReadContextPtr doc_read_context_;
   const IndexMap& index_map_;
   const Schema* unique_index_key_schema_ = nullptr;
 
@@ -191,7 +194,7 @@ class QLReadOperation : public DocExprExecutor {
   CHECKED_STATUS Execute(const YQLStorageIf& ql_storage,
                          CoarseTimePoint deadline,
                          const ReadHybridTime& read_time,
-                         const Schema& schema,
+                         const DocReadContext& doc_read_context,
                          const Schema& projection,
                          QLResultSet* result_set,
                          HybridTime* restart_read_ht);

@@ -62,6 +62,9 @@ struct DocDB {
   }
 };
 
+// Checks whether key belongs to specified key_bounds, always true if key_bounds is nullptr.
+bool IsWithinBounds(const KeyBounds* key_bounds, const Slice& key);
+
 }  // namespace docdb
 }  // namespace yb
 

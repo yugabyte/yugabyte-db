@@ -211,6 +211,7 @@
 
 #include "yb/util/debug/trace_event_impl.h"
 #include "yb/util/debug/trace_event_memory.h" // For INTERNAL_TRACE_MEMORY
+#include "yb/util/status_fwd.h"
 
 // By default, const char* argument values are assumed to have long-lived scope
 // and will not be copied. Use this macro to force a const char* to be copied.
@@ -902,7 +903,8 @@ TRACE_EVENT_API_CLASS_EXPORT extern \
 #define INTERNAL_TRACE_EVENT_ADD_SCOPED(category_group, name, ...) \
     INTERNAL_TRACE_EVENT_GET_CATEGORY_INFO(category_group); \
     trace_event_internal::ScopedTracer INTERNAL_TRACE_EVENT_UID(tracer); \
-    if (INTERNAL_TRACE_EVENT_CATEGORY_GROUP_ENABLED_FOR_RECORDING_MODE()) { \
+    if (INTERNAL_TRACE_EVENT_CATEGORY_GROUP_ENABLED_FOR_RECORDING_MODE() && \
+        ::yb::debug::TraceEventsEnabled()) { \
       yb::debug::TraceEventHandle h = trace_event_internal::AddTraceEvent( \
           TRACE_EVENT_PHASE_COMPLETE, \
           INTERNAL_TRACE_EVENT_UID(category_group_enabled), \
@@ -1394,7 +1396,7 @@ static inline yb::debug::TraceEventHandle AddTraceEvent(
 }
 
 // Used by TRACE_EVENTx macros. Do not use directly.
-class TRACE_EVENT_API_CLASS_EXPORT ScopedTracer {
+class NODISCARD_CLASS TRACE_EVENT_API_CLASS_EXPORT ScopedTracer {
  public:
   // Note: members of data_ intentionally left uninitialized. See Initialize.
   ScopedTracer() : p_data_(NULL) {}
@@ -1454,7 +1456,7 @@ class TRACE_EVENT_API_CLASS_EXPORT ScopedTraceBinaryEfficient {
 // and sets a new sampling state. When the scope exists, it restores
 // the sampling state having recorded.
 template<size_t BucketNumber>
-class TraceEventSamplingStateScope {
+class NODISCARD_CLASS TraceEventSamplingStateScope {
  public:
   explicit TraceEventSamplingStateScope(const char* category_and_name) {
     previous_state_ = TraceEventSamplingStateScope<BucketNumber>::Current();

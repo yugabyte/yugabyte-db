@@ -12,6 +12,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.UserProfileFormData;
 import com.yugabyte.yw.forms.UserRegisterFormData;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -108,7 +109,13 @@ public class UsersController extends AuthenticatedController {
     Users user =
         Users.create(
             formData.getEmail(), formData.getPassword(), formData.getRole(), customerUUID, false);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.User,
+            Objects.toString(user.uuid, null),
+            Audit.ActionType.Create,
+            Json.toJson(formData));
     return PlatformResults.withData(userService.getUserWithFeatures(customer, user));
   }
 
@@ -132,7 +139,9 @@ public class UsersController extends AuthenticatedController {
               "Cannot delete primary user %s for customer %s", userUUID.toString(), customerUUID));
     }
     if (user.delete()) {
-      auditService().createAuditEntry(ctx(), request());
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(), Audit.TargetType.User, userUUID.toString(), Audit.ActionType.Delete);
       return YBPSuccess.empty();
     } else {
       throw new PlatformServiceException(
@@ -164,14 +173,20 @@ public class UsersController extends AuthenticatedController {
     Users user = Users.getOrBadRequest(userUUID);
     checkUserOwnership(customerUUID, userUUID, user);
     if (UserType.ldap == user.getUserType() && user.getLdapSpecifiedRole()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Can't change role for LDAP user.");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
     }
     if (Role.SuperAdmin == user.getRole()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot change super admin role.");
     }
     user.setRole(Role.valueOf(role));
     user.save();
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.User,
+            userUUID.toString(),
+            Audit.ActionType.ChangeUserRole,
+            request().body().asJson());
     return YBPSuccess.empty();
   }
 
@@ -194,19 +209,25 @@ public class UsersController extends AuthenticatedController {
   })
   public Result changePassword(UUID customerUUID, UUID userUUID) {
     Users user = Users.getOrBadRequest(userUUID);
+    if (UserType.ldap == user.getUserType()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
+    }
     checkUserOwnership(customerUUID, userUUID, user);
     Form<UserRegisterFormData> form =
         formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
 
     UserRegisterFormData formData = form.get();
     passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-    if (UserType.ldap == user.getUserType()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
-    }
     if (formData.getEmail().equals(user.email)) {
       if (formData.getPassword().equals(formData.getConfirmPassword())) {
         user.setPassword(formData.getPassword());
         user.save();
+        auditService()
+            .createAuditEntryWithReqBody(
+                ctx(),
+                Audit.TargetType.User,
+                userUUID.toString(),
+                Audit.ActionType.ChangeUserPassword);
         return YBPSuccess.empty();
       }
     }
@@ -238,6 +259,9 @@ public class UsersController extends AuthenticatedController {
     UserProfileFormData formData = form.get();
 
     if (StringUtils.isNotEmpty(formData.getPassword())) {
+      if (UserType.ldap == user.getUserType()) {
+        throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
+      }
       passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
       if (!formData.getPassword().equals(formData.getConfirmPassword())) {
         throw new PlatformServiceException(
@@ -253,8 +277,14 @@ public class UsersController extends AuthenticatedController {
         throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
       }
       user.setRole(formData.getRole());
-      auditService().createAuditEntry(ctx(), request());
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.User,
+            userUUID.toString(),
+            Audit.ActionType.Update,
+            Json.toJson(formData));
     user.save();
     return ok(Json.toJson(user));
   }

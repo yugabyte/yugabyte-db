@@ -15,17 +15,10 @@
 
 #include "../../../../src/yb/tserver/tablet_server.h"
 
+#include "yb/encryption/encryption_fwd.h"
+  #include "yb/rpc/rpc_fwd.h"
+
 namespace yb {
-
-class UniverseKeyRegistryPB;
-class UniverseKeyManager;
-
-namespace rpc {
-
-class SecureContext;
-
-}
-
 namespace tserver {
 namespace enterprise {
 
@@ -41,9 +34,9 @@ class TabletServer : public yb::tserver::TabletServer {
 
   void Shutdown() override;
 
-  yb::UniverseKeyManager* GetUniverseKeyManager();
+  encryption::UniverseKeyManager* GetUniverseKeyManager();
   CHECKED_STATUS SetUniverseKeyRegistry(
-      const yb::UniverseKeyRegistryPB& universe_key_registry) override;
+      const encryption::UniverseKeyRegistryPB& universe_key_registry) override;
   CHECKED_STATUS SetConfigVersionAndConsumerRegistry(int32_t cluster_config_version,
       const cdc::ConsumerRegistryPB* consumer_registry);
 

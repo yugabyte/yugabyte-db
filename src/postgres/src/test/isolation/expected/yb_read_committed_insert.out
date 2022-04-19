@@ -1,0 +1,48 @@
+Parsed test spec with 2 sessions
+
+starting permutation: update_k1_to_2 insert_k1 c2 select c1
+step update_k1_to_2: update test set k=2 where k=1;
+step insert_k1: insert into test values (1, 1); <waiting ...>
+step c2: commit;
+step insert_k1: <... completed>
+step select: select * from test;
+k              v
+
+1              1
+2              1
+step c1: commit;
+
+starting permutation: update_k1_to_2 insert_k2 c2 r1 select
+step update_k1_to_2: update test set k=2 where k=1;
+step insert_k2: insert into test values (2, 1); <waiting ...>
+step c2: commit;
+step insert_k2: <... completed>
+error in steps c2 insert_k2: ERROR:  duplicate key value violates unique constraint "test_pkey"
+step r1: rollback;
+step select: select * from test;
+k              v
+
+2              1
+
+starting permutation: update_k1_to_2 insert_k1_on_conflict c2 select c1
+step update_k1_to_2: update test set k=2 where k=1;
+step insert_k1_on_conflict: insert into test values (1, 1) on conflict (k) do update set v=100; <waiting ...>
+step c2: commit;
+step insert_k1_on_conflict: <... completed>
+step select: select * from test;
+k              v
+
+1              1
+2              1
+step c1: commit;
+
+starting permutation: update_k1_to_2 insert_k2_on_conflict c2 select c1
+step update_k1_to_2: update test set k=2 where k=1;
+step insert_k2_on_conflict: insert into test values (2, 1) on conflict (k) do update set v=100; <waiting ...>
+step c2: commit;
+step insert_k2_on_conflict: <... completed>
+step select: select * from test;
+k              v
+
+2              100
+step c1: commit;

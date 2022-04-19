@@ -45,7 +45,7 @@ namespace consensus {
 using std::string;
 
 static void SetPeerInfo(const string& uuid,
-                        RaftPeerPB::MemberType type,
+                        PeerMemberType type,
                         RaftPeerPB* peer) {
   peer->set_permanent_uuid(uuid);
   peer->set_member_type(type);
@@ -53,9 +53,9 @@ static void SetPeerInfo(const string& uuid,
 
 TEST(QuorumUtilTest, TestMemberExtraction) {
   RaftConfigPB config;
-  SetPeerInfo("A", RaftPeerPB::VOTER, config.add_peers());
-  SetPeerInfo("B", RaftPeerPB::VOTER, config.add_peers());
-  SetPeerInfo("C", RaftPeerPB::VOTER, config.add_peers());
+  SetPeerInfo("A", PeerMemberType::VOTER, config.add_peers());
+  SetPeerInfo("B", PeerMemberType::VOTER, config.add_peers());
+  SetPeerInfo("C", PeerMemberType::VOTER, config.add_peers());
 
   // Basic test for GetRaftConfigMember().
   RaftPeerPB peer_pb;

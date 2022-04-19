@@ -34,8 +34,15 @@
 
 #include <string>
 
+#include <boost/type_traits/is_detected.hpp>
+
 #include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/serialization.h"
 #include "yb/rpc/service_if.h"
+
+#include "yb/util/memory/arena.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/status.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
@@ -61,6 +68,111 @@ namespace rpc {
 
 class YBInboundCall;
 
+class RpcCallParams {
+ public:
+  virtual ~RpcCallParams() = default;
+
+  virtual Result<size_t> ParseRequest(Slice param) = 0;
+  virtual AnyMessageConstPtr SerializableResponse() = 0;
+};
+
+class RpcCallPBParams : public RpcCallParams {
+ public:
+  Result<size_t> ParseRequest(Slice param) override;
+
+  AnyMessageConstPtr SerializableResponse() override;
+
+  virtual google::protobuf::Message& request() = 0;
+  virtual google::protobuf::Message& response() = 0;
+
+  static google::protobuf::Message* CastMessage(const AnyMessagePtr& msg);
+
+  static const google::protobuf::Message* CastMessage(const AnyMessageConstPtr& msg);
+};
+
+template <class Req, class Resp>
+class RpcCallPBParamsImpl : public RpcCallPBParams {
+ public:
+  using RequestType = Req;
+  using ResponseType = Resp;
+
+  RpcCallPBParamsImpl() = default;
+
+  Req& request() override {
+    return req_;
+  }
+
+  Resp& response() override {
+    return resp_;
+  }
+
+ private:
+  Req req_;
+  Resp resp_;
+};
+
+class RpcCallLWParams : public RpcCallParams {
+ public:
+  Result<size_t> ParseRequest(Slice param) override;
+  AnyMessageConstPtr SerializableResponse() override;
+
+  virtual LightweightMessage& request() = 0;
+  virtual LightweightMessage& response() = 0;
+
+  static LightweightMessage* CastMessage(const AnyMessagePtr& msg);
+
+  static const LightweightMessage* CastMessage(const AnyMessageConstPtr& msg);
+};
+
+template <class Req, class Resp>
+class RpcCallLWParamsImpl : public RpcCallLWParams {
+ public:
+  using RequestType = Req;
+  using ResponseType = Resp;
+
+  Req& request() override {
+    return req_;
+  }
+
+  Resp& response() override {
+    return resp_;
+  }
+
+  RpcCallLWParamsImpl() : req_(&arena_), resp_(&arena_) {}
+
+ private:
+  Arena arena_;
+  Req req_;
+  Resp resp_;
+};
+
+template <class T>
+using MutableErrorDetector = decltype(boost::declval<T&>().mutable_error());
+
+template <bool>
+struct ResponseErrorHelper;
+
+template <>
+struct ResponseErrorHelper<true> {
+  template <class T>
+  static auto Apply(T* t) {
+    return t->mutable_error();
+  }
+};
+
+template <>
+struct ResponseErrorHelper<false> {
+  template <class T>
+  static auto Apply(T* t) {
+    return t->mutable_status();
+  }
+};
+
+template <class T>
+auto ResponseError(T* t) {
+  return ResponseErrorHelper<boost::is_detected_v<MutableErrorDetector, T>>::Apply(t);
+}
+
 // The context provided to a generated ServiceIf. This provides
 // methods to respond to the RPC. In the future, this will also
 // include methods to access information about the caller: e.g
@@ -72,8 +184,7 @@ class RpcContext {
   // Create an RpcContext. This is called only from generated code
   // and is not a public API.
   RpcContext(std::shared_ptr<YBInboundCall> call,
-             std::shared_ptr<google::protobuf::Message> request_pb,
-             std::shared_ptr<google::protobuf::Message> response_pb);
+             std::shared_ptr<RpcCallParams> params);
   explicit RpcContext(std::shared_ptr<LocalYBInboundCall> call);
 
   RpcContext(RpcContext&& rhs) = default;
@@ -183,15 +294,16 @@ class RpcContext {
   // Suitable for use in log messages.
   std::string requestor_string() const;
 
-  const google::protobuf::Message *request_pb() const { return request_pb_.get(); }
-  google::protobuf::Message *response_pb() const { return response_pb_.get(); }
-
   // Return an upper bound on the client timeout deadline. This does not
   // account for transmission delays between the client and the server.
   // If the client did not specify a deadline, returns MonoTime::Max().
   CoarseTimePoint GetClientDeadline() const;
 
   MonoTime ReceiveTime() const;
+
+  RpcCallParams& params() {
+    return *params_;
+  }
 
   // Panic the server. This logs a fatal error with the given message, and
   // also includes the current RPC request, requestor, trace information, etc,
@@ -211,8 +323,7 @@ class RpcContext {
 
  private:
   std::shared_ptr<YBInboundCall> call_;
-  std::shared_ptr<const google::protobuf::Message> request_pb_;
-  std::shared_ptr<google::protobuf::Message> response_pb_;
+  std::shared_ptr<RpcCallParams> params_;
   bool responded_ = false;
 };
 

@@ -47,6 +47,7 @@ typedef std::function<void(const Status&, const tserver::WriteResponsePB&)> Writ
 MUST_USE_RESULT rpc::RpcCommandPtr CreateCDCWriteRpc(
     CoarseTimePoint deadline,
     client::internal::RemoteTablet* tablet,
+    const std::shared_ptr<client::YBTable>& table,
     client::YBClient* client,
     tserver::WriteRequestPB* req,
     WriteCDCRecordCallback callback,

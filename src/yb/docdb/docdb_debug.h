@@ -34,9 +34,11 @@ namespace yb {
 namespace docdb {
 
 std::string EntryToString(
-    const rocksdb::Iterator& iterator, StorageDbType db_type = StorageDbType::kRegular);
+    const rocksdb::Iterator& iterator, const SchemaPackingStorage& schema_packing_storage,
+    StorageDbType db_type = StorageDbType::kRegular);
 std::string EntryToString(
-    const Slice& key, const Slice& value, StorageDbType db_type = StorageDbType::kRegular);
+    const Slice& key, const Slice& value, const SchemaPackingStorage& schema_packing_storage,
+    StorageDbType db_type = StorageDbType::kRegular);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,
@@ -44,18 +46,26 @@ std::string EntryToString(
 void DocDBDebugDump(
     rocksdb::DB* rocksdb,
     std::ostream& out,
+    const SchemaPackingStorage& schema_packing_storage,
     StorageDbType db_type,
     IncludeBinary include_binary = IncludeBinary::kFalse);
 
 std::string DocDBDebugDumpToStr(
-    rocksdb::DB* rocksdb, StorageDbType db_type = StorageDbType::kRegular,
+    rocksdb::DB* rocksdb, const SchemaPackingStorage& schema_packing_storage,
+    StorageDbType db_type = StorageDbType::kRegular,
     IncludeBinary include_binary = IncludeBinary::kFalse);
 
-std::string DocDBDebugDumpToStr(DocDB docdb, IncludeBinary include_binary = IncludeBinary::kFalse);
+std::string DocDBDebugDumpToStr(
+    DocDB docdb, const SchemaPackingStorage& schema_packing_storage,
+    IncludeBinary include_binary = IncludeBinary::kFalse);
 
-void DocDBDebugDumpToContainer(DocDB docdb, std::unordered_set<std::string>* out);
+void DocDBDebugDumpToContainer(
+    DocDB docdb, const SchemaPackingStorage& schema_packing_storage,
+    std::unordered_set<std::string>* out);
 
-void DumpRocksDBToLog(rocksdb::DB* rocksdb, StorageDbType db_type = StorageDbType::kRegular);
+void DumpRocksDBToLog(
+    rocksdb::DB* rocksdb, const SchemaPackingStorage& schema_packing_storage,
+    StorageDbType db_type = StorageDbType::kRegular, const std::string& log_prefix = std::string());
 
 }  // namespace docdb
 }  // namespace yb

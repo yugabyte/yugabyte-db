@@ -32,10 +32,13 @@ import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Formula;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -64,7 +67,7 @@ public class AlertConfiguration extends Model {
   private static final String RAW_FIELDS =
       "uuid, customerUUID, name, description, createTime, "
           + "targetType, target, thresholds, thresholdUnit, template, durationSec, active, "
-          + "destinationUUID, defaultDestination";
+          + "destinationUUID, defaultDestination, maintenanceWindowUuids";
 
   public enum SortBy implements PagedQuery.SortByIF {
     uuid("uuid"),
@@ -193,6 +196,13 @@ public class AlertConfiguration extends Model {
   @ApiModelProperty(value = "Is default destination used for this config", accessMode = READ_WRITE)
   private boolean defaultDestination;
 
+  @DbJson
+  @Column(nullable = false)
+  @ApiModelProperty(
+      value = "Maintenance window UUIDs, applied to this alert config",
+      accessMode = READ_ONLY)
+  private Set<UUID> maintenanceWindowUuids;
+
   private static final String ALERT_COUNT_JOIN =
       "left join "
           + "(select _ac.uuid, count(*) as alert_count "
@@ -298,7 +308,7 @@ public class AlertConfiguration extends Model {
       expression.eq("customerUUID", filter.getCustomerUuid());
     }
     if (filter.getName() != null) {
-      expression.eq("name", filter.getName());
+      expression.ilike("name", "%" + filter.getName() + "%");
     }
     if (filter.getActive() != null) {
       expression.eq("active", filter.getActive());
@@ -307,15 +317,19 @@ public class AlertConfiguration extends Model {
       expression.eq("targetType", filter.getTargetType());
     }
     if (filter.getTarget() != null) {
+      AlertConfigurationTarget filterTarget = filter.getTarget();
       Junction<AlertConfiguration> orExpr = expression.or();
-      if (filter.getTarget().isAll()) {
+      if (CollectionUtils.isNotEmpty(filterTarget.getUuids())) {
+        // All target always match particular UUID target
         orExpr.like("target", "%\"all\":true%");
+        for (UUID target : filterTarget.getUuids()) {
+          orExpr.like("target", "%\"uuids\":%\"" + target + "\"%");
+        }
       } else {
-        orExpr.not().like("target", "%\"all\":true%");
-      }
-      if (CollectionUtils.isNotEmpty(filter.getUuids())) {
-        for (UUID target : filter.getUuids()) {
-          orExpr.like("target", "%\"uuids\":%\"" + target + "\"");
+        if (filterTarget.isAll()) {
+          orExpr.like("target", "%\"all\":true%");
+        } else {
+          orExpr.not().like("target", "%\"all\":true%");
         }
       }
       expression.endOr();
@@ -342,6 +356,13 @@ public class AlertConfiguration extends Model {
     if (filter.getSeverity() != null) {
       expression.like("thresholds", "%\"" + filter.getSeverity().name() + "\"%");
     }
+    if (filter.getSuspended() != null) {
+      if (filter.getSuspended()) {
+        expression.isNotNull("maintenanceWindowUuids");
+      } else {
+        expression.isNull("maintenanceWindowUuids");
+      }
+    }
     return expression;
   }
 
@@ -353,6 +374,35 @@ public class AlertConfiguration extends Model {
   @JsonIgnore
   public boolean isNew() {
     return uuid == null;
+  }
+
+  @Transient
+  @JsonIgnore
+  public Set<UUID> getMaintenanceWindowUuidsSet() {
+    if (maintenanceWindowUuids == null) {
+      return Collections.emptySet();
+    }
+    return new TreeSet<>(maintenanceWindowUuids);
+  }
+
+  public AlertConfiguration addMaintenanceWindowUuid(UUID maintenanceWindowUuid) {
+    if (this.maintenanceWindowUuids == null) {
+      maintenanceWindowUuids = new TreeSet<>();
+    }
+    maintenanceWindowUuids.add(maintenanceWindowUuid);
+    return this;
+  }
+
+  public AlertConfiguration removeMaintenanceWindowUuid(UUID maintenanceWindowUuid) {
+    if (this.maintenanceWindowUuids == null) {
+      return this;
+    }
+    maintenanceWindowUuids.remove(maintenanceWindowUuid);
+    if (maintenanceWindowUuids.isEmpty()) {
+      // To make it easier to query for empty list in DB
+      this.maintenanceWindowUuids = null;
+    }
+    return this;
   }
 
   @Transient

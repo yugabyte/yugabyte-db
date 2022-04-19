@@ -35,13 +35,19 @@
 #include <string>
 
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+#include "yb/master/ts_descriptor.h"
 
+#include "yb/gutil/map-util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
 
 using std::string;
 
@@ -62,8 +68,8 @@ string TabletReplica::ToString() const {
                 "total_space_used: $6, time since update: $7ms }",
                 ts_desc->permanent_uuid(),
                 tablet::RaftGroupStatePB_Name(state),
-                consensus::RaftPeerPB_Role_Name(role),
-                consensus::RaftPeerPB::MemberType_Name(member_type),
+                PeerRole_Name(role),
+                consensus::PeerMemberType_Name(member_type),
                 should_disable_lb_move, fs_data_dir,
                 drive_info.sst_files_size + drive_info.wal_files_size,
                 MonoTime::Now().GetDeltaSince(time_updated).ToMilliseconds());
@@ -168,7 +174,7 @@ Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
   std::lock_guard<simple_spinlock> l(lock_);
 
   for (const auto& pair : *replica_locations_) {
-    if (pair.second.role == consensus::RaftPeerPB::LEADER) {
+    if (pair.second.role == PeerRole::LEADER) {
       return pair.second.drive_info;
     }
   }
@@ -177,7 +183,7 @@ Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
 
 TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
   for (const auto& pair : *replica_locations_) {
-    if (pair.second.role == consensus::RaftPeerPB::LEADER) {
+    if (pair.second.role == PeerRole::LEADER) {
       return pair.second.ts_desc;
     }
   }
@@ -283,7 +289,8 @@ void PersistentTabletInfo::set_state(SysTabletsEntryPB::State state, const strin
 // TableInfo
 // ================================================================================================
 
-TableInfo::TableInfo(TableId table_id, scoped_refptr<TasksTracker> tasks_tracker)
+TableInfo::TableInfo(TableId table_id,
+                     scoped_refptr<TasksTracker> tasks_tracker)
     : table_id_(std::move(table_id)),
       tasks_tracker_(tasks_tracker) {
 }
@@ -747,9 +754,10 @@ TabletInfos TableInfo::GetTablets(IncludeInactive include_inactive) const {
 
 TabletInfoPtr TableInfo::GetColocatedTablet() const {
   SharedLock<decltype(lock_)> l(lock_);
-  if (colocated() && !partitions_.empty()) {
-    return partitions_.begin()->second;
+  if (colocated() && !tablets_.empty()) {
+    return tablets_.begin()->second;
   }
+  LOG(INFO) << "Colocated Tablet not found for table " << name();
   return nullptr;
 }
 
@@ -765,8 +773,27 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 
 bool TableInfo::UsesTablespacesForPlacement() const {
   auto l = LockForRead();
-  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated() &&
-         l->namespace_id() != kPgSequencesDataNamespaceId;
+  // Global transaction table is excluded due to not having a tablespace id set.
+  bool is_transaction_table_using_tablespaces =
+      l->pb.table_type() == TRANSACTION_STATUS_TABLE_TYPE &&
+      l->pb.has_transaction_table_tablespace_id();
+  bool is_regular_pgsql_table =
+      l->pb.table_type() == PGSQL_TABLE_TYPE && !IsColocatedUserTable() &&
+      l->namespace_id() != kPgSequencesDataNamespaceId &&
+      !IsColocatedParentTable();
+  return is_transaction_table_using_tablespaces || is_regular_pgsql_table;
+}
+
+bool TableInfo::IsTablegroupParentTable() const {
+  return id().find(master::kTablegroupParentTableIdSuffix) != std::string::npos;
+}
+
+bool TableInfo::IsColocatedParentTable() const {
+  return id().find(master::kColocatedParentTableIdSuffix) != std::string::npos;
+}
+
+bool TableInfo::IsColocatedUserTable() const {
+  return colocated() && !IsColocatedParentTable() && !IsTablegroupParentTable();
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
@@ -871,33 +898,54 @@ string NamespaceInfo::ToString() const {
 TablegroupInfo::TablegroupInfo(TablegroupId tablegroup_id, NamespaceId namespace_id) :
                                tablegroup_id_(tablegroup_id), namespace_id_(namespace_id) {}
 
-void TablegroupInfo::AddChildTable(const TableId& table_id) {
+void TablegroupInfo::AddChildTable(const TableId& table_id, ColocationId colocation_id) {
   std::lock_guard<simple_spinlock> l(lock_);
-  if (table_set_.find(table_id) != table_set_.end()) {
-    LOG(WARNING) << "Table ID " << table_id << " already in Tablegroup " << tablegroup_id_;
+  if (ContainsKey(table_map_.left, table_id)) {
+    LOG(WARNING) << "Tablegroup " << tablegroup_id_ << " already contains a table with ID "
+                 << table_id;
+  } else if (ContainsKey(table_map_.right, colocation_id)) {
+    LOG(WARNING) << "Tablegroup " << tablegroup_id_ << " already contains a table with "
+                 << "colocation ID " << colocation_id;
   } else {
-    table_set_.insert(table_id);
+    table_map_.insert(TableMap::value_type(table_id, colocation_id));
   }
 }
 
 void TablegroupInfo::DeleteChildTable(const TableId& table_id) {
   std::lock_guard<simple_spinlock> l(lock_);
-  if (table_set_.find(table_id) != table_set_.end()) {
-    table_set_.erase(table_id);
+  auto left_map = table_map_.left;
+  if (ContainsKey(left_map, table_id)) {
+    left_map.erase(table_id);
   } else {
-    LOG(WARNING) << "Table ID " << table_id << " not found in Tablegroup " << tablegroup_id_;
+    LOG(WARNING) << "Tablegroup " << tablegroup_id_ << " does not contains a table with ID "
+                 << table_id;
   }
 }
 
 bool TablegroupInfo::HasChildTables() const {
   std::lock_guard<simple_spinlock> l(lock_);
-  return !table_set_.empty();
+  return !table_map_.empty();
+}
+
+
+bool TablegroupInfo::HasChildTable(ColocationId colocation_id) const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return ContainsKey(table_map_.right, colocation_id);
 }
 
 
 std::size_t TablegroupInfo::NumChildTables() const {
   std::lock_guard<simple_spinlock> l(lock_);
-  return table_set_.size();
+  return table_map_.size();
+}
+
+std::unordered_set<TableId> TablegroupInfo::ChildTables() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  std::unordered_set<TableId> result;
+  for (auto iter = table_map_.left.begin(), iend = table_map_.left.end(); iter != iend; ++iter) {
+    result.insert(iter->first);
+  }
+  return result;
 }
 
 // ================================================================================================

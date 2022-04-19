@@ -5,24 +5,24 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.89.2"
+  HUGO_VERSION = "0.96.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.89.2"
+  HUGO_VERSION = "0.96.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.production.environment]
-  HUGO_VERSION = "0.89.2"
+  HUGO_VERSION = "0.96.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 # Redirects
 # - Default status is a 301 unless otherwise specified.
 # - First match wins: put wildcards AFTER specific paths!
-# - Wildcards include empty matches: /v1.0/* WILL match /v1.0 
+# - Wildcards include empty matches: /v1.0/* WILL match /v1.0
 #
 # docs: https://docs.netlify.com/routing/redirects/
 #
@@ -39,64 +39,116 @@
 
 [[redirects]]
   from = "/"
-  to = "/latest/"
+  to = "/preview/"
+  force = true
+
+# Catch-all for old links to /latest (now called /preview)
+
+[[redirects]]
+  from = "/latest/*"
+  to = "/preview/:splat"
+  force = true
+
+# Redirect old cloud docs to root of current
+
+[[redirects]]
+  from = "/:version/yugabyte-cloud/*"
+  to = "/preview/yugabyte-cloud/"
+  force = true
+
+# Redirect EOL docs to the archive site
+# (And note that v1.0-1.2 don't exist)
+
+[[redirects]]
+  from = "/v1.0/*"
+  to = "https://docs-archive.yugabyte.com/"
+  force = true
+
+[[redirects]]
+  from = "/v1.1/*"
+  to = "https://docs-archive.yugabyte.com/"
+  force = true
+
+[[redirects]]
+  from = "/v1.2/*"
+  to = "https://docs-archive.yugabyte.com/"
+  force = true
+
+[[redirects]]
+  from = "/v1.3/*"
+  to = "https://docs-archive.yugabyte.com/v1.3/"
+  force = true
+
+[[redirects]]
+  from = "/v2.0/*"
+  to = "https://docs-archive.yugabyte.com/v2.0/"
+  force = true
+
+[[redirects]]
+  from = "/v2.1/*"
+  to = "https://docs-archive.yugabyte.com/v2.1/"
+  force = true
+
+[[redirects]]
+  from = "/v2.2/*"
+  to = "https://docs-archive.yugabyte.com/v2.2/"
   force = true
 
 # Redirect older versions of specific sections
 
 [[redirects]]
   from = "/:version/comparisons/*"
-  to = "/latest/comparisons/:splat"
+  to = "/preview/comparisons/:splat"
   force = true
 
 [[redirects]]
   from = "/:version/contribute/*"
-  to = "/latest/contribute/:splat"
+  to = "/preview/contribute/:splat"
   force = true
 
 [[redirects]]
   from = "/:version/faq/*"
-  to = "/latest/faq/:splat"
+  to = "/preview/faq/:splat"
+  force = true
+
+[[redirects]]
+  from = "/:version/integrations/smart-driver/"
+  to = "/preview/integrations/jdbc-driver/"
   force = true
 
 [[redirects]]
   from = "/:version/integrations/*"
-  to = "/latest/integrations/"
+  to = "/preview/integrations/"
   force = true
 
 # (this is the old version of integrations)
 [[redirects]]
   from = "/:version/develop/ecosystem-integrations/*"
-  to = "/latest/integrations/"
+  to = "/preview/integrations/"
   force = true
 
 [[redirects]]
   from = "/:version/legal/*"
-  to = "/latest/legal/:splat"
+  to = "/preview/legal/:splat"
   force = true
 
 [[redirects]]
   from = "/:version/releases/*"
-  to = "/latest/releases/:splat"
+  to = "/preview/releases/:splat"
   force = true
 
 [[redirects]]
   from = "/:version/troubleshoot/*"
-  to = "/latest/troubleshoot/:splat"
+  to = "/preview/troubleshoot/:splat"
   force = true
 
 [[redirects]]
   from = "/:version/yedis/*"
-  to = "/latest/yedis/"
-  force = true
-
-[[redirects]]
-  from = "/:version/yugabyte-cloud/*"
-  to = "/latest/yugabyte-cloud/"
+  to = "/preview/yedis/"
   force = true
 
 # Stable quick-starts need defaults,
-# since archiving from /latest removes aliases
+# since archiving from /preview removes aliases
 
 [[redirects]]
   from = "/stable/quick-start/install/"
@@ -113,21 +165,11 @@
   to = "/stable/quick-start/explore/ysql/"
   force = true
 
-# Docs prior to v1.3 are not online
+# Yugabyte Extensions top hit
 
 [[redirects]]
-  from = "/v1.0/*"
-  to = "/latest/:splat"
-  force = true
-
-[[redirects]]
-  from = "/v1.1/*"
-  to = "/latest/:splat"
-  force = true
-
-[[redirects]]
-  from = "/v1.2/*"
-  to = "/latest/:splat"
+  from = "/preview/api/ysql/extensions/"
+  to = "/preview/explore/ysql-language-features/pg-extensions/"
   force = true
 
 # Hugo resource caching plugin configuration

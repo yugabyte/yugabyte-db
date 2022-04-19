@@ -881,6 +881,10 @@ static const SchemaQuery Query_for_list_of_statistics = {
 "SELECT pg_catalog.quote_ident(spcname) FROM pg_catalog.pg_tablespace "\
 " WHERE substring(pg_catalog.quote_ident(spcname),1,%d)='%s'"
 
+#define Query_for_list_of_tablegroups \
+"SELECT pg_catalog.quote_ident(grpname) FROM pg_catalog.pg_yb_tablegroup "\
+" WHERE substring(pg_catalog.quote_ident(grpname),1,%d)='%s'"
+
 #define Query_for_list_of_encodings \
 " SELECT DISTINCT pg_catalog.pg_encoding_to_char(conforencoding) "\
 "   FROM pg_catalog.pg_conversion "\
@@ -1237,6 +1241,7 @@ static const pgsql_thing_t words_after_create[] = {
 	{"SYSTEM", NULL, NULL, NULL, THING_NO_CREATE | THING_NO_DROP},
 	{"TABLE", NULL, NULL, &Query_for_list_of_tables},
 	{"TABLESPACE", Query_for_list_of_tablespaces},
+	{"TABLEGROUP", Query_for_list_of_tablegroups},
 	{"TEMP", NULL, NULL, NULL, THING_NO_DROP | THING_NO_ALTER}, /* for CREATE TEMP TABLE
 																 * ... */
 	{"TEMPLATE", Query_for_list_of_ts_templates, NULL, NULL, THING_NO_SHOW},
@@ -2303,6 +2308,9 @@ psql_completion(const char *text, int start, int end)
 	else if (Matches5("ALTER", "TABLESPACE", MatchAny, "SET|RESET", "("))
 		COMPLETE_WITH_LIST3("seq_page_cost", "random_page_cost",
 							"effective_io_concurrency");
+	/* ALTER TABLEGROUP <foo> with RENAME TO, OWNER TO */
+	else if (Matches3("ALTER", "TABLEGROUP", MatchAny))
+		COMPLETE_WITH_LIST2("RENAME TO", "OWNER TO");
 
 	/* ALTER TEXT SEARCH */
 	else if (Matches3("ALTER", "TEXT", "SEARCH"))
@@ -2408,7 +2416,7 @@ psql_completion(const char *text, int start, int end)
 			"SCHEMA", "SEQUENCE", "STATISTICS", "SUBSCRIPTION",
 			"TABLE", "TYPE", "VIEW", "MATERIALIZED VIEW", "COLUMN", "AGGREGATE", "FUNCTION",
 			"PROCEDURE", "ROUTINE",
-			"OPERATOR", "TRIGGER", "CONSTRAINT", "DOMAIN", "LARGE OBJECT",
+			"OPERATOR", "TRIGGER", "CONSTRAINT", "DOMAIN", "LARGE OBJECT", "TABLEGROUP",
 		"TABLESPACE", "TEXT SEARCH", "ROLE", NULL};
 
 		COMPLETE_WITH_LIST(list_COMMENT);
@@ -2730,12 +2738,19 @@ psql_completion(const char *text, int start, int end)
 	else if (TailMatches3("PARTITION", "OF", MatchAny))
 		COMPLETE_WITH_LIST2("FOR VALUES", "DEFAULT");
 
+/* CREATE TABLEGROUP */
+	else if (Matches3("CREATE", "TABLEGROUP", MatchAny))
+		COMPLETE_WITH_LIST2("OWNER", "TABLESPACE");
+	/* Complete CREATE TABLEGROUP name OWNER name with "TABLESPACE" */
+	else if (Matches5("CREATE", "TABLEGROUP", MatchAny, "OWNER", MatchAny))
+		COMPLETE_WITH_CONST("TABLESPACE");
+
 /* CREATE TABLESPACE */
 	else if (Matches3("CREATE", "TABLESPACE", MatchAny))
-		COMPLETE_WITH_LIST2("OWNER", "LOCATION");
-	/* Complete CREATE TABLESPACE name OWNER name with "LOCATION" */
+		COMPLETE_WITH_LIST2("OWNER", "WITH");
+	/* Complete CREATE TABLESPACE name OWNER name with "WITH (" */
 	else if (Matches5("CREATE", "TABLESPACE", MatchAny, "OWNER", MatchAny))
-		COMPLETE_WITH_CONST("LOCATION");
+		COMPLETE_WITH_CONST("WITH (");
 
 /* CREATE TEXT SEARCH */
 	else if (Matches3("CREATE", "TEXT", "SEARCH"))
@@ -2964,7 +2979,7 @@ psql_completion(const char *text, int start, int end)
 /* DROP */
 	/* Complete DROP object with CASCADE / RESTRICT */
 	else if (Matches3("DROP",
-					  "COLLATION|CONVERSION|DOMAIN|EXTENSION|LANGUAGE|PUBLICATION|SCHEMA|SEQUENCE|SERVER|SUBSCRIPTION|STATISTICS|TABLE|TYPE|VIEW",
+					  "COLLATION|CONVERSION|DOMAIN|EXTENSION|LANGUAGE|PUBLICATION|SCHEMA|SEQUENCE|SERVER|SUBSCRIPTION|STATISTICS|TABLE|TABLEGROUP|TYPE|VIEW",
 					  MatchAny) ||
 			 Matches4("DROP", "ACCESS", "METHOD", MatchAny) ||
 			 (Matches4("DROP", "AGGREGATE|FUNCTION|PROCEDURE|ROUTINE", MatchAny, MatchAny) &&
@@ -3237,6 +3252,8 @@ psql_completion(const char *text, int start, int end)
 			COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_sequences, NULL);
 		else if (TailMatches1("TABLE"))
 			COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tsvmf, NULL);
+		else if (TailMatches1("TABLEGROUP"))
+			COMPLETE_WITH_QUERY(Query_for_list_of_tablegroups);
 		else if (TailMatches1("TABLESPACE"))
 			COMPLETE_WITH_QUERY(Query_for_list_of_tablespaces);
 		else if (TailMatches1("TYPE"))
@@ -3383,6 +3400,10 @@ psql_completion(const char *text, int start, int end)
 
 /* OWNER TO  - complete with available roles */
 	else if (TailMatches2("OWNER", "TO"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
+
+/* OWNER  - complete with available roles */
+	else if (TailMatches1("OWNER"))
 		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 
 /* ORDER BY */
@@ -3729,6 +3750,8 @@ psql_completion(const char *text, int start, int end)
 	else if (TailMatchesCS1("\\dF*"))
 		COMPLETE_WITH_QUERY(Query_for_list_of_ts_configurations);
 
+	else if (TailMatchesCS1("\\dgr*"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_tablegroups);
 	else if (TailMatchesCS1("\\di*"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_indexes, NULL);
 	else if (TailMatchesCS1("\\dL*"))

@@ -35,7 +35,11 @@ import com.google.common.base.Stopwatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
+import org.yb.CommonTypes;
+import org.yb.IndexInfo;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBClusterBuilder;
@@ -815,5 +819,25 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       if (row.toString().contains(substring)) return true;
     }
     return false;
+  }
+
+  protected void waitForReadPermsOnAllIndexes(String tableName) throws Exception {
+    TestUtils.waitFor(
+      () -> {
+        boolean all_indexes_have_read_perms = true;
+        GetTableSchemaResponse response = miniCluster.getClient().getTableSchema(
+          DEFAULT_TEST_KEYSPACE, tableName);
+        List<IndexInfo> indexes = response.getIndexes();
+
+        for (IndexInfo index : indexes) {
+          if (index.getIndexPermissions() !=
+                CommonTypes.IndexPermissions.INDEX_PERM_READ_WRITE_AND_DELETE) {
+            LOG.info("Found index with permissions=" + index.getIndexPermissions() +
+              " != INDEX_PERM_READ_WRITE_AND_DELETE");
+            return false;
+          }
+        }
+        return true;
+      }, 20000 /* timeoutMs */, 100 /* sleepTime */);
   }
 }

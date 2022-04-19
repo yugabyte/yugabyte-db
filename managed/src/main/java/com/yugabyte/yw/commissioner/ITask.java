@@ -4,9 +4,27 @@ package com.yugabyte.yw.commissioner;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.ITaskParams;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.util.UUID;
 
 public interface ITask extends Runnable {
+
+  /** Annotation for a ITask class to enable/disable retryable. */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.TYPE)
+  public @interface Retryable {
+    boolean enabled() default true;
+  }
+
+  /** Annotation for a ITask class to enable/disable abortable. */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.TYPE)
+  public @interface Abortable {
+    boolean enabled() default true;
+  }
 
   /** Initialize the task by reading various parameters. */
   public void initialize(ITaskParams taskParams);
@@ -42,14 +60,4 @@ public interface ITask extends Runnable {
    * @param userTaskUUID UUID of the user-facing top-level task for this Task's Task tree.
    */
   public void setUserTaskUUID(UUID userTaskUUID);
-
-  /** Returns true if the task can be retried on failure or aborted state. */
-  public boolean isRetryable();
-
-  /**
-   * Return true if the task can be aborted.
-   *
-   * @return
-   */
-  public boolean isAbortable();
 }

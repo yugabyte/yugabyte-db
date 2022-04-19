@@ -11,13 +11,16 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX docdb)
+set(YB_PCH_DEP_LIBS opid_proto)
+
 # docdb_proto
 
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
         DOCDB_PROTO_SRCS DOCDB_PROTO_HDRS DOCDB_PROTO_TGTS
         SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
         BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-        PROTO_FILES docdb.proto)
+        NO_SERVICE_PROTO_FILES docdb.proto)
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}
@@ -25,16 +28,16 @@ ADD_YB_LIBRARY(docdb_proto
         NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 set(DOCDB_ENCODING_SRCS
-        doc_key.cc
-        doc_kv_util.cc
-        doc_path.cc
-        key_bounds.cc
-        key_bytes.cc
-        primitive_value.cc
-        primitive_value_util.cc
-        intent.cc
-        doc_scanspec_util.cc
-        )
+    doc_key.cc
+    doc_kv_util.cc
+    doc_path.cc
+    key_bounds.cc
+    key_bytes.cc
+    primitive_value.cc
+    primitive_value_util.cc
+    intent.cc
+    doc_scanspec_util.cc
+    )
 
 set(DOCDB_ENCODING_DEPS
         docdb_proto
@@ -64,13 +67,14 @@ set(DOCDB_SRCS
         docdb_pgapi.cc
         docdb_util.cc
         doc_ttl_util.cc
-        docdb_compaction_filter.cc
+        docdb_compaction_context.cc
         docdb_compaction_filter_intents.cc
         docdb-internal.cc
         doc_reader.cc
         doc_reader_redis.cc
         docdb_rocksdb_util.cc
         doc_expr.cc
+        doc_pg_expr.cc
         doc_pgsql_scanspec.cc
         doc_ql_scanspec.cc
         doc_rowwise_iterator.cc
@@ -80,9 +84,12 @@ set(DOCDB_SRCS
         compaction_file_filter.cc
         intent_aware_iterator.cc
         lock_batch.cc
+        packed_row.cc
         pgsql_operation.cc
         ql_rocksdb_storage.cc
+        ql_rowwise_iterator_interface.cc
         redis_operation.cc
+        rocksdb_writer.cc
         shared_lock_manager.cc
         subdocument.cc
         subdoc_reader.cc
@@ -115,7 +122,7 @@ ADD_YB_LIBRARY(yb_docdb
 # Ensure protobuf headers we depend on are generated prior to building DocDB.
 add_dependencies(
         yb_docdb_encoding
-        gen_src_yb_master_master_proto
+        gen_src_yb_master_master_types_proto
         gen_src_yb_rpc_rpc_header_proto
         gen_src_yb_tablet_metadata_proto
         gen_src_yb_tablet_tablet_proto
@@ -141,10 +148,10 @@ ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb_rocksdb_util-test)
 ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docrowwiseiterator-test)
+ADD_YB_TEST(packed_row-test)
 ADD_YB_TEST(primitive_value-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(subdocument-test)
-ADD_YB_TEST(value-test)
 ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)

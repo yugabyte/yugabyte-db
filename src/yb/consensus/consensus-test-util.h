@@ -49,7 +49,6 @@
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/consensus/log.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/test_consensus_context.h"
@@ -151,7 +150,7 @@ RaftConfigPB BuildRaftConfigPBForTests(int num) {
   RaftConfigPB raft_config;
   for (int i = 0; i < num; i++) {
     RaftPeerPB* peer_pb = raft_config.add_peers();
-    peer_pb->set_member_type(RaftPeerPB::VOTER);
+    peer_pb->set_member_type(PeerMemberType::VOTER);
     peer_pb->set_permanent_uuid(Substitute("peer-$0", i));
     HostPortPB* hp = peer_pb->mutable_last_known_private_addr()->Add();
     hp->set_host(Substitute("peer-$0.fake-domain-for-tests", i));
@@ -926,7 +925,7 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
     return majority_replicated_op_id_;
   }
 
-  void WaitForMajorityReplicatedIndex(int index, MonoDelta timeout = MonoDelta(30s)) {
+  void WaitForMajorityReplicatedIndex(int64_t index, MonoDelta timeout = MonoDelta(30s)) {
     ASSERT_OK(WaitFor(
         [&]() { return IsMajorityReplicated(index); },
         timeout, Format("waiting for index $0 to be replicated", index)));

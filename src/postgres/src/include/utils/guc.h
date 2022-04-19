@@ -173,12 +173,14 @@ struct config_enum_entry
  */
 typedef bool (*GucBoolCheckHook) (bool *newval, void **extra, GucSource source);
 typedef bool (*GucIntCheckHook) (int *newval, void **extra, GucSource source);
+typedef bool (*GucOidCheckHook) (Oid *newval, void **extra, GucSource source);
 typedef bool (*GucRealCheckHook) (double *newval, void **extra, GucSource source);
 typedef bool (*GucStringCheckHook) (char **newval, void **extra, GucSource source);
 typedef bool (*GucEnumCheckHook) (int *newval, void **extra, GucSource source);
 
 typedef void (*GucBoolAssignHook) (bool newval, void *extra);
 typedef void (*GucIntAssignHook) (int newval, void *extra);
+typedef void (*GucOidAssignHook) (Oid newval, void *extra);
 typedef void (*GucRealAssignHook) (double newval, void *extra);
 typedef void (*GucStringAssignHook) (const char *newval, void *extra);
 typedef void (*GucEnumAssignHook) (int newval, void *extra);
@@ -305,6 +307,20 @@ extern void DefineCustomIntVariable(
 						GucIntAssignHook assign_hook,
 						GucShowHook show_hook);
 
+extern void DefineCustomOidVariable(
+						const char *name,
+						const char *short_desc,
+						const char *long_desc,
+						Oid *valueAddr,
+						Oid bootValue,
+						Oid minValue,
+						Oid maxValue,
+						GucContext context,
+						int flags,
+						GucOidCheckHook check_hook,
+						GucOidAssignHook assign_hook,
+						GucShowHook show_hook);
+
 extern void DefineCustomRealVariable(
 						 const char *name,
 						 const char *short_desc,
@@ -361,6 +377,7 @@ extern void BeginReportingGUCOptions(void);
 extern void ParseLongOption(const char *string, char **name, char **value);
 extern bool parse_int(const char *value, int *result, int flags,
 		  const char **hintmsg);
+extern bool parse_oid(const char *value, Oid *result, const char **hintmsg);
 extern bool parse_real(const char *value, double *result);
 extern int set_config_option(const char *name, const char *value,
 				  GucContext context, GucSource source,

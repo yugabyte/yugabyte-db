@@ -33,6 +33,11 @@
 #include <iostream>
 #include <string>
 
+#include "yb/common/ql_value.h"
+#include "yb/common/value.messages.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/util/date_time.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/inetaddress.h"
@@ -48,8 +53,8 @@ namespace bfpg {
 // Conversion for int8.
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI8ToI8(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int8_value(source->int8_value());
   }
@@ -58,8 +63,8 @@ Status ConvertI8ToI8(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI8ToI16(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int16_value(source->int8_value());
   }
@@ -68,8 +73,8 @@ Status ConvertI8ToI16(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI8ToI32(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int32_value(source->int8_value());
   }
@@ -78,8 +83,8 @@ Status ConvertI8ToI32(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI8ToI64(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int64_value(source->int8_value());
   }
@@ -88,8 +93,8 @@ Status ConvertI8ToI64(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI8ToFloat(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_float_value(source->int8_value());
   }
@@ -98,8 +103,8 @@ Status ConvertI8ToFloat(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI8ToDouble(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_double_value(source->int8_value());
   }
@@ -110,8 +115,8 @@ Status ConvertI8ToDouble(PTypePtr source, RTypePtr target) {
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI16ToI8(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int8_value(source->int16_value());
   }
@@ -121,8 +126,8 @@ Status ConvertI16ToI8(PTypePtr source, RTypePtr target) {
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI16ToI16(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int16_value(source->int16_value());
   }
@@ -131,8 +136,8 @@ Status ConvertI16ToI16(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI16ToI32(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int32_value(source->int16_value());
   }
@@ -141,8 +146,8 @@ Status ConvertI16ToI32(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI16ToI64(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int64_value(source->int16_value());
   }
@@ -151,8 +156,8 @@ Status ConvertI16ToI64(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI16ToFloat(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_float_value(source->int16_value());
   }
@@ -161,8 +166,8 @@ Status ConvertI16ToFloat(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI16ToDouble(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_double_value(source->int16_value());
   }
@@ -173,8 +178,8 @@ Status ConvertI16ToDouble(PTypePtr source, RTypePtr target) {
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI32ToI8(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int8_value(source->int32_value());
   }
@@ -184,8 +189,8 @@ Status ConvertI32ToI8(PTypePtr source, RTypePtr target) {
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI32ToI16(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int16_value(source->int32_value());
   }
@@ -194,8 +199,8 @@ Status ConvertI32ToI16(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI32ToI32(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int32_value(source->int32_value());
   }
@@ -204,8 +209,8 @@ Status ConvertI32ToI32(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI32ToI64(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int64_value(source->int32_value());
   }
@@ -214,8 +219,8 @@ Status ConvertI32ToI64(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI32ToFloat(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_float_value(source->int32_value());
   }
@@ -224,8 +229,8 @@ Status ConvertI32ToFloat(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI32ToDouble(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_double_value(source->int32_value());
   }
@@ -234,23 +239,23 @@ Status ConvertI32ToDouble(PTypePtr source, RTypePtr target) {
 
 // Conversion from int64 to others.
 template<typename PTypePtr, typename RTypePtr>
-Status ConvertI64ToI8(PTypePtr source, RTypePtr target) {
+CHECKED_STATUS ConvertI64ToI8(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
-    target->set_int8_value(source->int64_value());
+    target->set_int8_value(static_cast<int32_t>(source->int64_value()));
   }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status ConvertI64ToI16(PTypePtr source, RTypePtr target) {
+CHECKED_STATUS ConvertI64ToI16(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
-    target->set_int16_value(source->int64_value());
+    target->set_int16_value(static_cast<int32_t>(source->int64_value()));
   }
   return Status::OK();
 }
@@ -258,10 +263,10 @@ Status ConvertI64ToI16(PTypePtr source, RTypePtr target) {
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI64ToI32(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
-    target->set_int32_value(source->int64_value());
+    target->set_int32_value(static_cast<int32_t>(source->int64_value()));
   }
   return Status::OK();
 }
@@ -269,8 +274,8 @@ Status ConvertI64ToI32(PTypePtr source, RTypePtr target) {
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI64ToI64(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int64_value(source->int64_value());
   }
@@ -279,8 +284,8 @@ Status ConvertI64ToI64(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI64ToFloat(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_float_value(source->int64_value());
   }
@@ -289,8 +294,8 @@ Status ConvertI64ToFloat(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI64ToDouble(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_double_value(source->int64_value());
   }
@@ -300,8 +305,8 @@ Status ConvertI64ToDouble(PTypePtr source, RTypePtr target) {
 // Conversion from float to others.
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertFloatToFloat(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_float_value(source->float_value());
   }
@@ -310,8 +315,8 @@ Status ConvertFloatToFloat(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertFloatToDouble(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_double_value(source->float_value());
   }
@@ -321,8 +326,8 @@ Status ConvertFloatToDouble(PTypePtr source, RTypePtr target) {
 // Conversion from double to others.
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertDoubleToFloat(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_float_value(source->double_value());
   }
@@ -331,8 +336,8 @@ Status ConvertDoubleToFloat(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertDoubleToDouble(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_double_value(source->double_value());
   }
@@ -343,8 +348,8 @@ Status ConvertDoubleToDouble(PTypePtr source, RTypePtr target) {
 // The following functions are for timestamp conversion.
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertTimestampToI64(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_int64_value(source->timestamp_value().ToInt64());
   }
@@ -353,8 +358,8 @@ Status ConvertTimestampToI64(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertI64ToTimestamp(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_timestamp_value(DateTime::TimestampFromInt(source->int64_value()).ToInt64());
   }
@@ -363,8 +368,8 @@ Status ConvertI64ToTimestamp(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertTimestampToString(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_string_value(source->timestamp_value().ToString());
   }
@@ -373,8 +378,8 @@ Status ConvertTimestampToString(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertStringToTimestamp(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     Timestamp ts;
     RETURN_NOT_OK(DateTime::TimestampFromString(source->string_value(), &ts));
@@ -387,8 +392,8 @@ Status ConvertStringToTimestamp(PTypePtr source, RTypePtr target) {
 // The following functions are for string conversion.
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertStringToString(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_string_value(source->string_value());
   }
@@ -397,8 +402,8 @@ Status ConvertStringToString(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertStringToInet(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_inetaddress_value(InetAddress(
         VERIFY_RESULT(HostToAddress(source->string_value()))));
@@ -410,8 +415,8 @@ Status ConvertStringToInet(PTypePtr source, RTypePtr target) {
 // The following functions are for boolean conversion.
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertBoolToBool(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     target->set_bool_value(source->bool_value());
   }
@@ -684,78 +689,78 @@ Status ConvertToMinTimeuuid(PTypePtr source, RTypePtr target) {
 // The following functions are for conversions from VarInt to the other numeric types.
 
 template<typename PTypePtr, typename RTypePtr>
-Status ConvertVarintToI8(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+CHECKED_STATUS ConvertVarintToI8(PTypePtr source, RTypePtr target) {
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
-    int64_t val = VERIFY_RESULT(source->varint_value().ToInt64());
+    int64_t val = VERIFY_RESULT(QLValue::varint_value(*source).ToInt64());
     if (val < INT8_MIN || val > INT8_MAX) {
-      return STATUS(InvalidArgument, "VarInt cannot be converted to int8 due to overflow");
+      return STATUS(QLError, "VarInt cannot be converted to int8 due to overflow");
     }
-    target->set_int8_value(val);
+    target->set_int8_value(static_cast<int32_t>(val));
   }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status ConvertVarintToI16(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+CHECKED_STATUS ConvertVarintToI16(PTypePtr source, RTypePtr target) {
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
-    int64_t val = VERIFY_RESULT(source->varint_value().ToInt64());
+    int64_t val = VERIFY_RESULT(QLValue::varint_value(*source).ToInt64());
     if (val < INT16_MIN || val > INT16_MAX) {
-      return STATUS(InvalidArgument, "VarInt cannot be converted to int16 due to overflow");
+      return STATUS(QLError, "VarInt cannot be converted to int16 due to overflow");
     }
-    target->set_int16_value(val);
+    target->set_int16_value(static_cast<int32_t>(val));
   }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status ConvertVarintToI32(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+CHECKED_STATUS ConvertVarintToI32(PTypePtr source, RTypePtr target) {
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
-    int64_t val = VERIFY_RESULT(source->varint_value().ToInt64());
+    int64_t val = VERIFY_RESULT(QLValue::varint_value(*source).ToInt64());
     if (val < INT32_MIN || val > INT32_MAX) {
-      return STATUS(InvalidArgument, "VarInt cannot be converted to int32 due to overflow");
+      return STATUS(QLError, "VarInt cannot be converted to int32 due to overflow");
     }
-    target->set_int32_value(val);
+    target->set_int32_value(static_cast<int32_t>(val));
   }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status ConvertVarintToI64(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+CHECKED_STATUS ConvertVarintToI64(PTypePtr source, RTypePtr target) {
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
-    int64_t val = VERIFY_RESULT(source->varint_value().ToInt64());
+    int64_t val = VERIFY_RESULT(QLValue::varint_value(*source).ToInt64());
     target->set_int64_value(val);
   }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+CHECKED_STATUS ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     // This may lose precision, it should return the closest float value to the input number.
     target->set_float_value(static_cast<float>(VERIFY_RESULT(CheckedStold(
-        source->varint_value().ToString()))));
+        QLValue::varint_value(*source).ToString()))));
   }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
-  if (source->IsNull()) {
-    target->SetNull();
+CHECKED_STATUS ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
+  if (IsNull(*source)) {
+    SetNull(&*target);
   } else {
     // This may lose precision, it should return the closest double value to the input number.
     target->set_double_value(VERIFY_RESULT(CheckedStold(
-        source->varint_value().ToString())));
+        QLValue::varint_value(*source).ToString())));
   }
   return Status::OK();
 }

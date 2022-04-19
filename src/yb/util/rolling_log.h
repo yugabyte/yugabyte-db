@@ -81,7 +81,7 @@ class RollingLog {
   //
   // There is no limit on the total number of previous log segments. We rely
   // on system utilities to clean up old logs to maintain some size limit.
-  void SetSizeLimitBytes(int64_t bytes);
+  void SetSizeLimitBytes(size_t bytes);
 
   // If compression is enabled, log files are compressed.
   // NOTE: this requires that the passed-in Env instance is the local file system.
@@ -110,7 +110,7 @@ class RollingLog {
   const std::string log_dir_;
   const std::string log_name_;
 
-  int64_t size_limit_bytes_;
+  size_t size_limit_bytes_;
 
   std::unique_ptr<WritableFile> file_;
   bool compress_after_close_;

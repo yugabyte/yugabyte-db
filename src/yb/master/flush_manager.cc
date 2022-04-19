@@ -18,9 +18,10 @@
 #include "yb/master/async_flush_tablets_task.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_admin.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
+#include "yb/master/ts_descriptor.h"
 
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"

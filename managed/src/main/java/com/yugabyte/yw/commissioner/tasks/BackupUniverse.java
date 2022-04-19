@@ -11,13 +11,12 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
-import static com.yugabyte.yw.common.Util.lockedUpdateBackupState;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BackupTableParams.ActionType;
@@ -40,6 +39,7 @@ import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @Slf4j
+@Abortable
 public class BackupUniverse extends UniverseTaskBase {
 
   // Counter names
@@ -99,8 +99,6 @@ public class BackupUniverse extends UniverseTaskBase {
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
@@ -108,12 +106,16 @@ public class BackupUniverse extends UniverseTaskBase {
       // Update universe 'backupInProgress' flag to true or throw an exception if universe is
       // already having a backup in progress.
       if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
-        lockedUpdateBackupState(taskParams().universeUUID, this, true);
+        lockedUpdateBackupState(true);
       } else {
         // Check if the backup is in progress while other backup operations.
         if (universe.getUniverseDetails().backupInProgress) {
           throw new RuntimeException("A backup for this universe is already in progress.");
         }
+      }
+      if (taskParams().alterLoadBalancer) {
+        createLoadBalancerStateChangeTask(false)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
       try {
         UserTaskDetails.SubTaskGroupType groupType;
@@ -149,7 +151,10 @@ public class BackupUniverse extends UniverseTaskBase {
         backup.setTaskUUID(userTaskUUID);
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
-
+        if (taskParams().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
         createMarkUniverseUpdateSuccessTasks()
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
@@ -163,7 +168,7 @@ public class BackupUniverse extends UniverseTaskBase {
         taskInfo = String.join(",", tableNames);
 
         // Run all the tasks.
-        subTaskGroupQueue.run();
+        getRunnableTask().runSubTasks();
 
         if (taskParams().actionType == ActionType.CREATE) {
           BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
@@ -174,23 +179,34 @@ public class BackupUniverse extends UniverseTaskBase {
           unlockUniverseForUpdate();
         }
       } catch (Throwable t) {
+        if (taskParams().alterLoadBalancer) {
+          // Clear previous subtasks if any.
+          getRunnableTask().reset();
+          // If the task failed, we don't want the loadbalancer to be
+          // disabled, so we enable it again in case of errors.
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          getRunnableTask().runSubTasks();
+        }
         throw t;
       } finally {
         if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
-          lockedUpdateBackupState(taskParams().universeUUID, this, false);
+          lockedUpdateBackupState(false);
         }
       }
     } catch (Throwable t) {
-      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-
-      if (taskParams().actionType == ActionType.CREATE) {
-        BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-        metricService.setStatusMetric(
-            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
+      try {
+        log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+        if (taskParams().actionType == ActionType.CREATE) {
+          BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+          metricService.setFailureStatusMetric(
+              buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+        }
+      } finally {
+        // Run an unlock in case the task failed before getting to the unlock. It is okay if it
+        // errors out.
+        unlockUniverseForUpdate();
       }
-      // Run an unlock in case the task failed before getting to the unlock. It is okay if it
-      // errors out.
-      unlockUniverseForUpdate();
       throw t;
     }
 

@@ -57,3 +57,5 @@ add_library(ql_ptree
 
 target_link_libraries(ql_ptree ql_util yb_client yb_util yb_bfql yb_common)
 add_dependencies(ql_ptree yb_bfql)
+
+yb_use_pch(ql_ptree ql)

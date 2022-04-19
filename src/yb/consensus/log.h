@@ -88,6 +88,20 @@ YB_DEFINE_ENUM(
     (kAllocationFinished)    // Next segment ready
 );
 
+YB_DEFINE_ENUM(
+    SegmentOpIdRelation,
+    // Segment is empty
+    (kEmptySegment)
+    // OpId is before the segment
+    (kOpIdBeforeSegment)
+    // OpId is inside the segment, but not the last
+    (kOpIdIsInsideAndNotLast)
+    // OpId corresponds to the last operation in the segment
+    (kOpIdIsLast)
+    // OpId is after the segment
+    (kOpIdAfterSegment)
+);
+
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
 // Write Ahead Log and also plays the role of persistent storage for the consensus state machine.
 //
@@ -228,14 +242,6 @@ class Log : public RefCountedThreadSafe<Log> {
   // Computes the amount of bytes that would have been GC'd if Log::GC had been called.
   CHECKED_STATUS GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const;
 
-  // Returns a map of log index -> segment size, of all the segments that currently cannot be GCed
-  // because in-memory structures have anchors in them.
-  //
-  // 'min_op_idx' is the minimum operation index to start looking from, meaning that we skip the
-  // segment that contains it and then start recording segments.
-  void GetMaxIndexesToSegmentSizeMap(int64_t min_op_idx,
-                                     std::map<int64_t, int64_t>* max_idx_to_segment_size) const;
-
   // Returns the file system location of the currently active WAL segment.
   const WritableLogSegment* ActiveSegmentForTests() const {
     return active_segment_.get();
@@ -286,7 +292,7 @@ class Log : public RefCountedThreadSafe<Log> {
   CHECKED_STATUS TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
 
   // Returns the number of segments.
-  int num_segments() const;
+  size_t num_segments() const;
 
   const std::string& LogPrefix() const {
     return log_prefix_;
@@ -308,8 +314,22 @@ class Log : public RefCountedThreadSafe<Log> {
   CHECKED_STATUS FlushIndex();
 
   // Copies log to a new dir.
+  // If up_to_op_id is specified - only part of the log up to up_to_op_id is copied.
   // Flushes necessary files and uses hard links where it is safe.
-  CHECKED_STATUS CopyTo(const std::string& dest_wal_dir);
+  //
+  // Until https://github.com/yugabyte/yugabyte-db/issues/10960 is fixed, destination LogIndex
+  // might point to an operation that we've not copied, but it rewrites some operation that we've
+  // copied and there is no way to fix it without full rebuild of LogIndex.
+  // But that should be OK, because:
+  // 1) That can only happen for indexes of operations that are not yet committed, so only
+  //    for indexes > last_commited_op.index.
+  // 2) We use CopyTo for tablet splitting and pass up_to_op_id = split_op_id that is committed.
+  // 3) We only use LogIndex for ops on leader that are in log Raft log, so
+  //    a) Either this is committed operation copied from parent tablet and log index is correct
+  //       for it.
+  //    b) Or this is operation added by the leader, so log index is also correct for it, because
+  //       we updated it as we added this operation to the Raft log.
+  Status CopyTo(const std::string& dest_wal_dir, OpId up_to_op_id = OpId());
 
   // Waits until all entries flushed, then reset last received op id to specified one.
   CHECKED_STATUS ResetLastSyncedEntryOpId(const OpId& op_id);
@@ -413,6 +433,17 @@ class Log : public RefCountedThreadSafe<Log> {
   }
 
   LogEntryBatch* ReserveMarker(LogEntryTypePB type);
+
+  // Returns WritableFileOptions for a new segment writable file.
+  WritableFileOptions GetNewSegmentWritableFileOptions();
+
+  // See SegmentOpIdRelation comments.
+  Result<SegmentOpIdRelation> GetSegmentOpIdRelation(
+      ReadableLogSegment* segment, const OpId& op_id);
+
+  // Returns whether operation with up_to_op_id itself has been copied.
+  Result<bool> CopySegmentUpTo(
+      ReadableLogSegment* segment, const std::string& dest_wal_dir, const OpId& up_to_op_id);
 
   LogOptions options_;
 

@@ -14,8 +14,6 @@
 #ifndef YB_TSERVER_PG_CREATE_TABLE_H
 #define YB_TSERVER_PG_CREATE_TABLE_H
 
-#include "yb/tserver/tserver_fwd.h"
-
 #include "yb/client/client_fwd.h"
 #include "yb/client/schema.h"
 #include "yb/client/yb_table_name.h"
@@ -23,6 +21,8 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/partition.h"
 #include "yb/common/pg_types.h"
+
+#include "yb/tserver/pg_client.fwd.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
@@ -39,6 +39,10 @@ class PgCreateTable {
       client::YBClient* client, const TransactionMetadata* transaction_metadata,
       CoarseTimePoint deadline);
 
+  const PgObjectId& indexed_table_id() const {
+    return indexed_table_id_;
+  }
+
  private:
   CHECKED_STATUS AddColumn(const PgCreateColumnPB& req);
   void EnsureYBbasectidColumnCreated();
@@ -54,6 +58,8 @@ class PgCreateTable {
   PgObjectId indexed_table_id_;
   bool ybbasectid_added_ = false;
 };
+
+CHECKED_STATUS CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline);
 
 }  // namespace tserver
 }  // namespace yb

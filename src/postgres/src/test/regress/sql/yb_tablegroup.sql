@@ -33,7 +33,7 @@ CREATE INDEX ON tgroup_test3(col1) NO TABLEGROUP;
 CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1;
 SELECT s.relname, pg_yb_tablegroup.grpname
     FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s, pg_yb_tablegroup
-    WHERE opts LIKE CONCAT('%tablegroup=', CAST(pg_yb_tablegroup.oid AS text), '%');
+    WHERE opts LIKE CONCAT('%tablegroup_oid=', CAST(pg_yb_tablegroup.oid AS text), '%');
 -- These should fail.
 CREATE TABLEGROUP tgroup1;
 CREATE TABLE tgroup_test (col1 int, col2 int) TABLEGROUP bad_tgroupname;
@@ -42,22 +42,54 @@ CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=true) TABLEGROUP
 CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=false) TABLEGROUP bad_tgroupname;
 CREATE TEMP TABLE tgroup_temp (col1 int, col2 int) TABLEGROUP tgroup1;
 
--- Can use WITH to create a tablegroup
-CREATE TABLE tgroup_with1 (col1 int, col2 int) WITH (tablegroup=16385);
--- Cannot use tablegroups and colocated=true/false
-CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup=16385, colocated=true);
-CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup=16385, colocated=false);
--- Cannot specify tablegroup OID and tablegroup name
-CREATE TABLE tgroup_with3 (col1 int, col2 int) WITH (tablegroup=16385) TABLEGROUP tgroup1;
--- Cannot use an invalid tablegroup OID
-CREATE TABLE tgroup_with4 (col1 int, col2 int) WITH (tablegroup=123);
+--
+-- Cannot drop dependent objects
+--
+CREATE USER alice;
+CREATE USER bob;
+
+CREATE TABLEGROUP alice_grp OWNER alice;
+CREATE TABLEGROUP alice_grp_2 OWNER alice;
+CREATE TABLEGROUP alice_grp_3 OWNER alice;
+CREATE TABLE bob_table (a INT) TABLEGROUP alice_grp;
+CREATE TABLE bob_table_2 (a INT) TABLEGROUP alice_grp_2;
+CREATE TABLE bob_table_3 (a INT) TABLEGROUP alice_grp_3;
+CREATE TABLE alice_table (a INT);
+ALTER TABLE bob_table OWNER TO bob;
+ALTER TABLE bob_table_2 OWNER TO bob;
+ALTER TABLE bob_table_3 OWNER TO bob;
+ALTER TABLE alice_table OWNER TO alice;
+-- Fails
+\set VERBOSITY terse \\ -- suppress dependency details.
+DROP TABLEGROUP alice_grp;  -- because bob_table depends on alice_grp
+DROP USER alice;            -- because alice still owns tablegroups
+DROP OWNED BY alice;        -- because bob's tables depend on alice's tablegroups
+\set VERBOSITY default
+-- Succeeds
+DROP TABLEGROUP alice_grp_3 CASCADE;
+DROP TABLE bob_table;
+
+SELECT relname FROM pg_class WHERE relname LIKE 'bob%';
+
+DROP TABLEGROUP alice_grp;    -- bob_table is gone, so alice_grp has no deps
+DROP OWNED BY alice CASCADE;  -- CASCADE means we are allowed to drop bob's tables. We'll notify about any entities that she doesn't own.
+DROP USER alice;              -- we dropped all of alice's entities, so we can remove her
+
+SELECT relname FROM pg_class WHERE relname LIKE 'bob%';
 
 --
--- Specifying tablegroup name for CREATE INDEX. These all fail.
+-- Usage of WITH tablegroup_oid for CREATE TABLE/INDEX. These all fail.
 --
-CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123);
-CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123, colocated=true);
-CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123) TABLEGROUP tgroup1;
+
+CREATE TABLE tgroup_with1 (col1 int, col2 int) WITH (tablegroup_oid=16385);
+CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup_oid=16385, colocated=true);
+CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup_oid=16385, colocated=false);
+CREATE TABLE tgroup_with3 (col1 int, col2 int) WITH (tablegroup_oid=16385) TABLEGROUP tgroup1;
+CREATE TABLE tgroup_with4 (col1 int, col2 int) WITH (tablegroup_oid=123);
+
+CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123);
+CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123, colocated=true);
+CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123) TABLEGROUP tgroup1;
 
 --
 -- Usage of SPLIT clause with TABLEGROUP should fail
@@ -102,15 +134,20 @@ CREATE INDEX ON tgroup_describe(col1) TABLEGROUP tgroup_describe2;
 DROP TABLEGROUP tgroup3;
 -- These should fail. CREATE TABLE is to check that the row entry was deleted from pg_yb_tablegroup.
 CREATE TABLE tgroup_test5 (col1 int, col2 int) TABLEGROUP tgroup3;
+\set VERBOSITY terse \\ -- suppress dependency details.
 DROP TABLEGROUP tgroup1;
+DROP TABLEGROUP IF EXISTS tgroup1;
+\set VERBOSITY default
 DROP TABLEGROUP bad_tgroupname;
 -- This drop should work now.
 DROP TABLE tgroup_test1;
 DROP TABLE tgroup_test2;
 DROP INDEX tgroup_test3_col1_idx1;
-DROP TABLE tgroup_with1;
 DROP TABLEGROUP tgroup1;
+DROP TABLEGROUP IF EXISTS tgroup1;
 -- Create a tablegroup with the name of a dropped tablegroup.
+CREATE TABLEGROUP tgroup1;
+DROP TABLEGROUP IF EXISTS tgroup1;
 CREATE TABLEGROUP tgroup1;
 
 --

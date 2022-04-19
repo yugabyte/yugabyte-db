@@ -21,7 +21,7 @@ import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.BackupEntry;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
-import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.KmsConfig;
 import java.io.File;
 import java.lang.reflect.Constructor;
@@ -164,6 +164,8 @@ public class EncryptionAtRestManager {
   }
 
   public void cleanupEncryptionAtRest(UUID customerUUID, UUID universeUUID) {
+    // this calls for all configs for provider X universe, regardless of config actually used
+    // behavior is handled in cleanup call
     KmsConfig.listKMSConfigs(customerUUID)
         .forEach(
             config ->

@@ -35,10 +35,12 @@
 #include <algorithm>
 #include <set>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/row.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
@@ -66,9 +68,10 @@ ColumnSchema::ColumnSchema(std::string name,
                            bool is_static,
                            bool is_counter,
                            int32_t order,
-                           SortingType sorting_type)
+                           SortingType sorting_type,
+                           int32_t pg_type_oid)
     : ColumnSchema(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
-                   order, sorting_type) {
+                   order, sorting_type, pg_type_oid) {
 }
 
 const TypeInfo* ColumnSchema::type_info() const {
@@ -76,7 +79,7 @@ const TypeInfo* ColumnSchema::type_info() const {
 }
 
 bool ColumnSchema::CompTypeInfo(const ColumnSchema &a, const ColumnSchema &b) {
-  return a.type_info()->type() == b.type_info()->type();
+  return a.type_info()->type == b.type_info()->type;
 }
 
 int ColumnSchema::Compare(const void *lhs, const void *rhs) const {
@@ -92,7 +95,7 @@ std::string ColumnSchema::Stringify(const void *cell) const {
 }
 
 void ColumnSchema::DoDebugCellAppend(const void* cell, std::string* ret) const {
-  ret->append(type_info()->name());
+  ret->append(type_info()->name);
   ret->append(" ");
   ret->append(name_);
   ret->append("=");
@@ -113,7 +116,7 @@ string ColumnSchema::ToString() const {
 
 string ColumnSchema::TypeToString() const {
   return strings::Substitute("$0 $1 $2",
-                             type_info()->name(),
+                             type_info()->name,
                              is_nullable_ ? "NULLABLE" : "NOT NULL",
                              is_hash_key_ ? "PARTITION KEY" : "NOT A PARTITION KEY");
 }
@@ -253,13 +256,14 @@ Schema::Schema(const vector<ColumnSchema>& cols,
                size_t key_columns,
                const TableProperties& table_properties,
                const Uuid& cotable_id,
-               const PgTableOid pgtable_id)
+               const ColocationId colocation_id,
+               const PgSchemaName pgschema_name)
   : // TODO: C++11 provides a single-arg constructor
     name_to_index_(10,
                    NameToIndexMap::hasher(),
                    NameToIndexMap::key_equal(),
                    NameToIndexMapAllocator(&name_to_index_bytes_)) {
-  CHECK_OK(Reset(cols, key_columns, table_properties, cotable_id, pgtable_id));
+  CHECK_OK(Reset(cols, key_columns, table_properties, cotable_id, colocation_id, pgschema_name));
 }
 
 Schema::Schema(const vector<ColumnSchema>& cols,
@@ -267,13 +271,15 @@ Schema::Schema(const vector<ColumnSchema>& cols,
                size_t key_columns,
                const TableProperties& table_properties,
                const Uuid& cotable_id,
-               const PgTableOid pgtable_id)
+               const ColocationId colocation_id,
+               const PgSchemaName pgschema_name)
   : // TODO: C++11 provides a single-arg constructor
     name_to_index_(10,
                    NameToIndexMap::hasher(),
                    NameToIndexMap::key_equal(),
                    NameToIndexMapAllocator(&name_to_index_bytes_)) {
-  CHECK_OK(Reset(cols, ids, key_columns, table_properties, cotable_id, pgtable_id));
+  CHECK_OK(Reset(cols, ids, key_columns, table_properties, cotable_id, colocation_id,
+                 pgschema_name));
 }
 
 Schema& Schema::operator=(const Schema& other) {
@@ -304,10 +310,11 @@ void Schema::CopyFrom(const Schema& other) {
   has_statics_ = other.has_statics_;
   table_properties_ = other.table_properties_;
   cotable_id_ = other.cotable_id_;
-  pgtable_id_ = other.pgtable_id_;
+  colocation_id_ = other.colocation_id_;
+  pgschema_name_ = other.pgschema_name_;
 
-  // Schema cannot have both, cotable ID and pgtable ID.
-  DCHECK(cotable_id_.IsNil() || pgtable_id_ == 0);
+  // Schema cannot have both cotable ID and colocation ID.
+  DCHECK(cotable_id_.IsNil() || colocation_id_ == kColocationIdNotSet);
 }
 
 void Schema::swap(Schema& other) {
@@ -322,10 +329,11 @@ void Schema::swap(Schema& other) {
   std::swap(has_statics_, other.has_statics_);
   std::swap(table_properties_, other.table_properties_);
   std::swap(cotable_id_, other.cotable_id_);
-  std::swap(pgtable_id_, other.pgtable_id_);
+  std::swap(colocation_id_, other.colocation_id_);
+  std::swap(pgschema_name_, other.pgschema_name_);
 
-  // Schema cannot have both, cotable ID or pgtable ID.
-  DCHECK(cotable_id_.IsNil() || pgtable_id_ == 0);
+  // Schema cannot have both cotable ID and colocation ID.
+  DCHECK(cotable_id_.IsNil() || colocation_id_ == kColocationIdNotSet);
 }
 
 void Schema::ResetColumnIds(const vector<ColumnId>& ids) {
@@ -333,19 +341,20 @@ void Schema::ResetColumnIds(const vector<ColumnId>& ids) {
   col_ids_ = ids;
   id_to_index_.clear();
   max_col_id_ = 0;
-  for (int i = 0; i < ids.size(); ++i) {
+  for (size_t i = 0; i < ids.size(); ++i) {
     if (ids[i] > max_col_id_) {
       max_col_id_ = ids[i];
     }
-    id_to_index_.set(ids[i], i);
+    id_to_index_.set(ids[i], narrow_cast<int>(i));
   }
 }
 
 Status Schema::Reset(const vector<ColumnSchema>& cols, size_t key_columns,
                      const TableProperties& table_properties,
                      const Uuid& cotable_id,
-                     const PgTableOid pgtable_id) {
-  return Reset(cols, {}, key_columns, table_properties, cotable_id, pgtable_id);
+                     const ColocationId colocation_id,
+                     const PgSchemaName pgschema_name) {
+  return Reset(cols, {}, key_columns, table_properties, cotable_id, colocation_id, pgschema_name);
 }
 
 Status Schema::Reset(const vector<ColumnSchema>& cols,
@@ -353,13 +362,15 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
                      size_t key_columns,
                      const TableProperties& table_properties,
                      const Uuid& cotable_id,
-                     const PgTableOid pgtable_id) {
+                     const ColocationId colocation_id,
+                     const PgSchemaName pgschema_name) {
   cols_ = cols;
   num_key_columns_ = key_columns;
   num_hash_key_columns_ = 0;
   table_properties_ = table_properties;
   cotable_id_ = cotable_id;
-  pgtable_id_ = pgtable_id;
+  colocation_id_ = colocation_id;
+  pgschema_name_ = pgschema_name;
 
   // Determine whether any column is nullable or static, and count number of hash columns.
   has_nullables_ = false;
@@ -386,13 +397,13 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
       "The number of ids does not match with the number of columns");
   }
 
-  if (PREDICT_FALSE(!cotable_id.IsNil() && pgtable_id > 0)) {
+  if (PREDICT_FALSE(!cotable_id.IsNil() && colocation_id != kColocationIdNotSet)) {
     return STATUS(InvalidArgument,
-                  "Bad schema", "Cannot have both cotable ID and pgtable ID");
+                  "Bad schema", "Cannot have both cotable ID and colocation ID");
   }
 
   // Verify that the key columns are not nullable nor static
-  for (int i = 0; i < key_columns; ++i) {
+  for (size_t i = 0; i < key_columns; ++i) {
     if (PREDICT_FALSE(cols_[i].is_nullable())) {
       return STATUS(InvalidArgument,
         "Bad schema", strings::Substitute("Nullable key columns are not "
@@ -413,16 +424,16 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   // Calculate the offset of each column in the row format.
   col_offsets_.reserve(cols_.size() + 1);  // Include space for total byte size at the end.
   size_t off = 0;
-  size_t i = 0;
+  size_t idx = 0;
   name_to_index_.clear();
   for (const ColumnSchema &col : cols_) {
     // The map uses the 'name' string from within the ColumnSchema object.
-    if (!InsertIfNotPresent(&name_to_index_, col.name(), i++)) {
+    if (!InsertIfNotPresent(&name_to_index_, col.name(), idx++)) {
       return STATUS(InvalidArgument, "Duplicate column name", col.name());
     }
 
     col_offsets_.push_back(off);
-    off += col.type_info()->size();
+    off += col.type_info()->size;
   }
 
   // Add an extra element on the end for the total
@@ -447,16 +458,17 @@ Status Schema::CreateProjectionByNames(const std::vector<GStringPiece>& col_name
   vector<ColumnId> ids;
   vector<ColumnSchema> cols;
   for (const GStringPiece& name : col_names) {
-    int idx = find_column(name);
-    if (idx == -1) {
-      return STATUS(NotFound, "column not found", name);
+    auto idx = find_column(name);
+    if (idx == kColumnNotFound) {
+      return STATUS(NotFound, "Column not found", name);
     }
     if (has_column_ids()) {
       ids.push_back(column_id(idx));
     }
     cols.push_back(column(idx));
   }
-  return out->Reset(cols, ids, num_key_columns, TableProperties(), cotable_id_, pgtable_id_);
+  return out->Reset(cols, ids, num_key_columns, TableProperties(), cotable_id_,
+                    colocation_id_, pgschema_name_);
 }
 
 Status Schema::CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
@@ -471,27 +483,31 @@ Status Schema::CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& c
     cols.push_back(column(idx));
     filtered_col_ids.push_back(id);
   }
-  return out->Reset(cols, filtered_col_ids, 0, TableProperties(), cotable_id_, pgtable_id_);
+  return out->Reset(cols, filtered_col_ids, 0, TableProperties(), cotable_id_,
+                    colocation_id_, pgschema_name_);
 }
 
 namespace {
-vector<ColumnId> DefaultColumnIds(size_t num_columns) {
+
+vector<ColumnId> DefaultColumnIds(ColumnIdRep num_columns) {
   vector<ColumnId> ids;
-  for (int32_t i = 0; i < num_columns; ++i) {
+  for (ColumnIdRep i = 0; i < num_columns; ++i) {
     ids.push_back(ColumnId(kFirstColumnId + i));
   }
   return ids;
 }
+
 }  // namespace
 
 void Schema::InitColumnIdsByDefault() {
   CHECK(!has_column_ids());
-  ResetColumnIds(DefaultColumnIds(cols_.size()));
+  ResetColumnIds(DefaultColumnIds(narrow_cast<ColumnIdRep>(cols_.size())));
 }
 
 Schema Schema::CopyWithoutColumnIds() const {
   CHECK(has_column_ids());
-  return Schema(cols_, num_key_columns_, table_properties_, cotable_id_, pgtable_id_);
+  return Schema(cols_, num_key_columns_, table_properties_, cotable_id_,
+                colocation_id_, pgschema_name_);
 }
 
 Status Schema::VerifyProjectionCompatibility(const Schema& projection) const {
@@ -503,8 +519,8 @@ Status Schema::VerifyProjectionCompatibility(const Schema& projection) const {
 
   vector<string> missing_columns;
   for (const ColumnSchema& pcol : projection.columns()) {
-    int index = find_column(pcol.name());
-    if (index < 0) {
+    auto index = find_column(pcol.name());
+    if (index == kColumnNotFound) {
       missing_columns.push_back(pcol.name());
     } else if (!pcol.EqualsType(cols_[index])) {
       // TODO: We don't support query with type adaptors yet
@@ -536,7 +552,7 @@ Status Schema::GetMappedReadProjection(const Schema& projection,
   mapped_ids.reserve(projection.num_columns());
 
   for (const ColumnSchema& col : projection.columns()) {
-    int index = find_column(col.name());
+    auto index = find_column(col.name());
     DCHECK_GE(index, 0) << col.name();
     mapped_cols.push_back(cols_[index]);
     mapped_ids.push_back(col_ids_[index]);
@@ -549,7 +565,7 @@ Status Schema::GetMappedReadProjection(const Schema& projection,
 string Schema::ToString() const {
   vector<string> col_strs;
   if (has_column_ids()) {
-    for (int i = 0; i < cols_.size(); ++i) {
+    for (size_t i = 0; i < cols_.size(); ++i) {
       col_strs.push_back(Format("$0:$1", col_ids_[i], cols_[i].ToString()));
     }
   } else {
@@ -566,44 +582,8 @@ string Schema::ToString() const {
                 "\n]\nproperties: ",
                 tablet_properties_pb.ShortDebugString(),
                 cotable_id_.IsNil() ? "" : ("\ncotable_id: " + cotable_id_.ToString()),
-                pgtable_id_ == 0 ? "" : ("\npgtable_id: " + std::to_string(pgtable_id_)));
-}
-
-Status Schema::DecodeRowKey(Slice encoded_key,
-                            uint8_t* buffer,
-                            Arena* arena) const {
-  ContiguousRow row(this, buffer);
-
-  for (size_t col_idx = 0; col_idx < num_key_columns(); ++col_idx) {
-    const ColumnSchema& col = column(col_idx);
-    const KeyEncoder<faststring>& key_encoder = GetKeyEncoder<faststring>(col.type_info());
-    bool is_last = col_idx == (num_key_columns() - 1);
-    RETURN_NOT_OK_PREPEND(key_encoder.Decode(&encoded_key,
-                                             is_last,
-                                             arena,
-                                             row.mutable_cell_ptr(col_idx)),
-                          strings::Substitute("Error decoding composite key component '$0'",
-                                              col.name()));
-  }
-  return Status::OK();
-}
-
-string Schema::DebugEncodedRowKey(Slice encoded_key, StartOrEnd start_or_end) const {
-  if (encoded_key.empty()) {
-    switch (start_or_end) {
-      case START_KEY: return "<start of table>";
-      case END_KEY:   return "<end of table>";
-    }
-  }
-
-  Arena arena(1024, 128 * 1024);
-  uint8_t* buf = reinterpret_cast<uint8_t*>(arena.AllocateBytes(key_byte_size()));
-  Status s = DecodeRowKey(encoded_key, buf, &arena);
-  if (!s.ok()) {
-    return "<invalid key: " + s.ToString(/* no file/line */ false) + ">";
-  }
-  ConstContiguousRow row(this, buf);
-  return DebugRowKey(row);
+                colocation_id_ == kColocationIdNotSet
+                    ? "" : ("\ncolocation_id: " + std::to_string(colocation_id_)));
 }
 
 size_t Schema::memory_footprint_excluding_this() const {
@@ -631,7 +611,7 @@ size_t Schema::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
-Result<int> Schema::ColumnIndexByName(GStringPiece col_name) const {
+Result<ssize_t> Schema::ColumnIndexByName(GStringPiece col_name) const {
   auto index = find_column(col_name);
   if (index == kColumnNotFound) {
     return STATUS_FORMAT(Corruption, "$0 not found in schema $1", col_name, name_to_index_);
@@ -640,8 +620,8 @@ Result<int> Schema::ColumnIndexByName(GStringPiece col_name) const {
 }
 
 Result<ColumnId> Schema::ColumnIdByName(const std::string& column_name) const {
-  size_t column_index = find_column(column_name);
-  if (column_index == Schema::kColumnNotFound) {
+  auto column_index = find_column(column_name);
+  if (column_index == kColumnNotFound) {
     return STATUS_FORMAT(NotFound, "Couldn't find column $0 in the schema", column_name);
   }
   return ColumnId(column_id(column_index));
@@ -669,7 +649,8 @@ void SchemaBuilder::Reset() {
   num_key_columns_ = 0;
   next_id_ = kFirstColumnId;
   table_properties_.Reset();
-  pgtable_id_ = 0;
+  colocation_id_ = kColocationIdNotSet;
+  pgschema_name_ = "";
   cotable_id_ = Uuid::Nil();
 }
 
@@ -682,7 +663,7 @@ void SchemaBuilder::Reset(const Schema& schema) {
   }
 
   if (col_ids_.empty()) {
-    for (int32_t i = 0; i < cols_.size(); ++i) {
+    for (ColumnIdRep i = 0; i < narrow_cast<ColumnIdRep>(cols_.size()); ++i) {
       col_ids_.push_back(ColumnId(kFirstColumnId + i));
     }
   }
@@ -692,8 +673,9 @@ void SchemaBuilder::Reset(const Schema& schema) {
     next_id_ = *std::max_element(col_ids_.begin(), col_ids_.end()) + 1;
   }
   table_properties_ = schema.table_properties_;
-  pgtable_id_ = schema.pgtable_id_;
+  pgschema_name_ = schema.pgschema_name_;
   cotable_id_ = schema.cotable_id_;
+  colocation_id_ = schema.colocation_id_;
 }
 
 Status SchemaBuilder::AddKeyColumn(const string& name, const shared_ptr<QLType>& type) {
@@ -752,7 +734,7 @@ Status SchemaBuilder::RemoveColumn(const string& name) {
   }
 
   col_names_.erase(it_names);
-  for (int i = 0; i < cols_.size(); ++i) {
+  for (size_t i = 0; i < cols_.size(); ++i) {
     if (name == cols_[i].name()) {
       cols_.erase(cols_.begin() + i);
       col_ids_.erase(col_ids_.begin() + i);

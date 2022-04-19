@@ -4492,8 +4492,8 @@ pg_tablespace_aclmask(Oid spc_oid, Oid roleid,
 	Acl		   *acl;
 	Oid			ownerId;
 
-	/* Superusers bypass all permission checking. */
-	if (superuser_arg(roleid))
+	/* Superusers and yb_db_admin role bypass all permission checking. */
+	if (superuser_arg(roleid) || IsYbDbAdminUser(roleid))
 		return mask;
 
 	/*
@@ -5210,8 +5210,8 @@ pg_tablegroup_ownercheck(Oid grp_oid, Oid roleid)
 				 errmsg("Tablegroup system catalog does not exist.")));
 	}
 
-	/* Superusers bypass all permission checking. */
-	if (superuser_arg(roleid))
+	/* Superusers and yb_db_admin role bypass all permission checking. */
+	if (superuser_arg(roleid) || IsYbDbAdminUser(GetUserId()))
 		return true;
 
 	/* Search syscache for pg_tablegroup */
@@ -5237,8 +5237,8 @@ pg_tablespace_ownercheck(Oid spc_oid, Oid roleid)
 	HeapTuple	spctuple;
 	Oid			spcowner;
 
-	/* Superusers bypass all permission checking. */
-	if (superuser_arg(roleid))
+	/* Superusers and yb_db_admin role bypass all permission checking. */
+	if (superuser_arg(roleid) || IsYbDbAdminUser(roleid))
 		return true;
 
 	/* Search syscache for pg_tablespace */
@@ -5426,8 +5426,8 @@ pg_event_trigger_ownercheck(Oid et_oid, Oid roleid)
 	HeapTuple	tuple;
 	Oid			ownerId;
 
-	/* Superusers bypass all permission checking. */
-	if (superuser_arg(roleid))
+	/* Superusers and yb_db_admin bypass all permission checking. */
+	if (superuser_arg(roleid) || IsYbDbAdminUser(roleid))
 		return true;
 
 	tuple = SearchSysCache1(EVENTTRIGGEROID, ObjectIdGetDatum(et_oid));

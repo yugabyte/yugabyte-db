@@ -14,6 +14,8 @@
 #ifndef YB_TABLET_OPERATIONS_HISTORY_CUTOFF_OPERATION_H
 #define YB_TABLET_OPERATIONS_HISTORY_CUTOFF_OPERATION_H
 
+#include "yb/consensus/consensus.pb.h"
+
 #include "yb/tablet/operations/operation.h"
 
 namespace yb {

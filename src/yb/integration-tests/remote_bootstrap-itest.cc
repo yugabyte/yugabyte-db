@@ -60,6 +60,7 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
+#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
@@ -91,6 +92,7 @@ using yb::client::YBTableType;
 using yb::client::YBTableName;
 using std::shared_ptr;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
+using yb::consensus::PeerMemberType;
 using yb::consensus::RaftPeerPB;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_READY;
@@ -119,7 +121,7 @@ class RemoteBootstrapITest : public YBTest {
     if (HasFatalFailure()) {
       LOG(INFO) << "Found fatal failure";
       if (cluster_) {
-        for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+        for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
           if (!cluster_->tablet_server(i)->IsProcessAlive()) {
             LOG(INFO) << "Tablet server " << i << " is not running. Cannot dump its stacks.";
             continue;
@@ -213,16 +215,14 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
-  ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
-                                         &cluster_->proxy_cache(),
-                                         &ts_map_));
+  ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
   client_ = ASSERT_RESULT(cluster_->CreateClient());
 }
 
 void RemoteBootstrapITest::CheckCheckpointsCleared() {
   auto* env = Env::Default();
   auto deadline = MonoTime::Now() + 10s * kTimeMultiplier;
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto tablet_server = cluster_->tablet_server(i);
     auto data_dir = tablet_server->GetDataDirs()[0];
     SCOPED_TRACE(Format("Index: $0", i));
@@ -278,6 +278,7 @@ void RemoteBootstrapITest::CrashTestSetUp(YBTableType table_type) {
 
   // Start a workload on the cluster, and run it for a little while.
   crash_test_workload_.reset(new TestWorkload(cluster_.get()));
+  crash_test_workload_->set_sequential_write(true);
   crash_test_workload_->Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(4));
 
@@ -403,6 +404,7 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
 
   TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
   workload.Setup(table_type);
 
   // Figure out the tablet id of the created tablet.
@@ -411,7 +413,7 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -451,7 +453,7 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   // Wait for the NO_OP entry from the term 2 election to propagate to the
   // remaining nodes' logs so that we are guaranteed to reject the rogue
   // leader's remote bootstrap request when we bring it back online.
-  int log_index = workload.batches_completed() + 2; // 2 terms == 2 additional NO_OP entries.
+  auto log_index = workload.batches_completed() + 2; // 2 terms == 2 additional NO_OP entries.
   ASSERT_OK(WaitForServersToAgree(timeout, active_ts_map, tablet_id, log_index));
   // TODO: Write more rows to the new leader once KUDU-1034 is fixed.
 
@@ -523,6 +525,7 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
 
   // Populate a tablet with some data.
   TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
   workload.Setup(table_type);
   workload.Start();
   workload.WaitInserted(1000);
@@ -546,7 +549,7 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   opts.server_type = "tserver_test";
   std::unique_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
   ASSERT_OK(fs_manager->CreateInitialFileSystemLayout());
-  ASSERT_OK(fs_manager->Open());
+  ASSERT_OK(fs_manager->CheckAndOpenFileSystemRoots());
 
   // Start up a RemoteBootstrapClient and open a remote bootstrap session.
   RemoteBootstrapClient rb_client(tablet_id, fs_manager.get());
@@ -622,6 +625,7 @@ TEST_F(RemoteBootstrapITest, IncompleteWALDownloadDoesntCauseCrash) {
   workload.set_timeout_allowed(true);
   workload.set_write_batch_size(10);
   workload.set_num_write_threads(10);
+  workload.set_sequential_write(true);
   workload.Setup(YBTableType::YQL_TABLE_TYPE);
   workload.Start();
   workload.WaitInserted(RegularBuildVsSanitizers(500, 5000));
@@ -705,6 +709,7 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   TServerDetails* follower_ts = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()].get();
 
   TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
   workload.Setup(table_type);
 
   // Figure out the tablet id of the created tablet.
@@ -713,7 +718,7 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -801,7 +806,7 @@ void RemoteBootstrapITest::CreateTableAssignLeaderAndWaitForTabletServersReady(
   }
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     for (const string& tablet_id : *tablet_ids) {
       ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                               tablet_id, timeout));
@@ -999,6 +1004,7 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
   workload.set_write_timeout_millis(10000);
   workload.set_timeout_allowed(true);
   workload.set_not_found_allowed(true);
+  workload.set_sequential_write(true);
   workload.Setup(table_type);
 
   // Figure out the tablet id.
@@ -1009,7 +1015,7 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -1021,7 +1027,7 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
 
   for (int i = 0; i < FLAGS_test_delete_leader_num_iters; i++) {
     LOG(INFO) << "Iteration " << (i + 1);
-    int rows_previously_inserted = workload.rows_inserted();
+    auto rows_previously_inserted = workload.rows_inserted();
 
     // Find out who's leader.
     ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
@@ -1136,7 +1142,7 @@ void RemoteBootstrapITest::DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -1184,7 +1190,7 @@ void RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType table_type
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
 
   ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_,
+                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_,
                              NULL /* error code */,
                              true /* retry */));
 
@@ -1210,7 +1216,7 @@ void RemoteBootstrapITest::LeaderCrashesBeforeChangeRole(YBTableType table_type)
   ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
   ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_));
+                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_));
   ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_leader_index_, kWaitForCrashTimeout_));
   CrashTestVerify();
 }
@@ -1232,7 +1238,7 @@ void RemoteBootstrapITest::LeaderCrashesAfterChangeRole(YBTableType table_type) 
   ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
   ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_));
+                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_));
   ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_leader_index_, kWaitForCrashTimeout_));
 
   CrashTestVerify();
@@ -1254,7 +1260,7 @@ void RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType table_type)
 
   TServerDetails* ts = ts_map_[cluster_->tablet_server(crash_test_tserver_index_)->uuid()].get();
   ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_));
+                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_));
 
   ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_tserver_index_, kWaitForCrashTimeout_));
 
@@ -1322,6 +1328,7 @@ TEST_F(RemoteBootstrapITest, TestVeryLongRemoteBootstrap) {
   // Populate a tablet with some data.
   LOG(INFO)  << "Starting workload";
   TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
   workload.Setup(YBTableType::YQL_TABLE_TYPE);
   workload.Start();
   workload.WaitInserted(10);
@@ -1341,7 +1348,7 @@ TEST_F(RemoteBootstrapITest, TestVeryLongRemoteBootstrap) {
   // Add back TS0.
   ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
   LOG(INFO) << "Adding tserver with uuid " << new_ts->uuid();
-  ASSERT_OK(itest::AddServer(leader_ts, tablet_id, new_ts, RaftPeerPB::PRE_VOTER, boost::none,
+  ASSERT_OK(itest::AddServer(leader_ts, tablet_id, new_ts, PeerMemberType::PRE_VOTER, boost::none,
                              timeout));
   // After adding  new_ts, the leader will detect that TS0 needs to be remote bootstrapped. Verify
   // that this process completes successfully.
@@ -1385,6 +1392,7 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
   // Populate a tablet with some data.
   LOG(INFO) << "Starting workload";
   TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
   workload.Setup(YBTableType::YQL_TABLE_TYPE);
   workload.set_payload_bytes(1024);
   workload.Start();

@@ -15,7 +15,7 @@
 #ifndef YB_YQL_PGGATE_PG_TYPE_H_
 #define YB_YQL_PGGATE_PG_TYPE_H_
 
-#include "yb/common/common.pb.h"
+#include <unordered_map>
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 

@@ -25,7 +25,6 @@
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/master/cluster_balance.h"
-#include "yb/master/master.proxy.h"
 
 #include "yb/tools/yb-admin_client.h"
 
@@ -138,7 +137,7 @@ CHECKED_STATUS GetTabletsDriveStats(DriveStats* stats,
         ts = stats->insert({replica.first,
                            std::make_pair(std::unordered_map<std::string, int>(), 0)}).first;
       }
-      if (replica.second.role == consensus::RaftPeerPB::LEADER) {
+      if (replica.second.role == PeerRole::LEADER) {
         ++ts->second.second;
       }
       if (!replica.second.fs_data_dir.empty()) {
@@ -188,7 +187,7 @@ class LoadBalancerMiniClusterTest : public LoadBalancerMiniClusterTestBase {
   }
 
   void BeforeStartCluster() override {
-    for (int i = 0; i < num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < num_tablet_servers(); ++i) {
       // ts (free, used, total)
       emu_env->AddPathStats(mini_cluster()->GetTabletServerDrive(i, 0), {150,  50, 200});
       emu_env->AddPathStats(mini_cluster()->GetTabletServerDrive(i, 1), {100, 100, 200});
@@ -450,7 +449,7 @@ TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceDriveAware) {
   ASSERT_OK(GetTabletsDriveStats(&after, mini_cluster(), table_name()));
 
   bool found = false;
-  for (int ts_index = 0; ts_index < new_ts_index; ++ts_index) {
+  for (size_t ts_index = 0; ts_index < new_ts_index; ++ts_index) {
     const auto ts_uuid = mini_cluster()->mini_tablet_server(ts_index)->server()->permanent_uuid();
     std::vector<std::string> drives;
     auto& ts_before = before[ts_uuid];

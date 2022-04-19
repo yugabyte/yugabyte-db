@@ -30,6 +30,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX server)
+set(YB_PCH_DEP_LIBS opid_proto)
+
 YB_INCLUDE_EXTENSIONS()
 
 #########################################
@@ -75,8 +78,7 @@ target_link_libraries(server_base_proto
   yb_common_proto
   protobuf
   rpc_header_proto
-  version_info_proto
-  wire_protocol_proto)
+  version_info_proto)
 
 #########################################
 # server_process

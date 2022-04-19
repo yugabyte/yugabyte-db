@@ -4,17 +4,20 @@ package com.yugabyte.yw.models;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
+import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -29,7 +32,6 @@ import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 import lombok.extern.slf4j.Slf4j;
-import play.db.ebean.Transactional;
 
 @Slf4j
 @Table(
@@ -66,12 +68,13 @@ public class XClusterConfig extends Model {
   public UUID targetUniverseUUID;
 
   @Column(name = "status")
-  @ApiModelProperty(value = "Status", allowableValues = "Init, Running, Paused, Failed")
+  @ApiModelProperty(value = "Status", allowableValues = "Init, Running, Updating, Paused, Failed")
   public XClusterConfigStatusType status;
 
   public enum XClusterConfigStatusType {
     Init("Init"),
     Running("Running"),
+    Updating("Updating"),
     Paused("Paused"),
     Failed("Failed");
 
@@ -105,7 +108,7 @@ public class XClusterConfig extends Model {
   @JsonProperty
   @ApiModelProperty(value = "Source Universe table IDs")
   public Set<String> getTables() {
-    return this.tables.stream().map(table -> table.tableID).collect(Collectors.toSet());
+    return this.tables.stream().map(table -> table.getTableID()).collect(Collectors.toSet());
   }
 
   @JsonProperty
@@ -119,13 +122,40 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
-  public static XClusterConfig create(XClusterConfigCreateFormData formData) {
+  public void setTables(Map<String, String> newTables) {
+    this.tables = new HashSet<>();
+    newTables.forEach(
+        (tableId, streamId) -> {
+          tables.add(new XClusterTableConfig(tableId, streamId));
+        });
+    update();
+  }
+
+  @JsonIgnore
+  public Map<String, String> getStreams() {
+    return this.tables
+        .stream()
+        .collect(
+            Collectors.toMap(
+                XClusterTableConfig::getTableID,
+                (xClusterConfig) ->
+                    xClusterConfig.getStreamID() == null ? "" : xClusterConfig.getStreamID()));
+  }
+
+  @JsonIgnore
+  public String getReplicationGroupName() {
+    return this.sourceUniverseUUID + "_" + this.name;
+  }
+
+  @Transactional
+  public static XClusterConfig create(
+      XClusterConfigCreateFormData formData, XClusterConfigStatusType status) {
     XClusterConfig xClusterConfig = new XClusterConfig();
     xClusterConfig.uuid = UUID.randomUUID();
     xClusterConfig.name = formData.name;
     xClusterConfig.sourceUniverseUUID = formData.sourceUniverseUUID;
     xClusterConfig.targetUniverseUUID = formData.targetUniverseUUID;
-    xClusterConfig.status = XClusterConfigStatusType.Init;
+    xClusterConfig.status = status;
     xClusterConfig.createTime = new Date();
     xClusterConfig.modifyTime = new Date();
     xClusterConfig.setTables(formData.tables);
@@ -156,7 +186,7 @@ public class XClusterConfig extends Model {
 
   public static Optional<XClusterConfig> maybeGet(UUID xClusterConfigUUID) {
     XClusterConfig xClusterConfig =
-        find.query().fetch("tables", "tableID").where().eq("uuid", xClusterConfigUUID).findOne();
+        find.query().fetch("tables").where().eq("uuid", xClusterConfigUUID).findOne();
     if (xClusterConfig == null) {
       log.info("Cannot find XClusterConfig {}", xClusterConfigUUID);
       return Optional.empty();
@@ -166,7 +196,7 @@ public class XClusterConfig extends Model {
 
   public static List<XClusterConfig> getByTargetUniverseUUID(UUID targetUniverseUUID) {
     return find.query()
-        .fetch("tables", "tableID")
+        .fetch("tables")
         .where()
         .eq("target_universe_uuid", targetUniverseUUID)
         .findList();
@@ -174,7 +204,7 @@ public class XClusterConfig extends Model {
 
   public static List<XClusterConfig> getBySourceUniverseUUID(UUID sourceUniverseUUID) {
     return find.query()
-        .fetch("tables", "tableID")
+        .fetch("tables")
         .where()
         .eq("source_universe_uuid", sourceUniverseUUID)
         .findList();
@@ -183,11 +213,22 @@ public class XClusterConfig extends Model {
   public static List<XClusterConfig> getBetweenUniverses(
       UUID sourceUniverseUUID, UUID targetUniverseUUID) {
     return find.query()
-        .fetch("tables", "tableID")
+        .fetch("tables")
         .where()
         .eq("source_universe_uuid", sourceUniverseUUID)
         .eq("target_universe_uuid", targetUniverseUUID)
         .findList();
+  }
+
+  public static XClusterConfig getByNameSourceTarget(
+      String name, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
+    return find.query()
+        .fetch("tables")
+        .where()
+        .eq("config_name", name)
+        .eq("source_universe_uuid", sourceUniverseUUID)
+        .eq("target_universe_uuid", targetUniverseUUID)
+        .findOne();
   }
 
   private static void checkXClusterConfigInCustomer(

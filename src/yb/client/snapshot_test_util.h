@@ -52,11 +52,14 @@ class SnapshotTestUtil {
   void SetCluster(MiniCluster* cluster) {
       cluster_ = cluster;
   }
-  Result<master::MasterBackupServiceProxy> MakeBackupServiceProxy() {
-    return master::MasterBackupServiceProxy(
+
+  Result<master::MasterBackupProxy> MakeBackupServiceProxy() {
+    return master::MasterBackupProxy(
         proxy_cache_, VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
   }
+
   Result<master::SysSnapshotEntryPB::State> SnapshotState(const TxnSnapshotId& snapshot_id);
+
   Result<bool> IsSnapshotDone(const TxnSnapshotId& snapshot_id);
   Result<Snapshots> ListSnapshots(
       const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(),

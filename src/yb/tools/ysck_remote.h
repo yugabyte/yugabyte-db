@@ -56,12 +56,7 @@ class RemoteYsckTabletServer : public YsckTabletServer {
  public:
   explicit RemoteYsckTabletServer(const std::string& id,
                                   const HostPort& address,
-                                  rpc::ProxyCache* proxy_cache)
-      : YsckTabletServer(id),
-        address_(address.ToString()),
-        generic_proxy_(new server::GenericServiceProxy(proxy_cache, address)),
-        ts_proxy_(new tserver::TabletServerServiceProxy(proxy_cache, address)) {
-  }
+                                  rpc::ProxyCache* proxy_cache);
 
   CHECKED_STATUS Connect() const override;
 
@@ -120,7 +115,9 @@ class RemoteYsckMaster : public YsckMaster {
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   const std::shared_ptr<server::GenericServiceProxy> generic_proxy_;
-  std::shared_ptr<master::MasterServiceProxy> proxy_;
+  std::shared_ptr<master::MasterClientProxy> client_proxy_;
+  std::shared_ptr<master::MasterClusterProxy> cluster_proxy_;
+  std::shared_ptr<master::MasterDdlProxy> ddl_proxy_;
 };
 
 } // namespace tools

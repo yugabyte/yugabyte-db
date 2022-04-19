@@ -94,7 +94,7 @@ Result<OpId> Consensus::GetLastOpId(OpIdType type) {
       return GetLastReceivedOpId();
     case OpIdType::COMMITTED_OPID:
       return GetLastCommittedOpId();
-    case OpIdType::UNKNOWN_OPID_TYPE:
+    default:
       break;
   }
   return STATUS(InvalidArgument, "Unsupported OpIdType", OpIdType_Name(type));

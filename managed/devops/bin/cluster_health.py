@@ -9,13 +9,14 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 import argparse
+import concurrent.futures
 import json
 import logging
 import os
 import re
 import subprocess
 import sys
-import requests
+import threading
 import time
 
 try:
@@ -24,13 +25,12 @@ except Exception as e:
     from exceptions import RuntimeError
 from datetime import datetime, timedelta
 from dateutil import tz
-from multiprocessing import Pool
 from six import string_types, PY2, PY3
 
 
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
-RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+).*"
+RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+|PRE_RELEASE).*"
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
@@ -49,7 +49,7 @@ DISK_UTILIZATION_THRESHOLD_PCT = 80
 FD_THRESHOLD_PCT = 50
 SSH_TIMEOUT_SEC = 10
 CMD_TIMEOUT_SEC = 20
-MAX_CONCURRENT_PROCESSES = 10
+MAX_THREADS = 10
 MAX_TRIES = 2
 
 DEFAULT_SSL_VERSION = "TLSv1_2"
@@ -174,24 +174,15 @@ class Report:
 ###################################################################################################
 def check_output(cmd, env):
     try:
-        timeout = CMD_TIMEOUT_SEC
-        command = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
-        while command.poll() is None and timeout > 0:
-            time.sleep(1)
-            timeout -= 1
-        if command.poll() is None and timeout <= 0:
-            command.kill()
-            command.wait()
-            return 'Error executing command {}: timeout occurred'.format(cmd)
-
-        output, stderr = command.communicate()
-        if not stderr:
-            return output.decode('utf-8').encode("ascii", "ignore").decode("ascii")
-        else:
-            return 'Error executing command {}: {}'.format(cmd, stderr)
-    except subprocess.CalledProcessError as e:
+        output = subprocess.check_output(
+            cmd, stderr=subprocess.STDOUT, env=env, timeout=CMD_TIMEOUT_SEC)
+        return str(output.decode('utf-8').encode("ascii", "ignore").decode("ascii"))
+    except subprocess.CalledProcessError as ex:
         return 'Error executing command {}: {}'.format(
-            cmd, e.output.decode("utf-8").encode("ascii", "ignore"))
+            cmd, ex.output.decode("utf-8").encode("ascii", "ignore"))
+    except subprocess.TimeoutExpired:
+        return 'Error: timed out executing command {} for {} seconds'.format(
+            cmd, CMD_TIMEOUT_SEC)
 
 
 def safe_pipe(command_str):
@@ -220,13 +211,15 @@ class KubernetesDetails():
 
 class NodeChecker():
 
-    def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
-                 namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client,
-                 root_and_client_root_ca_same, ssl_protocol, enable_ysql_auth,
-                 master_http_port, tserver_http_port, ysql_server_http_port,
-                 collect_metrics_script, universe_version):
+    def __init__(self, node, node_name, master_index, tserver_index, identity_file, ssh_port,
+                 start_time_ms, namespace_to_config, ysql_port, ycql_port, redis_port,
+                 enable_tls_client, root_and_client_root_ca_same, ssl_protocol, enable_ysql,
+                 enable_ysql_auth, master_http_port, tserver_http_port, ysql_server_http_port,
+                 collect_metrics_script, test_read_write, universe_version):
         self.node = node
         self.node_name = node_name
+        self.master_index = master_index
+        self.tserver_index = tserver_index
         self.identity_file = identity_file
         self.ssh_port = ssh_port
         self.start_time_ms = start_time_ms
@@ -245,11 +238,13 @@ class NodeChecker():
         self.ysql_port = ysql_port
         self.ycql_port = ycql_port
         self.redis_port = redis_port
+        self.enable_ysql = enable_ysql
         self.enable_ysql_auth = enable_ysql_auth
         self.master_http_port = master_http_port
         self.tserver_http_port = tserver_http_port
         self.ysql_server_http_port = ysql_server_http_port
         self.collect_metrics_script = collect_metrics_script
+        self.test_read_write = test_read_write
         self.universe_version = universe_version
         self.additional_info = {}
 
@@ -322,7 +317,7 @@ class NodeChecker():
         return output
 
     def get_disk_utilization(self):
-        remote_cmd = 'df -hl 2>/dev/null'
+        remote_cmd = 'df -hl -x squashfs -x overlay 2>/dev/null'
         return self._remote_check_output(remote_cmd)
 
     def check_disk_utilization(self):
@@ -339,14 +334,23 @@ class NodeChecker():
         if len(lines) < 2:
             return e.fill_and_return_entry([output], True)
 
-        msgs.append(lines[0])
-        for line in lines[1:]:
+        found_header = False
+        for line in lines:
             msgs.append(line)
             if not line:
+                continue
+            if line.startswith("Filesystem"):
+                found_header = True
+                continue
+            if not found_header:
                 continue
             percentage = line.split()[4][:-1]
             if int(percentage) > DISK_UTILIZATION_THRESHOLD_PCT:
                 found_error = True
+
+        if not found_header:
+            return e.fill_and_return_entry([output], True)
+
         return e.fill_and_return_entry(msgs, found_error)
 
     def get_certificate_expiration_date(self, cert_path):
@@ -458,7 +462,13 @@ class NodeChecker():
             message = str(ex)
             return e.fill_and_return_entry([message], True)
 
-        matched = is_equal_release_build(release_build, expected)
+        try:
+            matched = is_equal_release_build(release_build, expected)
+        except RuntimeError as re:
+            return e.fill_and_return_entry(
+                ['Failed to parse node ({}) or expected ({}) build number: {}'.
+                 format(expected, release_build, str(re))],
+                True)
         if not matched:
             return e.fill_and_return_entry(
                 ['Version from platform metadata {}, version reported by instance process {}'.
@@ -652,7 +662,7 @@ class NodeChecker():
         logging.info("Checking redis cli works for node {}".format(self.node))
         e = self._new_entry("Connectivity with redis-cli")
         redis_cli = '{}/bin/redis-cli'.format(YB_TSERVER_DIR)
-        remote_cmd = 'echo "ping" | {} -h {} -p {}'.format(redis_cli, self.node, self.redis_port)
+        remote_cmd = '{} -h {} -p {} ping'.format(redis_cli, self.node, self.redis_port)
 
         output = self._remote_check_output(remote_cmd).strip()
 
@@ -662,76 +672,105 @@ class NodeChecker():
 
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
+    def create_ysqlsh_command_template(self):
+        ysqlsh = '{}/bin/ysqlsh'.format(YB_TSERVER_DIR)
+        port_args = "-p {}".format(self.ysql_port)
+        host = self.node
+
+        if self.enable_ysql_auth:
+            host = '__local_ysql_socket__'
+            port_args = ""
+
+        ysqlsh_cmd = "{} {} -h {} {} -U yugabyte".format(
+            'env sslmode="require"' if (self.enable_tls_client) else '', ysqlsh, host, port_args, )
+
+        return ysqlsh_cmd
+
     def check_ysqlsh(self):
         logging.info("Checking ysqlsh works for node {}".format(self.node))
         e = self._new_entry("Connectivity with ysqlsh")
 
-        ysqlsh = '{}/bin/ysqlsh'.format(YB_TSERVER_DIR)
-        port_args = "-p {}".format(self.ysql_port)
-        host = self.node
-        errors = []
-        # If YSQL-auth is enabled, we'll try connecting over the UNIX domain socket in the hopes
-        # that we can circumvent md5 authentication (assumption made:
-        # "local all yugabyte trust" is in the hba file)
+        ysqlsh_cmd_template = self.create_ysqlsh_command_template()
+        ysqlsh_cmd = ysqlsh_cmd_template
+
         if self.enable_ysql_auth:
+            # If YSQL-auth is enabled, we'll try connecting over the UNIX domain socket in the hopes
+            # that we can circumvent md5 authentication (assumption made:
+            # "local all yugabyte trust" is in the hba file)
             socket_fds_output = self._remote_check_output("ls /tmp/.yb.*/.s.PGSQL.*").strip()
             socket_fds = socket_fds_output.split()
             if ("Error" not in socket_fds_output) and len(socket_fds):
                 host = os.path.dirname(socket_fds[0])
-                port_args = ""
+                ysqlsh_cmd = ysqlsh_cmd_template.replace('__local_ysql_socket__', host)
             else:
-                errors = ["Could not find local socket"]
-                return e.fill_and_return_entry(errors, True)
+                return e.fill_and_return_entry(["Could not find local socket"], True)
 
-        if not self.enable_tls_client:
-            remote_cmd = "{} -h {} {} -U yugabyte -c \"\conninfo\"".format(
-                ysqlsh, host, port_args)
-        else:
-            remote_cmd = "{} -h {} {} -U yugabyte {} -c \"\conninfo\"".format(
-                ysqlsh, host, port_args, '"sslmode=require"')
+        # Passing dbname template1 explicitly as ysqlsh fails to connect if
+        # yugabyte database is deleted. We assume template1 will always be there
+        # in ysqlsh.
+        remote_cmd = "{} -c \"\\conninfo\" --dbname=template1".format(ysqlsh_cmd)
 
+        errors = []
         output = self._remote_check_output(remote_cmd).strip()
-        if not (output.startswith('You are connected to database')):
+        if 'You are connected to database' not in output:
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
     def check_clock_skew(self):
         logging.info("Checking clock synchronization on node {}".format(self.node))
         e = self._new_entry("Clock synchronization")
-        errors = []
 
         remote_cmd = "timedatectl status"
         output = self._remote_check_output(remote_cmd).strip()
 
-        clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: )|' +
-                            r'(systemd-timesyncd\.service active: ))(.*)$', output, re.MULTILINE)
+        clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: ))(.*)$',
+                            output, re.MULTILINE)
         if clock_re:
-            ntp_enabled_answer = clock_re.group(8)
+            ntp_enabled_answer = clock_re.group(7).strip()
+        elif "systemd-timesyncd.service active:" in output:  # Ignore this check, see PLAT-3373
+            ntp_enabled_answer = "yes"
         else:
             return e.fill_and_return_entry(["Error getting NTP state - incorrect answer format"],
                                            True)
 
+        errors = []
+
         if ntp_enabled_answer not in ("yes", "active"):
             if ntp_enabled_answer in ("no", "inactive"):
-                return e.fill_and_return_entry(["NTP disabled"], True)
+                errors.append("NTP disabled")
+            else:
+                errors.append("Error getting NTP state {}".format(ntp_enabled_answer))
 
-            return e.fill_and_return_entry(["Error getting NTP state {}"
-                                            .format(ntp_enabled_answer)], True)
+        clock_re = re.match(r'((.|\n)*)(NTP service: )(.*)$', output, re.MULTILINE)
+        if clock_re:
+            ntp_service_answer = clock_re.group(4).strip()
+            # Oracle8 NTP service: n/a not supported anymore
+            if ntp_service_answer in ("n/a"):
+                errors = []
 
         clock_re = re.match(r'((.|\n)*)((NTP synchronized: )|(System clock synchronized: ))(.*)$',
                             output, re.MULTILINE)
         if clock_re:
-            ntp_synchronized_answer = clock_re.group(6)
+            ntp_synchronized_answer = clock_re.group(6).strip()
         else:
             return e.fill_and_return_entry([
                 "Error getting NTP synchronization state - incorrect answer format"], True)
 
         if ntp_synchronized_answer != "yes":
             if ntp_synchronized_answer == "no":
-                errors = ["NTP desynchronized"]
+                errors.append("NTP desynchronized")
             else:
-                errors = ["Error getting NTP synchronization state {}"
-                          .format(ntp_synchronized_answer)]
+                errors.append("Error getting NTP synchronization state {}"
+                              .format(ntp_synchronized_answer))
+
+        # Check if a time sync service is running. Stderr redirection is necessary since
+        # "service does not exist" prints to stderr but should not error.
+        remote_cmd = ""
+        for ntp_service in ["chronyd", "ntp", "ntpd", "systemd-timesyncd"]:
+            remote_cmd = remote_cmd + "systemctl status " + ntp_service + " 2>&1; "
+        output = self._remote_check_output(remote_cmd).strip()
+        if "Active: active (running)" not in output:
+            errors.append("NTP service not running")
 
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
@@ -746,6 +785,9 @@ class NodeChecker():
     def upload_collect_metrics_script(self):
         with open(self.collect_metrics_script, 'r') as file:
             script_content = file.read()
+        ysqlsh_cmd_template = ''
+        if self.enable_ysql:
+            ysqlsh_cmd_template = self.create_ysqlsh_command_template()
 
         script_content = script_content.replace('{{NODE_PRIVATE_IP}}', self.node)
         script_content = script_content.replace('{{MASTER_HTTP_PORT}}',
@@ -754,6 +796,10 @@ class NodeChecker():
                                                 str(self.tserver_http_port))
         script_content = script_content.replace('{{YSQL_SERVER_HTTP_PORT}}',
                                                 str(self.ysql_server_http_port))
+        script_content = script_content.replace('{{YSQLSH_CMD_TEMPLATE}}', ysqlsh_cmd_template)
+        script_content = script_content.replace('{{MASTER_INDEX}}', str(self.master_index))
+        script_content = script_content.replace('{{TSERVER_INDEX}}', str(self.tserver_index))
+        script_content = script_content.replace('{{TEST_READ_WRITE}}', str(self.test_read_write))
 
         script_dir = os.path.dirname(os.path.abspath(self.collect_metrics_script))
         node_script = os.path.join(script_dir, "cluster_health_" + self.node + ".sh")
@@ -795,21 +841,6 @@ def parse_release_build(release_build):
     return match
 
 
-def is_equal_release_build(release_build1, release_build2):
-    parsed_release_build_1 = parse_release_build(release_build1)
-    parsed_release_build_2 = parse_release_build(release_build2)
-    if not parsed_release_build_1 or not parsed_release_build_2:
-        return False
-
-    for i in range(1, 6):
-        component1 = int(parsed_release_build_1.group(i))
-        component2 = int(parsed_release_build_2.group(i))
-        if component1 != component2:
-            # If any component is behind or ahead, release builds are not equal.
-            return False
-    return True
-
-
 def is_equal_or_newer_release_build(current_release_build, threshold_release_build):
     parsed_current_release_build = parse_release_build(current_release_build)
     parsed_threshold_release_build = parse_release_build(threshold_release_build)
@@ -829,17 +860,21 @@ def is_equal_or_newer_release_build(current_release_build, threshold_release_bui
     return True
 
 
+def is_equal_release_build(release_build1, release_build2):
+    return (is_equal_or_newer_release_build(release_build1, release_build2) and
+            is_equal_or_newer_release_build(release_build2, release_build1))
+
+
 ###################################################################################################
 # Multi-threaded handling and main
 ###################################################################################################
-def multithreaded_caller(instance, func_name,  sleep_interval=0, args=(), kwargs=None):
+def multithreaded_caller(check, func_name, lock, sleep_interval=0, args=()):
     if sleep_interval > 0:
         logging.debug("waiting for sleep to run " + func_name)
         time.sleep(sleep_interval)
-
-    if kwargs is None:
-        kwargs = {}
-    return getattr(instance, func_name)(*args, **kwargs)
+    result = getattr(check.instance, func_name)(*args)
+    with lock:
+        check.result = result
 
 
 class CheckCoordinator:
@@ -865,7 +900,6 @@ class CheckCoordinator:
             self.tries = 0
 
     def __init__(self, retry_interval_secs):
-        self.pool = Pool(MAX_CONCURRENT_PROCESSES)
         self.prechecks = []
         self.checks = []
         self.retry_interval_secs = retry_interval_secs
@@ -878,56 +912,56 @@ class CheckCoordinator:
 
     def run(self):
 
-        precheck_results = []
-        for precheck in self.prechecks:
-            precheck_func_name = precheck.__name__ if PY3 else precheck.func_name
-            result = self.pool.apply_async(multithreaded_caller, (precheck.instance,
-                                                                  precheck_func_name))
-            precheck_results.append(result)
+        lock = threading.Lock()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+            for precheck in self.prechecks:
+                precheck_func_name = precheck.__name__ if PY3 else precheck.func_name
+                executor.submit(multithreaded_caller, precheck,
+                                precheck_func_name, lock)
 
         # Getting results.
         additional_info = {}
-        for result in precheck_results:
-            additional_info.update(result.get())
+        with lock:
+            for precheck in self.prechecks:
+                additional_info.update(precheck.result)
 
         while True:
             checks_remaining = 0
-            for check in self.checks:
-                check.instance.additional_info = additional_info
-                check.entry = check.result.get() if check.result else None
+            with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+                for check in self.checks:
+                    check.instance.additional_info = additional_info
+                    with lock:
+                        check.entry = check.result if check.result else None
 
-                # Run checks until they succeed, up to max tries. Wait for sleep_interval secs
-                # before retrying to let transient errors correct themselves.
-                if check.entry is None or (check.entry.has_error and check.tries < MAX_TRIES):
-                    checks_remaining += 1
-                    sleep_interval = self.retry_interval_secs if check.tries > 0 else 0
+                    # Run checks until they succeed, up to max tries. Wait for sleep_interval secs
+                    # before retrying to let transient errors correct themselves.
+                    if check.entry is None or (check.entry.has_error and check.tries < MAX_TRIES):
+                        checks_remaining += 1
+                        sleep_interval = self.retry_interval_secs if check.tries > 0 else 0
 
-                    check_func_name = check.__name__ if PY3 else check.func_name
-                    if check.tries > 0:
-                        logging.info("Retry # " + str(check.tries) +
-                                     " for check " + check_func_name)
+                        check_func_name = check.__name__ if PY3 else check.func_name
+                        if check.tries > 0:
+                            logging.info("Retry # " + str(check.tries) +
+                                         " for check " + check_func_name)
 
-                    if check.yb_process is None:
-                        check.result = self.pool.apply_async(
-                                            multithreaded_caller,
-                                            (check.instance, check_func_name, sleep_interval))
-                    else:
-                        check.result = self.pool.apply_async(
-                                            multithreaded_caller,
-                                            (check.instance,
-                                                check_func_name,
-                                                sleep_interval,
-                                                (check.yb_process,)))
-
-                    check.tries += 1
+                        if check.yb_process is None:
+                            executor.submit(multithreaded_caller, check,
+                                            check_func_name, lock, sleep_interval)
+                        else:
+                            executor.submit(multithreaded_caller, check,
+                                            check_func_name, lock, sleep_interval,
+                                            (check.yb_process,))
+                        with lock:
+                            check.tries += 1
 
             if checks_remaining == 0:
                 break
 
         entries = []
-        for check in self.checks:
-            # TODO: we probably do not need to set a timeout, since SSH has one...
-            entries.append(check.result.get())
+        with lock:
+            for check in self.checks:
+                entries.append(check.result)
         return entries
 
 
@@ -954,6 +988,7 @@ class Cluster():
         self.tserver_http_port = data["tserverHttpPort"]
         self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.collect_metrics_script = data["collectMetricsScript"]
+        self.test_read_write = data["testReadWrite"]
 
 
 class UniverseDefinition():
@@ -983,8 +1018,12 @@ def main():
         # Technically, each cluster can have its own version, but in practice,
         # we disallow that in YW.
         universe_version = universe.clusters[0].yb_version if universe.clusters else None
-        alert_enhancements_version = is_equal_or_newer_release_build(
-            universe_version, ALERT_ENHANCEMENTS_RELEASE_BUILD)
+        try:
+            alert_enhancements_version = is_equal_or_newer_release_build(
+                universe_version, ALERT_ENHANCEMENTS_RELEASE_BUILD)
+        except RuntimeError as re:
+            logging.info("Failed to check release build: " + str(re))
+            alert_enhancements_version = True
         report = Report(universe_version)
         for c in universe.clusters:
             master_nodes = c.master_nodes
@@ -992,14 +1031,25 @@ def main():
             all_nodes = dict(master_nodes)
             all_nodes.update(dict(tserver_nodes))
             summary_nodes.update(dict(all_nodes))
+            masters_count = 0
+            tservers_count = 0
             for (node, node_name) in all_nodes.items():
+                master_index = -1
+                tserver_index = -1
+                if node in master_nodes:
+                    master_index = masters_count
+                    masters_count += 1
+                if node in tserver_nodes:
+                    tserver_index = tservers_count
+                    tservers_count += 1
                 checker = NodeChecker(
-                        node, node_name, c.identity_file, c.ssh_port,
+                        node, node_name, master_index, tserver_index, c.identity_file, c.ssh_port,
                         args.start_time_ms, c.namespace_to_config, c.ysql_port,
                         c.ycql_port, c.redis_port, c.enable_tls_client,
-                        c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql_auth,
-                        c.master_http_port, c.tserver_http_port, c.ysql_server_http_port,
-                        c.collect_metrics_script, universe_version)
+                        c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql,
+                        c.enable_ysql_auth, c.master_http_port, c.tserver_http_port,
+                        c.ysql_server_http_port, c.collect_metrics_script, c.test_read_write,
+                        universe_version)
 
                 coordinator.add_precheck(checker, "check_openssl_availability")
                 coordinator.add_precheck(checker, "upload_collect_metrics_script")

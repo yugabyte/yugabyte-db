@@ -969,6 +969,9 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 												 numNotReportedClient),
 						 numNotReportedClient);
 
+	if (IsYugaByteEnabled() && clientdetail.data != NULL)
+		clientdetail.data = YBDetailSorted(clientdetail.data);
+
 	if (!ok)
 	{
 		if (origObject)
@@ -1305,7 +1308,7 @@ doDeletion(const ObjectAddress *object, int flags)
 			break;
 
 		case OCLASS_TBLGROUP:
-			RemoveTableGroupById(object->objectId);
+			RemoveTablegroupById(object->objectId);
 			break;
 
 			/*

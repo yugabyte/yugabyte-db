@@ -18,6 +18,7 @@
 
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"
@@ -51,15 +52,19 @@ namespace {
 void GetBindVariableSchemasFromDmlStmt(const PTDmlStmt& stmt,
                                        vector<ColumnSchema>* schemas,
                                        vector<YBTableName>* table_names = nullptr) {
-  schemas->reserve(schemas->size() + stmt.bind_variables().size());
-  if (table_names != nullptr) {
-    table_names->reserve(table_names->size() + stmt.bind_variables().size());
-  }
-  for (const PTBindVar *var : stmt.bind_variables()) {
-    DCHECK_NOTNULL(var->name().get());
-    schemas->emplace_back(var->name() ? string(var->name()->c_str()) : string(), var->ql_type());
-    if (table_names != nullptr && stmt.bind_table()) {
-      table_names->emplace_back(stmt.bind_table()->name());
+  // Only add the bind variables if the table name is determined
+  if (stmt.bind_table()) {
+    schemas->reserve(schemas->size() + stmt.bind_variables().size());
+    if (table_names != nullptr) {
+      table_names->reserve(table_names->size() + stmt.bind_variables().size());
+    }
+
+    for (const PTBindVar *var : stmt.bind_variables()) {
+      DCHECK_NOTNULL(var->name().get());
+      schemas->emplace_back(var->name() ? string(var->name()->c_str()) : string(), var->ql_type());
+      if (table_names != nullptr) {
+        table_names->emplace_back(stmt.bind_table()->name());
+      }
     }
   }
 }

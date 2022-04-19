@@ -557,6 +557,57 @@ class GoogleCloudAdmin():
                                                 body=body).execute()
         return self.waiter.wait(operation, zone=zone)
 
+    def delete_disks(self, zone, tags):
+        if not tags:
+            raise YBOpsRuntimeError('Tags must be specified')
+        universe_uuid = tags.get('universe-uuid')
+        if universe_uuid is None:
+            raise YBOpsRuntimeError('Universe UUID must be specified')
+        node_uuid = tags.get('node-uuid')
+        if node_uuid is None:
+            raise YBOpsRuntimeError('Node UUID must be specified')
+        filters = []
+        tagPairs = {}
+        tagPairs['universe-uuid'] = universe_uuid
+        tagPairs['node-uuid'] = node_uuid
+        for tag in tagPairs:
+            value = tagPairs[tag]
+            filters.append('labels.{}={}'.format(tag, value))
+        disk_names = []
+        list_disks_args = {
+            'project': self.project,
+            'zone': zone,
+            'filter': ' AND '.join(filters)
+        }
+        while True:
+            response = self.compute.disks().list(**list_disks_args).execute()
+            for disk in response.get('items', []):
+                status = disk['status']
+                disk_name = disk['name']
+                present_tags = disk['labels']
+                users = disk.get('users', [])
+                # API returns READY for used disks as it is the creation state.
+                # Users refer to the users (instance).
+                if status.lower() != 'ready' or users:
+                    continue
+                tag_match_count = 0
+                # Extra caution to make sure tags are present.
+                for tag in tagPairs:
+                    value = tagPairs[tag]
+                    for present_tag in present_tags:
+                        if present_tag == tag and present_tags[present_tag] == value:
+                            tag_match_count += 1
+                            break
+                if tag_match_count == len(tagPairs):
+                    disk_names.append(disk_name)
+            if 'nextPageToken' in response:
+                list_disks_args['pageToken'] = response['nextPageToken']
+            else:
+                break
+        for disk_name in disk_names:
+            logging.info('[app] Deleting disk {}'.format(disk_name))
+            self.compute.disks().delete(project=self.project, zone=zone, disk=disk_name).execute()
+
     def mount_disk(self, zone, instance, body):
         operation = self.compute.instances().attachDisk(project=self.project,
                                                         zone=zone,
@@ -605,10 +656,12 @@ class GoogleCloudAdmin():
     def delete_instance(self, region, zone, instance_name, has_static_ip=False):
         if has_static_ip:
             address = "ip-" + instance_name
-            logging.info("Deleting static ip {} attached to VM {}".format(address, instance_name))
+            logging.info("[app] Deleting static ip {} attached to VM {}".format(
+                address, instance_name))
             self.compute.addresses().delete(
                 project=self.project, region=region, address=address).execute()
-            logging.info("Deleted static ip {} attached to VM {}".format(address, instance_name))
+            logging.info("[app] Deleted static ip {} attached to VM {}".format(
+                address, instance_name))
         operation = self.compute.instances().delete(
             project=self.project, zone=zone, instance=instance_name).execute()
         self.waiter.wait(operation, zone=zone)
@@ -677,9 +730,9 @@ class GoogleCloudAdmin():
     def get_instances(self, zone, instance_name, get_all=False, filters=None):
         # TODO: filter should work to do (zone eq args.zone), but it doesn't right now...
         if not filters:
-            filters = "(status eq RUNNING)"
+            filters = "(status = \"RUNNING\")"
         if instance_name is not None:
-            filters += " (name eq {})".format(instance_name)
+            filters += " AND (name = \"{}\")".format(instance_name)
         instances = self.compute.instances().aggregatedList(
             project=self.project,
             filter=filters,
@@ -712,12 +765,14 @@ class GoogleCloudAdmin():
             if data.get("networkInterfaces"):
                 interface = data.get("networkInterfaces")
                 if len(interface):
+                    # Interface names are of form
+                    # nic0, nic1, nic2, etc.
                     for i in interface:
-                        # Interface names are of form
-                        # nic0, nic1, nic2, etc.
+                        # This will only be true for one of the NICs.
+                        access_config = i.get("accessConfigs", [None])[0]
+                        if access_config:
+                            public_ip = access_config.get("natIP")
                         if i.get("name") == 'nic0':
-                            access_config = i.get("accessConfigs", [None])[0]
-                            public_ip = access_config.get("natIP") if access_config else None
                             private_ip = i.get("networkIP")
                             primary_subnet = i.get("subnetwork").split("/")[-1]
                         elif i.get("name") == 'nic1':
@@ -770,7 +825,8 @@ class GoogleCloudAdmin():
             boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
         boot_disk_json["initializeParams"] = boot_disk_init_params
 
-        access_configs = [{"natIP": None}] if assign_public_ip else None
+        access_configs = [{"natIP": None}
+                          ] if assign_public_ip and not cloud_subnet_secondary else None
 
         if assign_static_public_ip:
             # Create external static ip.
@@ -824,7 +880,7 @@ class GoogleCloudAdmin():
         # Attach a secondary network interface if present.
         if cloud_subnet_secondary:
             body["networkInterfaces"].append({
-                "accessConfigs": None,
+                "accessConfigs": [{"natIP": None}],
                 "subnetwork": "projects/{}/regions/{}/subnetworks/{}".format(
                     host_project, region, cloud_subnet_secondary)
             })
@@ -857,7 +913,8 @@ class GoogleCloudAdmin():
         if tags is not None:
             tags_dict = json.loads(tags)
             body.update({"labels": tags_dict})
-            initial_params.update({"labels": tags_dict})
+            if volume_type != GCP_SCRATCH:
+                initial_params.update({"labels": tags_dict})
             boot_disk_init_params.update({"labels": tags_dict})
             body["metadata"]["items"].append(
                 [{"key": k, "value": v} for (k, v) in tags_dict.items()])
@@ -872,3 +929,13 @@ class GoogleCloudAdmin():
             zone=zone,
             body=body).execute(), zone=zone)
         logging.info("[app] Created GCP VM {}".format(instance_name))
+
+    def get_console_output(self, zone, instance_name):
+        try:
+            return self.compute.instances().getSerialPortOutput(
+                project=self.project,
+                zone=zone,
+                instance=instance_name).execute().get('contents', '')
+        except HttpError:
+            logging.exception('Failed to get console output from {}'.format(instance_name))
+            return ''

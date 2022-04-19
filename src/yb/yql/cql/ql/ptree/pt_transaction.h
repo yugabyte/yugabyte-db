@@ -18,6 +18,8 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_TRANSACTION_H_
 #define YB_YQL_CQL_QL_PTREE_PT_TRANSACTION_H_
 
+#include "yb/common/transaction.pb.h"
+
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"

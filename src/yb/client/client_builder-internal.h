@@ -45,6 +45,7 @@
 
 #include "yb/client/client.h"
 
+#include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 
@@ -85,7 +86,7 @@ class YBClientBuilder::Data {
   std::string client_name_ = "ybclient";
 
   // The size of the threadpool to use for calling callbacks.
-  size_t threadpool_size_ = 0;
+  ssize_t threadpool_size_ = 0;
 
   // If all masters are available but no leader is present on client init,
   // this flag determines if the client returns failure right away

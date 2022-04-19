@@ -6,6 +6,8 @@
 #include <limits>
 
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_serialization.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -15,6 +17,7 @@
 
 #include "yb/yql/cql/ql/statement.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/yql/cql/ql/util/cql_message.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 
 DECLARE_bool(TEST_tserver_timeout);
@@ -56,7 +59,7 @@ struct CQLQueryParameters : public CQLMessage::QueryParameters {
 
   void PushBack(const string& name, const QLValue& qv, const shared_ptr<QLType>& type) {
     faststring buffer;
-    qv.Serialize(type, YQL_CLIENT_CQL, &buffer);
+    SerializeValue(type, YQL_CLIENT_CQL, qv.value(), &buffer);
 
     CQLMessage::Value msg_value;
     msg_value.name = name;
@@ -1720,7 +1723,7 @@ TEST_F(QLTestSelectedExpr, ScanRangeTestIncDecAcrossHashCols) {
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
   EXPECT_EQ(row_block->row_count(), 2 * max_h);
   vector<bool> seen(max_h, false);
-  for (int h = 0; h < row_block->row_count(); h++) {
+  for (size_t h = 0; h < row_block->row_count(); h++) {
     const QLRow& row = row_block->row(h);
     LOG(INFO) << "got " << row.ToString();
     seen[row.column(0).int32_value()] = true;
@@ -1767,7 +1770,7 @@ TEST_F(QLTestSelectedExpr, ScanChoicesTestIncDecAcrossHashCols) {
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
   EXPECT_EQ(row_block->row_count(), 2 * max_h);
   vector<bool> seen(max_h, false);
-  for (int h = 0; h < row_block->row_count(); h++) {
+  for (size_t h = 0; h < row_block->row_count(); h++) {
     const QLRow& row = row_block->row(h);
     LOG(INFO) << "got " << row.ToString();
     seen[row.column(0).int32_value()] = true;
@@ -1805,7 +1808,8 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
   LOG(INFO) << "Prepare insert into MAP statement.";
   Statement insert_vm(processor->CurrentKeyspace(),
                       "INSERT INTO test_tbl (h, r, vm) VALUES(?, ?, ?);");
-  EXPECT_OK(insert_vm.Prepare(processor, nullptr /* mem_tracker */, false /* internal */, &result));
+  EXPECT_OK(insert_vm.Prepare(
+      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vm_binds = result->bind_variable_schemas();
   EXPECT_EQ(vm_binds.size(), 3);
   EXPECT_EQ(vm_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
@@ -1870,7 +1874,8 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
   LOG(INFO) << "Prepare insert into SET statement.";
   Statement insert_vs(processor->CurrentKeyspace(),
                       "INSERT INTO test_tbl (h, r, vs) VALUES(?, ?, ?);");
-  EXPECT_OK(insert_vs.Prepare(processor, nullptr /* mem_tracker */, false /* internal */, &result));
+  EXPECT_OK(insert_vs.Prepare(
+      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vs_binds = result->bind_variable_schemas();
   EXPECT_EQ(vs_binds.size(), 3);
   EXPECT_EQ(vs_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
@@ -1914,7 +1919,8 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
   LOG(INFO) << "Prepare insert into LIST statement.";
   Statement insert_vl(processor->CurrentKeyspace(),
                       "INSERT INTO test_tbl (h, r, vl) VALUES(?, ?, ?);");
-  EXPECT_OK(insert_vl.Prepare(processor, nullptr /* mem_tracker */, false /* internal */, &result));
+  EXPECT_OK(insert_vl.Prepare(
+      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vl_binds = result->bind_variable_schemas();
   EXPECT_EQ(vl_binds.size(), 3);
   EXPECT_EQ(vl_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");

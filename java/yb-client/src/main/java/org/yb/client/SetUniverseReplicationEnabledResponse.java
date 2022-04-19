@@ -1,14 +1,14 @@
 package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 
 @InterfaceAudience.Public
 public class SetUniverseReplicationEnabledResponse extends YRpcResponse {
-  private final Master.MasterErrorPB serverError;
+  private final MasterTypes.MasterErrorPB serverError;
 
   public SetUniverseReplicationEnabledResponse(
-    long elapsedMillis, String tsUUID, Master.MasterErrorPB serverError) {
+    long elapsedMillis, String tsUUID, MasterTypes.MasterErrorPB serverError) {
     super(elapsedMillis, tsUUID);
     this.serverError = serverError;
   }

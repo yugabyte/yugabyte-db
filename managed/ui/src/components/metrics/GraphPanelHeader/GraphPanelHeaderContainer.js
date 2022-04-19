@@ -6,9 +6,11 @@ import { GraphPanelHeader } from '../../metrics';
 import {
   changeGraphQueryPeriod,
   resetGraphQueryPeriod,
-  togglePrometheusQuery
+  togglePrometheusQuery,
+  getGrafanaJson
 } from '../../../actions/graph';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
+import {closeDialog, openDialog} from "../../../actions/modal";
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -25,16 +27,29 @@ const mapDispatchToProps = (dispatch) => {
     },
     togglePrometheusQuery: () => {
       dispatch(togglePrometheusQuery());
+    },
+    getGrafanaJson: getGrafanaJson,
+    showModal: (modalName) => {
+      dispatch(openDialog(modalName));
+    },
+    closeModal: () => {
+      dispatch(closeDialog());
     }
   };
 };
 
 function mapStateToProps(state, ownProps) {
+  const {
+    featureFlags: { test, released }
+  } = state;
+
   return {
     graph: state.graph,
     universe: state.universe,
     prometheusQueryEnabled: state.graph.prometheusQueryEnabled,
-    customer: state.customer
+    customer: state.customer,
+    visibleModal: state.modal.visibleModal,
+    enableNodeComparisonModal: test.enableNodeComparisonModal || released.enableNodeComparisonModal
   };
 }
 

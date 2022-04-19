@@ -56,6 +56,7 @@
 #include "yb/util/test_util.h"
 
 DECLARE_bool(enable_leader_failure_detection);
+DECLARE_bool(never_fsync);
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
@@ -115,7 +116,7 @@ class MockQueue : public PeerMessageQueue {
                                       ConsensusRequestPB* request,
                                       ReplicateMsgsHolder* msgs_holder,
                                       bool* needs_remote_bootstrap,
-                                      RaftPeerPB::MemberType* member_type,
+                                      PeerMemberType* member_type,
                                       bool* last_exchange_successful));
   MOCK_METHOD2(ResponseFromPeer, bool(const std::string& peer_uuid,
                                       const ConsensusResponsePB& response));
@@ -220,6 +221,8 @@ class RaftConsensusTest : public YBTest {
   }
 
   void SetUp() override {
+    YBTest::SetUp();
+
     LogOptions options;
     string test_path = GetTestPath("test-peer-root");
 
@@ -227,7 +230,7 @@ class RaftConsensusTest : public YBTest {
     // monitors and pretty much everything else.
     fs_manager_.reset(new FsManager(env_.get(), test_path, "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
     ASSERT_OK(Log::Open(LogOptions(),
                        kTestTablet,

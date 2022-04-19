@@ -361,14 +361,7 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 bytea *
 ybcinoptions(Datum reloptions, bool validate)
 {
-	/*
-	 * For now we only need to validate the reloptions, as we currently have no
-	 * need for a special struct similar to BrinOptions or GinOptions.
-	 * Thus, we will still return NULL for now.
-	 */
-	int numoptions;
-	(void) parseRelOptions(reloptions, validate, RELOPT_KIND_INDEX, &numoptions);
-	return NULL;
+	return default_reloptions(reloptions, validate, RELOPT_KIND_YB_LSM);
 }
 
 bool
@@ -471,5 +464,6 @@ ybcinendscan(IndexScanDesc scan)
 {
 	YbScanDesc ybscan = (YbScanDesc)scan->opaque;
 	Assert(PointerIsValid(ybscan));
+	YBCPgDeleteStatement(ybscan->handle);
 	pfree(ybscan);
 }

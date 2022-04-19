@@ -19,7 +19,8 @@
 
 #include <gflags/gflags_declare.h>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+
 #include "yb/master/master_types.pb.h"
 
 namespace yb {
@@ -64,12 +65,14 @@ class YBTableName {
               const std::string& namespace_name,
               const std::string& table_id,
               const std::string& table_name,
+              const std::string& pgschema_name = "",
               boost::optional<master::RelationType> relation_type = boost::none)
             : namespace_type_(db_type) {
     set_namespace_id(namespace_id);
     set_namespace_name(namespace_name);
     set_table_id(table_id);
     set_table_name(table_name);
+    set_pgschema_name(pgschema_name);
     set_relation_type(relation_type);
   }
 
@@ -117,6 +120,14 @@ class YBTableName {
     return table_id_; // Can be empty
   }
 
+  bool has_pgschema_name() const {
+    return !pgschema_name_.empty();
+  }
+
+  const std::string& pgschema_name() const {
+    return pgschema_name_; // Can be empty
+  }
+
   boost::optional<master::RelationType> relation_type() const {
     return relation_type_;
   }
@@ -141,6 +152,7 @@ class YBTableName {
   void set_namespace_name(const std::string& namespace_name);
   void set_table_name(const std::string& table_name);
   void set_table_id(const std::string& table_id);
+  void set_pgschema_name(const std::string& pgschema_name);
 
   void set_relation_type(boost::optional<master::RelationType> relation_type) {
     relation_type_ = relation_type;
@@ -161,6 +173,7 @@ class YBTableName {
   YQLDatabase namespace_type_; // Can be empty, that means the namespace id will be used.
   std::string table_id_; // Optional. Can be set when client knows the table id also.
   std::string table_name_;
+  std::string pgschema_name_; // Can be empty
   // Optional. Can be set when the client knows the table type.
   boost::optional<master::RelationType> relation_type_;
 };

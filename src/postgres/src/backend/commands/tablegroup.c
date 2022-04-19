@@ -61,6 +61,7 @@
 #include "commands/tablespace.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/ybccmds.h"
 #include "common/file_perm.h"
 #include "miscadmin.h"
 #include "postmaster/bgwriter.h"
@@ -78,8 +79,6 @@
 #include "utils/tqual.h"
 #include "utils/varlena.h"
 
-/*  YB includes. */
-#include "commands/ybccmds.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
@@ -94,8 +93,8 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	bool		nulls[Natts_pg_yb_tablegroup];
 	HeapTuple	tuple;
 	Oid			tablegroupoid;
-	Oid			ownerId;
-	Oid			tablespaceId;
+	Oid			owneroid;
+	Oid			tablespaceoid;
 	Acl		   *grpacl = NULL;
 
 	if (!YbTablegroupCatalogExists)
@@ -132,16 +131,16 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 					 		stmt->tablegroupname)));
 
 	if (stmt->owner)
-		ownerId = get_rolespec_oid(stmt->owner, false);
+		owneroid = get_rolespec_oid(stmt->owner, false);
 	else
-		ownerId = GetUserId();
+		owneroid = GetUserId();
 
 	if (stmt->tablespacename)
-		tablespaceId = get_tablespace_oid(stmt->tablespacename, false);
+		tablespaceoid = get_tablespace_oid(stmt->tablespacename, false);
 	else
-		tablespaceId = GetDefaultTablespace(RELPERSISTENCE_PERMANENT);
+		tablespaceoid = GetDefaultTablespace(RELPERSISTENCE_PERMANENT);
 
-	if (tablespaceId == GLOBALTABLESPACE_OID)
+	if (tablespaceoid == GLOBALTABLESPACE_OID)
 		/* In all cases disallow placing user relations in pg_global */
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -156,17 +155,17 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 
 	values[Anum_pg_yb_tablegroup_grpname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->tablegroupname));
-	values[Anum_pg_yb_tablegroup_grpowner - 1] = ObjectIdGetDatum(ownerId);
+	values[Anum_pg_yb_tablegroup_grpowner - 1] = ObjectIdGetDatum(owneroid);
 
 	/* Get default permissions and set up grpacl */
-	grpacl = get_user_default_acl(OBJECT_YBTABLEGROUP, ownerId, InvalidOid);
+	grpacl = get_user_default_acl(OBJECT_YBTABLEGROUP, owneroid, InvalidOid);
 	if (grpacl != NULL)
 		values[Anum_pg_yb_tablegroup_grpacl - 1] = PointerGetDatum(grpacl);
 	else
 		nulls[Anum_pg_yb_tablegroup_grpacl - 1] = true;
 
 	/* Set tablegroup tablespace oid */
-	values[Anum_pg_yb_tablegroup_grptablespace - 1] = tablespaceId;
+	values[Anum_pg_yb_tablegroup_grptablespace - 1] = tablespaceoid;
 
 	/* Generate new proposed grpoptions (text array) */
 	/* For now no grpoptions. Will be part of Interleaved/Copartitioned */
@@ -181,151 +180,18 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCCreateTablegroup(tablegroupoid);
+		YBCCreateTablegroup(tablegroupoid, tablespaceoid);
 	}
 
-	if (tablespaceId != InvalidOid)
+	if (tablespaceoid != InvalidOid)
 		recordDependencyOnTablespace(YbTablegroupRelationId, tablegroupoid,
-									 tablespaceId);
+									 tablespaceoid);
+	recordDependencyOnOwner(YbTablegroupRelationId, tablegroupoid, owneroid);
 
 	/* We keep the lock on pg_tablegroup until commit */
 	heap_close(rel, NoLock);
 
 	return tablegroupoid;
-}
-
-/*
- * Drop a tablegroup
- */
-void
-DropTableGroup(DropTableGroupStmt *stmt)
-{
-	char *tablegroupname = stmt->tablegroupname;
-	HeapScanDesc	scandesc;
-	SysScanDesc		class_scandesc;
-	Relation		rel;
-	Relation		class_rel;
-	HeapTuple		tuple;
-	ScanKeyData		entry[1];
-	Oid				tablegroupoid;
-
-	if (!YbTablegroupCatalogExists)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
-	}
-	/*
-	 * Find the target tuple
-	 */
-	rel = heap_open(YbTablegroupRelationId, RowExclusiveLock);
-
-	// Scan pg_tablegroup to find a tuple with a matching name.
-	ScanKeyInit(&entry[0],
-				Anum_pg_yb_tablegroup_grpname,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(tablegroupname));
-	scandesc = heap_beginscan_catalog(rel, 1, entry);
-	tuple = heap_getnext(scandesc, ForwardScanDirection);
-
-	if (!HeapTupleIsValid(tuple))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("tablegroup \"%s\" does not exist",
-				 tablegroupname)));
-		return;
-	}
-
-	tablegroupoid = HeapTupleGetOid(tuple);
-
-	/* If not superuser check ownership to allow drop. */
-	if (!superuser())
-	{
-		if (!pg_tablegroup_ownercheck(tablegroupoid, GetUserId()))
-			aclcheck_error(ACLCHECK_NOT_OWNER,
-						   OBJECT_YBTABLEGROUP,
-						   tablegroupname);
-	}
-
-	/*
-	 * Search pg_class for a tuple with a matching tablegroup oid in reloptions.
-	 * If found, disallow drop as the tablegroup is non-empty.
-	 * Use pg_class oid index for the systable scan.
-	 */
-	class_rel = heap_open(RelationRelationId, AccessShareLock);
-	class_scandesc = systable_beginscan(class_rel,
-										ClassOidIndexId,
-										true /* indexOk */,
-										NULL, 0, NULL);
-
-	/*
-	 * This is a clunky search. The alternate option is to use RelationIdGetRelation
-	 * to open the relcache entry for every relation and search the rd_options struct
-	 * to find the value of the tablegroup option (if not NULL). This seemed potentially
-	 * dangerous. The current method is inefficient but DROP TABLEGROUP is a fairly rare
-	 * operation.
-	 */
-	HeapTuple pg_class_tuple;
-	TupleDesc pg_class_desc = RelationGetDescr(class_rel);
-	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(class_scandesc)))
-	{
-		bool isnull;
-		Datum datum = fastgetattr(pg_class_tuple,
-								  Anum_pg_class_reloptions,
-								  pg_class_desc,
-								  &isnull);
-
-		if (isnull)
-			continue;
-
-		List *reloptions = untransformRelOptions(datum);
-		ListCell *cell;
-		foreach(cell, reloptions)
-		{
-			DefElem	*defel = (DefElem *) lfirst(cell);
-			if (strcmp(defel->defname, "tablegroup") == 0)
-			{
-				if (tablegroupoid == (Oid) pg_atoi(defGetString(defel), sizeof(Oid), 0))
-				{
-					// Close pg_class
-					systable_endscan(class_scandesc);
-					heap_close(class_rel, NoLock);
-					// Close pg_tablegroup
-					heap_endscan(scandesc);
-					heap_close(rel, NoLock);
-					ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 		 errmsg("tablegroup \"%s\" is not empty",
-								tablegroupname)));
-					return;
-				}
-			}
-		}
-	}
-	// Close pg_class
-	systable_endscan(class_scandesc);
-	heap_close(class_rel, NoLock);
-
-	/* DROP hook for the tablegroup being removed */
-	InvokeObjectDropHook(YbTablegroupRelationId, tablegroupoid, 0);
-
-	/*
-	 * Remove the pg_tablegroup tuple.
-	 */
-	CatalogTupleDelete(rel, tuple);
-
-	deleteSharedDependencyRecordsFor(YbTablegroupRelationId, tablegroupoid, 0 /* objectSubId */);
-
-	heap_endscan(scandesc);
-
-	if (IsYugaByteEnabled())
-	{
-		YBCDropTablegroup(tablegroupoid);
-	}
-
-	/* We keep the lock on pg_tablegroup until commit */
-	heap_close(rel, NoLock);
 }
 
 /*
@@ -421,7 +287,7 @@ get_tablegroup_oid_by_table_oid(Oid table_oid)
 			{
 				DefElem	*defel = (DefElem *) lfirst(cell);
 				// Every node is a string node when untransformed. Need to type cast.
-				if (strcmp(defel->defname, "tablegroup") == 0)
+				if (strcmp(defel->defname, "tablegroup_oid") == 0)
 				{
 					result = (Oid) pg_atoi(defGetString(defel), sizeof(Oid), 0);
 				}
@@ -471,20 +337,18 @@ get_tablegroup_name(Oid grp_oid)
 }
 
 /*
- * RemoveTableGroupById - remove a tablegroup by its OID.
+ * RemoveTablegroupById - remove a tablegroup by its OID.
  * If a tablegroup does not exist with the provided oid, then an error is raised.
  *
  * grp_oid - the oid of the tablegroup.
  */
 void
-RemoveTableGroupById(Oid grp_oid)
+RemoveTablegroupById(Oid grp_oid)
 {
 	Relation		pg_tblgrp_rel;
-	SysScanDesc		class_scandesc;
 	HeapScanDesc	scandesc;
 	ScanKeyData		skey[1];
 	HeapTuple		tuple;
-	Relation		class_rel;
 
 	if (!YbTablegroupCatalogExists)
 	{
@@ -514,54 +378,6 @@ RemoveTableGroupById(Oid grp_oid)
 				 		grp_oid)));
 	}
 
-	class_rel = heap_open(RelationRelationId, RowExclusiveLock);
-	class_scandesc = systable_beginscan(class_rel,
-										ClassOidIndexId,
-										true /* indexOk */,
-										NULL, 0, NULL);
-
-	// Scan pg_class for reloptions. See DropTablegroup for more description.
-	HeapTuple pg_class_tuple;
-	TupleDesc pg_class_desc = RelationGetDescr(class_rel);
-	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(class_scandesc)))
-	{
-		bool isnull;
-		Datum datum = fastgetattr(pg_class_tuple,
-								  Anum_pg_class_reloptions,
-								  pg_class_desc,
-								  &isnull);
-
-		if (isnull)
-			continue;
-
-		List *reloptions = untransformRelOptions(datum);
-		ListCell *cell;
-		foreach(cell, reloptions)
-		{
-			DefElem	*defel = (DefElem *) lfirst(cell);
-			if (strcmp(defel->defname, "tablegroup") == 0)
-			{
-				if (grp_oid == (Oid) pg_atoi(defGetString(defel), sizeof(Oid), 0))
-				{
-					// Close pg_class
-					systable_endscan(class_scandesc);
-					heap_close(class_rel, NoLock);
-					// Close pg_tablegroup
-					heap_endscan(scandesc);
-					heap_close(pg_tblgrp_rel, NoLock);
-					ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 		 errmsg("tablegroup with oid \"%u\" is not empty",
-								grp_oid)));
-					return;
-				}
-			}
-		}
-	}
-	// Close pg_class
-	systable_endscan(class_scandesc);
-	heap_close(class_rel, NoLock);
-
 	/* DROP hook for the tablegroup being removed */
 	InvokeObjectDropHook(YbTablegroupRelationId, grp_oid, 0);
 
@@ -571,6 +387,11 @@ RemoveTableGroupById(Oid grp_oid)
 	CatalogTupleDelete(pg_tblgrp_rel, tuple);
 
 	heap_endscan(scandesc);
+
+	if (IsYugaByteEnabled())
+	{
+		YBCDropTablegroup(grp_oid);
+	}
 
 	/* We keep the lock on pg_tablegroup until commit */
 	heap_close(pg_tblgrp_rel, NoLock);
@@ -734,6 +555,8 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 
 		newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
 		CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
+		changeDependencyOnOwner(YbTablegroupRelationId, tablegroupoid, newOwnerId);
 
 		heap_freetuple(newtuple);
 

@@ -290,7 +290,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt DiscardStmt DoStmt
 		DropOpClassStmt DropOpFamilyStmt DropPLangStmt DropStmt
 		DropAssertStmt DropCastStmt DropRoleStmt
-		DropdbStmt DropTableGroupStmt DropTableSpaceStmt
+		DropdbStmt DropTableSpaceStmt
 		DropTransformStmt
 		DropUserMappingStmt ExplainStmt FetchStmt
 		GrantStmt GrantRoleStmt ImportForeignSchemaStmt IndexStmt InsertStmt
@@ -470,7 +470,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <node>	overlay_placing substr_from substr_for
 
 %type <boolean> opt_instead
-%type <boolean> opt_unique opt_concurrently opt_verbose opt_full
+%type <boolean> opt_unique opt_concurrently opt_verbose opt_full opt_concurrently_matview
 %type <boolean> opt_freeze opt_analyze opt_default opt_recheck
 %type <defelt>	opt_binary opt_oids copy_delimiter
 
@@ -912,6 +912,7 @@ stmt :
 			| CreateExtensionStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
+			| CreateMatViewStmt
 			| CreateOpClassStmt
 			| CreateOpFamilyStmt
 			| CreatePolicyStmt
@@ -945,6 +946,7 @@ stmt :
 			| LockStmt
 			| PrepareStmt
 			| ReassignOwnedStmt
+			| RefreshMatViewStmt
 			| RemoveAggrStmt
 			| RemoveFuncStmt
 			| RemoveOperStmt
@@ -977,7 +979,6 @@ stmt :
 			| CreateTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
 			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
 			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| DropTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
 			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
 			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum", false); }
 
@@ -999,7 +1000,6 @@ stmt :
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePublicationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1010,7 +1010,6 @@ stmt :
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
-			| RefreshMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
 			| ReindexStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1981,7 +1980,6 @@ AlterTableStmt:
 				}
 		|	ALTER INDEX qualified_name index_partition_cmd
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER INDEX", 1130);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $3;
 					n->cmds = list_make1($4);
@@ -4310,6 +4308,8 @@ OptTableGroup:
 				}
 			| NO TABLEGROUP
 				{
+					/* This is only intended for indexes. */
+
 					parser_ybc_beta_feature(@1, "tablegroup", true);
 					$$ = makeNode(OptTableGroup);
 					$$->has_tablegroup = false;
@@ -4491,7 +4491,6 @@ opt_with_data:
 CreateMatViewStmt:
 		CREATE OptNoLog MATERIALIZED VIEW create_mv_target AS SelectStmt opt_with_data
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE MATERIALIZED VIEW", 1131);
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
 					ctas->query = $7;
 					ctas->into = $5;
@@ -4505,7 +4504,6 @@ CreateMatViewStmt:
 				}
 		| CREATE OptNoLog MATERIALIZED VIEW IF_P NOT EXISTS create_mv_target AS SelectStmt opt_with_data
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE MATERIALIZED VIEW", 1131);
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
 					ctas->query = $10;
 					ctas->into = $8;
@@ -4546,9 +4544,8 @@ OptNoLog:	UNLOGGED					{ $$ = RELPERSISTENCE_UNLOGGED; }
  *****************************************************************************/
 
 RefreshMatViewStmt:
-			REFRESH MATERIALIZED VIEW opt_concurrently qualified_name opt_with_data
+			REFRESH MATERIALIZED VIEW opt_concurrently_matview qualified_name opt_with_data
 				{
-					parser_ybc_signal_unsupported(@1, "REFRESH MATERIALIZED VIEW", 1131);
 					RefreshMatViewStmt *n = makeNode(RefreshMatViewStmt);
 					n->concurrent = $4;
 					n->relation = $5;
@@ -4557,6 +4554,17 @@ RefreshMatViewStmt:
 				}
 		;
 
+opt_concurrently_matview:
+			CONCURRENTLY
+				{
+					$$ = true;
+				}
+			| NONCONCURRENTLY
+			| /*EMPTY*/
+				{
+					$$ = false;
+				}
+		;
 
 /*****************************************************************************
  *
@@ -4819,22 +4827,6 @@ opt_procedural:
 OptTableGroupOwner: OWNER RoleSpec		{ $$ = $2; }
 			| /*EMPTY */				{ $$ = NULL; }
 		;
-
-/*****************************************************************************
- *
- *		QUERY:
- *             DROP TABLEGROUP tablegroup
- *
- *****************************************************************************/
-
-DropTableGroupStmt: DROP TABLEGROUP name
- 				{
- 					parser_ybc_beta_feature(@1, "tablegroup", true);
- 					DropTableGroupStmt *n = makeNode(DropTableGroupStmt);
- 					n->tablegroupname = $3;
- 					$$ = (Node *) n;
- 				}
- 		;
 
 
 /*****************************************************************************
@@ -6836,7 +6828,6 @@ drop_type_any_name:
 			| VIEW									{ $$ = OBJECT_VIEW; }
 			| MATERIALIZED VIEW
 				{
-					parser_ybc_not_support(@1, "DROP MATERIALIZED VIEW");
 					$$ = OBJECT_MATVIEW;
 				}
 			| INDEX { $$ = OBJECT_INDEX; }
@@ -6887,6 +6878,11 @@ drop_type_name:
 			| PUBLICATION	{ parser_ybc_not_support(@1, "DROP PUBLICATION"); $$ = OBJECT_PUBLICATION; }
 			| SCHEMA { $$ = OBJECT_SCHEMA; }
 			| SERVER { $$ = OBJECT_FOREIGN_SERVER; }
+			| TABLEGROUP
+				{
+					parser_ybc_beta_feature(@1, "tablegroup", true);
+					$$ = OBJECT_YBTABLEGROUP;
+				}
 		;
 
 /* object types attached to a table */
@@ -6934,8 +6930,8 @@ TruncateStmt:
 		;
 
 opt_restart_seqs:
-			CONTINUE_P IDENTITY_P		{ $$ = false; parser_ybc_not_support(@1, "sequences"); }
-			| RESTART IDENTITY_P		{ $$ = true; parser_ybc_not_support(@1, "sequences"); }
+			CONTINUE_P IDENTITY_P		{ $$ = false;  }
+			| RESTART IDENTITY_P		{ $$ = true; }
 			| /* EMPTY */				{ $$ = false; }
 		;
 
@@ -8035,7 +8031,7 @@ opt_concurrently:
 				}
 			| /*EMPTY*/
 				{
-					$$ = !YBCGetDisableIndexBackfill();
+					$$ = !*YBCGetGFlags()->ysql_disable_index_backfill;
 				}
 		;
 
@@ -9761,7 +9757,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TYPE_P any_name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE", 1893);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TYPE;
 					n->object = (Node *) $3;
@@ -15865,7 +15860,11 @@ SignedIconst: Iconst								{ $$ = $1; }
 			| '-' Iconst							{ $$ = - $2; }
 		;
 
-Oid:		ICONST									{ $$ = $1; };
+/*
+ * Iconst does not accept large OID such as 2147500041, use SignedIconst to convert
+ * it to -2147467255 instead. See process_integer_literal and strtoint for details.
+ */
+Oid:		SignedIconst							{ $$ = $1; };
 
 /* Role specifications */
 RoleId:		RoleSpec

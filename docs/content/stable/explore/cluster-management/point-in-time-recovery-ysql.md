@@ -3,7 +3,7 @@ title: Point-in-Time Recovery for YSQL
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YSQL
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable:
     identifier: cluster-management-point-in-time-recovery-ysql
@@ -15,13 +15,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link active">
+    <a href="/preview/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link">
+    <a href="/preview/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -62,18 +62,18 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -85,7 +85,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. At a terminal prompt, create a snapshot schedule for the database from a shell prompt. In this example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
+    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
@@ -97,7 +97,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Verify that a snapshot has happened:
 
     ```sh
-    $ bin/yb-admin list_snapshot_schedules
+    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
     ```
 
     ```output
@@ -135,15 +135,15 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Add a row for employee 9999 to the table:
 
     ```sql
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (9999, 'Wrong Name', 'Marketing', 10000);
 
     SELECT * FROM employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             9999 | Wrong Name     | Marketing  |  10000
@@ -156,7 +156,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Restore the snapshot schedule to the timestamp you obtained before you added the data, at a terminal prompt.
 
     ```sh
-    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1617670679185100
+    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
     ```output
@@ -169,7 +169,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin list_snapshots
+    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
     ```
 
     ```output
@@ -192,7 +192,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -232,7 +232,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
+    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
@@ -244,7 +244,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Verify that a snapshot has happened.
 
     ```sh
-    $ bin/yb-admin list_snapshot_schedules
+    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
     ```
 
     ```output
@@ -294,18 +294,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -317,7 +317,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Restore the snapshot schedule to the timestamp you obtained before you created the table, at a terminal prompt.
 
     ```sh
-    $ bin/yb-admin restore_snapshot_schedule 1ccb7e8b-4032-48b9-ac94-9f425d270a97 1627943076717734
+    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule 1ccb7e8b-4032-48b9-ac94-9f425d270a97 1627943076717734
     ```
 
     ```output
@@ -330,7 +330,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well).
 
     ```sh
-    $ bin/yb-admin list_snapshots
+    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
     ```
 
     ```output
@@ -363,7 +363,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
+    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
@@ -388,18 +388,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -411,7 +411,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Verify that a snapshot has happened since table creation.
 
     ```sh
-    $ bin/yb-admin list_snapshot_schedules
+    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
     ```
 
     ```output
@@ -464,7 +464,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Restore the snapshot schedule to the timestamp you obtained before you deleted the table, at a terminal prompt.
 
     ```sh
-    $ bin/yb-admin restore_snapshot_schedule b4217ea5-56dc-4daf-afea-743460ece241 1627990118725202
+    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule b4217ea5-56dc-4daf-afea-743460ece241 1627990118725202
     ```
 
     ```output
@@ -477,7 +477,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well).
 
     ```sh
-    $ bin/yb-admin list_snapshots
+    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
     ```
 
     ```output
@@ -504,7 +504,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -520,7 +520,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
+    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
@@ -545,18 +545,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -568,7 +568,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Verify that a snapshot has happened since table creation.
 
     ```sh
-    $ bin/yb-admin list_snapshot_schedules
+    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
     ```
 
     ```output
@@ -625,19 +625,19 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
     ```output
-     employee_no |      name      | department | salary | v2 
+     employee_no |      name      | department | salary | v2
     -------------+----------------+------------+--------+----
-            1223 | Lucille Ball   | Operations |  70000 |   
-            1224 | John Zimmerman | Sales      |  60000 |   
-            1221 | John Smith     | Marketing  |  50000 |   
-            1222 | Bette Davis    | Sales      |  55000 |   
+            1223 | Lucille Ball   | Operations |  70000 |
+            1224 | John Zimmerman | Sales      |  60000 |
+            1221 | John Smith     | Marketing  |  50000 |
+            1222 | Bette Davis    | Sales      |  55000 |
     (4 rows)
     ```
 
 1. At a terminal prompt, restore the snapshot schedule to the timestamp you obtained before you added the column.
 
     ```sh
-    $ bin/yb-admin restore_snapshot_schedule 47fd40c3-1c2f-4e1b-b64b-6c2c9f698946 1627992256752809
+    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule 47fd40c3-1c2f-4e1b-b64b-6c2c9f698946 1627992256752809
     ```
 
     ```output
@@ -650,7 +650,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin list_snapshots
+    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
     ```
 
     ```output
@@ -690,7 +690,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
+    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
@@ -715,18 +715,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -738,7 +738,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Verify that a snapshot has happened since table creation.
 
     ```sh
-    $ bin/yb-admin list_snapshot_schedules
+    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
     ```
 
     ```output
@@ -803,7 +803,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Restore the snapshot schedule to the timestamp you obtained before you dropped the column, at a terminal prompt.
 
     ```sh
-    $ bin/yb-admin restore_snapshot_schedule 064d1734-377c-4842-a95e-88ce68c93ca9 1627993283589019
+    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule 064d1734-377c-4842-a95e-88ce68c93ca9 1627993283589019
     ```
 
     ```output
@@ -816,7 +816,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin list_snapshots
+    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
     ```
 
     ```output
@@ -853,7 +853,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
+    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
     ```output
@@ -878,18 +878,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -901,7 +901,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Verify that a snapshot has happened since table creation.
 
     ```sh
-    $ bin/yb-admin list_snapshot_schedules
+    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
     ```
 
     ```output
@@ -954,12 +954,12 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
     ```output
                   Table "public.employees"
-       Column    |  Type   | Collation | Nullable | Default 
+       Column    |  Type   | Collation | Nullable | Default
     -------------+---------+-----------+----------+---------
-     employee_no | integer |           | not null | 
-     name        | text    |           |          | 
-     department  | text    |           |          | 
-     salary      | integer |           |          | 
+     employee_no | integer |           | not null |
+     name        | text    |           |          |
+     department  | text    |           |          |
+     salary      | integer |           |          |
      Indexes:
          "employees_pkey" PRIMARY KEY, lsm (employee_no HASH)
          "t1_index" lsm (employee_no HASH)
@@ -968,7 +968,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Restore the snapshot schedule to the timestamp you obtained before you created the index, at a terminal prompt.
 
     ```sh
-    $ bin/yb-admin restore_snapshot_schedule dcbe46e3-8108-4d50-8601-423b27d230b1 1627994453375139
+    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule dcbe46e3-8108-4d50-8601-423b27d230b1 1627994453375139
     ```
 
     ```output
@@ -981,7 +981,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin list_snapshots
+    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
     ```
 
     ```output
@@ -1006,12 +1006,12 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
     ```output
                 Table "public.employees"
-       Column    |  Type   | Collation | Nullable | Default 
+       Column    |  Type   | Collation | Nullable | Default
     -------------+---------+-----------+----------+---------
-     employee_no | integer |           | not null | 
-     name        | text    |           |          | 
-     department  | text    |           |          | 
-     salary      | integer |           |          | 
+     employee_no | integer |           | not null |
+     name        | text    |           |          |
+     department  | text    |           |          |
+     salary      | integer |           |          |
      Indexes:
          "employees_pkey" PRIMARY KEY, lsm (employee_no HASH)
     ```

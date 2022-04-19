@@ -42,6 +42,8 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/partition.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/gutil/stl_util.h"
@@ -53,16 +55,19 @@
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_client.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.pb.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/curl_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/tsan_util.h"
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;
@@ -73,6 +78,7 @@ using yb::client::YBTableName;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::consensus::ConsensusMetadataPB;
 using yb::consensus::ConsensusStatePB;
+using yb::consensus::PeerMemberType;
 using yb::consensus::RaftPeerPB;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_COPYING;
@@ -110,30 +116,30 @@ class DeleteTableTest : public ExternalMiniClusterITestBase {
   string GetLeaderUUID(const string& ts_uuid, const string& tablet_id);
 
   Status CheckTabletTombstonedOrDeletedOnTS(
-      int index,
+      size_t index,
       const string& tablet_id,
       TabletDataState data_state,
       IsCMetaExpected is_cmeta_expected,
       IsSuperBlockExpected is_superblock_expected);
 
-  Status CheckTabletTombstonedOnTS(int index,
+  Status CheckTabletTombstonedOnTS(size_t index,
                                    const string& tablet_id,
                                    IsCMetaExpected is_cmeta_expected);
 
-  Status CheckTabletDeletedOnTS(int index,
+  Status CheckTabletDeletedOnTS(size_t index,
                                 const string& tablet_id,
                                 IsSuperBlockExpected is_superblock_expected);
 
-  void WaitForTabletTombstonedOnTS(int index,
+  void WaitForTabletTombstonedOnTS(size_t index,
                                    const string& tablet_id,
                                    IsCMetaExpected is_cmeta_expected);
 
-  void WaitForTabletDeletedOnTS(int index,
+  void WaitForTabletDeletedOnTS(size_t index,
                                 const string& tablet_id,
                                 IsSuperBlockExpected is_superblock_expected);
 
   void WaitForAllTSToCrash();
-  void WaitUntilTabletRunning(int index, const std::string& tablet_id);
+  void WaitUntilTabletRunning(size_t index, const std::string& tablet_id);
 
   // Delete the given table. If the operation times out, dumps the master stacks
   // to help debug master-side deadlocks.
@@ -150,6 +156,8 @@ class DeleteTableTest : public ExternalMiniClusterITestBase {
   // Returns a list of all tablet servers registered with the master leader.
   CHECKED_STATUS ListAllLiveTabletServersRegisteredWithMaster(const MonoDelta& timeout,
                                                           vector<string>* ts_list);
+
+  Result<bool> VerifyTableCompletelyDeleted(const YBTableName& table, const string& tablet_id);
 };
 
 string DeleteTableTest::GetLeaderUUID(const string& ts_uuid, const string& tablet_id) {
@@ -173,7 +181,7 @@ string DeleteTableTest::GetLeaderUUID(const string& ts_uuid, const string& table
 }
 
 Status DeleteTableTest::CheckTabletTombstonedOrDeletedOnTS(
-      int index,
+      size_t index,
       const string& tablet_id,
       TabletDataState data_state,
       IsCMetaExpected is_cmeta_expected,
@@ -199,21 +207,21 @@ Status DeleteTableTest::CheckTabletTombstonedOrDeletedOnTS(
   return Status::OK();
 }
 
-Status DeleteTableTest::CheckTabletTombstonedOnTS(int index,
+Status DeleteTableTest::CheckTabletTombstonedOnTS(size_t index,
                                                   const string& tablet_id,
                                                   IsCMetaExpected is_cmeta_expected) {
   return CheckTabletTombstonedOrDeletedOnTS(index, tablet_id, TABLET_DATA_TOMBSTONED,
                                             is_cmeta_expected, SUPERBLOCK_EXPECTED);
 }
 
-Status DeleteTableTest::CheckTabletDeletedOnTS(int index,
+Status DeleteTableTest::CheckTabletDeletedOnTS(size_t index,
                                                const string& tablet_id,
                                                IsSuperBlockExpected is_superblock_expected) {
   return CheckTabletTombstonedOrDeletedOnTS(index, tablet_id, TABLET_DATA_DELETED,
                                             CMETA_NOT_EXPECTED, is_superblock_expected);
 }
 
-void DeleteTableTest::WaitForTabletTombstonedOnTS(int index,
+void DeleteTableTest::WaitForTabletTombstonedOnTS(size_t index,
                                                   const string& tablet_id,
                                                   IsCMetaExpected is_cmeta_expected) {
   Status s;
@@ -225,7 +233,7 @@ void DeleteTableTest::WaitForTabletTombstonedOnTS(int index,
   ASSERT_OK(s);
 }
 
-void DeleteTableTest::WaitForTabletDeletedOnTS(int index,
+void DeleteTableTest::WaitForTabletDeletedOnTS(size_t index,
                                                const string& tablet_id,
                                                IsSuperBlockExpected is_superblock_expected) {
   Status s;
@@ -238,12 +246,12 @@ void DeleteTableTest::WaitForTabletDeletedOnTS(int index,
 }
 
 void DeleteTableTest::WaitForAllTSToCrash() {
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(cluster_->WaitForTSToCrash(i));
   }
 }
 
-void DeleteTableTest::WaitUntilTabletRunning(int index, const std::string& tablet_id) {
+void DeleteTableTest::WaitUntilTabletRunning(size_t index, const std::string& tablet_id) {
   ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(index)->uuid()].get(),
                                           tablet_id,
                                           MonoDelta::FromSeconds(30)));
@@ -293,10 +301,10 @@ Status DeleteTableTest::ListAllLiveTabletServersRegisteredWithMaster(const MonoD
     master::ListTabletServersResponsePB resp;
     rpc::RpcController rpc;
     rpc.set_timeout(timeout);
-    int leader_idx;
-    RETURN_NOT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
+    auto leader_idx = VERIFY_RESULT(cluster_->GetLeaderMasterIndex());
 
-    RETURN_NOT_OK(cluster_->master_proxy(leader_idx)->ListTabletServers(req, &resp, &rpc));
+    auto proxy = cluster_->GetMasterProxy<master::MasterClusterProxy>(leader_idx);
+    RETURN_NOT_OK(proxy.ListTabletServers(req, &resp, &rpc));
 
     for (const auto& nodes : resp.servers()) {
       if (nodes.alive()) {
@@ -305,6 +313,40 @@ Status DeleteTableTest::ListAllLiveTabletServersRegisteredWithMaster(const MonoD
     }
 
     return Status::OK();
+}
+
+Result<bool> DeleteTableTest::VerifyTableCompletelyDeleted(
+    const YBTableName& table, const string& tablet_id) {
+  // 1) Should not list it in ListTables.
+  const auto tables = VERIFY_RESULT(client_->ListTables(table.table_name(), true));
+  if (tables.size() != 0) {
+    return false;
+  }
+
+  // 2) Should respond to GetTableSchema with a NotFound error.
+  YBSchema schema;
+  PartitionSchema partition_schema;
+  Status s = client_->GetTableSchema(table, &schema, &partition_schema);
+  if (!s.IsNotFound()) {
+    return false;
+  }
+
+  // 3) Should return an error for GetTabletLocations RPCs.
+  {
+    rpc::RpcController rpc;
+    master::GetTabletLocationsRequestPB req;
+    master::GetTabletLocationsResponsePB resp;
+    rpc.set_timeout(MonoDelta::FromSeconds(10));
+    req.add_tablet_ids()->assign(tablet_id);
+    auto leader_idx = VERIFY_RESULT(cluster_->GetLeaderMasterIndex());
+    RETURN_NOT_OK(cluster_->GetMasterProxy<master::MasterClientProxy>(
+        leader_idx).GetTabletLocations(req, &resp, &rpc));
+
+    if (resp.errors(0).ShortDebugString().find("code: NOT_FOUND") == std::string::npos) {
+      return false;
+    }
+  }
+  return true;
 }
 
 TEST_F(DeleteTableTest, TestPendingDeleteStateClearedOnFailure) {
@@ -378,7 +420,8 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
     master::GetTabletLocationsResponsePB resp;
     rpc.set_timeout(MonoDelta::FromSeconds(10));
     req.add_tablet_ids()->assign(tablet_id);
-    ASSERT_OK(cluster_->master_proxy()->GetTabletLocations(req, &resp, &rpc));
+    ASSERT_OK(cluster_->GetMasterProxy<master::MasterClientProxy>().GetTabletLocations(
+        req, &resp, &rpc));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(1, resp.errors_size());
     ASSERT_STR_CONTAINS(resp.errors(0).ShortDebugString(), "code: NOT_FOUND");
@@ -547,7 +590,7 @@ TEST_F(DeleteTableTest, DeleteTableWithConcurrentWritesNoRestarts) {
     const auto& tablet_id = tablets[0];
 
     ASSERT_NO_FATALS(DeleteTable(workload.table_name()));
-    for (int ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ts_idx++) {
+    for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ts_idx++) {
       ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(ts_idx, tablet_id, SUPERBLOCK_EXPECTED));
     }
 
@@ -601,7 +644,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
   string leader_uuid = GetLeaderUUID(cluster_->tablet_server(1)->uuid(), tablet_id);
   TServerDetails* leader = DCHECK_NOTNULL(ts_map_[leader_uuid].get());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
-  ASSERT_OK(itest::AddServer(leader, tablet_id, ts, RaftPeerPB::PRE_VOTER, boost::none, timeout));
+  ASSERT_OK(itest::AddServer(
+      leader, tablet_id, ts, PeerMemberType::PRE_VOTER, boost::none, timeout));
   ASSERT_OK(cluster_->WaitForTSToCrash(kTsIndex));
 
   // The superblock should be in TABLET_DATA_COPYING state on disk.
@@ -649,6 +693,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
 
   // Start a workload on the cluster, and run it for a little while.
   TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
   workload.Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(2));
 
@@ -680,7 +725,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
   TServerDetails* leader = ts_map_[leader_uuid].get();
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
-  ASSERT_OK(itest::AddServer(leader, tablet_id, ts, RaftPeerPB::PRE_VOTER, boost::none, timeout));
+  ASSERT_OK(itest::AddServer(
+      leader, tablet_id, ts, PeerMemberType::PRE_VOTER, boost::none, timeout));
   ASSERT_OK(cluster_->WaitForTSToCrash(leader_index));
 
   // The tablet server will detect that the leader failed, and automatically
@@ -716,7 +762,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   ClusterVerifier cluster_verifier(cluster_.get());
   ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
   ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
-                            workload.rows_inserted()));
+                                                  workload.rows_inserted()));
 
   // For now there is no way to know if the server has finished its remote bootstrap (by verifying
   // that its role has changed in its consensus object). As a workaround, sleep for 10 seconds
@@ -770,7 +816,7 @@ TEST_F(DeleteTableTest, TestMergeConsensusMetadata) {
   ASSERT_EQ(1, tablets.size());
   const string& tablet_id = tablets[0];
 
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_NO_FATALS(WaitUntilTabletRunning(i, tablet_id));
   }
 
@@ -896,7 +942,7 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingOperation) {
   const string& tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -954,7 +1000,7 @@ TEST_F(DeleteTableTest, TestMemtableNoFlushOnTabletDelete) {
   const string& tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -1011,7 +1057,7 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   const string& tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -1058,7 +1104,7 @@ vector<string> ListOpenFiles(pid_t pid) {
   return lines;
 }
 
-int PrintOpenTabletFiles(pid_t pid, const string& tablet_id) {
+size_t PrintOpenTabletFiles(pid_t pid, const string& tablet_id) {
   vector<string> lines = ListOpenFiles(pid);
   vector<const string*> wal_lines = Grep(tablet_id, lines);
   LOG(INFO) << "There are " << wal_lines.size() << " open WAL files for pid " << pid << ":";
@@ -1169,36 +1215,69 @@ TEST_F(DeleteTableTest, TestRemoveUnknownTablets) {
   for (int i = 1; i < 3; i++) {
     ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(i, tablet_id, SUPERBLOCK_EXPECTED));
   }
-  // Check that the master no longer exposes the table in any way:
-  // 1) Should not list it in ListTables.
-  const YBTableName& table = TestWorkloadOptions::kDefaultTableName;
-  const auto tables = ASSERT_RESULT(client_->ListTables(table.table_name(), true));
-  ASSERT_EQ(0, tables.size());
-
-  // 2) Should respond to GetTableSchema with a NotFound error.
-  YBSchema schema;
-  PartitionSchema partition_schema;
-  Status s = client_->GetTableSchema(table, &schema, &partition_schema);
-  ASSERT_TRUE(s.IsNotFound()) << s.ToString();
-
-  // 3) Should return an error for GetTabletLocations RPCs.
-  {
-    rpc::RpcController rpc;
-    master::GetTabletLocationsRequestPB req;
-    master::GetTabletLocationsResponsePB resp;
-    rpc.set_timeout(MonoDelta::FromSeconds(10));
-    req.add_tablet_ids()->assign(tablet_id);
-    int leader_idx;
-    ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
-    ASSERT_OK(cluster_->master_proxy(leader_idx)->GetTabletLocations(req, &resp, &rpc));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_EQ(1, resp.errors_size());
-    ASSERT_STR_CONTAINS(resp.errors(0).ShortDebugString(), "code: NOT_FOUND");
-  }
+  // Verify that the table is deleted completely.
+  bool deleted = ASSERT_RESULT(VerifyTableCompletelyDeleted(
+      TestWorkloadOptions::kDefaultTableName, tablet_id));
+  ASSERT_EQ(deleted, true);
   LOG(INFO) << "Table deleted successfully";
 
   // Failover the master leader for the table to be removed from in-memory maps.
   ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+
+  // Now restart the TServer and wait for the replica to be deleted.
+  ASSERT_OK(cluster_->tablet_server(0)->Restart());
+
+  ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(0, tablet_id, SUPERBLOCK_EXPECTED));
+}
+
+TEST_F(DeleteTableTest, DeleteWithDeadTS) {
+  vector<string> extra_master_flags = {
+    "--tserver_unresponsive_timeout_ms=5000"
+  };
+  // Start a cluster with 3 TS and 3 masters.
+  ASSERT_NO_FATALS(StartCluster(
+    {}, extra_master_flags, 3, 3, false
+  ));
+  LOG(INFO) << "Cluster with 3 masters and 3 tservers started successfully";
+
+  // Create a table on the cluster. We're just using TestWorkload
+  // as a convenient way to create it.
+  TestWorkload(cluster_.get()).Setup();
+  // The table should have replicas on all three tservers.
+  ASSERT_OK(inspect_->WaitForReplicaCount(3));
+  LOG(INFO) << "Table with 1 tablet and 3 replicas created successfully";
+
+  // Grab the tablet ID (used later).
+  vector<string> tablets = inspect_->ListTabletsOnTS(0);
+  ASSERT_EQ(1, tablets.size());
+  const TabletId& tablet_id = tablets[0];
+  const string& ts_uuid = cluster_->tablet_server(0)->uuid();
+
+  // Shutdowm TS 0. We'll restart it back later.
+  cluster_->tablet_server(0)->Shutdown();
+
+  // Wait for the master to mark this TS as failed.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    vector<string> ts_list;
+    if (!ListAllLiveTabletServersRegisteredWithMaster(30s * kTimeMultiplier, &ts_list).ok()) {
+      return false;
+    }
+    return std::find(ts_list.begin(), ts_list.end(), ts_uuid) == ts_list.end();
+  }, 60s * kTimeMultiplier, "Wait for TS to be marked dead by master"));
+
+  LOG(INFO) << "Tablet Server with index 0 removed completely and successfully";
+
+  // Delete the table now and wait for the replicas to get deleted.
+  ASSERT_NO_FATALS(DeleteTable(TestWorkloadOptions::kDefaultTableName));
+  for (int i = 1; i < 3; i++) {
+    ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(i, tablet_id, SUPERBLOCK_EXPECTED));
+  }
+
+  // Check that the table is deleted completely.
+  bool deleted = ASSERT_RESULT(VerifyTableCompletelyDeleted(
+      TestWorkloadOptions::kDefaultTableName, tablet_id));
+  ASSERT_EQ(deleted, true);
+  LOG(INFO) << "Table deleted successfully";
 
   // Now restart the TServer and wait for the replica to be deleted.
   ASSERT_OK(cluster_->tablet_server(0)->Restart());
@@ -1221,7 +1300,7 @@ TEST_P(DeleteTableDeletedParamTest, TestRollForwardDelete) {
 
   // Dynamically set the fault flag so they crash when DeleteTablet() is called
   // by the Master.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(i), fault_flag, "1.0"));
   }
 
@@ -1247,7 +1326,7 @@ TEST_P(DeleteTableDeletedParamTest, TestRollForwardDelete) {
 
   // Now restart the tablet servers. They should roll forward their deletes.
   // We don't have to reset the fault flag here because it was set dynamically.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     cluster_->tablet_server(i)->Shutdown();
     ASSERT_OK(cluster_->tablet_server(i)->Restart());
   }

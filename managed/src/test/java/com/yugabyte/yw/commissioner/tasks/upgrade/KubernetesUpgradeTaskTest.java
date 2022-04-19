@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import org.junit.Before;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -16,11 +17,13 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -35,8 +38,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
 import org.yb.client.IsServerReadyResponse;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetLoadMovePercentResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
+
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.api.model.PodStatus;
 
 public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
@@ -47,7 +59,10 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
   protected Map<String, String> config = new HashMap<>();
 
   protected void setupUniverse(
-      boolean setMasters, UserIntent userIntent, PlacementInfo placementInfo) {
+      boolean setMasters,
+      UserIntent userIntent,
+      PlacementInfo placementInfo,
+      boolean mockGetLeaderMaster) {
     userIntent.replicationFactor = 3;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
@@ -64,25 +79,44 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
 
-    ShellResponse responseEmpty = new ShellResponse();
-    ShellResponse responsePod = new ShellResponse();
-    when(mockKubernetesManager.helmUpgrade(any(), any(), any(), any(), any()))
-        .thenReturn(responseEmpty);
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+
+    GetMasterClusterConfigResponse mockConfigResponse =
+        new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
+    ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
+        new ChangeMasterClusterConfigResponse(0, "", null);
+    GetLoadMovePercentResponse mockGetLoadMovePercentResponse =
+        new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
 
     try {
-      responsePod.message =
-          "{\"status\": { \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}}";
-      when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(responsePod);
+      String statusString = "{ \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}";
+      PodStatus status = TestUtils.deserialize(statusString, PodStatus.class);
+      when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(status);
       YBClient mockClient = mock(YBClient.class);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+
+      String masterLeaderName = "yb-master-0.yb-masters.demo-universe.svc.cluster.local";
+      if (placementInfo.cloudList.get(0).regionList.get(0).azList.size() > 1) {
+        masterLeaderName = "yb-master-0.yb-masters.demo-universe-az-2.svc.cluster.local";
+      }
+      if (mockGetLeaderMaster) {
+        when(mockClient.getLeaderMasterHostAndPort())
+            .thenReturn(HostAndPort.fromString(masterLeaderName).withDefaultPort(11));
+      }
+
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
+      when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);
     } catch (Exception ignored) {
     }
   }
 
-  protected void setupUniverseSingleAZ(boolean setMasters) {
+  protected void setupUniverseSingleAZ(boolean setMasters, boolean mockGetLeaderMaster) {
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     InstanceType i =
@@ -91,9 +125,8 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
     PlacementInfo placementInfo = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, placementInfo, 3, 3, true);
-    setupUniverse(setMasters, userIntent, placementInfo);
-    ShellResponse responsePods = new ShellResponse();
-    responsePods.message =
+    setupUniverse(setMasters, userIntent, placementInfo, mockGetLeaderMaster);
+    String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
             + " \"metadata\": {\"namespace\": \""
@@ -124,10 +157,11 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}}]}";
-    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(responsePods);
+    List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
   }
 
-  protected void setupUniverseMultiAZ(boolean setMasters) {
+  protected void setupUniverseMultiAZ(boolean setMasters, boolean mockGetLeaderMaster) {
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ-2", "subnet-2");
@@ -140,7 +174,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     PlacementInfoUtil.addPlacementZone(az1.uuid, placementInfo, 1, 1, false);
     PlacementInfoUtil.addPlacementZone(az2.uuid, placementInfo, 1, 1, true);
     PlacementInfoUtil.addPlacementZone(az3.uuid, placementInfo, 1, 1, false);
-    setupUniverse(setMasters, userIntent, placementInfo);
+    setupUniverse(setMasters, userIntent, placementInfo, mockGetLeaderMaster);
 
     String nodePrefix1 = String.format("%s-%s", NODE_PREFIX, az1.code);
     String nodePrefix2 = String.format("%s-%s", NODE_PREFIX, az2.code);
@@ -153,18 +187,21 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
             + " \"metadata\": {\"namespace\": \"%1$s\"}}]}";
-    ShellResponse shellResponse1 =
-        ShellResponse.create(0, String.format(podInfosMessage, nodePrefix1));
+    List<Pod> pods1 =
+        TestUtils.deserialize(String.format(podInfosMessage, nodePrefix1), PodList.class)
+            .getItems();
     when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix1), eq(nodePrefix1)))
-        .thenReturn(shellResponse1);
-    ShellResponse shellResponse2 =
-        ShellResponse.create(0, String.format(podInfosMessage, nodePrefix2));
+        .thenReturn(pods1);
+    List<Pod> pods2 =
+        TestUtils.deserialize(String.format(podInfosMessage, nodePrefix2), PodList.class)
+            .getItems();
     when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix2), eq(nodePrefix2)))
-        .thenReturn(shellResponse2);
-    ShellResponse shellResponse3 =
-        ShellResponse.create(0, String.format(podInfosMessage, nodePrefix3));
+        .thenReturn(pods2);
+    List<Pod> pods3 =
+        TestUtils.deserialize(String.format(podInfosMessage, nodePrefix3), PodList.class)
+            .getItems();
     when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix3), eq(nodePrefix3)))
-        .thenReturn(shellResponse3);
+        .thenReturn(pods3);
   }
 
   protected void assertTaskSequence(

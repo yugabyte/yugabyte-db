@@ -21,15 +21,17 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_scanspec.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
-#include "yb/docdb/key_bounds.h"
-#include "yb/docdb/subdocument.h"
+
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
+
 #include "yb/util/status_fwd.h"
 #include "yb/util/operation_counter.h"
 
@@ -43,7 +45,7 @@ class ScanChoices;
 class DocRowwiseIterator : public YQLRowwiseIteratorIf {
  public:
   DocRowwiseIterator(const Schema &projection,
-                     const Schema &schema,
+                     std::reference_wrapper<const DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
@@ -51,23 +53,22 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
                      RWOperationCounter* pending_op_counter = nullptr);
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
-                     const Schema &schema,
+                     std::reference_wrapper<const DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
                      RWOperationCounter* pending_op_counter = nullptr)
       : DocRowwiseIterator(
-            *projection, schema, txn_op_context, doc_db, deadline, read_time,
-            pending_op_counter) {
+            *projection, doc_read_context, txn_op_context, doc_db, deadline,
+            read_time, pending_op_counter) {
     projection_owner_ = std::move(projection);
   }
 
   virtual ~DocRowwiseIterator();
 
   // Init scan iterator.
-  CHECKED_STATUS Init(TableType table_type);
-
+  CHECKED_STATUS Init(TableType table_type, const Slice& sub_doc_key = Slice());
   // Init QL read scan.
   CHECKED_STATUS Init(const QLScanSpec& spec);
   CHECKED_STATUS Init(const PgsqlScanSpec& spec);
@@ -168,7 +169,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   std::unique_ptr<Schema> projection_owner_;
 
   // The schema for all columns, not just the columns we're scanning.
-  const Schema& schema_;
+  const DocReadContext& doc_read_context_;
 
   const TransactionOperationContext txn_op_context_;
 
@@ -215,7 +216,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // It is initialized to false, to make sure first HasNext constructs a new row.
   mutable bool row_ready_;
 
-  mutable std::vector<PrimitiveValue> projection_subkeys_;
+  mutable std::vector<KeyEntryValue> projection_subkeys_;
 
   // Used for keeping track of errors in HasNext.
   mutable Status has_next_status_;

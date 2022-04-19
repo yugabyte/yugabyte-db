@@ -25,6 +25,7 @@
 
 #include <boost/version.hpp>
 
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/binary_call_parser.h"
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/connection_context.h"
@@ -109,7 +110,7 @@ class YBInboundConnectionContext : public YBConnectionContext {
 
 class YBInboundCall : public InboundCall {
  public:
-  YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener);
+  YBInboundCall(ConnectionPtr conn, CallProcessedListener* call_processed_listener);
   explicit YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method);
   virtual ~YBInboundCall();
 
@@ -150,7 +151,7 @@ class YBInboundCall : public InboundCall {
   //
   // This method deletes the InboundCall object, so no further calls may be
   // made after this one.
-  void RespondSuccess(const google::protobuf::MessageLite& response);
+  void RespondSuccess(AnyMessageConstPtr response);
 
   // Serializes a failure response into the internal buffer, marking the
   // call as a failure. Enqueues the response back to the connection that
@@ -184,7 +185,7 @@ class YBInboundCall : public InboundCall {
     return timing_.time_received;
   }
 
-  virtual CHECKED_STATUS ParseParam(google::protobuf::Message *message);
+  virtual CHECKED_STATUS ParseParam(RpcCallParams* params);
 
   size_t ObjectSize() const override { return sizeof(*this); }
 
@@ -201,21 +202,20 @@ class YBInboundCall : public InboundCall {
   google::protobuf::RepeatedField<uint32_t> sidecar_offsets_;
 
   // Serialize and queue the response.
-  virtual void Respond(const google::protobuf::MessageLite& response, bool is_success);
+  virtual void Respond(AnyMessageConstPtr response, bool is_success);
 
  private:
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
   // failure, 'response' should be an ErrorStatusPB instance.
-  CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
-                                         bool is_success);
+  CHECKED_STATUS SerializeResponseBuffer(AnyMessageConstPtr response, bool is_success);
 
   // Returns number of bytes copied.
   size_t CopyToLastSidecarBuffer(const Slice& slice);
   void AllocateSidecarBuffer(size_t size);
 
   // The header of the incoming call. Set by ParseFrom()
-  serialization::ParsedRequestHeader header_;
+  ParsedRequestHeader header_;
 
   // The buffers for serialized response. Set by SerializeResponseBuffer().
   RefCntBuffer response_buf_;

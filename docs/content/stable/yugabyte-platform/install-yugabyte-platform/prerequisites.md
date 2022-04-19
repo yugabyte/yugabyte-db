@@ -18,10 +18,11 @@ Yugabyte Platform first needs to be installed on a host computer, and then you c
 
 You can install Yugabyte Platform on the following Linux distributions:
 
-- Ubuntu 16.04 or 18.04 LTS.
-- Red Hat Enterprise Linux (RHEL) 7 or later.
-- CentOS 7 or later.
-- Amazon Linux (AMI) 2014.03, 2014.09, 2015.03, 2015.09, 2016.03, 2016.09, 2017.03, 2017.09, 2018.03, 2.0
+- Ubuntu 16.04, 18.04, or 20.04 LTS
+- Red Hat Enterprise Linux (RHEL) 7.x
+- Oracle Linux 7.x
+- CentOS 7
+- Amazon Linux (AMI) 2014.03, 2014.09, 2015.03, 2015.09, 2016.03, 2016.09, 2017.03, 2017.09, 2018.03, or 2.0
 - Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
 
 ## Hardware Requirements
@@ -37,7 +38,7 @@ A node running Yugabyte Platform is expected to meet the following requirements:
 
 You prepare the host as follows:
 
-- For a Docker-based installation, Yugabyte Platform uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).
+- For a Docker-based installation, Yugabyte Platform uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).
 
   Replicated installs a compatible Docker version if its not pre-installed on the host. The current supported Docker version is 19.03.n.
 
@@ -59,5 +60,3 @@ Installing Yugabyte Platform on Airgapped hosts, without access to any Internet 
 - Ensuring that attached disk storage (such as persistent EBS volumes on AWS) is 100 GB minimum
 - Having Yugabyte Platform airgapped install package. Contact Yugabyte Support for more information.
 - Signing the Yugabyte Enterprise Platform license agreement. Contact Yugabyte Support for more information.
-
-  

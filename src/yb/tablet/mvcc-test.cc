@@ -223,11 +223,11 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
   vector<Op> ops;
   ops.reserve(kTotalOperations);
 
-  const int kTargetConcurrency = 50;
+  const ssize_t kTargetConcurrency = 50;
 
   int op_idx = 0;
   for (size_t i = 0; i < kTotalOperations || !alive.empty(); ++i) {
-    int rnd;
+    ssize_t rnd;
     if (kTotalOperations - i <= alive.size()) {
       // We have (kTotalOperations - i) operations left to do, so let's finish operations that are
       // already in progress.
@@ -240,7 +240,7 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
       // If alive.size() >= kTargetConcurrency: we keep starting new operations in half of the
       // cases, and finishing existing ones in half the cases.
       rnd = RandomUniformInt(-kTargetConcurrency, kTargetConcurrency - 1) +
-          std::min<int>(kTargetConcurrency, alive.size());
+          std::min<ssize_t>(kTargetConcurrency, alive.size());
     }
     if (rnd < kTargetConcurrency) {
       // Start a new operation.

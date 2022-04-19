@@ -24,6 +24,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/index.h"
+#include "yb/common/index_column.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -107,22 +108,22 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other, bool copy_if
 PTDmlStmt::~PTDmlStmt() {
 }
 
-int PTDmlStmt::num_columns() const {
+size_t PTDmlStmt::num_columns() const {
   return table_->schema().num_columns();
 }
 
-int PTDmlStmt::num_key_columns() const {
+size_t PTDmlStmt::num_key_columns() const {
   return table_->schema().num_key_columns();
 }
 
-int PTDmlStmt::num_hash_key_columns() const {
+size_t PTDmlStmt::num_hash_key_columns() const {
   return table_->schema().num_hash_key_columns();
 }
 
 string PTDmlStmt::hash_key_columns() const {
   std::stringstream s;
   auto &schema = table_->schema();
-  for (int i = 0; i < schema.num_hash_key_columns(); ++i) {
+  for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
     if (i != 0) s << ", ";
     s << schema.Column(i).name();
   }
@@ -289,7 +290,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
 
   if (IsWriteOp()) {
     // Make sure that all hash entries are referenced in where expression.
-    for (int idx = 0; idx < num_hash_key_columns(); idx++) {
+    for (size_t idx = 0; idx < num_hash_key_columns(); idx++) {
       if (op_counters[idx].eq_count() == 0) {
         return sem_context->Error(expr, "Missing condition on key columns in WHERE clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
@@ -298,8 +299,8 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
 
     // If writing static columns only, check that either all range key entries are referenced in the
     // where expression or none is referenced. Else, check that all range key are referenced.
-    int range_keys = 0;
-    for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
+    size_t range_keys = 0;
+    for (auto idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
       if (op_counters[idx].eq_count() != 0) {
         range_keys++;
       }
@@ -315,7 +316,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
       if (range_keys != num_key_columns() - num_hash_key_columns()) {
         if (opcode() == TreeNodeOpcode::kPTDeleteStmt) {
           // Range expression in write requests are allowed for deletes only.
-          for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
+          for (auto idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
             if (op_counters[idx].eq_count() != 0) {
               where_ops_.push_front(key_where_ops_[idx]);
             }
@@ -330,14 +331,15 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
   } else { // ReadOp
     // Add the hash to the where clause if the list is incomplete. Clear key_where_ops_ to do
     // whole-table scan.
-    for (int idx = 0; idx < num_hash_key_columns(); idx++) {
+    for (size_t idx = 0; idx < num_hash_key_columns(); idx++) {
       if (!key_where_ops_[idx].IsInitialized()) {
         has_incomplete_hash_ = true;
         break;
       }
     }
     if (has_incomplete_hash_) {
-      for (int idx = num_hash_key_columns() - 1; idx >= 0; idx--) {
+      for (auto idx = num_hash_key_columns(); idx > 0;) {
+        --idx;
         if (key_where_ops_[idx].IsInitialized()) {
           where_ops_.push_front(key_where_ops_[idx]);
         }
@@ -346,7 +348,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
     } else {
       select_has_primary_keys_set_ = true;
       // Unset if there is a range key without a condition.
-      for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
+      for (auto idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
         if (op_counters[idx].IsEmpty()) {
           select_has_primary_keys_set_ = false;
           break;
@@ -410,7 +412,7 @@ Status PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
       pk_only_indexes_.insert(index_table);
     } else {
       non_pk_only_indexes_.insert(index_id);
-      for (const IndexInfo::IndexColumn& column : index.columns()) {
+      for (const auto& column : index.columns()) {
         const ColumnId indexed_column_id = column.indexed_column_id;
         if (!indexed_schema.is_key_column(indexed_column_id)) {
           column_refs_.insert(indexed_column_id);
@@ -453,7 +455,7 @@ Status PTDmlStmt::AnalyzeColumnArgs(SemContext *sem_context) {
   }
 
   // If we have range keys we modify the primary row.
-  for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
+  for (auto idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
     if (column_args_->at(idx).IsInitialized()) {
       modifies_primary_row_ = true;
       break;
@@ -465,7 +467,7 @@ Status PTDmlStmt::AnalyzeColumnArgs(SemContext *sem_context) {
   //  - Writing to non-static columns -> modify primary row.
 
   // Check plain column args.
-  for (int idx = num_key_columns(); idx < column_args_->size(); idx++) {
+  for (auto idx = num_key_columns(); idx < column_args_->size(); idx++) {
     if (column_args_->at(idx).IsInitialized()) {
       if (column_args_->at(idx).desc()->is_static()) {
         modifies_static_row_ = true;
@@ -561,7 +563,7 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
       if (idx_info.where_predicate_spec()) {
         // First attempt to preserve the sub-clause if it might be useful.
         bool preserve_col_op = false;
-        int prefix_len = sem_context->index_select_prefix_length();
+        auto prefix_len = sem_context->index_select_prefix_length();
         // Only in case all hash cols are set, we can even attempt to preserve the sub-clause.
         bool all_hash_cols_set = prefix_len >= idx_info.hash_column_count();
         if (all_hash_cols_set) {
@@ -578,7 +580,7 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
         }
 
         if (!preserve_col_op) {
-          const IndexInfo::IndexColumn& idx_col = idx_info.column(col_desc->index());
+          const auto& idx_col = idx_info.column(col_desc->index());
           // Change to id in indexed table because we are have those ids in the index predicate
           // as well.
           ColumnDesc translated_col_desc(*col_desc);

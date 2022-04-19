@@ -18,7 +18,7 @@
 using namespace yb::size_literals;
 
 DEFINE_int32(rate_limiter_min_size, 32_KB, "Minimum size for each transmission request");
-DEFINE_int32(rate_limiter_min_rate, 1000, "Minimum transmission rate in bytes/sec");
+DEFINE_uint64(rate_limiter_min_rate, 1000, "Minimum transmission rate in bytes/sec");
 
 namespace yb {
 
@@ -121,9 +121,10 @@ inline uint64_t RateLimiter::GetSizeForNextTimeSlot() {
           << " max_transmission_rate=" << target_rate_
           << " min_time_slot=" << min_time_slot_;
   VLOG(1) << "Max allowed bytes per time slot: "
-             << target_rate_  * min_time_slot_  / MonoTime::kMillisecondsPerSecond;
-  VLOG(1) << "time_slot_size: " << time_slot_ms_;
-  return target_rate_ * time_slot_ms_ / MonoTime::kMillisecondsPerSecond;
+          << target_rate_ * max_time_slot_ / MonoTime::kMillisecondsPerSecond;
+  auto time_slot_size = target_rate_ * time_slot_ms_ / MonoTime::kMillisecondsPerSecond;
+  VLOG(1) << "time_slot_size: " << time_slot_size << " in " << time_slot_ms_ << " ms.";
+  return time_slot_size;
 }
 
 void RateLimiter::Init() {

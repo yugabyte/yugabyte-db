@@ -26,7 +26,7 @@ DECLARE_bool(TEST_pggate_ignore_tserver_shm);
 DECLARE_int32(ysql_request_limit);
 DECLARE_uint64(ysql_prefetch_limit);
 DECLARE_double(ysql_backward_prefetch_scale_factor);
-DECLARE_int32(ysql_session_max_batch_size);
+DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(ysql_non_txn_copy);
 DECLARE_int32(ysql_max_read_restart_attempts);
 DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
@@ -34,7 +34,6 @@ DECLARE_int64(TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
 DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_int32(ysql_output_buffer_size);
 DECLARE_int32(ysql_select_parallelism);
-DECLARE_bool(ysql_enable_update_batching);
 DECLARE_int32(ysql_sequence_cache_minval);
 
 DECLARE_bool(ysql_suppress_unsupported_error);

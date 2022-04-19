@@ -15,7 +15,7 @@ import { isNonAvailable } from '../../../utils/LayoutUtils';
 
 import './AlertDestinationChannels.scss';
 import { toast } from 'react-toastify';
-import { createErrorMessage } from './AlertUtils';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { useMount } from 'react-use';
 
 const prepareInitialValues = (values) => {

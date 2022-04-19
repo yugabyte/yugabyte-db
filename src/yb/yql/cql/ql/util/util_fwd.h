@@ -21,11 +21,14 @@
 namespace yb {
 namespace ql {
 
+class ExecutedResult;
 class QLEnv;
+class RowsResult;
 class StatementParameters;
 
 enum class ErrorCode : int64_t;
 
+using ExecutedResultPtr = std::shared_ptr<ExecutedResult>;
 using TransactionPoolProvider = std::function<client::TransactionPool*()>;
 
 }  // namespace ql

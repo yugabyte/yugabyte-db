@@ -14,11 +14,18 @@
 
 #include <string>
 
+#include "yb/common/common.pb.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/packed_row.h"
+#include "yb/docdb/value.h"
+#include "yb/docdb/value_type.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/fast_varint.h"
@@ -43,7 +50,7 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
     }
     case KeyType::kReverseTxnKey:
     {
-      RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kTransactionId));
+      RETURN_NOT_OK(key_slice.consume_byte(KeyEntryTypeAsChar::kTransactionId));
       auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
       auto doc_ht = VERIFY_RESULT_PREPEND(
           DecodeInvertedDocHt(key_slice), Format("Reverse txn record for: $0", transaction_id));
@@ -51,7 +58,7 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
     }
     case KeyType::kTransactionMetadata:
     {
-      RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kTransactionId));
+      RETURN_NOT_OK(key_slice.consume_byte(KeyEntryTypeAsChar::kTransactionId));
       auto transaction_id = DecodeTransactionId(&key_slice);
       RETURN_NOT_OK(transaction_id);
       return Format("TXN META $0", *transaction_id);
@@ -65,7 +72,7 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
       return subdoc_key.ToString(AutoDecodeKeys::kTrue);
     case KeyType::kExternalIntents:
     {
-      RETURN_NOT_OK(key_slice.consume_byte(ValueTypeAsChar::kExternalTransactionId));
+      RETURN_NOT_OK(key_slice.consume_byte(KeyEntryTypeAsChar::kExternalTransactionId));
       auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
       auto doc_hybrid_time = VERIFY_RESULT_PREPEND(
           DecodeInvertedDocHt(key_slice), Format("External txn record for: $0", transaction_id));
@@ -77,13 +84,15 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
 
 namespace {
 
-Result<std::string> DocDBValueToDebugStrInternal(Slice value_slice, KeyType key_type) {
+Result<std::string> DocDBValueToDebugStrInternal(
+    Slice value_slice, KeyType key_type,
+    const SchemaPackingStorage& schema_packing_storage) {
   std::string prefix;
   if (key_type == KeyType::kIntentKey) {
     auto txn_id_res = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&value_slice));
     prefix = Format("TransactionId($0) ", txn_id_res);
     if (!value_slice.empty()) {
-      RETURN_NOT_OK(value_slice.consume_byte(ValueTypeAsChar::kWriteId));
+      RETURN_NOT_OK(value_slice.consume_byte(ValueEntryTypeAsChar::kWriteId));
       if (value_slice.size() < sizeof(IntraTxnWriteId)) {
         return STATUS_FORMAT(Corruption, "Not enough bytes for write id: $0", value_slice.size());
       }
@@ -96,10 +105,36 @@ Result<std::string> DocDBValueToDebugStrInternal(Slice value_slice, KeyType key_
   // Empty values are allowed for weak intents.
   if (!value_slice.empty() || key_type != KeyType::kIntentKey) {
     Value v;
-    RETURN_NOT_OK_PREPEND(
-        v.Decode(value_slice),
-        Format("Error: failed to decode value $0", prefix));
-    return prefix + v.ToString();
+    auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
+    if (!value_slice.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
+      RETURN_NOT_OK_PREPEND(
+          v.Decode(value_slice, control_fields),
+          Format("Error: failed to decode value $0", prefix));
+      return prefix + v.ToString();
+    } else {
+      const SchemaPacking& packing = VERIFY_RESULT(schema_packing_storage.GetPacking(&value_slice));
+      prefix += "{";
+      for (size_t i = 0; i != packing.columns(); ++i) {
+        auto slice = packing.GetValue(i, value_slice);
+        const auto& column_data = packing.column_packing_data(i);
+        prefix += " ";
+        prefix += column_data.id.ToString();
+        prefix += ": ";
+        if (slice.empty()) {
+          prefix += "NULL";
+        } else {
+          PrimitiveValue pv;
+          auto status = pv.DecodeFromValue(slice);
+          if (!status.ok()) {
+            prefix += status.ToString();
+          } else {
+            prefix += pv.ToString();
+          }
+        }
+      }
+      prefix += " }";
+      return prefix;
+    }
   } else {
     return prefix + "none";
   }
@@ -107,11 +142,12 @@ Result<std::string> DocDBValueToDebugStrInternal(Slice value_slice, KeyType key_
 
 }  // namespace
 
-Result<std::string> DocDBValueToDebugStr(KeyType key_type, Slice key, Slice value) {
+Result<std::string> DocDBValueToDebugStr(
+    KeyType key_type, Slice key, Slice value, const SchemaPackingStorage& schema_packing_storage) {
   switch (key_type) {
     case KeyType::kTransactionMetadata: {
       TransactionMetadataPB metadata_pb;
-      if (!metadata_pb.ParseFromArray(value.cdata(), value.size())) {
+      if (!metadata_pb.ParseFromArray(value.cdata(), narrow_cast<int>(value.size()))) {
         return STATUS_FORMAT(Corruption, "Bad metadata: $0", value.ToDebugHexString());
       }
       return ToString(VERIFY_RESULT(TransactionMetadata::FromPB(metadata_pb)));
@@ -122,16 +158,16 @@ Result<std::string> DocDBValueToDebugStr(KeyType key_type, Slice key, Slice valu
     case KeyType::kEmpty: FALLTHROUGH_INTENDED;
     case KeyType::kIntentKey: FALLTHROUGH_INTENDED;
     case KeyType::kPlainSubDocKey:
-      return DocDBValueToDebugStrInternal(value, key_type);
+      return DocDBValueToDebugStrInternal(value, key_type, schema_packing_storage);
 
     case KeyType::kExternalIntents: {
       std::vector<std::string> intents;
       SubDocKey sub_doc_key;
-      RETURN_NOT_OK(value.consume_byte(ValueTypeAsChar::kUuid));
+      RETURN_NOT_OK(value.consume_byte(ValueEntryTypeAsChar::kUuid));
       Uuid involved_tablet;
       RETURN_NOT_OK(involved_tablet.FromSlice(value.Prefix(kUuidSize)));
       value.remove_prefix(kUuidSize);
-      RETURN_NOT_OK(value.consume_byte(ValueTypeAsChar::kExternalIntents));
+      RETURN_NOT_OK(value.consume_byte(KeyEntryTypeAsChar::kExternalIntents));
       for (;;) {
         auto len = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value));
         if (len == 0) {
@@ -144,7 +180,7 @@ Result<std::string> DocDBValueToDebugStr(KeyType key_type, Slice key, Slice valu
             "$0 -> $1",
             sub_doc_key,
             VERIFY_RESULT(DocDBValueToDebugStrInternal(
-                value.Prefix(len), KeyType::kPlainSubDocKey))));
+                value.Prefix(len), KeyType::kPlainSubDocKey, schema_packing_storage))));
         value.remove_prefix(len);
       }
       DCHECK(value.empty());

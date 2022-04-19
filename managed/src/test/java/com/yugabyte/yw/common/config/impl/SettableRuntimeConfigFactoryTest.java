@@ -79,7 +79,7 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   private Provider defaultProvider;
 
   SettableRuntimeConfigFactory configFactory =
-      new SettableRuntimeConfigFactory(ConfigFactory.parseMap(staticConfigMap));
+      new SettableRuntimeConfigFactory(ConfigFactory.parseMap(staticConfigMap), null, null);
 
   @Before
   public void setUp() {

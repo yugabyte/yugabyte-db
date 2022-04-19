@@ -14,13 +14,13 @@
 #ifndef YB_DOCDB_PGSQL_OPERATION_H
 #define YB_DOCDB_PGSQL_OPERATION_H
 
-#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/pgsql_protocol.pb.h"
 
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 namespace yb {
 
@@ -34,14 +34,16 @@ class PgsqlWriteOperation :
     public DocOperationBase<DocOperationType::PGSQL_WRITE_OPERATION, PgsqlWriteRequestPB>,
     public DocExprExecutor {
  public:
-  PgsqlWriteOperation(const Schema& schema,
+  PgsqlWriteOperation(std::reference_wrapper<const PgsqlWriteRequestPB> request,
+                      const DocReadContext& doc_read_context,
                       const TransactionOperationContext& txn_op_context)
-      : schema_(schema),
+      : DocOperationBase(request),
+        doc_read_context_(doc_read_context),
         txn_op_context_(txn_op_context) {
   }
 
   // Initialize PgsqlWriteOperation. Content of request will be swapped out by the constructor.
-  CHECKED_STATUS Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* response);
+  CHECKED_STATUS Init(PgsqlResponsePB* response);
   bool RequireReadSnapshot() const override {
     // For YSQL the the standard operations (INSERT/UPDATE/DELETE) will read/check the primary key.
     // We use UPSERT stmt type for specific requests when we can guarantee we can skip the read.
@@ -102,7 +104,7 @@ class PgsqlWriteOperation :
 
   //------------------------------------------------------------------------------------------------
   // Context.
-  const Schema& schema_;
+  const DocReadContext& doc_read_context_;
   const TransactionOperationContext txn_op_context_;
 
   // Input arguments.
@@ -146,12 +148,12 @@ class PgsqlReadOperation : public DocExprExecutor {
                          CoarseTimePoint deadline,
                          const ReadHybridTime& read_time,
                          bool is_explicit_request_read_time,
-                         const Schema& schema,
-                         const Schema *index_schema,
+                         const DocReadContext& doc_read_context,
+                         const DocReadContext* index_doc_read_context,
                          faststring *result_buffer,
                          HybridTime *restart_read_ht);
 
-  CHECKED_STATUS GetTupleId(QLValue *result) const override;
+  CHECKED_STATUS GetTupleId(QLValuePB *result) const override;
 
   CHECKED_STATUS GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
 
@@ -161,8 +163,8 @@ class PgsqlReadOperation : public DocExprExecutor {
                                CoarseTimePoint deadline,
                                const ReadHybridTime& read_time,
                                bool is_explicit_request_read_time,
-                               const Schema& schema,
-                               const Schema *index_schema,
+                               const DocReadContext& doc_read_context,
+                               const DocReadContext *index_doc_read_context,
                                faststring *result_buffer,
                                HybridTime *restart_read_ht,
                                bool *has_paging_state);
@@ -171,7 +173,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   Result<size_t> ExecuteBatchYbctid(const YQLStorageIf& ql_storage,
                                     CoarseTimePoint deadline,
                                     const ReadHybridTime& read_time,
-                                    const Schema& schema,
+                                    const DocReadContext& doc_read_context,
                                     faststring *result_buffer,
                                     HybridTime *restart_read_ht);
 
@@ -179,7 +181,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                CoarseTimePoint deadline,
                                const ReadHybridTime& read_time,
                                bool is_explicit_request_read_time,
-                               const Schema& schema,
+                               const DocReadContext& doc_read_context,
                                faststring *result_buffer,
                                HybridTime *restart_read_ht,
                                bool *has_paging_state);
@@ -198,7 +200,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                            size_t fetched_rows,
                                            const size_t row_count_limit,
                                            const bool scan_time_exceeded,
-                                           const Schema* schema,
+                                           const Schema& schema,
                                            const ReadHybridTime& read_time,
                                            bool *has_paging_state);
 

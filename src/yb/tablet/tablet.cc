@@ -40,14 +40,18 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
+#include "yb/client/transaction_manager.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/index_column.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
+#include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 
@@ -55,16 +59,17 @@
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_compaction_filter_intents.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
+#include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/gutil/casts.h"
 
@@ -81,13 +86,19 @@
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/read_result.h"
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/write_query.h"
+
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
@@ -148,7 +159,7 @@ DEFINE_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
 DEFINE_bool(delete_intents_sst_files, true,
             "Delete whole intents .SST files when possible.");
 
-DEFINE_int32(backfill_index_write_batch_size, 128, "The batch size for backfilling the index.");
+DEFINE_uint64(backfill_index_write_batch_size, 128, "The batch size for backfilling the index.");
 TAG_FLAG(backfill_index_write_batch_size, advanced);
 TAG_FLAG(backfill_index_write_batch_size, runtime);
 
@@ -159,7 +170,7 @@ DEFINE_int32(backfill_index_rate_rows_per_sec, 0, "Rate of at which the "
 TAG_FLAG(backfill_index_rate_rows_per_sec, advanced);
 TAG_FLAG(backfill_index_rate_rows_per_sec, runtime);
 
-DEFINE_int32(verify_index_read_batch_size, 128, "The batch size for reading the index.");
+DEFINE_uint64(verify_index_read_batch_size, 128, "The batch size for reading the index.");
 TAG_FLAG(verify_index_read_batch_size, advanced);
 TAG_FLAG(verify_index_read_batch_size, runtime);
 
@@ -190,7 +201,7 @@ TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 TAG_FLAG(disable_alter_vs_write_mutual_exclusion, runtime);
 
 DEFINE_bool(cleanup_intents_sst_files, true,
-            "Cleanup intents files that are no more relevant to any running transaction.");
+    "Cleanup intents files that are no more relevant to any running transaction.");
 
 DEFINE_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 minutes
              "Max amount of time we can wait for active transactions to abort on a tablet "
@@ -214,7 +225,7 @@ DEFINE_bool(tablet_enable_ttl_file_filter, false,
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
 
-DEFINE_test_flag(int32, backfill_paging_size, 0,
+DEFINE_test_flag(uint64, backfill_paging_size, 0,
                  "If set > 0, returns early after processing this number of rows.");
 
 DEFINE_test_flag(bool, tablet_verify_flushed_frontier_after_modifying, false,
@@ -248,6 +259,9 @@ DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
+
+DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
+                 "Sleep before applying intents to docdb after transaction commit");
 
 using namespace std::placeholders;
 
@@ -294,15 +308,13 @@ using docdb::SubDocKey;
 using docdb::PrimitiveValue;
 using docdb::StorageDbType;
 
+const std::hash<std::string> hash_for_data_root_dir;
+
 ////////////////////////////////////////////////////////////
 // Tablet
 ////////////////////////////////////////////////////////////
 
 namespace {
-
-docdb::PartialRangeKeyIntents UsePartialRangeKeyIntents(const RaftGroupMetadata& metadata) {
-  return docdb::PartialRangeKeyIntents(metadata.table_type() == TableType::PGSQL_TABLE_TYPE);
-}
 
 std::string MakeTabletLogPrefix(
     const TabletId& tablet_id, const std::string& log_prefix_suffix) {
@@ -421,9 +433,8 @@ Tablet::Tablet(const TabletInitData& data)
         data.transaction_participant_context, this, tablet_metrics_entity_);
     // Create transaction manager for secondary index update.
     if (has_index) {
-      transaction_manager_.emplace(client_future_.get(),
-                                   scoped_refptr<server::Clock>(clock_),
-                                   local_tablet_filter_);
+      transaction_manager_ = std::make_unique<client::TransactionManager>(
+          client_future_.get(), scoped_refptr<server::Clock>(clock_), local_tablet_filter_);
     }
   }
 
@@ -436,7 +447,7 @@ Tablet::Tablet(const TabletInitData& data)
   if (table_info->index_info && table_info->index_info->is_unique()) {
     unique_index_key_schema_ = std::make_unique<Schema>();
     const auto ids = table_info->index_info->index_key_column_ids();
-    CHECK_OK(table_info->schema->CreateProjectionByIdsIgnoreMissing(
+    CHECK_OK(table_info->schema().CreateProjectionByIdsIgnoreMissing(
         ids, unique_index_key_schema_.get()));
   }
 
@@ -464,7 +475,7 @@ Tablet::Tablet(const TabletInitData& data)
 
 Tablet::~Tablet() {
   if (StartShutdown()) {
-    CompleteShutdown();
+    CompleteShutdown(DisableFlushOnShutdown::kFalse);
   } else {
     auto state = state_;
     LOG_IF_WITH_PREFIX(DFATAL, state != kShutdown)
@@ -655,8 +666,8 @@ Status Tablet::OpenKeyValueTablet() {
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
-  rocksdb_options.compaction_filter_factory = make_shared<DocDBCompactionFilterFactory>(
-      retention_policy_, &key_bounds_);
+  rocksdb_options.compaction_context_factory = docdb::CreateCompactionContextFactory(
+      retention_policy_, &key_bounds_, std::bind(&Tablet::GetSchemaPacking, this, _1, _2));
 
   rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
     if (mem_table_flush_filter_factory_) {
@@ -673,7 +684,8 @@ Status Tablet::OpenKeyValueTablet() {
   // for compactions.
   rocksdb_options.max_file_size_for_compaction = MakeMaxFileSizeWithTableTTLFunction([this] {
     if (FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
-        retention_policy_->GetRetentionDirective().table_ttl != docdb::Value::kMaxTtl) {
+        retention_policy_->GetRetentionDirective().table_ttl !=
+            docdb::ValueControlFields::kMaxTtl) {
       return FLAGS_rocksdb_max_file_size_for_compaction;
     }
     return std::numeric_limits<uint64_t>::max();
@@ -707,6 +719,7 @@ Status Tablet::OpenKeyValueTablet() {
   if (transaction_participant_) {
     LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << db_dir + kIntentsDBSuffix;
     rocksdb::Options intents_rocksdb_options(rocksdb_options);
+    intents_rocksdb_options.compaction_context_factory = {};
     docdb::SetLogPrefix(&intents_rocksdb_options, LogPrefix(docdb::StorageDbType::kIntents));
 
     intents_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
@@ -752,6 +765,33 @@ Status Tablet::OpenKeyValueTablet() {
                         << ", obj: " << db;
 
   return Status::OK();
+}
+
+Result<docdb::CompactionSchemaPacking> Tablet::GetSchemaPacking(
+    const Uuid& uuid, uint32_t schema_version) {
+  TableInfoPtr table_info;
+  if (uuid.IsNil()) {
+    table_info = metadata_->primary_table_info();
+  } else {
+    auto res = metadata_->GetTableInfo(uuid.ToString());
+    if (!res.ok()) {
+      return STATUS_FORMAT(Corruption, "Cannot find table info for: $0", uuid);
+    }
+    table_info = *res;
+  }
+  if (schema_version == std::numeric_limits<uint32_t>::max()) {
+    // TODO(packed_row) Don't pick schema changed after retention interval.
+    schema_version =  table_info->schema_version;
+  }
+  auto packing = table_info->doc_read_context->schema_packing_storage.GetPacking(schema_version);
+  if (!packing.ok()) {
+    return STATUS_FORMAT(Corruption, "Cannot find packing for table: $0, schema version: $1",
+                         table_info->table_id, schema_version);
+  }
+  return docdb::CompactionSchemaPacking {
+    .schema_version = schema_version,
+    .schema_packing = rpc::SharedField(table_info, packing.get_ptr()),
+  };
 }
 
 void Tablet::RegularDbFilesChanged() {
@@ -908,7 +948,7 @@ void Tablet::MarkFinishedBootstrapping() {
   state_ = kOpen;
 }
 
-bool Tablet::StartShutdown(const IsDropTable is_drop_table) {
+bool Tablet::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << __func__;
 
   bool expected = false;
@@ -923,12 +963,12 @@ bool Tablet::StartShutdown(const IsDropTable is_drop_table) {
   return true;
 }
 
-void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
-  LOG_WITH_PREFIX(INFO) << __func__ << "(" << is_drop_table << ")";
+void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) {
+  LOG_WITH_PREFIX(INFO) << __func__;
 
   StartShutdown();
 
-  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(is_drop_table), Stop::kTrue);
+  auto op_pauses = StartShutdownRocksDBs(disable_flush_on_shutdown, Stop::kTrue);
   if (!op_pauses.ok()) {
     LOG_WITH_PREFIX(DFATAL) << "Failed to shut down: " << op_pauses.status();
     return;
@@ -1061,12 +1101,13 @@ Status Tablet::CompleteShutdownRocksDBs(
   return regular_status.ok() ? intents_status : regular_status;
 }
 
-Result<std::unique_ptr<YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
+Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const Schema &projection,
     const ReadHybridTime read_hybrid_time,
     const TableId& table_id,
     CoarseTimePoint deadline,
-    AllowBootstrappingState allow_bootstrapping_state) const {
+    AllowBootstrappingState allow_bootstrapping_state,
+    const Slice& sub_doc_key) const {
   if (state_ != kOpen && (!allow_bootstrapping_state || state_ != kBootstrapping)) {
     return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
   }
@@ -1082,7 +1123,7 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
   const std::shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  const Schema& schema = *table_info->schema;
+  const Schema& schema = table_info->schema();
   auto mapped_projection = std::make_unique<Schema>();
   RETURN_NOT_OK(schema.GetMappedReadProjection(projection, mapped_projection.get()));
 
@@ -1093,17 +1134,17 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
       ? read_hybrid_time
       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse)));
   auto result = std::make_unique<DocRowwiseIterator>(
-      std::move(mapped_projection), schema, txn_op_ctx, doc_db(),
-      deadline, read_time, &pending_non_abortable_op_counter_);
-  RETURN_NOT_OK(result->Init(table_type_));
+      std::move(mapped_projection), *table_info->doc_read_context, txn_op_ctx,
+      doc_db(), deadline, read_time, &pending_non_abortable_op_counter_);
+  RETURN_NOT_OK(result->Init(table_type_, sub_doc_key));
   return std::move(result);
 }
 
-Result<std::unique_ptr<YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
+Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const TableId& table_id) const {
   const std::shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  return NewRowIterator(*table_info->schema, {}, table_id);
+  return NewRowIterator(table_info->schema(), {}, table_id);
 }
 
 Status Tablet::ApplyRowOperations(
@@ -1111,7 +1152,7 @@ Status Tablet::ApplyRowOperations(
   const auto& write_request =
       operation->consensus_round() && operation->consensus_round()->replicate_msg()
           // Online case.
-          ? operation->consensus_round()->replicate_msg()->write_request()
+          ? operation->consensus_round()->replicate_msg()->write()
           // Bootstrap case.
           : *operation->request();
   const KeyValueWriteBatchPB& put_batch = write_request.write_batch();
@@ -1139,7 +1180,7 @@ Status Tablet::ApplyOperation(
   if (frontiers_ptr) {
     auto ttl = write_batch.has_ttl()
         ? MonoDelta::FromNanoseconds(write_batch.ttl())
-        : docdb::Value::kMaxTtl;
+        : docdb::ValueControlFields::kMaxTtl;
     frontiers_ptr->Largest().set_max_value_level_ttl_expiration_time(
         docdb::FileExpirationFromValueTTL(operation.hybrid_time(), ttl));
   }
@@ -1147,21 +1188,23 @@ Status Tablet::ApplyOperation(
       batch_idx, write_batch, frontiers_ptr, hybrid_time, already_applied_to_regular_db);
 }
 
-Status Tablet::PrepareTransactionWriteBatch(
+Status Tablet::WriteTransactionalBatch(
     int64_t batch_idx,
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
-    rocksdb::WriteBatch* rocksdb_write_batch) {
+    const rocksdb::UserFrontiers* frontiers) {
   auto transaction_id = CHECK_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
+
+  bool store_metadata = false;
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
-    if (!transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch)) {
-      auto status = STATUS_EC_FORMAT(
-          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
-          "Transaction was recently aborted: $0", transaction_id);
-      return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
+    auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(put_batch.transaction()));
+    auto add_result = transaction_participant()->Add(metadata);
+    if (!add_result.ok()) {
+      return add_result.status();
     }
+    store_metadata = add_result.get();
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
   auto prepare_batch_data = transaction_participant()->PrepareBatchData(
@@ -1177,12 +1220,23 @@ Status Tablet::PrepareTransactionWriteBatch(
 
   auto isolation_level = prepare_batch_data->first;
   auto& last_batch_data = prepare_batch_data->second;
-  yb::docdb::PrepareTransactionWriteBatch(
-      put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level,
-      UsePartialRangeKeyIntents(*metadata_),
+
+  docdb::TransactionalWriter writer(
+      put_batch, hybrid_time, transaction_id, isolation_level,
+      docdb::PartialRangeKeyIntents(metadata_->UsePartialRangeKeyIntents()),
       Slice(encoded_replicated_batch_idx_set.data(), encoded_replicated_batch_idx_set.size()),
-      &last_batch_data.next_write_id);
+      last_batch_data.next_write_id);
+  if (store_metadata) {
+    writer.SetMetadataToStore(&put_batch.transaction());
+  }
+  rocksdb::WriteBatch write_batch;
+  write_batch.SetDirectWriter(&writer);
+  RequestScope request_scope(transaction_participant_.get());
+
+  WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
+
   last_batch_data.hybrid_time = hybrid_time;
+  last_batch_data.next_write_id = writer.intra_txn_write_id();
   transaction_participant()->BatchReplicated(transaction_id, last_batch_data);
 
   return Status::OK();
@@ -1204,26 +1258,29 @@ Status Tablet::ApplyKeyValueRowOperations(
   // In all other cases we should crash instead of skipping apply.
 
   if (put_batch.has_transaction()) {
-    rocksdb::WriteBatch write_batch;
-    RequestScope request_scope(transaction_participant_.get());
-    RETURN_NOT_OK(PrepareTransactionWriteBatch(batch_idx, put_batch, hybrid_time, &write_batch));
-    WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
+    RETURN_NOT_OK(WriteTransactionalBatch(batch_idx, put_batch, hybrid_time, frontiers));
   } else {
     rocksdb::WriteBatch regular_write_batch;
     auto* regular_write_batch_ptr = !already_applied_to_regular_db ? &regular_write_batch : nullptr;
-    // See comments for PrepareNonTransactionWriteBatch.
+
+    // See comments for PrepareExternalWriteBatch.
     rocksdb::WriteBatch intents_write_batch;
-    PrepareNonTransactionWriteBatch(
+    bool has_non_exteranl_records = PrepareExternalWriteBatch(
         put_batch, hybrid_time, intents_db_.get(), regular_write_batch_ptr, &intents_write_batch);
 
-    if (regular_write_batch.Count() != 0) {
-      WriteToRocksDB(frontiers, regular_write_batch_ptr, StorageDbType::kRegular);
-    }
     if (intents_write_batch.Count() != 0) {
       if (!metadata_->is_under_twodc_replication()) {
         RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
       }
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
+    }
+
+    docdb::NonTransactionalWriter writer(put_batch, hybrid_time);
+    if (!already_applied_to_regular_db && has_non_exteranl_records) {
+      regular_write_batch.SetDirectWriter(&writer);
+    }
+    if (regular_write_batch.Count() != 0 || regular_write_batch.HasDirectWriter()) {
+      WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
     }
 
     if (snapshot_coordinator_) {
@@ -1241,9 +1298,6 @@ void Tablet::WriteToRocksDB(
     const rocksdb::UserFrontiers* frontiers,
     rocksdb::WriteBatch* write_batch,
     docdb::StorageDbType storage_db_type) {
-  if (write_batch->Count() == 0) {
-    return;
-  }
   rocksdb::DB* dest_db = nullptr;
   switch (storage_db_type) {
     case StorageDbType::kRegular: dest_db = regular_db_.get(); break;
@@ -1278,77 +1332,8 @@ void Tablet::WriteToRocksDB(
   }
 }
 
-namespace {
-
-// Separate Redis / QL / row operations write batches from write_request in preparation for the
-// write transaction. Leave just the tablet id behind. Return Redis / QL / row operations, etc.
-// in batch_request.
-void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_request) {
-  batch_request->Swap(write_request);
-  write_request->set_allocated_tablet_id(batch_request->release_tablet_id());
-  if (batch_request->has_read_time()) {
-    write_request->set_allocated_read_time(batch_request->release_read_time());
-  }
-  if (batch_request->write_batch().has_transaction()) {
-    write_request->mutable_write_batch()->mutable_transaction()->Swap(
-        batch_request->mutable_write_batch()->mutable_transaction());
-  }
-  if (batch_request->write_batch().has_subtransaction()) {
-    write_request->mutable_write_batch()->mutable_subtransaction()->Swap(
-        batch_request->mutable_write_batch()->mutable_subtransaction());
-  }
-  write_request->mutable_write_batch()->set_deprecated_may_have_metadata(true);
-  if (batch_request->has_request_id()) {
-    write_request->set_client_id1(batch_request->client_id1());
-    write_request->set_client_id2(batch_request->client_id2());
-    write_request->set_request_id(batch_request->request_id());
-    write_request->set_min_running_request_id(batch_request->min_running_request_id());
-  }
-  if (batch_request->has_external_hybrid_time()) {
-    write_request->set_external_hybrid_time(batch_request->external_hybrid_time());
-  }
-  write_request->set_batch_idx(batch_request->batch_idx());
-}
-
-} // namespace
-
 //--------------------------------------------------------------------------------------------------
 // Redis Request Processing.
-void Tablet::KeyValueBatchFromRedisWriteBatch(std::unique_ptr<WriteOperation> operation) {
-  auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
-  if (!scoped_read_operation.ok()) {
-    WriteOperation::StartSynchronization(std::move(operation), MoveStatus(scoped_read_operation));
-    return;
-  }
-
-  docdb::DocOperations& doc_ops = operation->doc_ops();
-  // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
-  WriteRequestPB batch_request;
-  SetupKeyValueBatch(operation->mutable_request(), &batch_request);
-  auto* redis_write_batch = batch_request.mutable_redis_write_batch();
-
-  doc_ops.reserve(redis_write_batch->size());
-  for (size_t i = 0; i < redis_write_batch->size(); i++) {
-    doc_ops.emplace_back(new RedisWriteOperation(redis_write_batch->Mutable(i)));
-  }
-
-  StartDocWriteOperation(std::move(operation), std::move(scoped_read_operation),
-                         [](auto operation, const Status& status) {
-    if (!status.ok() || operation->restart_read_ht().is_valid()) {
-      WriteOperation::StartSynchronization(std::move(operation), status);
-      return;
-    }
-    auto* response = operation->response();
-    docdb::DocOperations& doc_ops = operation->doc_ops();
-    for (size_t i = 0; i < doc_ops.size(); i++) {
-      auto* redis_write_operation = down_cast<RedisWriteOperation*>(doc_ops[i].get());
-      response->add_redis_response_batch()->Swap(&redis_write_operation->response());
-    }
-
-    WriteOperation::StartSynchronization(std::move(operation), Status::OK());
-  });
-}
-
 Status Tablet::HandleRedisReadRequest(CoarseTimePoint deadline,
                                       const ReadHybridTime& read_time,
                                       const RedisReadRequestPB& redis_read_request,
@@ -1365,16 +1350,15 @@ Status Tablet::HandleRedisReadRequest(CoarseTimePoint deadline,
   return Status::OK();
 }
 
-template <typename Request>
-bool IsSchemaVersionCompatible(uint32_t current_version, const Request& request) {
-  if (request.schema_version() == current_version) {
+bool IsSchemaVersionCompatible(
+    uint32_t current_version, uint32_t request_version, bool compatible_with_previous_version) {
+  if (request_version == current_version) {
     return true;
   }
 
-  if (request.is_compatible_with_previous_version() &&
-      request.schema_version() == current_version + 1) {
-    DVLOG(1) << (FLAGS_yql_allow_compatible_schema_versions ? " " : "Not ")
-             << " Accepting request that is ahead of us by 1 version " << AsString(request);
+  if (compatible_with_previous_version && request_version == current_version + 1) {
+    DVLOG(1) << (FLAGS_yql_allow_compatible_schema_versions ? "A" : "Not a")
+             << "ccepting request that is ahead of us by 1 version";
     return FLAGS_yql_allow_compatible_schema_versions;
   }
 
@@ -1393,7 +1377,9 @@ Status Tablet::HandleQLReadRequest(
   RETURN_NOT_OK(scoped_read_operation);
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
-  if (!IsSchemaVersionCompatible(metadata()->schema_version(), ql_read_request)) {
+  if (!IsSchemaVersionCompatible(
+          metadata()->schema_version(), ql_read_request.schema_version(),
+          ql_read_request.is_compatible_with_previous_version())) {
     DVLOG(1) << "Setting status for read as YQL_STATUS_SCHEMA_VERSION_MISMATCH";
     result->response.set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     result->response.set_error_message(Format(
@@ -1455,243 +1441,6 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_r
   return Status::OK();
 }
 
-void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> operation) {
-  DVLOG(2) << " Schema version for  " << metadata_->table_name() << " is "
-           << metadata_->schema_version();
-  auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
-  if (!scoped_read_operation.ok()) {
-    WriteOperation::StartSynchronization(std::move(operation), MoveStatus(scoped_read_operation));
-    return;
-  }
-
-  docdb::DocOperations& doc_ops = operation->doc_ops();
-  WriteRequestPB batch_request;
-  SetupKeyValueBatch(operation->mutable_request(), &batch_request);
-  auto* ql_write_batch = batch_request.mutable_ql_write_batch();
-
-  doc_ops.reserve(ql_write_batch->size());
-
-  Result<TransactionOperationContext> txn_op_ctx =
-      CreateTransactionOperationContext(
-          operation->request()->write_batch().transaction(),
-          /* is_ysql_catalog_table */ false,
-          operation->request()->write_batch().subtransaction());
-  if (!txn_op_ctx.ok()) {
-    WriteOperation::StartSynchronization(std::move(operation), txn_op_ctx.status());
-    return;
-  }
-  auto table_info = metadata_->primary_table_info();
-  for (size_t i = 0; i < ql_write_batch->size(); i++) {
-    QLWriteRequestPB* req = ql_write_batch->Mutable(i);
-    QLResponsePB* resp = operation->response()->add_ql_response_batch();
-    if (!IsSchemaVersionCompatible(table_info->schema_version, *req)) {
-      DVLOG(1) << " On " << table_info->table_name
-               << " Setting status for write as YQL_STATUS_SCHEMA_VERSION_MISMATCH tserver's: "
-               << table_info->schema_version << " vs req's : " << req->schema_version()
-               << " is req compatible with prev version: "
-               << req->is_compatible_with_previous_version() << " for " << AsString(req);
-      resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
-      resp->set_error_message(Format(
-          "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
-          table_info->table_id,
-          table_info->schema_version, req->schema_version(),
-          req->is_compatible_with_previous_version()));
-    } else {
-      DVLOG(3) << "Version matches : " << table_info->schema_version << " for "
-               << AsString(req);
-      auto write_op = std::make_unique<QLWriteOperation>(
-          std::shared_ptr<Schema>(table_info, table_info->schema.get()),
-          *table_info->index_map, unique_index_key_schema_.get(),
-          *txn_op_ctx);
-      auto status = write_op->Init(req, resp);
-      if (!status.ok()) {
-        WriteOperation::StartSynchronization(std::move(operation), status);
-        return;
-      }
-      doc_ops.emplace_back(std::move(write_op));
-    }
-  }
-
-  // All operations has wrong schema version
-  if (doc_ops.empty()) {
-    WriteOperation::StartSynchronization(std::move(operation), Status::OK());
-    return;
-  }
-
-  StartDocWriteOperation(std::move(operation), std::move(scoped_read_operation),
-                         [this](auto operation, const Status& status) {
-    if (operation->restart_read_ht().is_valid()) {
-      WriteOperation::StartSynchronization(std::move(operation), Status::OK());
-      return;
-    }
-
-    if (status.ok()) {
-      this->UpdateQLIndexes(std::move(operation));
-    } else {
-      this->CompleteQLWriteBatch(std::move(operation), status);
-    }
-  });
-}
-
-void Tablet::CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, const Status& status) {
-  if (!status.ok()) {
-    WriteOperation::StartSynchronization(std::move(operation), status);
-    return;
-  }
-  auto& doc_ops = operation->doc_ops();
-
-  for (size_t i = 0; i < doc_ops.size(); i++) {
-    QLWriteOperation* ql_write_op = down_cast<QLWriteOperation*>(doc_ops[i].get());
-    if (metadata_->is_unique_index() &&
-        ql_write_op->request().type() == QLWriteRequestPB::QL_STMT_INSERT &&
-        ql_write_op->response()->has_applied() && !ql_write_op->response()->applied()) {
-      // If this is an insert into a unique index and it fails to apply, report duplicate value err.
-      ql_write_op->response()->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
-      ql_write_op->response()->set_error_message(
-          Format("Duplicate value disallowed by unique index $0", metadata_->table_name()));
-      DVLOG(1) << "Could not apply the given operation " << AsString(ql_write_op->request())
-               << " due to " << AsString(ql_write_op->response());
-    } else if (ql_write_op->rowblock() != nullptr) {
-      // If the QL write op returns a rowblock, move the op to the transaction state to return the
-      // rows data as a sidecar after the transaction completes.
-      doc_ops[i].release();
-      operation->ql_write_ops()->emplace_back(unique_ptr<QLWriteOperation>(ql_write_op));
-    }
-  }
-
-  WriteOperation::StartSynchronization(std::move(operation), Status::OK());
-}
-
-void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
-  client::YBClient* client = nullptr;
-  client::YBSessionPtr session;
-  client::YBTransactionPtr txn;
-  IndexOps index_ops;
-  const ChildTransactionDataPB* child_transaction_data = nullptr;
-  for (auto& doc_op : operation->doc_ops()) {
-    auto* write_op = static_cast<QLWriteOperation*>(doc_op.get());
-    if (write_op->index_requests()->empty()) {
-      continue;
-    }
-    if (!client) {
-      client = client_future_.get();
-      session = std::make_shared<YBSession>(client);
-      session->SetDeadline(operation->deadline());
-      if (write_op->request().has_child_transaction_data()) {
-        child_transaction_data = &write_op->request().child_transaction_data();
-        if (!transaction_manager_) {
-          WriteOperation::StartSynchronization(
-              std::move(operation),
-              STATUS(Corruption, "Transaction manager is not present for index update"));
-          return;
-        }
-        auto child_data = ChildTransactionData::FromPB(
-            write_op->request().child_transaction_data());
-        if (!child_data.ok()) {
-          WriteOperation::StartSynchronization(std::move(operation), child_data.status());
-          return;
-        }
-        txn = std::make_shared<YBTransaction>(&transaction_manager_.get(), *child_data);
-        session->SetTransaction(txn);
-      } else {
-        child_transaction_data = nullptr;
-      }
-    } else if (write_op->request().has_child_transaction_data()) {
-      DCHECK_ONLY_NOTNULL(child_transaction_data);
-      DCHECK_EQ(child_transaction_data->ShortDebugString(),
-                write_op->request().child_transaction_data().ShortDebugString());
-    } else {
-      DCHECK(child_transaction_data == nullptr) <<
-          "Value: " << child_transaction_data->ShortDebugString();
-    }
-
-    // Apply the write ops to update the index
-    for (auto& pair : *write_op->index_requests()) {
-      client::YBTablePtr index_table;
-      bool cache_used_ignored = false;
-      auto metadata_cache = YBMetaDataCache();
-      if (!metadata_cache) {
-        WriteOperation::StartSynchronization(
-            std::move(operation),
-            STATUS(Corruption, "Table metadata cache is not present for index update"));
-        return;
-      }
-      // TODO create async version of GetTable.
-      // It is ok to have sync call here, because we use cache and it should not take too long.
-      auto status = metadata_cache->GetTable(pair.first->table_id(), &index_table,
-                                             &cache_used_ignored);
-      if (!status.ok()) {
-        WriteOperation::StartSynchronization(std::move(operation), status);
-        return;
-      }
-      shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
-      index_op->mutable_request()->Swap(&pair.second);
-      index_op->mutable_request()->MergeFrom(pair.second);
-      session->Apply(index_op);
-      index_ops.emplace_back(std::move(index_op), write_op);
-    }
-  }
-
-  if (!session) {
-    CompleteQLWriteBatch(std::move(operation), Status::OK());
-    return;
-  }
-
-  session->FlushAsync(std::bind(
-      &Tablet::UpdateQLIndexesFlushed, this, operation.release(), session, txn,
-      std::move(index_ops), _1));
-}
-
-void Tablet::UpdateQLIndexesFlushed(
-    WriteOperation* op, const client::YBSessionPtr& session, const client::YBTransactionPtr& txn,
-    const IndexOps& index_ops, client::FlushStatus* flush_status) {
-  std::unique_ptr<WriteOperation> operation(op);
-
-  const auto& status = flush_status->status;
-  if (PREDICT_FALSE(!status.ok())) {
-    // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
-    // returns IOError. When it happens, retrieves the errors and discard the IOError.
-    if (status.IsIOError()) {
-      for (const auto& error : flush_status->errors) {
-        // return just the first error seen.
-        operation->CompleteWithStatus(error->status());
-        return;
-      }
-    }
-    operation->CompleteWithStatus(status);
-    return;
-  }
-
-  ChildTransactionResultPB child_result;
-  if (txn) {
-    auto finish_result = txn->FinishChild();
-    if (!finish_result.ok()) {
-      operation->CompleteWithStatus(finish_result.status());
-      return;
-    }
-    child_result = std::move(*finish_result);
-  }
-
-  // Check the responses of the index write ops.
-  for (const auto& pair : index_ops) {
-    shared_ptr<client::YBqlWriteOp> index_op = pair.first;
-    auto* response = pair.second->response();
-    DCHECK_ONLY_NOTNULL(response);
-    auto* index_response = index_op->mutable_response();
-
-    if (index_response->status() != QLResponsePB::YQL_STATUS_OK) {
-      DVLOG(1) << "Got status " << index_response->status() << " for " << AsString(index_op);
-      response->set_status(index_response->status());
-      response->set_error_message(std::move(*index_response->mutable_error_message()));
-    }
-    if (txn) {
-      *response->mutable_child_transaction_result() = child_result;
-    }
-  }
-
-  CompleteQLWriteBatch(std::move(operation), Status::OK());
-}
-
 //--------------------------------------------------------------------------------------------------
 // PGSQL Request Processing.
 //--------------------------------------------------------------------------------------------------
@@ -1727,12 +1476,12 @@ Status Tablet::HandlePgsqlReadRequest(
   Result<TransactionOperationContext> txn_op_ctx =
       CreateTransactionOperationContext(
           transaction_metadata,
-          table_info->schema->table_properties().is_ysql_catalog_table(),
-          subtransaction_metadata);
+          table_info->schema().table_properties().is_ysql_catalog_table(),
+          &subtransaction_metadata);
   RETURN_NOT_OK(txn_op_ctx);
-  return AbstractTablet::HandlePgsqlReadRequest(
+  return ProcessPgsqlReadRequest(
       deadline, read_time, is_explicit_request_read_time,
-      pgsql_read_request, *txn_op_ctx, result, num_rows_read);
+      pgsql_read_request, table_info, *txn_op_ctx, result, num_rows_read);
 }
 
 // Returns true if the query can be satisfied by rows present in current tablet.
@@ -1747,23 +1496,24 @@ Status Tablet::HandlePgsqlReadRequest(
 // are split into two sub-tablets, then such batched index lookups of ybctid requests should be sent
 // to multiple tablets (the two sub-tablets). Hence, the request ends up not being a single tablet
 // request.
-Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request,
-    size_t row_count) const {
+Result<bool> Tablet::IsQueryOnlyForTablet(
+    const PgsqlReadRequestPB& pgsql_read_request, size_t row_count) const {
   if ((!pgsql_read_request.ybctid_column_value().value().binary_value().empty() &&
-       (pgsql_read_request.batch_arguments_size() == row_count ||
+       (implicit_cast<size_t>(pgsql_read_request.batch_arguments_size()) == row_count ||
         pgsql_read_request.batch_arguments_size() == 0)) ||
        !pgsql_read_request.partition_column_values().empty() ) {
     return true;
   }
 
   std::shared_ptr<const Schema> schema = metadata_->schema();
-  if (schema->has_pgtable_id() || schema->has_cotable_id())  {
+  if (schema->has_cotable_id() || schema->has_colocation_id())  {
     // This is a colocated table.
     return true;
   }
 
   if (schema->num_hash_key_columns() == 0 &&
-      schema->num_range_key_columns() == pgsql_read_request.range_column_values_size()) {
+      schema->num_range_key_columns() ==
+          implicit_cast<size_t>(pgsql_read_request.range_column_values_size())) {
     // PK is contained within this tablet.
     return true;
   }
@@ -1774,13 +1524,15 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
     const PgsqlReadRequestPB& pgsql_read_request,
     const string& partition_key,
     size_t row_count) const {
-  if (metadata_->schema()->num_hash_key_columns() > 0) {
+  auto schema = metadata_->schema();
+
+  if (schema->num_hash_key_columns() > 0) {
     uint16_t next_hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
     // For batched index lookup of ybctids, check if the current partition hash is lesser than
     // upper bound. If it is, we can then avoid paging. Paging of batched index lookup of ybctids
     // occur when tablets split after request is prepared.
     if (pgsql_read_request.has_ybctid_column_value() &&
-        pgsql_read_request.batch_arguments_size() > row_count) {
+        implicit_cast<size_t>(pgsql_read_request.batch_arguments_size()) > row_count) {
       if (!pgsql_read_request.upper_bound().has_key()) {
           return false;
       }
@@ -1788,26 +1540,25 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
           PartitionSchema::DecodeMultiColumnHashValue(pgsql_read_request.upper_bound().key());
       uint16_t partition_hash =
           PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-          return pgsql_read_request.upper_bound().is_inclusive() ?
-            partition_hash > upper_bound_hash :
-            partition_hash >= upper_bound_hash;
+      return pgsql_read_request.upper_bound().is_inclusive() ?
+          partition_hash > upper_bound_hash :
+          partition_hash >= upper_bound_hash;
     }
     if (pgsql_read_request.has_max_hash_code() &&
         next_hash_code > pgsql_read_request.max_hash_code()) {
       return true;
     }
   } else if (pgsql_read_request.has_upper_bound()) {
-    docdb::DocKey partition_doc_key(*metadata_->schema());
+    docdb::DocKey partition_doc_key(*schema);
     VERIFY_RESULT(partition_doc_key.DecodeFrom(
         partition_key, docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
-    docdb::DocKey max_partition_doc_key(*metadata_->schema());
+    docdb::DocKey max_partition_doc_key(*schema);
     VERIFY_RESULT(max_partition_doc_key.DecodeFrom(
         pgsql_read_request.upper_bound().key(), docdb::DocKeyPart::kWholeDocKey,
         docdb::AllowSpecial::kTrue));
 
-    return pgsql_read_request.upper_bound().is_inclusive() ?
-      partition_doc_key.CompareTo(max_partition_doc_key) > 0 :
-      partition_doc_key.CompareTo(max_partition_doc_key) >= 0;
+    auto cmp = partition_doc_key.CompareTo(max_partition_doc_key);
+    return pgsql_read_request.upper_bound().is_inclusive() ? cmp > 0 : cmp >= 0;
   }
 
   return false;
@@ -1893,160 +1644,40 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
   return Status::OK();
 }
 
-CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
-  docdb::DocOperations& doc_ops = operation->doc_ops();
-  WriteRequestPB batch_request;
-
-  SetupKeyValueBatch(operation->mutable_request(), &batch_request);
-  auto* pgsql_write_batch = batch_request.mutable_pgsql_write_batch();
-
-  doc_ops.reserve(pgsql_write_batch->size());
-
-  Result<TransactionOperationContext> txn_op_ctx(TransactionOperationContext{});
-
-  for (size_t i = 0; i < pgsql_write_batch->size(); i++) {
-    PgsqlWriteRequestPB* req = pgsql_write_batch->Mutable(i);
-    PgsqlResponsePB* resp = operation->response()->add_pgsql_response_batch();
-    // Table-level tombstones should not be requested for non-colocated tables.
-    if ((req->stmt_type() == PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED) &&
-        !metadata_->colocated()) {
-      LOG(WARNING) << "cannot create table-level tombstone for a non-colocated table";
-      resp->set_skipped(true);
-      continue;
-    }
-    const std::shared_ptr<tablet::TableInfo> table_info =
-        VERIFY_RESULT(metadata_->GetTableInfo(req->table_id()));
-    if (table_info->schema_version != req->schema_version()) {
-      resp->set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
-      resp->set_error_message(
-          Format("schema version mismatch for table $0: expected $1, got $2",
-                 table_info->table_id,
-                 table_info->schema_version,
-                 req->schema_version()));
-    } else {
-      if (doc_ops.empty()) {
-        // Use the value of is_ysql_catalog_table from the first operation in the batch.
-        txn_op_ctx = CreateTransactionOperationContext(
-            operation->request()->write_batch().transaction(),
-            table_info->schema->table_properties().is_ysql_catalog_table(),
-            operation->request()->write_batch().subtransaction());
-        RETURN_NOT_OK(txn_op_ctx);
-      }
-      auto write_op = std::make_unique<PgsqlWriteOperation>(*table_info->schema, *txn_op_ctx);
-      RETURN_NOT_OK(write_op->Init(req, resp));
-      doc_ops.emplace_back(std::move(write_op));
-    }
-  }
-
-  return Status::OK();
-}
-
-void Tablet::KeyValueBatchFromPgsqlWriteBatch(std::unique_ptr<WriteOperation> operation) {
-  auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
-  if (!scoped_read_operation.ok()) {
-    WriteOperation::StartSynchronization(std::move(operation), MoveStatus(scoped_read_operation));
-    return;
-  }
-
-  auto status = PreparePgsqlWriteOperations(operation.get());
-  if (!status.ok()) {
-    WriteOperation::StartSynchronization(std::move(operation), status);
-    return;
-  }
-
-  // All operations have wrong schema version.
-  if (operation->doc_ops().empty()) {
-    WriteOperation::StartSynchronization(std::move(operation), Status::OK());
-    return;
-  }
-
-  StartDocWriteOperation(std::move(operation), std::move(scoped_read_operation),
-                         [](auto operation, const Status& status) {
-    if (!status.ok() || operation->restart_read_ht().is_valid()) {
-      WriteOperation::StartSynchronization(std::move(operation), status);
-      return;
-    }
-    auto& doc_ops = operation->doc_ops();
-
-    for (size_t i = 0; i < doc_ops.size(); i++) {
-      PgsqlWriteOperation* pgsql_write_op = down_cast<PgsqlWriteOperation*>(doc_ops[i].get());
-      // We'll need to return the number of rows inserted, updated, or deleted by each operation.
-      doc_ops[i].release();
-      operation->pgsql_write_ops()->emplace_back(unique_ptr<PgsqlWriteOperation>(pgsql_write_op));
-    }
-
-    WriteOperation::StartSynchronization(std::move(operation), Status::OK());
-  });
-}
-
 //--------------------------------------------------------------------------------------------------
 
-void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation> operation) {
+void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> query) {
   TRACE(__func__);
   if (table_type_ == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    operation->CompleteWithStatus(
+    query->Cancel(
         STATUS(NotSupported, "Transaction status table does not support write"));
     return;
   }
 
-  const WriteRequestPB* key_value_write_request = operation->request();
   if (!GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
-    auto write_permit = GetPermitToWrite(operation->deadline());
+    auto write_permit = GetPermitToWrite(query->deadline());
     if (!write_permit.ok()) {
       TRACE("Could not get the write permit.");
-      WriteOperation::StartSynchronization(std::move(operation), MoveStatus(write_permit));
+      WriteQuery::StartSynchronization(std::move(query), MoveStatus(write_permit));
       return;
     }
     // Save the write permit to be released after the operation is submitted
     // to Raft queue.
-    operation->UseSubmitToken(std::move(write_permit));
+    query->UseSubmitToken(std::move(write_permit));
   }
 
-  if (!key_value_write_request->redis_write_batch().empty()) {
-    KeyValueBatchFromRedisWriteBatch(std::move(operation));
-    return;
-  }
-
-  if (!key_value_write_request->ql_write_batch().empty()) {
-    KeyValueBatchFromQLWriteBatch(std::move(operation));
-    return;
-  }
-
-  if (!key_value_write_request->pgsql_write_batch().empty()) {
-    KeyValueBatchFromPgsqlWriteBatch(std::move(operation));
-    return;
-  }
-
-  if (key_value_write_request->has_write_batch()) {
-    if (!key_value_write_request->write_batch().read_pairs().empty()) {
-      auto scoped_operation = CreateNonAbortableScopedRWOperation();
-      if (!scoped_operation.ok()) {
-        operation->CompleteWithStatus(MoveStatus(scoped_operation));
-        return;
-      }
-
-      StartDocWriteOperation(std::move(operation), std::move(scoped_operation),
-                             [](auto operation, const Status& status) {
-        WriteOperation::StartSynchronization(std::move(operation), status);
-      });
-    } else {
-      DCHECK(key_value_write_request->has_external_hybrid_time());
-      WriteOperation::StartSynchronization(std::move(operation), Status::OK());
-    }
-    return;
-  }
-
-  // Empty write should not happen, but we could handle it.
-  // Just report it as error in release mode.
-  LOG(DFATAL) << "Empty write";
-
-  operation->CompleteWithStatus(Status::OK());
+  WriteQuery::Execute(std::move(query));
 }
 
 Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick) {
   TRACE_EVENT0("tablet", "Tablet::Flush");
 
-  auto pending_op = CreateNonAbortableScopedRWOperation();
+  ScopedRWOperation pending_op;
+  if (!HasFlags(flags, FlushFlags::kNoScopedOperation)) {
+    pending_op = CreateNonAbortableScopedRWOperation();
+    LOG_IF(DFATAL, !pending_op.ok()) << "CreateNonAbortableScopedRWOperation failed";
+    RETURN_NOT_OK(pending_op);
+  }
 
   rocksdb::FlushOptions options;
   options.ignore_if_flushed_after_tick = ignore_if_flushed_after_tick;
@@ -2092,18 +1723,25 @@ Status Tablet::ImportData(const std::string& source_dir) {
 Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApplyData& data) {
   VLOG_WITH_PREFIX(4) << __func__ << ": " << data.transaction_id;
 
+  // This flag enables tests to induce a situation where a transaction has committed but its intents
+  // haven't yet moved to regular db for a sufficiently long period. For example, it can help a test
+  // to reliably assert that conflict resolution/ concurrency control with a conflicting committed
+  // transaction is done properly in the rare situation where the committed transaction's intents
+  // are still in intents db and not yet in regular db.
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
+  docdb::ApplyIntentsContext context(
+      data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
+      &key_bounds_, intents_db_.get());
+  docdb::IntentsWriter intents_writer(
+      data.apply_state ? data.apply_state->key : Slice(), intents_db_.get(), &context);
   rocksdb::WriteBatch regular_write_batch;
-  auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-      tablet_id(), data.transaction_id, data.aborted, data.commit_ht, &key_bounds_,
-      data.apply_state, data.log_ht, &regular_write_batch, intents_db_.get(),
-      nullptr /* intents_write_batch */));
-
+  regular_write_batch.SetDirectWriter(&intents_writer);
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
   auto frontiers_ptr = data.op_id.empty() ? nullptr : InitFrontiers(data, &frontiers);
   WriteToRocksDB(frontiers_ptr, &regular_write_batch, StorageDbType::kRegular);
-  return new_apply_state;
+  return context.apply_state();
 }
 
 template <class Ids>
@@ -2115,35 +1753,25 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
   for (const auto& id : ids) {
     boost::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
-      auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-          tablet_id(),
-          id,
-          AbortedSubTransactionSet(),
-          HybridTime() /* commit_ht */,
-          &key_bounds_,
-          apply_state.get_ptr(),
-          HybridTime(),
-          nullptr /* regular_write_batch */,
-          intents_db_.get(),
-          &intents_write_batch));
-      if (new_apply_state.key.empty()) {
-        break;
-      }
-
+      docdb::RemoveIntentsContext context(id);
+      docdb::IntentsWriter writer(
+          apply_state ? apply_state->key : Slice(), intents_db_.get(), &context);
+      intents_write_batch.SetDirectWriter(&writer);
       docdb::ConsensusFrontiers frontiers;
       auto frontiers_ptr = InitFrontiers(data, &frontiers);
       WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
 
-      apply_state = std::move(new_apply_state);
+      if (!context.apply_state().active()) {
+        break;
+      }
+
+      apply_state = std::move(context.apply_state());
       intents_write_batch.Clear();
 
       AtomicFlagSleepMs(&FLAGS_apply_intents_task_injected_delay_ms);
     }
   }
 
-  docdb::ConsensusFrontiers frontiers;
-  auto frontiers_ptr = InitFrontiers(data, &frontiers);
-  WriteToRocksDB(frontiers_ptr, &intents_write_batch, StorageDbType::kIntents);
   return Status::OK();
 }
 
@@ -2156,9 +1784,43 @@ Status Tablet::RemoveIntents(const RemoveIntentsData& data, const TransactionIdS
   return RemoveIntentsImpl(data, transactions);
 }
 
+// We batch this as some tx could be very large and may not fit in one batch
+CHECKED_STATUS Tablet::GetIntents(
+    const TransactionId& id,
+    std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
+    docdb::ApplyTransactionState* stream_state) {
+  auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  docdb::ApplyTransactionState new_stream_state;
+
+  new_stream_state = VERIFY_RESULT(
+      docdb::GetIntentsBatch(id, &key_bounds_, stream_state, intents_db_.get(), key_value_intents));
+  stream_state->key = new_stream_state.key;
+  stream_state->write_id = new_stream_state.write_id;
+
+  return Status::OK();
+}
+
 Result<HybridTime> Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
   // We could not use mvcc_ directly, because correct lease should be passed to it.
   return SafeTime(RequireLease::kFalse, min_allowed, deadline);
+}
+
+Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIterator(
+    const Schema& projection, const ReadHybridTime& time, const string& next_key) {
+  VLOG_WITH_PREFIX(2) << "The nextKey is " << next_key;
+
+  Slice next_slice;
+  if (!next_key.empty()) {
+    SubDocKey start_sub_doc_key;
+    docdb::KeyBytes start_key_bytes(next_key);
+    RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
+    next_slice = start_sub_doc_key.doc_key().Encode().AsSlice();
+    VLOG_WITH_PREFIX(2) << "The nextKey doc is " << next_key;
+  }
+  return NewRowIterator(
+      projection, time, "", CoarseTimePoint::max(), AllowBootstrappingState::kFalse, next_slice);
 }
 
 Status Tablet::CreatePreparedChangeMetadata(
@@ -2210,9 +1872,9 @@ Status Tablet::MarkBackfillDone(const TableId& table_id) {
   auto table_info = table_id.empty() ?
     metadata_->primary_table_info() : VERIFY_RESULT(metadata_->GetTableInfo(table_id));
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done. Current schema  "
-                        << table_info->schema->ToString();
+                        << table_info->schema().ToString();
   const vector<DeletedColumn> empty_deleted_cols;
-  Schema new_schema = *table_info->schema;
+  Schema new_schema = table_info->schema();
   new_schema.SetRetainDeleteMarkers(false);
   metadata_->SetSchema(
       new_schema, *table_info->index_map, empty_deleted_cols, table_info->schema_version, table_id);
@@ -2223,98 +1885,69 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
   auto current_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
         operation->request()->has_alter_table_id() ?
         operation->request()->alter_table_id() : ""));
-  auto key_schema = current_table_info->schema->CreateKeyProjection();
+  auto key_schema = current_table_info->schema().CreateKeyProjection();
 
   RSTATUS_DCHECK_NE(operation->schema(), static_cast<void*>(nullptr), InvalidArgument,
                     "Schema could not be null");
   RSTATUS_DCHECK(key_schema.KeyEquals(*DCHECK_NOTNULL(operation->schema())), InvalidArgument,
                  "Schema keys cannot be altered");
 
-  {
-    // Abortable read/write operations could be long and they shouldn't access metadata_ without
-    // locks, so no need to wait for them here.
-    auto op_pause = PauseReadWriteOperations(Abortable::kFalse);
-    RETURN_NOT_OK(op_pause);
+  // Abortable read/write operations could be long and they shouldn't access metadata_ without
+  // locks, so no need to wait for them here.
+  auto op_pause = PauseReadWriteOperations(Abortable::kFalse);
+  RETURN_NOT_OK(op_pause);
 
-    // If the current version >= new version, there is nothing to do.
-    if (current_table_info->schema_version >= operation->schema_version()) {
-      LOG_WITH_PREFIX(INFO)
-          << "Already running schema version " << current_table_info->schema_version
-          << " got alter request for version " << operation->schema_version();
-      return Status::OK();
-    }
-
-    LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema->ToString()
-                          << " version " << current_table_info->schema_version
-                          << " to " << operation->schema()->ToString()
-                          << " version " << operation->schema_version();
-
-    // Find out which columns have been deleted in this schema change, and add them to metadata.
-    vector<DeletedColumn> deleted_cols;
-    for (const auto& col : current_table_info->schema->column_ids()) {
-      if (operation->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
-        deleted_cols.emplace_back(col, clock_->Now());
-        LOG_WITH_PREFIX(INFO) << "Column " << col << " recorded as deleted.";
-      }
-    }
-
-    metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
-                        operation->schema_version(), current_table_info->table_id);
-    if (operation->has_new_table_name()) {
-      metadata_->SetTableName(current_table_info->namespace_name, operation->new_table_name());
-      if (table_metrics_entity_) {
-        table_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
-        table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
-      }
-      if (tablet_metrics_entity_) {
-        tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
-        tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
-      }
-    }
-
-    // Clear old index table metadata cache.
-    ResetYBMetaDataCache();
-
-    // Create transaction manager and index table metadata cache for secondary index update.
-    if (!operation->index_map().empty()) {
-      if (current_table_info->schema->table_properties().is_transactional() &&
-          !transaction_manager_) {
-        transaction_manager_.emplace(client_future_.get(),
-                                     scoped_refptr<server::Clock>(clock_),
-                                     local_tablet_filter_);
-      }
-      CreateNewYBMetaDataCache();
-    }
-
-    // Flush the updated schema metadata to disk.
-    RETURN_NOT_OK(metadata_->Flush());
+  // If the current version >= new version, there is nothing to do.
+  if (current_table_info->schema_version >= operation->schema_version()) {
+    LOG_WITH_PREFIX(INFO)
+        << "Already running schema version " << current_table_info->schema_version
+        << " got alter request for version " << operation->schema_version();
+    return Status::OK();
   }
 
-  Status status = Status::OK();
-  // After schema is flushed on disk, any incoming query will encounter 'Schema version mismatch'.
-  // Thus it is okay to proceed with transaction abort after the write operation resumes.
-  if (operation->request()->should_abort_active_txns()) {
-    DCHECK(table_type_ == TableType::PGSQL_TABLE_TYPE);
-    DCHECK(operation->request()->has_transaction_id());
-    if (transaction_participant() == nullptr) {
-      LOG(ERROR) << "Transaction participant is not available for tablet " << tablet_id();
-      return STATUS(IllegalState, "Transaction participant is null for tablet " + tablet_id());
-    }
-    HybridTime max_cutoff = HybridTime::kMax;
-    CoarseTimePoint deadline = CoarseMonoClock::Now() +
-        MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
-    auto txn_id = VERIFY_RESULT(
-       TransactionIdFromString(operation->request()->transaction_id()));
-    LOG_WITH_PREFIX(INFO) << "Aborting transactions that started prior to " << max_cutoff
-                          << " for tablet id " << tablet_id()
-                          << " excluding transaction with id " << txn_id;
-    status = transaction_participant()->StopActiveTxnsPriorTo(max_cutoff, deadline, &txn_id);
-    if (!status.ok()) {
-      LOG(ERROR) << "Aborting transactions failed for tablet " << tablet_id();
+  LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema().ToString()
+                        << " version " << current_table_info->schema_version
+                        << " to " << operation->schema()->ToString()
+                        << " version " << operation->schema_version();
+
+  // Find out which columns have been deleted in this schema change, and add them to metadata.
+  vector<DeletedColumn> deleted_cols;
+  for (const auto& col : current_table_info->schema().column_ids()) {
+    if (operation->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
+      deleted_cols.emplace_back(col, clock_->Now());
+      LOG_WITH_PREFIX(INFO) << "Column " << col << " recorded as deleted.";
     }
   }
 
-  return status;
+  metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
+                      operation->schema_version(), current_table_info->table_id);
+  if (operation->has_new_table_name()) {
+    metadata_->SetTableName(current_table_info->namespace_name, operation->new_table_name());
+    if (table_metrics_entity_) {
+      table_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
+      table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+    }
+    if (tablet_metrics_entity_) {
+      tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
+      tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+    }
+  }
+
+  // Clear old index table metadata cache.
+  ResetYBMetaDataCache();
+
+  // Create transaction manager and index table metadata cache for secondary index update.
+  if (!operation->index_map().empty()) {
+    if (current_table_info->schema().table_properties().is_transactional() &&
+        !transaction_manager_) {
+      transaction_manager_ = std::make_unique<client::TransactionManager>(
+          client_future_.get(), scoped_refptr<server::Clock>(clock_), local_tablet_filter_);
+    }
+    CreateNewYBMetaDataCache();
+  }
+
+  // Flush the updated schema metadata to disk.
+  return metadata_->Flush();
 }
 
 Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
@@ -2528,7 +2161,9 @@ Status Tablet::BackfillIndexesForYsql(
   {
     std::stringstream ss;
     for (auto& index : indexes) {
-      Oid index_oid = VERIFY_RESULT(GetPgsqlTableOid(index.table_id()));
+      // Cannot use Oid type because for large OID such as 2147500041, it overflows Postgres
+      // lexer <ival> type. Use int to output as -2147467255 that is accepted by <ival>.
+      int index_oid = VERIFY_RESULT(GetPgsqlTableOid(index.table_id()));
       ss << index_oid << ",";
     }
     index_oids = ss.str();
@@ -2543,7 +2178,7 @@ Status Tablet::BackfillIndexesForYsql(
         GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until);
 
     // This should be safe from injection attacks because the parameters only consist of characters
-    // [,0-9a-f].
+    // [-,0-9a-f].
     std::string query_str = Format(
         "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
         index_oids,
@@ -2866,7 +2501,8 @@ Status Tablet::FlushWithRetries(
   std::unordered_map<string, int32_t> error_msg_cnts;
   do {
     std::vector<std::shared_ptr<SomeYBqlOp>> failed_ops;
-    RETURN_NOT_OK_PREPEND(session->Flush(), "Flush failed.");
+    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+    RETURN_NOT_OK_PREPEND(session->TEST_Flush(), "Flush failed.");
     VLOG(3) << "Done flushing ops to the index";
     for (auto index_op : pending_ops) {
       if (index_op->response().status() == QLResponsePB::YQL_STATUS_OK) {
@@ -3189,7 +2825,8 @@ ScopedRWOperation Tablet::CreateNonAbortableScopedRWOperation(
 
 Status Tablet::ModifyFlushedFrontier(
     const docdb::ConsensusFrontier& frontier,
-    rocksdb::FrontierModificationMode mode) {
+    rocksdb::FrontierModificationMode mode,
+    FlushFlags flags) {
   const Status s = regular_db_->ModifyFlushedFrontier(frontier.Clone(), mode);
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
@@ -3217,7 +2854,8 @@ Status Tablet::ModifyFlushedFrontier(
     });
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
-        &rocksdb_options, LogPrefix(), /* statistics */ nullptr, tablet_options_);
+        &rocksdb_options, LogPrefix(), /* statistics */ nullptr, tablet_options_,
+        rocksdb::BlockBasedTableOptions(), hash_for_data_root_dir(metadata_->data_root_dir()));
     rocksdb_options.create_if_missing = false;
     LOG_WITH_PREFIX(INFO) << "Opening the test RocksDB at " << checkpoint_dir_for_test
         << ", expecting to see flushed frontier of " << frontier.ToString();
@@ -3243,7 +2881,7 @@ Status Tablet::ModifyFlushedFrontier(
     RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(frontier.Clone(), mode));
   }
 
-  return Flush(FlushMode::kAsync);
+  return Flush(FlushMode::kAsync, flags);
 }
 
 Status Tablet::Truncate(TruncateOperation* operation) {
@@ -3282,7 +2920,9 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   // We use the kUpdate mode here, because unlike the case of restoring a snapshot to a completely
   // different tablet in an arbitrary Raft group, here there is no possibility of the flushed
   // frontier needing to go backwards.
-  RETURN_NOT_OK(ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate));
+  RETURN_NOT_OK(ModifyFlushedFrontier(
+      frontier, rocksdb::FrontierModificationMode::kUpdate,
+      FlushFlags::kAllDbs | FlushFlags::kNoScopedOperation));
 
   LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
@@ -3427,6 +3067,10 @@ Result<HybridTime> Tablet::OldestMutableMemtableWriteHybridTime() const {
   return result;
 }
 
+const yb::SchemaPtr Tablet::schema() const {
+  return metadata_->schema();
+}
+
 Status Tablet::DebugDump(vector<string> *lines) {
   switch (table_type_) {
     case TableType::PGSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
@@ -3443,7 +3087,9 @@ Status Tablet::DebugDump(vector<string> *lines) {
 void Tablet::DocDBDebugDump(vector<string> *lines) {
   LOG_STRING(INFO, lines) << "Dumping tablet:";
   LOG_STRING(INFO, lines) << "---------------------------";
-  docdb::DocDBDebugDump(regular_db_.get(), LOG_STRING(INFO, lines), docdb::StorageDbType::kRegular);
+  docdb::DocDBDebugDump(
+      regular_db_.get(), LOG_STRING(INFO, lines), PrimarySchemaPackingStorage(),
+      docdb::StorageDbType::kRegular);
 }
 
 Status Tablet::TEST_SwitchMemtable() {
@@ -3456,254 +3102,6 @@ Status Tablet::TEST_SwitchMemtable() {
     LOG_WITH_PREFIX(INFO) << "Ignoring TEST_SwitchMemtable: no regular RocksDB";
   }
   return Status::OK();
-}
-
-class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation> {
- public:
-  explicit DocWriteOperation(
-      Tablet* tablet, bool txns_enabled, std::unique_ptr<WriteOperation> operation,
-      ScopedRWOperation scoped_read_operation, DocWriteOperationCallback callback)
-      : tablet_(*tablet), txns_enabled_(txns_enabled), operation_(std::move(operation)),
-        scoped_read_operation_(std::move(scoped_read_operation)), callback_(std::move(callback)) {
-  }
-
-  ~DocWriteOperation() {
-    if (operation_) {
-      auto status = STATUS(RuntimeError, "DocWriteOperation did not invoke callback");
-      LOG(DFATAL) << this << " " << status;
-      InvokeCallback(status);
-    }
-  }
-
-  void Start() {
-    auto status = DoStart();
-    if (!status.ok()) {
-      InvokeCallback(status);
-    }
-  }
-
- private:
-  void InvokeCallback(const Status& status) {
-    scoped_read_operation_.Reset();
-    callback_(std::move(operation_), status);
-  }
-
-  CHECKED_STATUS DoStart() {
-    auto write_batch = operation_->mutable_request()->mutable_write_batch();
-    isolation_level_ = VERIFY_RESULT(tablet_.GetIsolationLevelFromPB(*write_batch));
-    const RowMarkType row_mark_type = GetRowMarkTypeFromPB(*write_batch);
-    const auto& metadata = *tablet_.metadata();
-
-    const bool transactional_table = metadata.schema()->table_properties().is_transactional() ||
-                                     operation_->force_txn_path();
-
-    if (!transactional_table && isolation_level_ != IsolationLevel::NON_TRANSACTIONAL) {
-      YB_LOG_EVERY_N_SECS(DFATAL, 30)
-          << "An attempt to perform a transactional operation on a non-transactional table: "
-          << operation_->ToString();
-    }
-
-    const auto partial_range_key_intents = UsePartialRangeKeyIntents(metadata);
-    prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
-        operation_->doc_ops(), write_batch->read_pairs(), tablet_.metrics()->write_lock_latency,
-        isolation_level_, operation_->kind(), row_mark_type, transactional_table,
-        operation_->deadline(), partial_range_key_intents, tablet_.shared_lock_manager()));
-
-    auto* transaction_participant = tablet_.transaction_participant();
-    if (transaction_participant) {
-      request_scope_ = RequestScope(transaction_participant);
-    }
-
-    read_time_ = operation_->read_time();
-
-    if (!txns_enabled_ || !transactional_table) {
-      Complete();
-      return Status::OK();
-    }
-
-    if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
-      auto now = tablet_.clock()->Now();
-      docdb::ResolveOperationConflicts(
-          operation_->doc_ops(), now, tablet_.doc_db(), partial_range_key_intents,
-          transaction_participant, tablet_.metrics()->transaction_conflicts.get(),
-          [self = shared_from_this(), now](const Result<HybridTime>& result) {
-            if (!result.ok()) {
-              self->InvokeCallback(result.status());
-              TRACE("self->InvokeCallback");
-              return;
-            }
-            self->NonTransactionalConflictsResolved(now, *result);
-            TRACE("self->NonTransactionalConflictsResolved");
-          });
-      return Status::OK();
-    }
-
-    if (isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION &&
-        prepare_result_.need_read_snapshot) {
-      boost::container::small_vector<RefCntPrefix, 16> paths;
-      for (const auto& doc_op : operation_->doc_ops()) {
-        paths.clear();
-        IsolationLevel ignored_isolation_level;
-        RETURN_NOT_OK(doc_op->GetDocPaths(
-            docdb::GetDocPathsMode::kLock, &paths, &ignored_isolation_level));
-        for (const auto& path : paths) {
-          auto key = path.as_slice();
-          auto* pair = write_batch->mutable_read_pairs()->Add();
-          pair->set_key(key.data(), key.size());
-          // Empty values are disallowed by docdb.
-          // https://github.com/YugaByte/yugabyte-db/issues/736
-          pair->set_value(std::string(1, docdb::ValueTypeAsChar::kNullLow));
-          write_batch->set_wait_policy(WAIT_ERROR);
-        }
-      }
-    }
-
-    docdb::ResolveTransactionConflicts(
-        operation_->doc_ops(), *write_batch, tablet_.clock()->Now(),
-        read_time_ ? read_time_.read : HybridTime::kMax,
-        tablet_.doc_db(), partial_range_key_intents,
-        transaction_participant, tablet_.metrics()->transaction_conflicts.get(),
-        [self = shared_from_this()](const Result<HybridTime>& result) {
-          if (!result.ok()) {
-            self->InvokeCallback(result.status());
-            TRACE("self->InvokeCallback");
-            return;
-          }
-          self->TransactionalConflictsResolved();
-          TRACE("self->TransactionalConflictsResolved");
-        });
-
-    return Status::OK();
-  }
-
-  void NonTransactionalConflictsResolved(HybridTime now, HybridTime result) {
-    if (now != result) {
-      tablet_.clock()->Update(result);
-    }
-
-    Complete();
-  }
-
-  void TransactionalConflictsResolved() {
-    auto status = DoTransactionalConflictsResolved();
-    if (!status.ok()) {
-      LOG(DFATAL) << status;
-      InvokeCallback(status);
-    }
-  }
-
-  CHECKED_STATUS DoTransactionalConflictsResolved() {
-    if (!read_time_) {
-      auto safe_time = VERIFY_RESULT(tablet_.SafeTime(RequireLease::kTrue));
-      read_time_ = ReadHybridTime::FromHybridTimeRange(
-          {safe_time, tablet_.clock()->NowRange().second});
-    } else if (prepare_result_.need_read_snapshot &&
-               isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION) {
-      return STATUS_FORMAT(
-          InvalidArgument,
-          "Read time should NOT be specified for serializable isolation level: $0",
-          read_time_);
-    }
-
-    Complete();
-    return Status::OK();
-  }
-
-  bool allow_immediate_read_restart() const {
-    return !operation_->read_time();
-  }
-
-  void Complete() {
-    InvokeCallback(DoComplete());
-  }
-
-  CHECKED_STATUS DoComplete() {
-    auto read_op = prepare_result_.need_read_snapshot
-        ? VERIFY_RESULT(ScopedReadOperation::Create(&tablet_, RequireLease::kTrue, read_time_))
-        : ScopedReadOperation();
-    // Actual read hybrid time used for read-modify-write operation.
-    auto real_read_time = prepare_result_.need_read_snapshot
-        ? read_op.read_time()
-        // When need_read_snapshot is false, this time is used only to write TTL field of record.
-        : ReadHybridTime::SingleTime(tablet_.clock()->Now());
-
-    // We expect all read operations for this transaction to be done in AssembleDocWriteBatch. Once
-    // read_txn goes out of scope, the read point is deregistered.
-    HybridTime restart_read_ht;
-    bool local_limit_updated = false;
-
-    // This loop may be executed multiple times multiple times only for serializable isolation or
-    // when read_time was not yet picked for snapshot isolation.
-    // In all other cases it is executed only once.
-    InitMarkerBehavior init_marker_behavior = tablet_.table_type() == TableType::REDIS_TABLE_TYPE
-        ? InitMarkerBehavior::kRequired
-        : InitMarkerBehavior::kOptional;
-    for (;;) {
-      RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
-          operation_->doc_ops(), operation_->deadline(), real_read_time, tablet_.doc_db(),
-          operation_->mutable_request()->mutable_write_batch(), init_marker_behavior,
-          tablet_.monotonic_counter(), &restart_read_ht,
-          tablet_.metadata()->table_name()));
-
-      // For serializable isolation we don't fix read time, so could do read restart locally,
-      // instead of failing whole transaction.
-      if (!restart_read_ht.is_valid() || !allow_immediate_read_restart()) {
-        break;
-      }
-
-      real_read_time.read = restart_read_ht;
-      if (!local_limit_updated) {
-        local_limit_updated = true;
-        real_read_time.local_limit = std::min(
-            real_read_time.local_limit, VERIFY_RESULT(tablet_.SafeTime(RequireLease::kTrue)));
-      }
-
-      restart_read_ht = HybridTime();
-
-      operation_->mutable_request()->mutable_write_batch()->clear_write_pairs();
-
-      for (auto& doc_op : operation_->doc_ops()) {
-        doc_op->ClearResponse();
-      }
-    }
-
-    operation_->SetRestartReadHt(restart_read_ht);
-
-    if (allow_immediate_read_restart() &&
-        isolation_level_ != IsolationLevel::NON_TRANSACTIONAL &&
-        operation_->response()) {
-      real_read_time.ToPB(operation_->response()->mutable_used_read_time());
-    }
-
-    if (operation_->restart_read_ht().is_valid()) {
-      return Status::OK();
-    }
-
-    operation_->ReplaceDocDBLocks(std::move(prepare_result_.lock_batch));
-
-    return Status::OK();
-  }
-
-  Tablet& tablet_;
-  const bool txns_enabled_;
-  std::unique_ptr<WriteOperation> operation_;
-  ScopedRWOperation scoped_read_operation_;
-  DocWriteOperationCallback callback_;
-
-  IsolationLevel isolation_level_;
-  docdb::PrepareDocWriteOperationResult prepare_result_;
-  RequestScope request_scope_;
-  ReadHybridTime read_time_;
-};
-
-void Tablet::StartDocWriteOperation(
-    std::unique_ptr<WriteOperation> operation,
-    ScopedRWOperation scoped_read_operation,
-    DocWriteOperationCallback callback) {
-  auto doc_write_operation = std::make_shared<DocWriteOperation>(
-      this, txns_enabled_, std::move(operation), std::move(scoped_read_operation),
-      std::move(callback));
-  doc_write_operation->Start();
 }
 
 Result<HybridTime> Tablet::DoGetSafeTime(
@@ -3789,7 +3187,7 @@ bool Tablet::ShouldDisableLbMove() {
   //
   // In this case, we want to disable tablet moves. We conservatively return true for any failure
   // if the tablet is part of a colocated table.
-  return metadata_->schema()->has_pgtable_id();
+  return metadata_->schema()->has_colocation_id();
 }
 
 void Tablet::ForceRocksDBCompactInTest() {
@@ -3800,7 +3198,7 @@ Status Tablet::ForceFullRocksDBCompact() {
   auto scoped_operation = CreateAbortableScopedRWOperation();
   RETURN_NOT_OK(scoped_operation);
 
-    if (regular_db_) {
+  if (regular_db_) {
     RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get()));
   }
   if (intents_db_) {
@@ -3814,22 +3212,40 @@ Status Tablet::ForceFullRocksDBCompact() {
 std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
   if (!regular_db_) return "";
 
+  const auto& schema_packing_storage = PrimarySchemaPackingStorage();
   if (!include_intents) {
-    return docdb::DocDBDebugDumpToStr(doc_db().WithoutIntents());
+    return docdb::DocDBDebugDumpToStr(doc_db().WithoutIntents(), schema_packing_storage);
   }
 
-  return docdb::DocDBDebugDumpToStr(doc_db());
+  return docdb::DocDBDebugDumpToStr(doc_db(), schema_packing_storage);
 }
 
 void Tablet::TEST_DocDBDumpToContainer(
     IncludeIntents include_intents, std::unordered_set<std::string>* out) {
   if (!regular_db_) return;
 
+  const auto& schema_packing_storage = PrimarySchemaPackingStorage();
   if (!include_intents) {
-    return docdb::DocDBDebugDumpToContainer(doc_db().WithoutIntents(), out);
+    return docdb::DocDBDebugDumpToContainer(doc_db().WithoutIntents(), schema_packing_storage, out);
   }
 
-  return docdb::DocDBDebugDumpToContainer(doc_db(), out);
+  return docdb::DocDBDebugDumpToContainer(doc_db(), schema_packing_storage, out);
+}
+
+void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
+  if (!regular_db_) {
+    LOG_WITH_PREFIX(INFO) << "No RocksDB to dump";
+    return;
+  }
+
+  const auto& schema_packing_storage = PrimarySchemaPackingStorage();
+  docdb::DumpRocksDBToLog(
+      regular_db_.get(), schema_packing_storage, StorageDbType::kRegular, LogPrefix());
+
+  if (include_intents && intents_db_) {
+    docdb::DumpRocksDBToLog(
+        intents_db_.get(), schema_packing_storage, StorageDbType::kIntents, LogPrefix());
+  }
 }
 
 size_t Tablet::TEST_CountRegularDBRecords() {
@@ -3888,6 +3304,9 @@ std::pair<int, int> Tablet::GetNumMemtables() const {
 
   {
     auto scoped_operation = CreateNonAbortableScopedRWOperation();
+    if (!scoped_operation.ok()) {
+      return std::make_pair(0, 0);
+    }
     std::lock_guard<rw_spinlock> lock(component_lock_);
     if (intents_db_) {
       // NOTE: 1 is added on behalf of cfd->mem().
@@ -3907,7 +3326,7 @@ std::pair<int, int> Tablet::GetNumMemtables() const {
 Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     const TransactionMetadataPB& transaction_metadata,
     bool is_ysql_catalog_table,
-    const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata) const {
+    const SubTransactionMetadataPB* subtransaction_metadata) const {
   if (!txns_enabled_)
     return TransactionOperationContext();
 
@@ -3926,7 +3345,7 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
 Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     const boost::optional<TransactionId>& transaction_id,
     bool is_ysql_catalog_table,
-    const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata) const {
+    const SubTransactionMetadataPB* subtransaction_metadata) const {
   if (!txns_enabled_) {
     return TransactionOperationContext();
   }
@@ -3946,6 +3365,10 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     return TransactionOperationContext();
   }
 
+  if (!transaction_participant_) {
+    return STATUS(IllegalState, "Transactional operation for non transactional tablet");
+  }
+
   if (!subtransaction_metadata) {
     return TransactionOperationContext(*txn_id, transaction_participant());
   }
@@ -3963,16 +3386,20 @@ Status Tablet::CreateReadIntents(
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
       transaction_metadata,
       /* is_ysql_catalog_table */ pgsql_batch.size() > 0 && is_sys_catalog_,
-      subtransaction_metadata));
+      &subtransaction_metadata));
 
+  auto table_info = metadata_->primary_table_info();
   for (const auto& ql_read : ql_batch) {
     docdb::QLReadOperation doc_op(ql_read, txn_op_ctx);
-    RETURN_NOT_OK(doc_op.GetIntents(*GetSchema(), write_batch));
+    RETURN_NOT_OK(doc_op.GetIntents(table_info->schema(), write_batch));
   }
 
   for (const auto& pgsql_read : pgsql_batch) {
+    if (table_info == nullptr || table_info->table_id != pgsql_read.table_id()) {
+      table_info = VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read.table_id()));
+    }
     docdb::PgsqlReadOperation doc_op(pgsql_read, txn_op_ctx);
-    RETURN_NOT_OK(doc_op.GetIntents(*GetSchema(pgsql_read.table_id()), write_batch));
+    RETURN_NOT_OK(doc_op.GetIntents(table_info->schema(), write_batch));
   }
 
   return Status::OK();
@@ -4028,7 +3455,8 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
         &rocksdb_options, MakeTabletLogPrefix(tablet_id, log_prefix_suffix_, rocksdb.db_type),
-        /* statistics */ nullptr, tablet_options_);
+        /* statistics */ nullptr, tablet_options_, rocksdb::BlockBasedTableOptions(),
+        hash_for_data_root_dir(metadata->data_root_dir()));
     rocksdb_options.create_if_missing = false;
     // Disable background compactions, we only need to update flushed frontier.
     rocksdb_options.compaction_style = rocksdb::CompactionStyle::kCompactionStyleNone;
@@ -4072,30 +3500,71 @@ void Tablet::InitRocksDBOptions(
     rocksdb::Options* options, const std::string& log_prefix,
     rocksdb::BlockBasedTableOptions table_options) {
   docdb::InitRocksDBOptions(
-      options, log_prefix, regulardb_statistics_, tablet_options_, std::move(table_options));
+      options, log_prefix, regulardb_statistics_, tablet_options_, std::move(table_options),
+      hash_for_data_root_dir(metadata_->data_root_dir()));
 }
 
 rocksdb::Env& Tablet::rocksdb_env() const {
   return *tablet_options_.rocksdb_env;
 }
 
+const std::string& Tablet::tablet_id() const {
+  return metadata_->raft_group_id();
+}
+
 Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
+  auto error_prefix = [this]() {
+    return Format(
+        "Failed to detect middle key for tablet $0 (key_bounds: $1 - $2)",
+        tablet_id(),
+        Slice(key_bounds_.lower).ToDebugHexString(),
+        Slice(key_bounds_.upper).ToDebugHexString());
+  };
+
   // TODO(tsplit): should take key_bounds_ into account.
   auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey());
+
+  // In some rare cases middle key can point to a special internal record which is not visible
+  // for a user, but tablet splitting routines expect the specific structure for partition keys
+  // that does not match the struct of the internally used records. Moreover, it is expected
+  // to have two child tablets with alive user records after the splitting, but the split
+  // by the internal record will lead to a case when one tablet will consist of internal records
+  // only and these records will be compacted out at some point making an empty tablet.
+  if (PREDICT_FALSE(docdb::IsInternalRecordKeyType(docdb::DecodeKeyEntryType(middle_key[0])))) {
+    return STATUS_FORMAT(
+        IllegalState, "$0: got internal record \"$1\"",
+        error_prefix(), Slice(middle_key).ToDebugHexString());
+  }
+
   const auto key_part = metadata()->partition_schema()->IsHashPartitioning()
                             ? docdb::DocKeyPart::kUpToHashCode
                             : docdb::DocKeyPart::kWholeDocKey;
   const auto split_key_size = VERIFY_RESULT(DocKey::EncodedSize(middle_key, key_part));
+  if (PREDICT_FALSE(split_key_size == 0)) {
+    // Using this verification just to have a more sensible message. The below verification will
+    // not pass with split_key_size == 0 also, but its message is not accurate enough. This failure
+    // may happen when a key cannot be decoded with key_part inside DocKey::EncodedSize and the key
+    // still valid for any reason (e.g. gettining non-hash key for hash partitioning).
+    return STATUS_FORMAT(
+        IllegalState, "$0: got unexpected key \"$1\"",
+        error_prefix(), Slice(middle_key).ToDebugHexString());
+  }
+
   middle_key.resize(split_key_size);
   const Slice middle_key_slice(middle_key);
   if (middle_key_slice.compare(key_bounds_.lower) <= 0 ||
       (!key_bounds_.upper.empty() && middle_key_slice.compare(key_bounds_.upper) >= 0)) {
-    return STATUS_FORMAT(
-        IllegalState,
-        "Failed to detect middle key (got \"$0\") for tablet $1 (key_bounds: $2 - $3), this can "
-        "happen if post-split tablet wasn't fully compacted after split",
-        middle_key_slice.ToDebugHexString(), tablet_id(),
-        Slice(key_bounds_.lower).ToDebugHexString(), Slice(key_bounds_.upper).ToDebugHexString());
+    // This error occurs if there is no key strictly between the tablet lower and upper bound. It
+    // causes the tablet split manager to temporarily delay splitting for this tablet.
+    // The error can occur if:
+    // 1. There are only one or two keys in the tablet (e.g. when indexing a large tablet by a low
+    //    cardinality column), in which case we do not want to keep retrying splits.
+    // 2. A post-split tablet wasn't fully compacted after it split. In this case, delaying splits
+    //    will prevent splits after the compaction completes, but we should not be trying to split
+    //    an uncompacted tablet anyways.
+    return STATUS_EC_FORMAT(IllegalState,
+        tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
+        "$0: got \"$1\".", error_prefix(), middle_key_slice.ToDebugHexString());
   }
   return middle_key;
 }
@@ -4293,6 +3762,10 @@ void Tablet::RegisterOperationFilter(OperationFilter* filter) {
   operation_filters_.push_back(*filter);
 }
 
+const docdb::SchemaPackingStorage& Tablet::PrimarySchemaPackingStorage() {
+  return metadata_->primary_table_info()->doc_read_context->schema_packing_storage;
+}
+
 void Tablet::UnregisterOperationFilter(OperationFilter* filter) {
   std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
   UnregisterOperationFilterUnlocked(filter);
@@ -4302,12 +3775,10 @@ void Tablet::UnregisterOperationFilterUnlocked(OperationFilter* filter) {
   operation_filters_.erase(operation_filters_.iterator_to(*filter));
 }
 
-SchemaPtr Tablet::GetSchema(const std::string& table_id) const {
-  if (table_id.empty()) {
-    return metadata_->schema();
-  }
-  auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
-  return SchemaPtr(table_info, table_info->schema.get());
+docdb::DocReadContextPtr Tablet::GetDocReadContext(const std::string& table_id) const {
+  auto table_info = table_id.empty()
+      ? metadata_->primary_table_info() : CHECK_RESULT(metadata_->GetTableInfo(table_id));
+  return docdb::DocReadContextPtr(table_info, table_info->doc_read_context.get());
 }
 
 Schema Tablet::GetKeySchema(const std::string& table_id) const {
@@ -4315,7 +3786,7 @@ Schema Tablet::GetKeySchema(const std::string& table_id) const {
     return *key_schema_;
   }
   auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
-  return table_info->schema->CreateKeyProjection();
+  return table_info->schema().CreateKeyProjection();
 }
 
 // ------------------------------------------------------------------------------------------------

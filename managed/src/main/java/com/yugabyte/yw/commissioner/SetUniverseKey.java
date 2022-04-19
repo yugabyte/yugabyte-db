@@ -47,7 +47,7 @@ public class SetUniverseKey {
 
   private final YBClientService ybService;
 
-  private final int YB_SET_UNIVERSE_KEY_INTERVAL = 2;
+  private static final int YB_SET_UNIVERSE_KEY_INTERVAL = 2;
 
   @Inject
   public SetUniverseKey(
@@ -59,14 +59,13 @@ public class SetUniverseKey {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.ybService = ybService;
-    this.initialize();
   }
 
   public void setRunningState(AtomicBoolean state) {
     this.running = state;
   }
 
-  private void initialize() {
+  public void start() {
     this.actorSystem
         .scheduler()
         .schedule(
@@ -77,7 +76,14 @@ public class SetUniverseKey {
   }
 
   private void setKeyInMaster(Universe u, HostAndPort masterAddr, byte[] keyRef, byte[] keyVal) {
+
     YBClient client = null;
+
+    if (u.getUniverseDetails().universePaused) {
+      log.info("Skipping setting universe keys as {} is paused", u.universeUUID.toString());
+      return;
+    }
+
     String hostPorts = u.getMasterAddresses();
     String certificate = u.getCertificateNodetoNode();
     try {
@@ -120,7 +126,7 @@ public class SetUniverseKey {
         byte[] keyRef = Base64.getDecoder().decode(activeKey.uuid.keyRef);
         byte[] keyVal = keyManager.getUniverseKey(u.universeUUID, activeKey.configUuid, keyRef);
         Arrays.stream(u.getMasterAddresses().split(","))
-            .map(addrString -> HostAndPort.fromString(addrString))
+            .map(HostAndPort::fromString)
             .forEach(addr -> setKeyInMaster(u, addr, keyRef, keyVal));
       }
     } catch (Exception e) {

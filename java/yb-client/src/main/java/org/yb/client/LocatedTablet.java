@@ -40,10 +40,10 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.ImmutableList;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
-import org.yb.consensus.Metadata.RaftPeerPB.Role;
-import org.yb.master.Master.TabletLocationsPB;
-import org.yb.master.Master.TabletLocationsPB.ReplicaPB;
-import org.yb.Common.HostPortPB;
+import org.yb.master.MasterClientOuterClass.TabletLocationsPB;
+import org.yb.master.MasterClientOuterClass.TabletLocationsPB.ReplicaPB;
+import org.yb.CommonNet.HostPortPB;
+import org.yb.CommonTypes.PeerRole;
 
 /**
  * Information about the locations of tablets in a YB table.
@@ -103,13 +103,13 @@ public class LocatedTablet {
    * Return the current leader, or null if there is none.
    */
   public Replica getLeaderReplica() {
-    return getOneOfRoleOrNull(Role.LEADER);
+    return getOneOfRoleOrNull(PeerRole.LEADER);
   }
 
   /**
    * Return the first occurrence for the given role, or null if there is none.
    */
-  private Replica getOneOfRoleOrNull(Role role) {
+  private Replica getOneOfRoleOrNull(PeerRole role) {
     for (Replica r : replicas) {
       if (r.getRole() == role.toString()) return r;
     }
@@ -178,7 +178,7 @@ public class LocatedTablet {
       return pb.getTsInfo().getPlacementUuid().toStringUtf8();
     }
 
-    public org.yb.Common.CloudInfoPB getCloudInfo() {
+    public org.yb.CommonNet.CloudInfoPB getCloudInfo() {
       return pb.getTsInfo().getCloudInfo();
     }
   }

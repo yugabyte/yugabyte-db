@@ -20,13 +20,19 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.TableDetails;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.yb.ColumnSchema.SortOrder;
 
 public class ApiUtils {
@@ -115,7 +121,7 @@ public class ApiUtils {
       final boolean updateInProgress) {
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
+            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, false, null);
     return mockUniverseUpdater(userIntent, nodePrefix, setMasters, updateInProgress, placementInfo);
   }
 
@@ -132,6 +138,16 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
+        List<UUID> azUUIDList = null;
+        if (placementInfo != null) {
+          PlacementCloud placementCloud = placementInfo.cloudList.get(0);
+          azUUIDList = new ArrayList<>();
+          for (PlacementRegion rp : placementCloud.regionList) {
+            for (PlacementAZ az : rp.azList) {
+              azUUIDList.addAll(Collections.nCopies(az.numNodesInAZ, az.uuid));
+            }
+          }
+        }
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           // TODO: This state needs to be ToBeAdded as Create(k8s)Univ runtime sets it to Live
           // and nodeName should be null for ToBeAdded.
@@ -141,11 +157,9 @@ public class ApiUtils {
                   NodeDetails.NodeState.Live,
                   setMasters && idx <= userIntent.replicationFactor);
           node.placementUuid = universeDetails.getPrimaryCluster().uuid;
-          if (placementInfo != null) {
-            List<PlacementInfo.PlacementAZ> azList =
-                placementInfo.cloudList.get(0).regionList.get(0).azList;
-            int azIndex = (idx - 1) % azList.size();
-            node.azUuid = azList.get(azIndex).uuid;
+          if (azUUIDList != null) {
+            int azIndex = (idx - 1) % azUUIDList.size();
+            node.azUuid = azUUIDList.get(azIndex);
           }
           universeDetails.nodeDetailsSet.add(node);
         }
@@ -153,6 +167,14 @@ public class ApiUtils {
         universeDetails.rootCA = universe.getUniverseDetails().rootCA;
         universe.setUniverseDetails(universeDetails);
       }
+    };
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(final UUID rootCA) {
+    return universe -> {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      universeDetails.rootCA = rootCA;
+      universe.setUniverseDetails(universeDetails);
     };
   }
 
@@ -344,6 +366,32 @@ public class ApiUtils {
     };
   }
 
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithNodeCallback(
+      UserIntent userIntent, Consumer<NodeDetails> callback) {
+    return new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+        // Add a desired number of nodes.
+        universeDetails.nodeDetailsSet = new HashSet<>();
+        userIntent.numNodes = userIntent.replicationFactor;
+        for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+          NodeDetails node =
+              getDummyNodeDetails(
+                  idx, NodeDetails.NodeState.Live, idx <= userIntent.replicationFactor);
+          if (callback != null) {
+            callback.accept(node);
+          }
+          universeDetails.nodeDetailsSet.add(node);
+        }
+        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universeDetails.nodePrefix = "host";
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+  }
+
   public static UserIntent getDefaultUserIntent(Customer customer) {
     Provider p = ModelFactory.awsProvider(customer);
     return getDefaultUserIntent(p);
@@ -467,12 +515,13 @@ public class ApiUtils {
     NodeDetails node = new NodeDetails();
     // TODO: Set nodeName to null for ToBeAdded state
     node.nodeName = "host-n" + idx;
+    node.nodeUuid = UUID.randomUUID();
     node.cloudInfo = new CloudSpecificInfo();
     node.cloudInfo.cloud = cloud;
     node.cloudInfo.az = zone;
     node.cloudInfo.region = region;
     node.cloudInfo.subnet_id = subnet;
-    node.cloudInfo.private_ip = "host-n" + idx;
+    node.cloudInfo.private_ip = "10.0.0." + idx;
     node.cloudInfo.instance_type = UTIL_INST_TYPE;
     node.isTserver = true;
     node.state = state;
@@ -482,6 +531,7 @@ public class ApiUtils {
     }
     node.nodeIdx = idx;
     node.isYsqlServer = isYSQL;
+    node.disksAreMountedByUUID = true;
     return node;
   }
 
@@ -505,6 +555,15 @@ public class ApiUtils {
 
   public static TableDetails getDummyTableDetails(
       int partitionKeyCount, int clusteringKeyCount, long ttl, SortOrder sortOrder) {
+    return getDummyTableDetails(partitionKeyCount, clusteringKeyCount, ttl, sortOrder, false);
+  }
+
+  public static TableDetails getDummyTableDetails(
+      int partitionKeyCount,
+      int clusteringKeyCount,
+      long ttl,
+      SortOrder sortOrder,
+      boolean clusteringFirst) {
     TableDetails table = new TableDetails();
     table.tableName = "dummy_table";
     table.keyspace = "dummy_ks";
@@ -515,7 +574,7 @@ public class ApiUtils {
       column.name = "k" + i;
       column.columnOrder = i;
       column.type = ColumnDetails.YQLDataType.INT;
-      column.isPartitionKey = i < partitionKeyCount;
+      column.isPartitionKey = clusteringFirst ? (i >= clusteringKeyCount) : (i < partitionKeyCount);
       column.isClusteringKey = !column.isPartitionKey;
       if (column.isClusteringKey) {
         column.sortOrder = sortOrder;

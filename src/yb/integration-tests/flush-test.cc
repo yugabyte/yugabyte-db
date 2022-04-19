@@ -240,11 +240,11 @@ class FlushITest : public YBTest {
 
   void TestFlushPicksOldestInactiveTabletAfterCompaction(bool with_restart);
 
-  const size_t kServerLimitMB = 2;
+  const int32_t kServerLimitMB = 2;
   // Used to set memstore limit to value higher than server limit, so flushes are only being
   // triggered by memory monitor which we want to test.
-  const size_t kOverServerLimitMB = kServerLimitMB * 10;
-  const size_t kNumTablets = 3;
+  const int32_t kOverServerLimitMB = kServerLimitMB * 10;
+  const int kNumTablets = 3;
   const size_t kPayloadBytes = 8_KB;
   std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<TestWorkload> workload_;

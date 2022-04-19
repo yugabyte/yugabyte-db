@@ -59,6 +59,9 @@ import play.data.validation.Constraints;
 @JsonDeserialize(converter = UniverseDefinitionTaskParams.BaseConverter.class)
 public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
+  private static final Set<String> AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY =
+      ImmutableSet.of("i3.", "c5d.", "c6gd.");
+
   @Constraints.Required()
   @Constraints.MinLength(1)
   public List<Cluster> clusters = new LinkedList<>();
@@ -106,7 +109,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @ApiModelProperty public boolean backupInProgress = false;
 
-  // This tracks the if latest operation on this universe has successfully completed. This flag is
+  // This tracks that if latest operation on this universe has successfully completed. This flag is
   // reset each time a new operation on the universe starts, and is set at the very end of that
   // operation.
   @ApiModelProperty public boolean updateSucceeded = true;
@@ -132,6 +135,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty public String itestS3PackagePath = "";
 
   @ApiModelProperty public String remotePackagePath = "";
+
+  // EDIT mode: Set to true if nodes could be resized without full move.
+  @ApiModelProperty public boolean nodesResizeAvailable = false;
 
   /** Allowed states for an imported universe. */
   public enum ImportedState {
@@ -170,9 +176,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   public static class Cluster {
-
-    private static final Set<String> AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY =
-        ImmutableSet.of("i3.", "c5d.", "c6gd.");
 
     public UUID uuid = UUID.randomUUID();
 
@@ -278,7 +281,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       DeviceInfo deviceInfo = userIntent.deviceInfo;
       CloudType cloudType = userIntent.providerType;
-      if (cloudType == CloudType.aws && isAwsClusterWithEphemeralStorage()) {
+      if (cloudType == CloudType.aws && hasEphemeralStorage(userIntent)) {
         // Ephemeral storage AWS instances should not have storage type
         if (deviceInfo.storageType != null) {
           throw new PlatformServiceException(
@@ -302,16 +305,21 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
       }
     }
+  }
 
-    @JsonIgnore
-    public boolean isAwsClusterWithEphemeralStorage() {
+  public static boolean hasEphemeralStorage(UserIntent userIntent) {
+    if (userIntent.providerType == CloudType.aws) {
       for (String prefix : AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY) {
         if (userIntent.instanceType.startsWith(prefix)) {
           return true;
         }
       }
       return false;
+    } else if (userIntent.providerType == CloudType.gcp) {
+      return userIntent.deviceInfo != null
+          && userIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch;
     }
+    return false;
   }
 
   /** The user defined intent for the universe. */
@@ -556,6 +564,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
 
       return retTags;
+    }
+
+    @JsonIgnore
+    public boolean isYSQLAuthEnabled() {
+      return tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")
+          || enableYSQLAuth;
     }
   }
 

@@ -213,13 +213,13 @@ struct KeyEncoderTraits<BINARY, Buffer> {
       // if we just did that, we'd have issues where a key that actually has
       // \x00 in it would compare wrong, so we have to instead add \x00\x00, and
       // encode \x00 as \x00\x01.
-      int old_size = dst->size();
+      auto old_size = dst->size();
       dst->resize(old_size + s.size() * 2 + 2);
 
       const uint8_t* srcp = s.data();
       uint8_t* dstp = reinterpret_cast<uint8_t*>(&(*dst)[old_size]);
-      int len = s.size();
-      int rem = len;
+      auto len = s.size();
+      auto rem = len;
 
       while (rem >= 16) {
         if (!SSEEncodeChunk<16>(&srcp, &dstp)) {
@@ -279,7 +279,7 @@ struct KeyEncoderTraits<BINARY, Buffer> {
     }
 
     uint8_t* src = encoded_key->mutable_data();
-    int max_len = separator - src;
+    auto max_len = separator - src;
     uint8_t* dst_start = static_cast<uint8_t*>(arena->AllocateBytes(max_len));
     uint8_t* dst = dst_start;
 
@@ -290,7 +290,7 @@ struct KeyEncoderTraits<BINARY, Buffer> {
       *dst++ = src[i];
     }
 
-    int real_len = dst - dst_start;
+    auto real_len = dst - dst_start;
     Slice slice(dst_start, real_len);
     memcpy(cell_ptr, &slice, sizeof(Slice));
     encoded_key->remove_prefix(max_len + 2);
@@ -353,8 +353,9 @@ struct KeyEncoderTraits<BINARY, Buffer> {
   }
 
   // Non-SSE loop which encodes 'len' bytes from 'srcp' into 'dst'.
-  static void EncodeChunkLoop(const uint8_t** srcp, uint8_t** dstp, int len) {
-    while (len--) {
+  static void EncodeChunkLoop(const uint8_t** srcp, uint8_t** dstp, size_t len) {
+    while (len > 0) {
+      --len;
       if (PREDICT_FALSE(**srcp == '\0')) {
         *(*dstp)++ = 0;
         *(*dstp)++ = 1;
@@ -401,6 +402,12 @@ class EncoderResolver;
 template <typename Buffer>
 class KeyEncoder {
  public:
+  template<typename EncoderTraitsClass>
+  explicit KeyEncoder(EncoderTraitsClass t)
+      : encode_func_(EncoderTraitsClass::Encode),
+        encode_with_separators_func_(EncoderTraitsClass::EncodeWithSeparators),
+        decode_key_portion_func_(EncoderTraitsClass::DecodeKeyPortion) {
+  }
 
   // Encodes the provided key to the provided buffer
   void Encode(const void* key, Buffer* dst) const {
@@ -432,14 +439,6 @@ class KeyEncoder {
   }
 
  private:
-  friend class EncoderResolver<Buffer>;
-  template<typename EncoderTraitsClass>
-  explicit KeyEncoder(EncoderTraitsClass t)
-      : encode_func_(EncoderTraitsClass::Encode),
-        encode_with_separators_func_(EncoderTraitsClass::EncodeWithSeparators),
-        decode_key_portion_func_(EncoderTraitsClass::DecodeKeyPortion) {
-  }
-
   typedef void (*EncodeFunc)(const void* key, Buffer* dst);
   const EncodeFunc encode_func_;
   typedef void (*EncodeWithSeparatorsFunc)(const void* key, bool is_last, Buffer* dst);

@@ -150,7 +150,7 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
       smaller_vector = &expected;
     }
 
-    for (int i = smaller_vector->size();
+    for (auto i = smaller_vector->size();
          i < min(smaller_vector->size() + 16, bigger_vector->size());
          ++i) {
       LOG(WARNING) << bigger_vector_desc << "[" << i << "]: " << (*bigger_vector)[i];
@@ -241,7 +241,26 @@ inline std::string GetPgToolPath(const std::string& tool_name) {
   return GetToolPath("../postgres/bin", tool_name);
 }
 
-int CalcNumTablets(int num_tablet_servers);
+int CalcNumTablets(size_t num_tablet_servers);
+
+template<uint32_t limit>
+struct LengthLimitedStringPrinter {
+  explicit LengthLimitedStringPrinter(const std::string& str_)
+      : str(str_) {
+  }
+  const std::string& str;
+};
+
+using Max500CharsPrinter = LengthLimitedStringPrinter<500>;
+
+template<uint32_t limit>
+std::ostream& operator<<(std::ostream& os, const LengthLimitedStringPrinter<limit>& printer) {
+  const auto& s = printer.str;
+  if (s.length() <= limit) {
+    return os << s;
+  }
+  return os.write(s.c_str(), limit) << "... (" << (s.length() - limit) << " more characters)";
+}
 
 class StopOnFailure {
  public:

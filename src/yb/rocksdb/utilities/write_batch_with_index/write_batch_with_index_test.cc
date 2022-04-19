@@ -30,6 +30,7 @@
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend.h"
 
@@ -61,10 +62,10 @@ struct Entry {
 
 struct TestHandler : public WriteBatch::Handler {
   std::map<uint32_t, std::vector<Entry>> seen;
-  Status PutCF(uint32_t column_family_id, const Slice& key, const Slice& value) override {
+  Status PutCF(uint32_t column_family_id, const SliceParts& key, const SliceParts& value) override {
     Entry e;
-    e.key = key.ToBuffer();
-    e.value = value.ToBuffer();
+    e.key = key.TheOnlyPart().ToBuffer();
+    e.value = value.TheOnlyPart().ToBuffer();
     e.type = kPutRecord;
     seen[column_family_id].push_back(e);
     return Status::OK();
@@ -89,7 +90,7 @@ struct TestHandler : public WriteBatch::Handler {
 };
 }  // anonymous namespace
 
-class WriteBatchWithIndexTest : public testing::Test {};
+class WriteBatchWithIndexTest : public RocksDBTest {};
 
 void TestValueAsSecondaryIndexHelper(std::vector<Entry> entries,
                                      WriteBatchWithIndex* batch) {

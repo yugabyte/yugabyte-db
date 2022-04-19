@@ -18,13 +18,12 @@
 #include "yb/master/master_tserver.h"
 
 #include "yb/tserver/tablet_service.h"
-#include "yb/tserver/tserver.pb.h"
 
 namespace yb {
 namespace master {
 
 // A subset of the TabletService supported by the Master to query specific tables.
-class MasterTabletServiceImpl : public yb::tserver::TabletServiceImpl {
+class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
  public:
   MasterTabletServiceImpl(MasterTabletServer* server, Master* master);
 
@@ -53,12 +52,9 @@ class MasterTabletServiceImpl : public yb::tserver::TabletServiceImpl {
                            rpc::RpcContext context) override;
 
  private:
-  bool GetTabletOrRespond(
-      const tserver::ReadRequestPB* req,
-      tserver::ReadResponsePB* resp,
-      rpc::RpcContext* context,
-      std::shared_ptr<tablet::AbstractTablet>* tablet,
-      tablet::TabletPeerPtr looked_up_tablet_peer) override;
+  Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
+    const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
+    YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet) override;
 
   Master *const master_;
   DISALLOW_COPY_AND_ASSIGN(MasterTabletServiceImpl);

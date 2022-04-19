@@ -42,6 +42,7 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
@@ -76,14 +77,9 @@ namespace yb {
 namespace tablet {
 
 using namespace std::placeholders;
-using std::shared_ptr;
 
 using consensus::Consensus;
 using consensus::ConsensusRound;
-using consensus::ReplicateMsg;
-using consensus::DriverType;
-using log::Log;
-using server::Clock;
 
 ////////////////////////////////////////////////////////////
 // OperationDriver
@@ -91,12 +87,10 @@ using server::Clock;
 
 OperationDriver::OperationDriver(OperationTracker *operation_tracker,
                                  Consensus* consensus,
-                                 Log* log,
                                  Preparer* preparer,
                                  TableType table_type)
     : operation_tracker_(operation_tracker),
       consensus_(consensus),
-      log_(log),
       preparer_(preparer),
       trace_(new Trace()),
       start_time_(MonoTime::Now()),
@@ -114,6 +108,13 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
     operation_ = std::move(*operation);
   }
 
+  auto result = operation_tracker_->Add(this);
+
+  if (!result.ok() && operation) {
+    *operation = std::move(operation_);
+    return result;
+  }
+
   if (term == OpId::kUnknownTerm) {
     if (operation_) {
       op_id_copy_.store(operation_->op_id(), boost::memory_order_release);
@@ -129,16 +130,11 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
     }
   }
 
-  auto result = operation_tracker_->Add(this);
-  if (!result.ok() && operation) {
-    *operation = std::move(operation_);
-  }
-
   if (term == OpId::kUnknownTerm && operation_) {
     operation_->AddedToFollower();
   }
 
-  return result;
+  return Status::OK();
 }
 
 yb::OpId OperationDriver::GetOpId() {
@@ -183,8 +179,8 @@ void OperationDriver::ExecuteAsync() {
   if (delay != 0 &&
       operation_type() == OperationType::kWrite &&
       operation_->tablet()->tablet_id() != master::kSysCatalogTabletId) {
-    LOG(INFO) << "T " << operation_->tablet()->tablet_id()
-              << " Debug sleep for: " << MonoDelta(1ms * delay) << "\n" << GetStackTrace();
+    LOG_WITH_PREFIX(INFO) << " Debug sleep for: " << MonoDelta(1ms * delay) << "\n"
+                          << GetStackTrace();
     std::this_thread::sleep_for(1ms * delay);
   }
 
@@ -363,7 +359,7 @@ void OperationDriver::ReplicationFinished(
   }
 }
 
-void OperationDriver::Abort(const Status& status) {
+void OperationDriver::TEST_Abort(const Status& status) {
   CHECK(!status.ok());
 
   ReplicationState repl_state_copy;
@@ -457,11 +453,11 @@ std::string OperationDriver::LogPrefix() const {
   string state_str = StateString(repl_state_copy, prep_state_copy);
   // We use the tablet and the peer (T, P) to identify ts and tablet and the hybrid_time (Ts) to
   // (help) identify the operation. The state string (S) describes the state of the operation.
-  return Format("T $0 P $1 S $2 Ts $3 $4: ",
+  return Format("T $0 P $1 S $2 Ts $3 $4 ($5): ",
                 // consensus_ is NULL in some unit tests.
                 PREDICT_TRUE(consensus_) ? consensus_->tablet_id() : "(unknown)",
                 PREDICT_TRUE(consensus_) ? consensus_->peer_uuid() : "(unknown)",
-                state_str, ts_string, operation_type);
+                state_str, ts_string, operation_type, static_cast<const void*>(this));
 }
 
 int64_t OperationDriver::SpaceUsed() {

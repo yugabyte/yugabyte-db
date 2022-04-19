@@ -24,6 +24,7 @@
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/master/master_admin.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/util/status_fwd.h"

@@ -458,16 +458,10 @@ void HandleExtraFields(YBqlReadOp* op, tserver::ReadRequestPB* req) {
   }
 }
 
-void HandleExtraFields(YBPgsqlReadOp* op, tserver::ReadRequestPB* req) {
-  if (op->read_time()) {
-    op->read_time().AddToPB(req);
-  }
-}
-
 template <class OpType, class Req, class Out>
 void FillOps(
     const InFlightOps& ops, YBOperation::Type expected_type, Req* req, Out* out) {
-  out->Reserve(ops.size());
+  out->Reserve(narrow_cast<int>(ops.size()));
   size_t idx = 0;
   for (auto& op : ops) {
     CHECK_EQ(op.yb_op->type(), expected_type);
@@ -557,9 +551,9 @@ void WriteRpc::CallRemoteMethod() {
 }
 
 void WriteRpc::SwapResponses() {
-  size_t redis_idx = 0;
-  size_t ql_idx = 0;
-  size_t pgsql_idx = 0;
+  int redis_idx = 0;
+  int ql_idx = 0;
+  int pgsql_idx = 0;
 
   // Retrieve Redis and QL responses and make sure we received all the responses back.
   for (auto& op : ops_) {
@@ -603,10 +597,9 @@ void WriteRpc::SwapResponses() {
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_response_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {
-          Slice rows_data = CHECK_RESULT(retrier().controller().GetSidecar(
-              pgsql_response.rows_data_sidecar()));
-          down_cast<YBPgsqlWriteOp*>(yb_op)->mutable_rows_data()->assign(
-              to_char_ptr(rows_data.data()), rows_data.size());
+          auto holder = CHECK_RESULT(
+              retrier().controller().GetSidecarHolder(pgsql_response.rows_data_sidecar()));
+          down_cast<YBPgsqlWriteOp*>(yb_op)->SetRowsData(holder.first, holder.second);
         }
         pgsql_idx++;
         break;
@@ -702,14 +695,11 @@ void ReadRpc::CallRemoteMethod() {
 }
 
 void ReadRpc::SwapResponses() {
-  size_t redis_idx = 0;
-  size_t ql_idx = 0;
-  size_t pgsql_idx = 0;
-
+  int redis_idx = 0;
+  int ql_idx = 0;
+  int pgsql_idx = 0;
+  bool used_read_time_set = false;
   // Retrieve Redis and QL responses and make sure we received all the responses back.
-  redis_idx = 0;
-  ql_idx = 0;
-  pgsql_idx = 0;
   for (auto& op : ops_) {
     YBOperation* yb_op = op.yb_op.get();
     switch (yb_op->type()) {
@@ -748,16 +738,17 @@ void ReadRpc::SwapResponses() {
         }
         // Restore PGSQL read request PB and extract response.
         auto* pgsql_op = down_cast<YBPgsqlReadOp*>(yb_op);
-        if (resp_.has_used_read_time()) {
+        if (!used_read_time_set && resp_.has_used_read_time()) {
+          // Single operation in a group required used read time.
+          used_read_time_set = true;
           pgsql_op->SetUsedReadTime(ReadHybridTime::FromPB(resp_.used_read_time()));
         }
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {
-          Slice rows_data = CHECK_RESULT(retrier().controller().GetSidecar(
-              pgsql_response.rows_data_sidecar()));
-          down_cast<YBPgsqlReadOp*>(yb_op)->mutable_rows_data()->assign(
-              rows_data.cdata(), rows_data.size());
+          auto holder = CHECK_RESULT(
+              retrier().controller().GetSidecarHolder(pgsql_response.rows_data_sidecar()));
+          down_cast<YBPgsqlReadOp*>(yb_op)->SetRowsData(holder.first, holder.second);
         }
         pgsql_idx++;
         break;

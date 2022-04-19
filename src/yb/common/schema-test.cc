@@ -35,8 +35,10 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
+
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/test_macros.h"
 
@@ -46,25 +48,6 @@ namespace tablet {
 using std::unordered_map;
 using std::vector;
 using strings::Substitute;
-
-// Copy a row and its referenced data into the given Arena.
-static Status CopyRowToArena(const Slice &row,
-                             const Schema &schema,
-                             Arena *dst_arena,
-                             ContiguousRow *copied) {
-  Slice row_data;
-
-  // Copy the direct row data to arena
-  if (!dst_arena->RelocateSlice(row, &row_data)) {
-    return STATUS(IOError, "no space for row data in arena");
-  }
-
-  copied->Reset(row_data.mutable_data());
-  RETURN_NOT_OK(RelocateIndirectDataToArena(copied, dst_arena));
-  return Status::OK();
-}
-
-
 
 // Test basic functionality of Schema definition
 TEST(TestSchema, TestSchema) {
@@ -239,78 +222,6 @@ TEST(TestSchema, TestProjectRename) {
   ASSERT_EQ(row_projector.base_cols_mapping()[1].second, 1); // val schema1
 }
 
-
-// Test that the schema can be used to compare and stringify rows.
-TEST(TestSchema, TestRowOperations) {
-  Schema schema({ ColumnSchema("col1", STRING),
-                  ColumnSchema("col2", STRING),
-                  ColumnSchema("col3", UINT32),
-                  ColumnSchema("col4", INT32) },
-                1);
-
-  Arena arena(1024, 256*1024);
-
-  RowBuilder rb(schema);
-  rb.AddString(string("row_a_1"));
-  rb.AddString(string("row_a_2"));
-  rb.AddUint32(3);
-  rb.AddInt32(-3);
-  ContiguousRow row_a(&schema);
-  ASSERT_OK(CopyRowToArena(rb.data(), schema, &arena, &row_a));
-
-  rb.Reset();
-  rb.AddString(string("row_b_1"));
-  rb.AddString(string("row_b_2"));
-  rb.AddUint32(3);
-  rb.AddInt32(-3);
-  ContiguousRow row_b(&schema);
-  ASSERT_OK(CopyRowToArena(rb.data(), schema, &arena, &row_b));
-
-  ASSERT_GT(schema.Compare(row_b, row_a), 0);
-  ASSERT_LT(schema.Compare(row_a, row_b), 0);
-
-  ASSERT_EQ(string("(string col1=row_a_1, string col2=row_a_2, uint32 col3=3, int32 col4=-3)"),
-            schema.DebugRow(row_a));
-}
-
-TEST(TestSchema, TestDecodeKeys_CompoundStringKey) {
-  Schema schema({ ColumnSchema("col1", STRING),
-                  ColumnSchema("col2", STRING),
-                  ColumnSchema("col3", STRING) },
-                2);
-
-  EXPECT_EQ("(string col1=foo, string col2=bar)",
-            schema.DebugEncodedRowKey(Slice("foo\0\0bar", 8), Schema::START_KEY));
-  EXPECT_EQ("(string col1=fo\\000o, string col2=bar)",
-            schema.DebugEncodedRowKey(Slice("fo\x00\x01o\0\0""bar", 10), Schema::START_KEY));
-  EXPECT_EQ("(string col1=fo\\000o, string col2=bar\\000xy)",
-            schema.DebugEncodedRowKey(Slice("fo\x00\x01o\0\0""bar\0xy", 13), Schema::START_KEY));
-
-  EXPECT_EQ("<start of table>",
-            schema.DebugEncodedRowKey("", Schema::START_KEY));
-  EXPECT_EQ("<end of table>",
-            schema.DebugEncodedRowKey("", Schema::END_KEY));
-}
-
-// Test that appropriate statuses are returned when trying to decode an invalid
-// encoded key.
-TEST(TestSchema, TestDecodeKeys_InvalidKeys) {
-  Schema schema({ ColumnSchema("col1", STRING),
-                  ColumnSchema("col2", UINT32),
-                  ColumnSchema("col3", STRING) },
-                2);
-
-  EXPECT_EQ("<invalid key: Invalid argument: Error decoding composite key component"
-            " 'col1': Missing separator after composite key string component: foo>",
-            schema.DebugEncodedRowKey(Slice("foo"), Schema::START_KEY));
-  EXPECT_EQ("<invalid key: Invalid argument: Error decoding composite key component 'col2': "
-            "key too short>",
-            schema.DebugEncodedRowKey(Slice("foo\x00\x00", 5), Schema::START_KEY));
-  EXPECT_EQ("<invalid key: Invalid argument: Error decoding composite key component 'col2': "
-            "key too short: FFFF>",
-            schema.DebugEncodedRowKey(Slice("foo\x00\x00\xff\xff", 7), Schema::START_KEY));
-}
-
 TEST(TestSchema, TestCreateProjection) {
   Schema schema({ ColumnSchema("col1", STRING),
                   ColumnSchema("col2", STRING),
@@ -352,7 +263,7 @@ TEST(TestSchema, TestCreateProjection) {
 
   // By names, with missing names.
   Status s = schema.CreateProjectionByNames({ "foobar" }, &partial_schema);
-  EXPECT_EQ("Not found: column not found: foobar", s.ToString(/* no file/line */ false));
+  EXPECT_EQ("Not found: Column not found: foobar", s.ToString(/* no file/line */ false));
 
   // By IDs
   ASSERT_OK(schema_with_ids.CreateProjectionByIdsIgnoreMissing({ schema_with_ids.column_id(0),

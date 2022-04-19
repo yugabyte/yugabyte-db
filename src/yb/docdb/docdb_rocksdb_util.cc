@@ -23,11 +23,13 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
@@ -64,7 +66,7 @@ DEFINE_int32(rocksdb_base_background_compactions, -1,
              "Number threads to do background compactions.");
 DEFINE_int32(rocksdb_max_background_compactions, -1,
              "Increased number of threads to do background compactions (used when compactions need "
-             "to catch up.)");
+             "to catch up.) Unless rocksdb_disable_compactions=true, this cannot be set to zero.");
 DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
              "Number of files to trigger level-0 compaction. -1 if compaction should not be "
              "triggered by number of files at all.");
@@ -79,8 +81,13 @@ DEFINE_uint64(rocksdb_universal_compaction_always_include_size_threshold, 64_MB,
              "Always include files of smaller or equal size in a compaction.");
 DEFINE_int32(rocksdb_universal_compaction_min_merge_width, 4,
              "The minimum number of files in a single compaction run.");
-DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 256_MB,
+DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
              "Use to control write rate of flush and compaction.");
+DEFINE_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
+              "Allows to control rate limit sharing/calculation across RocksDB instances\n"
+              "  tserver - rate limit is shared across all RocksDB instances"
+              " at tabset server level\n"
+              "  none - rate limit is calculated independently for every RocksDB instance");
 DEFINE_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
              "Threshold beyond which compaction is considered large.");
 DEFINE_uint64(rocksdb_max_file_size_for_compaction, 0,
@@ -170,15 +177,15 @@ Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string&
 
 namespace docdb {
 
-Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
+  Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
     const std::string& flag_value) {
-  for (const auto& encoding_format : rocksdb::kKeyValueEncodingFormatList) {
-    if (flag_value == KeyValueEncodingFormatToString(encoding_format)) {
-      return encoding_format;
+    for (const auto& encoding_format : rocksdb::kKeyValueEncodingFormatList) {
+      if (flag_value == KeyValueEncodingFormatToString(encoding_format)) {
+        return encoding_format;
+      }
     }
+    return STATUS_FORMAT(InvalidArgument, "Key-value encoding format $0 is not valid.", flag_value);
   }
-  return STATUS_FORMAT(InvalidArgument, "Key-value encoding format $0 is not valid.", flag_value);
-}
 
 } // namespace docdb
 
@@ -208,9 +215,7 @@ bool KeyValueEncodingFormatValidator(const char* flag_name, const std::string& f
 
 } // namespace
 
-__attribute__((unused))
 DEFINE_validator(compression_type, &CompressionTypeValidator);
-__attribute__((unused))
 DEFINE_validator(regular_tablets_data_block_key_value_encoding, &KeyValueEncodingFormatValidator);
 
 using std::shared_ptr;
@@ -236,7 +241,7 @@ void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
 
 KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht) {
   char buf[kMaxBytesPerEncodedHybridTime + 1];
-  buf[0] = ValueTypeAsChar::kHybridTime;
+  buf[0] = KeyEntryTypeAsChar::kHybridTime;
   auto end = doc_ht.EncodedInDocDbFormat(buf + 1);
   return KeyBytes(key, Slice(buf, end));
 }
@@ -246,9 +251,9 @@ void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter) {
 }
 
 void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
-  key_bytes->AppendValueType(ValueType::kMaxByte);
+  key_bytes->AppendKeyEntryType(KeyEntryType::kMaxByte);
   SeekForward(*key_bytes, iter);
-  key_bytes->RemoveValueTypeSuffix(ValueType::kMaxByte);
+  key_bytes->RemoveKeyEntryTypeSuffix(KeyEntryType::kMaxByte);
 }
 
 void SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key,
@@ -385,7 +390,10 @@ int32_t GetMaxBackgroundCompactions() {
   }
   int rocksdb_max_background_compactions = FLAGS_rocksdb_max_background_compactions;
 
-  if (rocksdb_max_background_compactions >= 0) {
+  if (rocksdb_max_background_compactions == 0) {
+    LOG(FATAL) << "--rocksdb_max_background_compactions may not be set to zero with compactions "
+        << "enabled. Either change this flag or set --rocksdb_disable_compactions=true.";
+  } else if (rocksdb_max_background_compactions > 0) {
     return rocksdb_max_background_compactions;
   }
 
@@ -502,9 +510,9 @@ void AddSupportedFilterPolicy(
 }
 
 PriorityThreadPool* GetGlobalPriorityThreadPool() {
-  static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
+    static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
       GetGlobalRocksDBPriorityThreadPoolSize());
-  return &priority_thread_pool_for_compactions_and_flushes;
+    return &priority_thread_pool_for_compactions_and_flushes;
 }
 
 } // namespace
@@ -527,7 +535,11 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
   }
 
   auto priority_thread_pool_size = FLAGS_priority_thread_pool_size;
-  if (priority_thread_pool_size >= 0) {
+
+  if (priority_thread_pool_size == 0) {
+    LOG(FATAL) << "--priority_thread_pool_size may not be set to zero with compactions "
+        << "enabled. Either change this flag or set --rocksdb_disable_compactions=true.";
+  } else if (priority_thread_pool_size > 0) {
     return priority_thread_pool_size;
   }
 
@@ -560,7 +572,8 @@ void InitRocksDBOptions(
     rocksdb::Options* options, const string& log_prefix,
     const shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
-    rocksdb::BlockBasedTableOptions table_options) {
+    rocksdb::BlockBasedTableOptions table_options,
+    const uint64_t group_no) {
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
   options->create_if_missing = true;
@@ -571,6 +584,7 @@ void InitRocksDBOptions(
   options->boundary_extractor = DocBoundaryValuesExtractorInstance();
   options->compaction_measure_io_stats = FLAGS_rocksdb_compaction_measure_io_stats;
   options->memory_monitor = tablet_options.memory_monitor;
+  options->disk_group_no = group_no;
   if (FLAGS_db_write_buffer_size != -1) {
     options->write_buffer_size = FLAGS_db_write_buffer_size;
   } else {
@@ -652,10 +666,8 @@ void InitRocksDBOptions(
     options->compaction_options_universal.min_merge_width =
         FLAGS_rocksdb_universal_compaction_min_merge_width;
     options->compaction_size_threshold_bytes = FLAGS_rocksdb_compaction_size_threshold_bytes;
-    if (FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec > 0) {
-      options->rate_limiter.reset(
-          rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
-    }
+    options->rate_limiter = tablet_options.rate_limiter ? tablet_options.rate_limiter
+                                                        : CreateRocksDBRateLimiter();
   } else {
     options->level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
     options->level0_stop_writes_trigger = std::numeric_limits<int>::max();
@@ -693,12 +705,9 @@ class RocksDBPatcherHelper {
   }
 
   template <class F>
-  void IterateFiles(const F& f) {
-    for (int level = 0; level < Levels(); ++level) {
-      for (const auto* file : LevelFiles(level)) {
-        f(level, *file);
-      }
-    }
+  auto IterateFiles(const F& f) {
+    // Auto routing based on f return type.
+    return IterateFilesHelper(f, static_cast<decltype(f(0, *LevelFiles(0).front()))*>(nullptr));
   }
 
   void ModifyFile(int level, const rocksdb::FileMetaData& fmd) {
@@ -731,6 +740,25 @@ class RocksDBPatcherHelper {
   }
 
  private:
+  template <class F>
+  void IterateFilesHelper(const F& f, void*) {
+    for (int level = 0; level < Levels(); ++level) {
+      for (const auto* file : LevelFiles(level)) {
+        f(level, *file);
+      }
+    }
+  }
+
+  template <class F>
+  CHECKED_STATUS IterateFilesHelper(const F& f, Status*) {
+    for (int level = 0; level < Levels(); ++level) {
+      for (const auto* file : LevelFiles(level)) {
+        RETURN_NOT_OK(f(level, *file));
+      }
+    }
+    return Status::OK();
+  }
+
   class TrackedEdit {
    public:
     explicit TrackedEdit(rocksdb::ColumnFamilyData* cfd) {
@@ -811,13 +839,19 @@ class RocksDBPatcher::Impl {
 
     auto* existing_frontier = down_cast<docdb::ConsensusFrontier*>(version_set_.FlushedFrontier());
     if (existing_frontier) {
-      final_frontier.set_history_cutoff(existing_frontier->history_cutoff());
+      if (!frontier.history_cutoff()) {
+        final_frontier.set_history_cutoff(existing_frontier->history_cutoff());
+      }
+      if (!frontier.op_id()) {
+        // Update op id only if it was specified in frontier.
+        final_frontier.set_op_id(existing_frontier->op_id());
+      }
     }
 
     helper.Edit().ModifyFlushedFrontier(
         final_frontier.Clone(), rocksdb::FrontierModificationMode::kForce);
 
-    helper.IterateFiles([&helper](int level, rocksdb::FileMetaData fmd) {
+    helper.IterateFiles([&helper, &frontier](int level, rocksdb::FileMetaData fmd) {
       bool modified = false;
       for (auto* user_frontier : {&fmd.smallest.user_frontier, &fmd.largest.user_frontier}) {
         if (!*user_frontier) {
@@ -828,11 +862,39 @@ class RocksDBPatcher::Impl {
           consensus_frontier.set_op_id(OpId());
           modified = true;
         }
+        if (frontier.history_cutoff()) {
+          consensus_frontier.set_history_cutoff(frontier.history_cutoff());
+          modified = true;
+        }
       }
       if (modified) {
         helper.ModifyFile(level, fmd);
       }
     });
+
+    return helper.Apply(options_, imm_cf_options_);
+  }
+
+  CHECKED_STATUS UpdateFileSizes() {
+    RocksDBPatcherHelper helper(&version_set_);
+
+    RETURN_NOT_OK(helper.IterateFiles(
+        [&helper, this](int level, const rocksdb::FileMetaData& file) -> Status {
+      auto base_path = rocksdb::MakeTableFileName(
+          options_.db_paths[file.fd.GetPathId()].path, file.fd.GetNumber());
+      auto data_path = rocksdb::TableBaseToDataFileName(base_path);
+      auto base_size = VERIFY_RESULT(options_.env->GetFileSize(base_path));
+      auto data_size = VERIFY_RESULT(options_.env->GetFileSize(data_path));
+      auto total_size = base_size + data_size;
+      if (file.fd.base_file_size == base_size && file.fd.total_file_size == total_size) {
+        return Status::OK();
+      }
+      rocksdb::FileMetaData fmd = file;
+      fmd.fd.base_file_size = base_size;
+      fmd.fd.total_file_size = total_size;
+      helper.ModifyFile(level, fmd);
+      return Status::OK();
+    }));
 
     return helper.Apply(options_, imm_cf_options_);
   }
@@ -868,11 +930,33 @@ Status RocksDBPatcher::ModifyFlushedFrontier(const ConsensusFrontier& frontier) 
   return impl_->ModifyFlushedFrontier(frontier);
 }
 
+Status RocksDBPatcher::UpdateFileSizes() {
+  return impl_->UpdateFileSizes();
+}
+
 Status ForceRocksDBCompact(rocksdb::DB* db) {
   RETURN_NOT_OK_PREPEND(
       db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
       "Compact range failed:");
   return Status::OK();
+}
+
+RateLimiterSharingMode GetRocksDBRateLimiterSharingMode() {
+  auto result = ParseEnumInsensitive<RateLimiterSharingMode>(
+      FLAGS_rocksdb_compact_flush_rate_limit_sharing_mode);
+  if (PREDICT_TRUE(result.ok())) {
+    return *result;
+  }
+  LOG(DFATAL) << result.status();
+  return RateLimiterSharingMode::NONE;
+}
+
+std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter() {
+  if (PREDICT_TRUE((FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec > 0))) {
+    return std::shared_ptr<rocksdb::RateLimiter>(
+      rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
+  }
+  return nullptr;
 }
 
 } // namespace docdb

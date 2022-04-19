@@ -36,7 +36,7 @@ namespace {
 
 struct OnConflictKey {
   int key;
-  int operation_index = 0;
+  size_t operation_index = 0;
 };
 
 constexpr int kMaxBatchSize = 5;
@@ -312,13 +312,13 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
   } else {
     // Every 15 seconds, pick a random master, then kill it if it is running, otherwise resume it.
     auto deadline = CoarseMonoClock::now() + duration;
-    int num_masters = cluster_->num_masters();
+    auto num_masters = cluster_->num_masters();
     while (!thread_holder.stop_flag().load(std::memory_order_acquire)) {
       MonoDelta left(deadline - CoarseMonoClock::now());
       if (left < MonoDelta::kZero) {
         break;
       }
-      auto* master = cluster_->master(RandomUniformInt(0, num_masters - 1));
+      auto* master = cluster_->master(RandomUniformInt<size_t>(0, num_masters - 1));
       if (master->IsProcessAlive()) {
         std::this_thread::sleep_for(
             std::min(left, MonoDelta(20s) * kTimeMultiplier).ToSteadyDuration());
@@ -331,7 +331,7 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
         ASSERT_OK(master->Start());
       }
       int live_masters = 0;
-      for (int i = 0; i != num_masters; ++i) {
+      for (size_t i = 0; i != num_masters; ++i) {
         if (cluster_->master(i)->IsProcessAlive()) {
           ++live_masters;
         }
@@ -339,7 +339,7 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
       LOG(INFO) << "Live masters: " << live_masters;
     }
 
-    for (int i = 0; i != num_masters; ++i) {
+    for (size_t i = 0; i != num_masters; ++i) {
       if (!cluster_->master(i)->IsProcessAlive()) {
         ASSERT_OK(cluster_->master(i)->Start());
       }

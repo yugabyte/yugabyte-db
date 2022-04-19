@@ -16,15 +16,18 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/gutil/casts.h"
+
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_defaults.h"
 
 #include "../../src/yb/master/master-test_base.h"
 
 #include "yb/util/result.h"
 
-DECLARE_uint64(cdc_state_table_num_tablets);
+DECLARE_int32(cdc_state_table_num_tablets);
+DECLARE_bool(disable_truncate_table);
 
 namespace yb {
 namespace master {
@@ -57,7 +60,7 @@ Status MasterTestEnt::CreateCDCStream(const TableId& table_id, CDCStreamId* stre
   CreateCDCStreamResponsePB resp;
 
   req.set_table_id(table_id);
-  RETURN_NOT_OK(proxy_->CreateCDCStream(req, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -69,7 +72,7 @@ Status MasterTestEnt::CreateCDCStream(const TableId& table_id, CDCStreamId* stre
     is_create_req.mutable_table()->set_table_name(master::kCdcStateTableName);
     is_create_req.mutable_table()->mutable_namespace_()->set_name(master::kSystemNamespaceName);
 
-    auto s = proxy_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
+    auto s = proxy_ddl_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
     if (!s.ok()) {
       return false;
     }
@@ -84,7 +87,7 @@ Status MasterTestEnt::GetCDCStream(const CDCStreamId& stream_id, GetCDCStreamRes
   GetCDCStreamRequestPB req;
   req.set_stream_id(stream_id);
 
-  RETURN_NOT_OK(proxy_->GetCDCStream(req, resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->GetCDCStream(req, resp, ResetAndGetController()));
   if (resp->has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp->error().status()));
   }
@@ -96,7 +99,7 @@ Status MasterTestEnt::DeleteCDCStream(const CDCStreamId& stream_id) {
   DeleteCDCStreamResponsePB resp;
   req.add_stream_id(stream_id);
 
-  RETURN_NOT_OK(proxy_->DeleteCDCStream(req, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->DeleteCDCStream(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -106,7 +109,7 @@ Status MasterTestEnt::DeleteCDCStream(const CDCStreamId& stream_id) {
 Status MasterTestEnt::ListCDCStreams(ListCDCStreamsResponsePB* resp) {
   ListCDCStreamsRequestPB req;
 
-  RETURN_NOT_OK(proxy_->ListCDCStreams(req, resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->ListCDCStreams(req, resp, ResetAndGetController()));
   if (resp->has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp->error().status()));
   }
@@ -120,7 +123,7 @@ Status MasterTestEnt::SetupUniverseReplication(
   SetupUniverseReplicationResponsePB resp;
 
   req.set_producer_id(producer_id);
-  req.mutable_producer_master_addresses()->Reserve(producer_master_addrs.size());
+  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_master_addrs.size()));
   for (const auto& addr : producer_master_addrs) {
     std::vector<std::string> hp;
     boost::split(hp, addr, boost::is_any_of(":"));
@@ -129,12 +132,12 @@ Status MasterTestEnt::SetupUniverseReplication(
     master->set_host(hp[0]);
     master->set_port(boost::lexical_cast<uint32_t>(hp[1]));
   }
-  req.mutable_producer_table_ids()->Reserve(tables.size());
+  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(tables.size()));
   for (const auto& table : tables) {
     req.add_producer_table_ids(table);
   }
 
-  RETURN_NOT_OK(proxy_->SetupUniverseReplication(req, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->SetupUniverseReplication(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -146,7 +149,7 @@ Status MasterTestEnt::GetUniverseReplication(
   GetUniverseReplicationRequestPB req;
   req.set_producer_id(producer_id);
 
-  RETURN_NOT_OK(proxy_->GetUniverseReplication(req, resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->GetUniverseReplication(req, resp, ResetAndGetController()));
   if (resp->has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp->error().status()));
   }
@@ -158,11 +161,19 @@ Status MasterTestEnt::DeleteUniverseReplication(const std::string& producer_id) 
   DeleteUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_id);
 
-  RETURN_NOT_OK(proxy_->DeleteUniverseReplication(req, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->DeleteUniverseReplication(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
   return Status::OK();
+}
+
+TEST_F(MasterTestEnt, TestDisableTruncation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_truncate_table) = true;
+  TableId table_id;
+  ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
+  auto s = TruncateTableById(table_id);
+  EXPECT_TRUE(s.IsNotSupported());
 }
 
 TEST_F(MasterTestEnt, TestCreateCDCStreamInvalidTable) {
@@ -170,7 +181,7 @@ TEST_F(MasterTestEnt, TestCreateCDCStreamInvalidTable) {
   CreateCDCStreamResponsePB resp;
 
   req.set_table_id("invalidid");
-  ASSERT_OK(proxy_->CreateCDCStream(req, &resp, ResetAndGetController()));
+  ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
@@ -186,7 +197,7 @@ TEST_F(MasterTestEnt, TestCreateCDCStream) {
 
   GetCDCStreamResponsePB resp;
   ASSERT_OK(GetCDCStream(stream_id, &resp));
-  ASSERT_EQ(resp.stream().table_id(), table_id);
+  ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 }
 
 TEST_F(MasterTestEnt, TestDeleteCDCStream) {
@@ -199,7 +210,7 @@ TEST_F(MasterTestEnt, TestDeleteCDCStream) {
 
   GetCDCStreamResponsePB resp;
   ASSERT_OK(GetCDCStream(stream_id, &resp));
-  ASSERT_EQ(resp.stream().table_id(), table_id);
+  ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 
   ASSERT_OK(DeleteCDCStream(stream_id));
 
@@ -219,15 +230,13 @@ TEST_F(MasterTestEnt, TestDeleteTableWithCDCStream) {
 
   GetCDCStreamResponsePB resp;
   ASSERT_OK(GetCDCStream(stream_id, &resp));
-  ASSERT_EQ(resp.stream().table_id(), table_id);
+  ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 
-  // Delete the table
+  // Deleting the table will fail since it has a CDC stream attached.
   TableId id;
-  ASSERT_OK(DeleteTableSync(default_namespace_name, kTableName, &id));
+  ASSERT_NOK(DeleteTableSync(default_namespace_name, kTableName, &id));
 
-  ASSERT_NOK(GetCDCStream(stream_id, &resp));
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
+  ASSERT_OK(GetCDCStream(stream_id, &resp));
 }
 
 TEST_F(MasterTestEnt, TestListCDCStreams) {

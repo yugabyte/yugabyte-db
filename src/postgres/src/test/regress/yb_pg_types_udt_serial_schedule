@@ -19,6 +19,7 @@ test: yb_create_function
 
 # Overall UDTs
 test: yb_create_type
+test: yb_alter_type
 
 # Composite types
 test: yb_pg_rowtypes

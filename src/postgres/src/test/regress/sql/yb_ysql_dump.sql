@@ -31,6 +31,7 @@ CREATE TABLE tbl12 (a INT, b INT, c INT, d INT, PRIMARY KEY(a ASC, d DESC, c DES
 
 CREATE TABLE tbl13 (a INT, b INT, c INT, d INT, PRIMARY KEY((b,c) HASH));
 
+CREATE USER tablegroup_test_user SUPERUSER;
 CREATE USER rls_user NOLOGIN;
 
 CREATE TABLE rls_public(k INT PRIMARY KEY, v TEXT);
@@ -47,7 +48,7 @@ CREATE POLICY p1 ON rls_public FOR ALL TO PUBLIC USING (k % 2 = 0);
 CREATE POLICY p2 ON rls_private FOR INSERT WITH CHECK (k % 2 = 1);
 CREATE POLICY p3 ON rls_private FOR UPDATE USING (k % 2 = 1);
 
-CREATE TABLE chat_user("chatID" text NOT NULL, PRIMARY KEY("chatID")); 
+CREATE TABLE chat_user("chatID" text NOT NULL, PRIMARY KEY("chatID"));
 
 DROP USER IF EXISTS regress_rls_alice;
 CREATE USER regress_rls_alice NOLOGIN;
@@ -56,3 +57,63 @@ CREATE TABLE uaccount (pguser      name, seclv       int, PRIMARY KEY(pguser ASC
 ALTER TABLE uaccount ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY account_policies ON uaccount USING (pguser = current_user);
+
+SET SESSION AUTHORIZATION tablegroup_test_user;
+
+CREATE TABLEGROUP grp1;
+CREATE TABLEGROUP grp2;
+
+CREATE TABLE tgroup_no_options_and_tgroup (a INT) TABLEGROUP grp1;
+CREATE TABLE tgroup_one_option (a INT) WITH (autovacuum_enabled = true);
+CREATE TABLE tgroup_one_option_and_tgroup (a INT) WITH (autovacuum_enabled = true) TABLEGROUP grp2;
+CREATE TABLE tgroup_options (a INT) WITH (autovacuum_enabled=true, parallel_workers=2);
+CREATE TABLE tgroup_options_and_tgroup (a INT) WITH (autovacuum_enabled=true, parallel_workers=2) TABLEGROUP grp2;
+CREATE TABLE tgroup_options_tgroup_and_custom_colocation_id (a INT) WITH (autovacuum_enabled=true, colocation_id=100500, parallel_workers=2) TABLEGROUP grp2;
+CREATE TABLE tgroup_after_options (a INT) TABLEGROUP grp1;
+CREATE TABLE tgroup_in_between_options (a INT) WITH (autovacuum_enabled = true) TABLEGROUP grp1;
+CREATE TABLE tgroup_empty_options (a INT);
+BEGIN;
+    SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
+    UPDATE pg_class SET reloptions = ARRAY[]::TEXT[] WHERE relname = 'tgroup_empty_options';
+    UPDATE pg_class SET reloptions = array_prepend('a=b', reloptions) WHERE relname = 'tgroup_after_options';
+    UPDATE pg_class SET reloptions = array_prepend('a=b', reloptions) WHERE relname = 'tgroup_in_between_options';
+COMMIT;
+
+RESET SESSION AUTHORIZATION;
+
+------------------------------------------------
+-- Test table and index explicit splitting.
+------------------------------------------------
+
+------------------------------------
+-- Tables
+
+-- Table without a primary key
+CREATE TABLE th1 (a int, b text, c float) SPLIT INTO 2 TABLETS;
+
+-- Hash-partitioned table with range components
+CREATE TABLE th2 (a int, b text, c float, PRIMARY KEY (a HASH, b ASC)) SPLIT INTO 3 TABLETS;
+
+-- Hash-partitioned table without range components
+CREATE TABLE th3 (a int, b text, c float, PRIMARY KEY ((a, b) HASH)) SPLIT INTO 4 TABLETS;
+
+-- Range-partitioned table with single-column key
+CREATE TABLE tr1 (a int, b text, c float, PRIMARY KEY (a ASC)) SPLIT AT VALUES ((1), (100));
+
+-- Range-partitioned table with multi-column key
+CREATE TABLE tr2 (a int, b text, c float, PRIMARY KEY (a DESC, b ASC, c DESC)) SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n'), (1, 'z', -5.12));
+
+------------------------------------
+-- Indexes
+
+-- Hash-partitioned table with range components
+CREATE INDEX on th2(c HASH, b DESC) SPLIT INTO 4 TABLETS;
+
+-- Hash-partitioned table without range components
+CREATE INDEX on th3((c, b) HASH) SPLIT INTO 3 TABLETS;
+
+-- Range-partitioned table with single-column key
+CREATE INDEX ON tr2(c DESC) SPLIT AT VALUES ((100.5), (1.5));
+
+-- Range-partitioned table with multi-column key
+CREATE INDEX ON tr2(c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l'), (2.5, 'a', 100));

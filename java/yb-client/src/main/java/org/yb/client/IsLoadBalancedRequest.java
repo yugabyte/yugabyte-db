@@ -18,7 +18,7 @@ import com.google.protobuf.Message;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.MasterClusterOuterClass;
 import org.yb.util.Pair;
 
 import java.util.ArrayList;
@@ -37,8 +37,8 @@ class IsLoadBalancedRequest extends YRpc<IsLoadBalancedResponse> {
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final Master.IsLoadBalancedRequestPB.Builder builder =
-      Master.IsLoadBalancedRequestPB.newBuilder();
+    final MasterClusterOuterClass.IsLoadBalancedRequestPB.Builder builder =
+      MasterClusterOuterClass.IsLoadBalancedRequestPB.newBuilder();
     builder.setExpectedNumServers(expectedServers);
     return toChannelBuffer(header, builder.build());
   }
@@ -53,8 +53,8 @@ class IsLoadBalancedRequest extends YRpc<IsLoadBalancedResponse> {
   Pair<IsLoadBalancedResponse, Object> deserialize(
       CallResponse callResponse,
       String masterUUID) throws Exception {
-    final Master.IsLoadBalancedResponsePB.Builder respBuilder =
-      Master.IsLoadBalancedResponsePB.newBuilder();
+    final MasterClusterOuterClass.IsLoadBalancedResponsePB.Builder respBuilder =
+      MasterClusterOuterClass.IsLoadBalancedResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     boolean hasErr = respBuilder.hasError();
     IsLoadBalancedResponse response =

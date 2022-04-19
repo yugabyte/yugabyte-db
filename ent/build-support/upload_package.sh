@@ -100,8 +100,9 @@ upload_package() {
       return
     fi
 
-    if is_linux && [[ $YB_COMPILER_TYPE != "gcc" ]]; then
-      log "Skipping package upload for a non-gcc build on Linux (compiler type: $YB_COMPILER_TYPE)"
+    if is_linux && [[ $YB_COMPILER_TYPE != "gcc" &&
+                      $YB_COMPILER_TYPE != "clang12" ]]; then
+      log "Skipping package upload on Linux (compiler type: $YB_COMPILER_TYPE)"
       return
     fi
   fi

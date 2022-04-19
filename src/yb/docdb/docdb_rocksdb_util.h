@@ -21,6 +21,7 @@
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
+#include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
 
 #include "yb/tablet/tablet_options.h"
@@ -29,6 +30,8 @@
 
 namespace yb {
 namespace docdb {
+
+const int kDefaultGroupNo = 0;
 
 class IntentAwareIterator;
 
@@ -108,6 +111,18 @@ rocksdb::BlockBasedTableOptions TEST_AutoInitFromRocksDbTableFlags();
 Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
     const std::string& flag_value);
 
+// Defines how rate limiter is shared across a node
+YB_DEFINE_ENUM(RateLimiterSharingMode, (NONE)(TSERVER));
+
+// Extracts rate limiter's sharing mode depending on the value of
+// flag `FLAGS_rocksdb_compact_flush_rate_limit_sharing_mode`;
+// `RateLimiterSharingMode::NONE` is returned if extraction failed
+RateLimiterSharingMode GetRocksDBRateLimiterSharingMode();
+
+// Creates `rocksdb::RateLimiter` taking into account related GFlags,
+// calls `rocksdb::NewGenericRateLimiter` internally
+std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter();
+
 // Initialize the RocksDB 'options'.
 // The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for
 // the tablet.
@@ -115,7 +130,8 @@ void InitRocksDBOptions(
     rocksdb::Options* options, const std::string& log_prefix,
     const std::shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
-    rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions());
+    rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions(),
+    const uint64_t group_no = kDefaultGroupNo);
 
 // Sets logs prefix for RocksDB options. This will also reinitialize options->info_log.
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix);
@@ -137,6 +153,11 @@ class RocksDBPatcher {
 
   // Modify flushed frontier and clean up smallest/largest op id in per-SST file metadata.
   CHECKED_STATUS ModifyFlushedFrontier(const ConsensusFrontier& frontier);
+
+  // Update file sizes in manifest if actual file size was changed because of direct manipulation
+  // with .sst files.
+  // Like all other methods in this class it updates manifest file.
+  CHECKED_STATUS UpdateFileSizes();
 
  private:
   class Impl;

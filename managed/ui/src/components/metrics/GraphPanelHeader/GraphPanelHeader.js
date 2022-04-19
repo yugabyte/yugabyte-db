@@ -3,20 +3,22 @@
 import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Dropdown, MenuItem, FormControl } from 'react-bootstrap';
-import { DateTimePicker } from 'react-widgets';
 import momentLocalizer from 'react-widgets-moment';
 import { withRouter, browserHistory } from 'react-router';
 import moment from 'moment';
+import { toast } from 'react-toastify';
 
 import _ from 'lodash';
 
-import { YBButtonLink } from '../../common/forms/fields';
+import { YBButton, YBButtonLink } from '../../common/forms/fields';
 import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
-import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import './GraphPanelHeader.scss';
+import { MetricsComparisonModal } from '../MetricsComparisonModal/MetricsComparisonModal';
+import { NodeSelector } from '../MetricsComparisonModal/NodeSelector';
+import { CustomDatePicker } from '../CustomDatePicker/CustomDatePicker';
 
 require('react-widgets/dist/css/react-widgets.css');
 
@@ -62,6 +64,7 @@ class GraphPanelHeader extends Component {
     const defaultFilter = filterTypes[DEFAULT_FILTER_KEY];
     let currentUniverse = 'all';
     let currentUniversePrefix = 'all';
+
     if (this.props.origin === 'universe') {
       currentUniverse = this.props.universe.currentUniverse.data;
       currentUniversePrefix = currentUniverse.universeDetails.nodePrefix;
@@ -85,6 +88,7 @@ class GraphPanelHeader extends Component {
       refreshInterval: intervalTypes[DEFAULT_INTERVAL_KEY].value,
       refreshIntervalLabel: intervalTypes[DEFAULT_INTERVAL_KEY].selectedLabel
     };
+
     if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
       const filterParams = {
         nodePrefix: currentQuery.nodePrefix,
@@ -110,6 +114,7 @@ class GraphPanelHeader extends Component {
           currentFilterItem.type
         );
       }
+
       this.state = {
         ...defaultFilters,
         ...filterParams
@@ -173,7 +178,8 @@ class GraphPanelHeader extends Component {
     return (
       !_.isEqual(nextState, this.state) ||
       !_.isEqual(nextProps.universe, this.props.universe) ||
-      this.props.prometheusQueryEnabled !== nextProps.prometheusQueryEnabled
+      this.props.prometheusQueryEnabled !== nextProps.prometheusQueryEnabled ||
+      this.props.visibleModal !== nextProps.visibleModal
     );
   }
 
@@ -314,34 +320,30 @@ class GraphPanelHeader extends Component {
       origin,
       universe: { currentUniverse },
       prometheusQueryEnabled,
-      customer: { currentUser }
+      customer: { currentUser },
+      showModal,
+      closeModal,
+      visibleModal,
+      enableNodeComparisonModal
     } = this.props;
-    const { filterType, refreshIntervalLabel } = this.state;
+    const {
+      filterType,
+      refreshIntervalLabel,
+      startMoment,
+      endMoment,
+      currentSelectedUniverse
+    } = this.state;
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     let datePicker = null;
     if (this.state.filterLabel === 'Custom') {
       datePicker = (
-        <span className="graph-filter-custom">
-          <DateTimePicker
-            placeholder="MMM dd, yyyy, hh:mm a"
-            defaultValue={this.state.startMoment.toDate()}
-            onChange={this.handleStartDateChange}
-            max={new Date()}
-          />
-          &ndash;
-          <DateTimePicker
-            placeholder="MMM dd, yyyy, hh:mm a"
-            defaultValue={this.state.endMoment.toDate()}
-            onChange={this.handleEndDateChange}
-            max={new Date()}
-            min={this.state.startMoment.toDate()}
-          />
-          <YBButtonLink
-            btnClass={'btn btn-default custom-filter-btn'}
-            btnIcon={'fa fa-caret-right'}
-            onClick={this.applyCustomFilter}
-          />
-        </span>
+        <CustomDatePicker
+          startMoment={startMoment}
+          endMoment={endMoment}
+          handleTimeframeChange={this.applyCustomFilter}
+          setStartMoment={this.handleStartDateChange}
+          setEndMoment={this.handleEndDateChange}
+        />
       );
     }
 
@@ -409,7 +411,7 @@ class GraphPanelHeader extends Component {
               <FlexGrow power={1}>
                 <div className="filter-container">
                   {universePicker}
-                  <NodePicker
+                  <NodeSelector
                     {...this.props}
                     nodeItemChanged={this.nodeItemChanged}
                     selectedUniverse={this.state.currentSelectedUniverse}
@@ -419,6 +421,15 @@ class GraphPanelHeader extends Component {
                     <Link to={liveQueriesLink} style={{ marginLeft: '15px' }}>
                       <i className="fa fa-search" /> See Queries
                     </Link>
+                  )}
+                  {enableNodeComparisonModal && (
+                    <YBButton
+                      btnIcon={'fa fa-refresh'}
+                      btnClass="btn btn-default"
+                      btnText="Compare"
+                      disabled={filterType === 'custom' || currentSelectedUniverse === 'all'}
+                      onClick={() => showModal('metricsComparisonModal')}
+                    />
                   )}
                 </div>
               </FlexGrow>
@@ -440,7 +451,7 @@ class GraphPanelHeader extends Component {
                         <Dropdown.Toggle className="dropdown-toggle-button">
                           Auto Refresh:&nbsp;
                           <span className="chip" key={`interval-token`}>
-                            <span className="value"> {refreshIntervalLabel}</span>
+                            <span className="value">{refreshIntervalLabel}</span>
                           </span>
                         </Dropdown.Toggle>
                         <Dropdown.Menu>{intervalMenuItems}</Dropdown.Menu>
@@ -478,12 +489,50 @@ class GraphPanelHeader extends Component {
                             ? 'Disable Prometheus query'
                             : 'Enable Prometheus query'}
                         </MenuItem>
+                        <MenuItem onClick={() => {
+                          self.props.getGrafanaJson()
+                            .then((response) => {
+                              return new Blob([JSON.stringify(response.data, null, 2)], {
+                                type: 'application/json'
+                              });
+                            })
+                            .catch((error) => {
+                              toast.error("Error in downloading Grafana JSON: " + error.message);
+                              return null;
+                            })
+                            .then((blob) => {
+                              if (blob != null) {
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.style.display = 'none';
+                                a.href = url;
+                                a.download = 'Grafana_Dashboard.json';
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                a.remove();
+                              }
+                            })
+                        }}>
+                          {'Download Grafana JSON'}
+                        </MenuItem>
                       </Dropdown.Menu>
                     </Dropdown>
                   </div>
                 </form>
               </FlexGrow>
             </FlexContainer>
+
+            {enableNodeComparisonModal ? (
+              <MetricsComparisonModal
+                visible={showModal && visibleModal === 'metricsComparisonModal'}
+                onHide={closeModal}
+                selectedUniverse={this.state.currentSelectedUniverse}
+                origin={origin}
+              />
+            ) : (
+              ''
+            )}
           </div>
         }
         /* React.cloneELement for passing state down to child components in HOC */
@@ -505,6 +554,7 @@ class UniversePicker extends Component {
       universe: { universeList },
       selectedUniverse
     } = this.props;
+
     const universeItems = universeList.data
       .sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
       .map(function (item, idx) {
@@ -514,12 +564,14 @@ class UniversePicker extends Component {
           </option>
         );
       });
+
     const universeOptionArray = [
       <option key={-1} value="all">
         All
       </option>
     ].concat(universeItems);
     let currentUniverseValue = 'all';
+
     if (!_.isString(selectedUniverse)) {
       currentUniverseValue = selectedUniverse.universeUUID;
     }
@@ -533,48 +585,6 @@ class UniversePicker extends Component {
           value={currentUniverseValue}
         >
           {universeOptionArray}
-        </FormControl>
-      </div>
-    );
-  }
-}
-
-class NodePicker extends Component {
-  render() {
-    const { selectedUniverse, nodeItemChanged, selectedNode } = this.props;
-
-    let nodeItems = [];
-    if (
-      isNonEmptyObject(selectedUniverse) &&
-      selectedUniverse !== 'all' &&
-      selectedUniverse.universeDetails.nodeDetailsSet
-    ) {
-      nodeItems = selectedUniverse.universeDetails.nodeDetailsSet
-        .sort((a, b) => {
-          if (a.nodeName === null) {
-            return -1;
-          } else if (b.nodeName === null) {
-            return 1;
-          } else {
-            return a.nodeName.toLowerCase() < b.nodeName.toLowerCase() ? -1 : 1;
-          }
-        })
-        .map((nodeItem, nodeIdx) => (
-          <option key={nodeIdx} value={nodeItem.nodeName}>
-            {nodeItem.nodeName}
-          </option>
-        ));
-    }
-    const nodeOptionArray = [
-      <option key={-1} value="all">
-        All
-      </option>
-    ].concat(nodeItems);
-    return (
-      <div className="node-picker">
-        {isKubernetesUniverse(selectedUniverse) ? 'Pod' : 'Node'}:
-        <FormControl componentClass="select" onChange={nodeItemChanged} value={selectedNode}>
-          {nodeOptionArray}
         </FormControl>
       </div>
     );

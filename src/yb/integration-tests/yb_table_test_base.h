@@ -33,7 +33,7 @@
 
 #include "yb/master/mini_master.h"
 
-#include "yb/tools/yb-admin_client.h"
+#include "yb/tools/tools_fwd.h"
 
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
@@ -61,8 +61,8 @@ class YBTableTestBase : public YBTest {
   virtual bool use_external_mini_cluster();
   virtual bool use_yb_admin_client();
   virtual int session_timeout_ms();
-  virtual int num_masters();
-  virtual int num_tablet_servers();
+  virtual size_t num_masters();
+  virtual size_t num_tablet_servers();
   virtual int num_drives();
   virtual int num_tablets();
   virtual int client_rpc_timeout_ms();
@@ -83,7 +83,12 @@ class YBTableTestBase : public YBTest {
       yb::MonoDelta timeout = MonoDelta::FromMilliseconds(kDefaultLoadBalanceTimeoutMs));
 
   // These utility functions only work with external_mini_cluster_.
-  Result<std::shared_ptr<master::MasterServiceProxy>> GetMasterLeaderProxy();
+  template <class T>
+  T GetMasterLeaderProxy() {
+    DCHECK(use_external_mini_cluster());
+    return external_mini_cluster_->GetLeaderMasterProxy<T>();
+  }
+
   // Calls GetLoadOnTserver to get loads for the provided tservers.
   Result<std::vector<uint32_t>> GetTserverLoads(const std::vector<int>& ts_idxs);
   Result<uint32_t> GetLoadOnTserver(ExternalTabletServer* server);
@@ -107,9 +112,9 @@ class YBTableTestBase : public YBTest {
 
   vector<string> master_rpc_addresses_as_strings() {
     vector<string> host_ports;
-    int num_masters = use_external_mini_cluster() ? external_mini_cluster()->num_masters()
-                                                  : mini_cluster()->num_masters();
-    for (int i = 0; i < num_masters; i++) {
+    size_t num_masters = use_external_mini_cluster() ? external_mini_cluster()->num_masters()
+                                                     : mini_cluster()->num_masters();
+    for (size_t i = 0; i < num_masters; i++) {
       auto sock_addr = use_external_mini_cluster()
                            ? external_mini_cluster()->master(i)->bound_rpc_addr()
                            : mini_cluster()->mini_master(i)->bound_rpc_addr();

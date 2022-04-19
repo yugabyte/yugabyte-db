@@ -20,9 +20,11 @@
 #include <rapidjson/reader.h>
 #include <rapidjson/writer.h>
 
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/rpc/scheduler.h"

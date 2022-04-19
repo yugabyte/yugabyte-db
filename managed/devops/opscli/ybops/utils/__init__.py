@@ -85,6 +85,7 @@ class ReleasePackage(object):
         self.build_type = None
         self.system = None
         self.machine = None
+        self.compiler = None
 
     @classmethod
     def from_pieces(cls, repo, version, commit, build_type=None):
@@ -95,7 +96,19 @@ class ReleasePackage(object):
         obj.build_type = build_type
         obj.system = platform.system().lower()
         if obj.system == "linux":
-            obj.system = distro.linux_distribution(full_distribution_name=False)[0].lower()
+            # We recently moved from centos7 to almalinux8 as the build host for our universal
+            # x86_64 linux build.  This changes the name of the release tarball we create.
+            # Unfortunately, we have a lot of hard coded references to the centos package names
+            # in our downsstream release code.  So here we munge the name to 'centos' to keep things
+            # working while we fix downstream code.
+            # TODO(jharveymsith): Remove the almalinux to centos mapping once downstream is fixed.
+            if distro.id() == "centos" and distro.major_version() == "7" \
+                    or distro.id() == "almalinux" and platform.machine().lower() == "x86_64":
+                obj.system = "centos"
+            elif distro.id == "ubuntu":
+                obj.system = distro.id() + distro.version()
+            else:
+                obj.system = distro.id() + distro.major_version()
         if len(obj.system) == 0:
             raise YBOpsRuntimeError("Cannot release on this system type: " + platform.system())
         obj.machine = platform.machine().lower()
@@ -133,7 +146,7 @@ class ReleasePackage(object):
         else:
             # Add commit hash and maybe build type.
             pattern += "-(?P<commit_hash>[^-]+)(-(?P<build_type>[^-]+))?"
-        pattern += "-(?P<system>[^-]+)-(?P<machine>[^-]+)\.tar\.gz$"
+        pattern += "(-(?P<compiler>[^-]+))?-(?P<system>[^-]+)-(?P<machine>[^-]+)\.tar\.gz$"
         match = re.match(pattern, package_name)
         if not match:
             raise YBOpsRuntimeError("Invalid package name format: {}".format(package_name))
@@ -142,6 +155,7 @@ class ReleasePackage(object):
         self.build_number = match.group("build_number") if is_official_release else None
         self.commit = match.group("commit_hash") if not is_official_release else None
         self.build_type = match.group("build_type") if not is_official_release else None
+        self.compiler = match.group("compiler")
         self.system = match.group("system")
         self.machine = match.group("machine")
 
@@ -179,6 +193,11 @@ def get_path_from_yb(path):
 # YB_DEVOPS_HOME to distinguish it from the DEVOPS_HOME environment variable used in Yugaware.
 YB_DEVOPS_HOME = None
 
+# This variable is used inside provision_instance.py file.
+# For yugabundle installations YB_DEVOPS_HOME contains version number, so we have to use a link
+# to current devops folder. For the rest of cases this variable is equal to YB_DEVOPS_HOME.
+YB_DEVOPS_HOME_PERM = None
+
 
 def init_logging(log_level):
     """This method initializes ybops logging.
@@ -215,6 +234,7 @@ def init_env(log_level):
 
 def get_devops_home():
     global YB_DEVOPS_HOME
+    global YB_DEVOPS_HOME_PERM
     if YB_DEVOPS_HOME is None:
         devops_home = os.environ.get("yb_devops_home")
         if devops_home is None:
@@ -230,6 +250,8 @@ def get_devops_home():
                     ("yb_devops_home environment variable is not set, and could not determine it " +
                      "from any of the parent directories of '{}'").format(this_file_dir))
         YB_DEVOPS_HOME = devops_home
+        devops_home_link = os.environ.get("yb_devops_home_link")
+        YB_DEVOPS_HOME_PERM = devops_home_link if devops_home_link is not None else YB_DEVOPS_HOME
     # If this is still None, we were not able to find it crawling up the tree, so let's fail to not
     # constantly be doing this...
     if YB_DEVOPS_HOME is None:
@@ -636,7 +658,7 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SS
         username (str): SSH username
         ssh_key_file (str): SSH key file
         cmd (str): Command to run
-        timetout (int): Time in seconds to wait before erroring
+        timeout (int): Time in seconds to wait before erroring
     Returns:
         rc (int): returncode
         stdout (str): output log
@@ -657,7 +679,7 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SS
         return stdout.channel.recv_exit_status(), stdout.readlines(), stderr.readlines()
     except (paramiko.ssh_exception, socket.timeout, socket.error) as e:
         logging.error("Failed to execute remote command: {}".format(e))
-        return False
+        return 1, None, None  # treat this as a non-zero return code
     finally:
         ssh_client.close()
 

@@ -2,7 +2,7 @@
 
 import { connect } from 'react-redux';
 import { destroy } from 'redux-form';
-import { OnPremSuccess } from '../../config';
+import { OnPremSuccess } from '..';
 import {
   deleteProvider,
   deleteProviderSuccess,
@@ -12,9 +12,11 @@ import {
   getNodeInstancesForProvider,
   getNodesInstancesForProviderResponse,
   getInstanceTypeList,
-  getInstanceTypeListResponse
+  getInstanceTypeListResponse,
+  getInstanceTypeListLoading
 } from '../../../actions/cloud';
 import { openDialog, closeDialog } from '../../../actions/modal';
+import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
 
 const mapStateToProps = (state, ownProps) => {
   return {
@@ -31,7 +33,7 @@ const mapStateToProps = (state, ownProps) => {
 const mapDispatchToProps = (dispatch) => {
   return {
     deleteProviderConfig: (providerUUID) => {
-      dispatch(deleteProvider(providerUUID)).then((response) => {
+      return dispatch(deleteProvider(providerUUID)).then((response) => {
         if (response.payload.status !== 200) {
           dispatch(deleteProviderFailure(response.payload));
         } else {
@@ -39,7 +41,14 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-
+    fetchUniverseList: () => {
+      return new Promise((resolve) => {
+        dispatch(fetchUniverseList()).then((response) => {
+          dispatch(fetchUniverseListResponse(response.payload));
+          resolve(response.payload.data);
+        });
+      });
+    },
     showDeleteProviderModal: () => {
       dispatch(openDialog('deleteOnPremProvider'));
     },
@@ -56,7 +65,8 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(destroy('onPremConfigForm'));
     },
     fetchConfiguredNodeList: (pUUID) => {
-      dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
+      dispatch(getInstanceTypeListLoading())
+      return dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
         dispatch(getNodesInstancesForProviderResponse(response.payload));
       });
     },
@@ -64,7 +74,8 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(setOnPremConfigData(jsonData));
     },
     fetchInstanceTypeList: (pUUID) => {
-      dispatch(getInstanceTypeList(pUUID)).then((response) => {
+      dispatch(getInstanceTypeListLoading());
+      return dispatch(getInstanceTypeList(pUUID)).then((response) => {
         dispatch(getInstanceTypeListResponse(response.payload));
       });
     }

@@ -3,14 +3,16 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.Backup.StorageConfigType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Backup table parameters")
@@ -34,9 +36,11 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Storage location")
   public String storageLocation;
 
-  @Constraints.Required
-  @ApiModelProperty(value = "Action type", required = true)
+  @ApiModelProperty(value = "Action type")
   public ActionType actionType;
+
+  @ApiModelProperty(value = "Full Table type backup")
+  public boolean isFullBackup = false;
 
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
@@ -51,6 +55,9 @@ public class BackupTableParams extends TableManagerParams {
   // of backing up an entire universe transactionally
   @ApiModelProperty(value = "Backups")
   public List<BackupTableParams> backupList;
+
+  @ApiModelProperty(value = "Per region locations")
+  public List<BackupUtil.RegionLocations> regionLocations;
 
   // Specifies the frequency for running the backup in milliseconds.
   @ApiModelProperty(value = "Frequency to run the backup, in milliseconds")
@@ -72,6 +79,9 @@ public class BackupTableParams extends TableManagerParams {
   // Should backup script enable verbose logging.
   @ApiModelProperty(value = "Is verbose logging enabled")
   public boolean enableVerboseLogs = false;
+
+  @ApiModelProperty(value = "Alter load balancer state")
+  public boolean alterLoadBalancer = false;
 
   // Should the backup be transactional across tables
   @ApiModelProperty(value = "Is backup transactional across tables")
@@ -96,6 +106,21 @@ public class BackupTableParams extends TableManagerParams {
 
   @ApiModelProperty(value = "Restore TimeStamp")
   public String restoreTimeStamp = null;
+
+  @ApiModelProperty(value = "Is tablespaces information included")
+  public Boolean useTablespaces = false;
+
+  @ApiModelProperty(value = "User name of the current tables owner")
+  public String oldOwner = "yugabyte";
+
+  @ApiModelProperty(value = "User name of the new tables owner")
+  public String newOwner = null;
+
+  @ApiModelProperty(value = "Backup size in bytes")
+  public long backupSizeInBytes = 0L;
+
+  @ApiModelProperty(value = "Type of backup storage config")
+  public StorageConfigType storageConfigType = null;
 
   @JsonIgnore
   public Set<String> getTableNames() {

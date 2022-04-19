@@ -38,6 +38,7 @@
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/inbound_call.h"
+#include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/local_call.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/reactor.h"
@@ -52,7 +53,6 @@
 #include "yb/util/trace.h"
 
 using google::protobuf::Message;
-DECLARE_int32(rpc_max_message_size);
 
 namespace yb {
 namespace rpc {
@@ -88,7 +88,47 @@ class PbTracer : public debug::ConvertableToTraceFormat {
 scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
   return make_scoped_refptr(new PbTracer(msg));
 }
+
 }  // anonymous namespace
+
+Result<size_t> RpcCallPBParams::ParseRequest(Slice param) {
+  google::protobuf::io::CodedInputStream in(param.data(), narrow_cast<int>(param.size()));
+  SetupLimit(&in);
+  auto& message = request();
+  if (PREDICT_FALSE(!message.ParseFromCodedStream(&in))) {
+    return STATUS(InvalidArgument, message.InitializationErrorString());
+  }
+  return message.SpaceUsedLong();
+}
+
+AnyMessageConstPtr RpcCallPBParams::SerializableResponse() {
+  return AnyMessageConstPtr(&response());
+}
+
+google::protobuf::Message* RpcCallPBParams::CastMessage(const AnyMessagePtr& msg) {
+  return msg.protobuf();
+}
+
+const google::protobuf::Message* RpcCallPBParams::CastMessage(const AnyMessageConstPtr& msg) {
+  return msg.protobuf();
+}
+
+Result<size_t> RpcCallLWParams::ParseRequest(Slice param) {
+  RETURN_NOT_OK(request().ParseFromSlice(param));
+  return 0;
+}
+
+AnyMessageConstPtr RpcCallLWParams::SerializableResponse() {
+  return AnyMessageConstPtr(&response());
+}
+
+LightweightMessage* RpcCallLWParams::CastMessage(const AnyMessagePtr& msg) {
+  return msg.lightweight();
+}
+
+const LightweightMessage* RpcCallLWParams::CastMessage(const AnyMessageConstPtr& msg) {
+  return msg.lightweight();
+}
 
 RpcContext::~RpcContext() {
   if (call_ && !responded_) {
@@ -98,41 +138,27 @@ RpcContext::~RpcContext() {
 }
 
 RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
-                       std::shared_ptr<google::protobuf::Message> request_pb,
-                       std::shared_ptr<google::protobuf::Message> response_pb)
+                       std::shared_ptr<RpcCallParams> params)
     : call_(std::move(call)),
-      request_pb_(std::move(request_pb)),
-      response_pb_(std::move(response_pb)) {
-  const Status s = call_->ParseParam(const_cast<google::protobuf::Message*>(request_pb_.get()));
+      params_(std::move(params)) {
+  const Status s = call_->ParseParam(params_.get());
   if (PREDICT_FALSE(!s.ok())) {
     RespondRpcFailure(ErrorStatusPB::ERROR_INVALID_REQUEST, s);
     return;
   }
-  TRACE_EVENT_ASYNC_BEGIN2("rpc_call", "RPC", this,
-                           "call", call_->ToString(),
-                           "request", TracePb(*request_pb_));
+  TRACE_EVENT_ASYNC_BEGIN1("rpc_call", "RPC", this, "call", call_->ToString());
 }
 
 RpcContext::RpcContext(std::shared_ptr<LocalYBInboundCall> call)
-    : call_(call),
-      request_pb_(call->request(), boost::null_deleter()),
-      response_pb_(call->response(), boost::null_deleter()) {
-  TRACE_EVENT_ASYNC_BEGIN2("rpc_call", "RPC", this,
-                           "call", call_->ToString(),
-                           "request", TracePb(*request_pb_));
+    : call_(call), params_(call.get(), boost::null_deleter()) {
+  TRACE_EVENT_ASYNC_BEGIN1("rpc_call", "RPC", this, "call", call_->ToString());
 }
 
 void RpcContext::RespondSuccess() {
-  if (response_pb_->ByteSize() > FLAGS_rpc_max_message_size) {
-    RespondFailure(STATUS_FORMAT(InvalidArgument, "RPC message too long: $0 vs $1",
-                                 response_pb_->ByteSize(), FLAGS_rpc_max_message_size));
-    return;
-  }
   call_->RecordHandlingCompleted();
-  TRACE_EVENT_ASYNC_END2("rpc_call", "RPC", this,
-                         "response", TracePb(*response_pb_),
+  TRACE_EVENT_ASYNC_END1("rpc_call", "RPC", this,
                          "trace", trace()->DumpToString(true));
-  call_->RespondSuccess(*response_pb_);
+  call_->RespondSuccess(params_->SerializableResponse());
   responded_ = true;
 }
 
@@ -207,7 +233,6 @@ void RpcContext::Panic(const char* filepath, int line_number, const string& mess
 #define MY_FATAL google::LogMessageFatal(filepath, line_number).stream()
 
   MY_ERROR << "Panic handling " << call_->ToString() << ": " << message;
-  MY_ERROR << "Request:\n" << request_pb_->DebugString();
   Trace* t = trace();
   if (t) {
     MY_ERROR << "RPC trace:";

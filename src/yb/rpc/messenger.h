@@ -280,8 +280,8 @@ class Messenger : public ProxyContext {
 
   rpc::ThreadPool& ThreadPool(ServicePriority priority = ServicePriority::kNormal);
 
-  RpcMetrics& rpc_metrics() override {
-    return *rpc_metrics_;
+  const std::shared_ptr<RpcMetrics>& rpc_metrics() override {
+    return rpc_metrics_;
   }
 
   const std::shared_ptr<MemTracker>& parent_mem_tracker() override;
@@ -336,7 +336,7 @@ class Messenger : public ProxyContext {
 
   // RPC services that handle inbound requests.
   mutable RWOperationCounter rpc_services_counter_;
-  std::unordered_map<std::string, RpcServicePtr> rpc_services_;
+  std::unordered_multimap<std::string, RpcServicePtr> rpc_services_;
   RpcEndpointMap rpc_endpoints_;
 
   std::vector<std::unique_ptr<Reactor>> reactors_;
@@ -377,7 +377,7 @@ class Messenger : public ProxyContext {
 
   std::unique_ptr<DnsResolver> resolver_;
 
-  std::unique_ptr<RpcMetrics> rpc_metrics_;
+  std::shared_ptr<RpcMetrics> rpc_metrics_;
 
   // Use this IP address as base address for outbound connections from messenger.
   IpAddress test_outbound_ip_base_;

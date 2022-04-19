@@ -16,13 +16,18 @@
 #include <string>
 
 #include "yb/cdc/cdc_service.h"
+
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 
+#include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tserver/cdc_consumer.h"
@@ -39,7 +44,7 @@ using tserver::enterprise::CDCConsumer;
 
 namespace enterprise {
 
-void TwoDCTestBase::Destroy() {
+void TwoDCTestBase::TearDown() {
   LOG(INFO) << "Destroying CDC Clusters";
   if (consumer_cluster()) {
     if (consumer_cluster_.pg_supervisor_) {
@@ -58,7 +63,9 @@ void TwoDCTestBase::Destroy() {
   }
 
   producer_cluster_.client_.reset();
-  producer_cluster_.client_.reset();
+  consumer_cluster_.client_.reset();
+
+  YBTest::TearDown();
 }
 
 Status TwoDCTestBase::SetupUniverseReplication(
@@ -76,22 +83,26 @@ Status TwoDCTestBase::SetupUniverseReplication(
   auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
 
-  req.mutable_producer_table_ids()->Reserve(tables.size());
+  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(tables.size()));
   for (const auto& table : tables) {
     req.add_producer_table_ids(table->id());
   }
 
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client->proxy_cache(),
       VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-  RETURN_NOT_OK(master_proxy->SetupUniverseReplication(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return STATUS(IllegalState, "Failed setting up universe replication");
-  }
-  return Status::OK();
+  return WaitFor([&] () -> Result<bool> {
+    if (!master_proxy->SetupUniverseReplication(req, &resp, &rpc).ok()) {
+      return false;
+    }
+    if (resp.has_error()) {
+      return false;
+    }
+    return true;
+  }, MonoDelta::FromSeconds(30), "Setup universe replication");
 }
 
 Status TwoDCTestBase::VerifyUniverseReplication(
@@ -102,7 +113,7 @@ Status TwoDCTestBase::VerifyUniverseReplication(
     req.set_producer_id(universe_id);
     resp->Clear();
 
-    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
         &consumer_client->proxy_cache(),
         VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
     rpc::RpcController rpc;
@@ -123,7 +134,7 @@ Status TwoDCTestBase::ToggleUniverseReplication(
   req.set_producer_id(universe_id);
   req.set_is_enabled(is_enabled);
 
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client->proxy_cache(),
       VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
 
@@ -143,7 +154,7 @@ Status TwoDCTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_clu
     master::GetUniverseReplicationResponsePB resp;
     req.set_producer_id(universe_id);
 
-    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
         &consumer_client->proxy_cache(),
         VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
     rpc::RpcController rpc;
@@ -193,7 +204,7 @@ Status TwoDCTestBase::DeleteUniverseReplication(
 
   req.set_producer_id(universe_id);
 
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &client->proxy_cache(),
       VERIFY_RESULT(cluster->GetLeaderMiniMaster())->bound_rpc_addr());
 
@@ -204,12 +215,11 @@ Status TwoDCTestBase::DeleteUniverseReplication(
   return Status::OK();
 }
 
-uint32_t TwoDCTestBase::NumProducerTabletsPolled(MiniCluster* cluster) {
-  uint32_t size = 0;
+size_t TwoDCTestBase::NumProducerTabletsPolled(MiniCluster* cluster) {
+  size_t size = 0;
   for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
-    uint32_t new_size = 0;
-    auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(
-        mini_tserver->server());
+    size_t new_size = 0;
+    auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
     CDCConsumer* cdc_consumer;
     if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
       auto tablets_running = cdc_consumer->TEST_producer_tablets_running();
@@ -238,6 +248,22 @@ Status TwoDCTestBase::CorrectlyPollingAllTablets(
     return false;
   }, MonoDelta::FromSeconds(kRpcTimeout), "Num producer tablets being polled");
 }
+
+Status TwoDCTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
+    auto proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+    master::GetUniverseReplicationRequestPB req;
+    master::GetUniverseReplicationResponsePB resp;
+    return WaitFor([proxy, &req, &resp, producer_uuid]() -> Result<bool> {
+      req.set_producer_id(producer_uuid);
+      rpc::RpcController rpc;
+      Status s = proxy->GetUniverseReplication(req, &resp, &rpc);
+
+      return resp.has_error() && resp.error().code() == master::MasterErrorPB::OBJECT_NOT_FOUND;
+    }, MonoDelta::FromSeconds(kRpcTimeout), "Waiting for universe to delete");
+  }
 
 } // namespace enterprise
 } // namespace yb

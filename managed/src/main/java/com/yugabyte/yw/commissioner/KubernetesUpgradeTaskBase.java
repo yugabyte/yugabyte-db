@@ -33,7 +33,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
   // Wrapper that takes care of common pre and post upgrade tasks and user has
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
-  public void runUpgrade(IUpgradeTaskWrapper upgradeLambda) {
+  public void runUpgrade(Runnable upgradeLambda) {
     try {
       isBlacklistLeaders =
           runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(Util.BLACKLIST_LEADERS);
@@ -42,13 +42,16 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               .forUniverse(getUniverse())
               .getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      taskParams().rootCA = universe.getUniverseDetails().rootCA;
+
+      if (taskParams().nodePrefix == null) {
+        taskParams().nodePrefix = universe.getUniverseDetails().nodePrefix;
+      }
+      if (taskParams().clusters == null || taskParams().clusters.isEmpty()) {
+        taskParams().clusters = universe.getUniverseDetails().clusters;
+      }
 
       // Execute the lambda which populates subTaskGroupQueue
       upgradeLambda.run();
@@ -58,26 +61,31 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
 
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+      // Clear the previous subtasks if any.
+      getRunnableTask().reset();
       // If the task failed, we don't want the loadbalancer to be
       // disabled, so we enable it again in case of errors.
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType());
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
 
       throw t;
     } finally {
-      if (isBlacklistLeaders) {
-        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-        List<NodeDetails> tServerNodes = getUniverse().getTServers();
-        createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-        subTaskGroupQueue.run();
+      try {
+        if (isBlacklistLeaders) {
+          // Clear the previous subtasks if any.
+          getRunnableTask().reset();
+          List<NodeDetails> tServerNodes = getUniverse().getTServers();
+          createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          getRunnableTask().runSubTasks();
+        }
+      } finally {
+        unlockUniverseForUpdate();
       }
-      unlockUniverseForUpdate();
     }
 
     log.info("Finished {} task.", getName());

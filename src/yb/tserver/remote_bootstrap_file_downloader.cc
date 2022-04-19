@@ -15,6 +15,8 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -30,8 +32,8 @@
 
 using namespace yb::size_literals;
 
-DECLARE_int32(rpc_max_message_size);
-DEFINE_int32(remote_bootstrap_max_chunk_size, 1_MB,
+DECLARE_uint64(rpc_max_message_size);
+DEFINE_int32(remote_bootstrap_max_chunk_size, 64_MB,
              "Maximum chunk size to be transferred at a time during remote bootstrap.");
 
 // Deprecated because it's misspelled.  But if set, this flag takes precedence over
@@ -141,8 +143,8 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
   // For periodic sync, indicates number of bytes which need to be sync'ed.
   size_t periodic_sync_unsynced_bytes = 0;
   uint64_t offset = 0;
-  int32_t max_length = std::min(FLAGS_remote_bootstrap_max_chunk_size,
-                                FLAGS_rpc_max_message_size - kBytesReservedForMessageHeaders);
+  auto max_length = std::min<size_t>(FLAGS_remote_bootstrap_max_chunk_size,
+                                     FLAGS_rpc_max_message_size - kBytesReservedForMessageHeaders);
 
   std::unique_ptr<RateLimiter> rate_limiter;
 
@@ -196,11 +198,13 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
                           Format("Error validating data item $0", data_id));
 
     // Write the data.
+    VLOG_WITH_PREFIX(3) << "Verifying received data";
     RETURN_NOT_OK(appendable->Append(resp.chunk().data()));
-    VLOG_WITH_PREFIX(3)
-        << "resp size: " << resp.ByteSize() << ", chunk size: " << resp.chunk().data().size();
+    VLOG_WITH_PREFIX(3) << "Verified successfully: resp size: " << resp.ByteSize()
+                        << ", chunk size: " << resp.chunk().data().size();
 
-    if (offset + resp.chunk().data().size() == resp.chunk().total_data_length()) {
+    if (offset + resp.chunk().data().size() ==
+            implicit_cast<size_t>(resp.chunk().total_data_length())) {
       done = true;
     }
     offset += resp.chunk().data().size();

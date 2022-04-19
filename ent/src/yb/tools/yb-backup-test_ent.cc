@@ -15,7 +15,9 @@
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
+#include "yb/common/partition.h"
 #include "yb/common/redis_constants_common.h"
+#include "yb/common/redis_protocol.pb.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/client/client-test-util.h"
@@ -25,8 +27,12 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/yb_op.h"
+
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/master/master.proxy.h"
+
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tools/tools_test_utils.h"
 #include "yb/util/format.h"
@@ -44,6 +50,7 @@ using std::vector;
 using std::string;
 using strings::Split;
 
+
 namespace yb {
 namespace tools {
 
@@ -56,7 +63,7 @@ CHECKED_STATUS RedisGet(std::shared_ptr<client::YBSession> session,
                         const string& value) {
   auto get_op = std::make_shared<client::YBRedisReadOp>(table);
   RETURN_NOT_OK(redisserver::ParseGet(get_op.get(), redisserver::RedisClientCommand({"get", key})));
-  RETURN_NOT_OK(session->ReadSync(get_op));
+  RETURN_NOT_OK(session->TEST_ReadSync(get_op));
   if (get_op->response().code() != RedisResponsePB_RedisStatusCode_OK) {
     return STATUS_FORMAT(RuntimeError,
                          "Redis get returned bad response code: $0",
@@ -77,7 +84,7 @@ CHECKED_STATUS RedisSet(std::shared_ptr<client::YBSession> session,
   auto set_op = std::make_shared<client::YBRedisWriteOp>(table);
   RETURN_NOT_OK(redisserver::ParseSet(set_op.get(),
                                       redisserver::RedisClientCommand({"set", key, value})));
-  RETURN_NOT_OK(session->ApplyAndFlush(set_op));
+  RETURN_NOT_OK(session->TEST_ApplyAndFlush(set_op));
   return Status::OK();
 }
 } // namespace helpers
@@ -97,7 +104,8 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
 
   Status RunBackupCommand(const vector<string>& args) {
     return tools::RunBackupCommand(
-        cluster_->pgsql_hostport(0), cluster_->GetMasterAddresses(), *tmp_dir_, args);
+        cluster_->pgsql_hostport(0), cluster_->GetMasterAddresses(),
+        cluster_->GetTabletServerHTTPAddresses(), *tmp_dir_, args);
   }
 
   void RecreateDatabase(const string& db) {
@@ -199,6 +207,60 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYEDISBackup)) {
 // Exercise the CatalogManager::ImportTableEntry second code path where, instead, table names match.
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYEDISBackupWithDropTable)) {
   DoTestYEDISBackup(helpers::TableOp::kDropTable);
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithEnum)) {
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE e_t as ENUM ('foo', 'bar', 'cab')"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v e_t)"));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'foo')"));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (101, 'bar')"));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (102, 'cab')"));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (999, 'foo')"));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  SetDbName("yugabyte_new"); // Connecting to the second DB from the moment.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT k, v FROM mytbl ORDER BY k",
+      R"#(
+          k  |  v
+        -----+-----
+         100 | foo
+         101 | bar
+         102 | cab
+        (3 rows)
+      )#"
+  ));
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLPgBasedBackup)) {
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'abc')"));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--pg_based_backup", "--backup_location", backup_dir, "--keyspace", "ysql.yugabyte",
+       "create"}));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (999, 'foo')"));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  SetDbName("yugabyte_new"); // Connecting to the second DB from the moment.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT k, v FROM mytbl ORDER BY k",
+      R"#(
+          k  |  v
+        -----+-----
+         100 | abc
+        (1 row)
+      )#"
+  ));
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 void YBBackupTest::DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp) {
@@ -833,9 +895,11 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLBackupWithDefi
 // constraint as 1 hash tablet. Restore should restore the unique constraint index as 3 tablets
 // since the tablet snapshot files are already split into 3 tablets.
 //
-// TODO(jason): enable test when issue #4873 ([YSQL] Support backup for pre-split multi-tablet range
-// tables) is fixed.
-TEST_F(YBBackupTest, YB_DISABLE_TEST(TestYSQLRangeSplitConstraint)) {
+// TODO(yguan): after the SPLIT AT clause is fully supported by ysql_dump this test needs to
+//              be revisited as the table may no longer need re-partitioning.
+//              Therefore, to exercise CatalogManager::RepartitionTable this test may need
+//              to be updated similar to TestYSQLManualTabletSplit.
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRangeSplitConstraint)) {
   const string table_name = "mytbl";
   const string index_name = "myidx";
 
@@ -845,21 +909,29 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST(TestYSQLRangeSplitConstraint)) {
   ASSERT_NO_FATALS(CreateIndex(
       Format("CREATE UNIQUE INDEX $0 ON $1 (v ASC) SPLIT AT VALUES (('foo'), ('qux'))",
              index_name, table_name)));
+
+  // Commenting out the ALTER .. ADD UNIQUE constraint case as this case is not supported.
+  // Vanilla Postgres disallows adding indexes with non-default (DESC) sort option as constraints.
+  // In YB we have added HASH and changed default (for first column) from ASC to HASH.
+  //
+  // See #11583 for details -- we should revisit this test after that is fixed.
+  /*
   ASSERT_NO_FATALS(RunPsqlCommand(
       Format("ALTER TABLE $0 ADD UNIQUE USING INDEX $1", table_name, index_name),
       "ALTER TABLE"));
+  */
 
   // Write data in each partition of the index.
   ASSERT_NO_FATALS(InsertRows(
-      Format("INSERT INTO $0 (v) VALUES ('bar'), ('jar'), ('tar')", table_name), 3));
+      Format("INSERT INTO $0 (v) VALUES ('tar'), ('bar'), ('jar')", table_name), 3));
   ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("SELECT * FROM $0 ORDER BY k", table_name),
+      Format("SELECT * FROM $0 ORDER BY v", table_name),
       R"#(
          k |  v
         ---+-----
-         1 | bar
-         2 | jar
-         3 | tar
+         2 | bar
+         3 | jar
+         1 | tar
         (3 rows)
       )#"
   ));
@@ -879,13 +951,13 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST(TestYSQLRangeSplitConstraint)) {
 
   // Verify data.
   ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("SELECT * FROM $0 ORDER BY k", table_name),
+      Format("SELECT * FROM $0 ORDER BY v", table_name),
       R"#(
          k |  v
         ---+-----
-         1 | bar
-         2 | jar
-         3 | tar
+         2 | bar
+         3 | jar
+         1 | tar
         (3 rows)
       )#"
   ));
@@ -901,7 +973,8 @@ class YBBackupTestNumTablets : public YBBackupTest {
     // For convenience, rather than create a subclass for tablet splitting tests, add tablet split
     // flags here since they shouldn't really affect non-tablet splitting tests.
     options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
-    options->extra_master_flags.push_back("--TEST_select_all_tablets_for_split=true");
+    options->extra_tserver_flags.push_back("--db_filter_block_size_bytes=2048");
+    options->extra_tserver_flags.push_back("--db_index_block_size_bytes=2048");
     options->extra_tserver_flags.push_back("--db_block_size_bytes=1024");
     options->extra_tserver_flags.push_back("--ycql_num_tablets=3");
     options->extra_tserver_flags.push_back("--ysql_num_tablets=3");
@@ -930,7 +1003,8 @@ class YBBackupTestNumTablets : public YBBackupTest {
   Result<bool> CheckPartitions(
       const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets,
       const vector<string>& expected_splits) {
-    SCHECK_EQ(tablets.size(), expected_splits.size() + 1, InvalidArgument, "");
+    SCHECK_EQ(
+        implicit_cast<size_t>(tablets.size()), expected_splits.size() + 1, InvalidArgument, "");
 
     static const string empty;
     for (int i = 0; i < tablets.size(); i++) {
@@ -1096,7 +1170,7 @@ TEST_F_EX(YBBackupTest,
   master::SplitTabletResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(30s * kTimeMultiplier);
-  ASSERT_OK(cluster_->master_proxy()->SplitTablet(req, &resp, &rpc));
+  ASSERT_OK(cluster_->GetMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
 
   // Wait for split to complete.
   constexpr int num_tablets = 4;
@@ -1165,6 +1239,44 @@ TEST_F_EX(YBBackupTest,
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+// The backup script should disable automatic tablet splitting temporarily to avoid race conditions.
+TEST_F(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestBackupDisablesAutomaticTabletSplitting)) {
+  const string table_name = "mytbl";
+
+  // Create table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name)));
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 VALUES (generate_series(1, 1000))", table_name), 1000));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_shard_count_per_node", "100"));
+  // This threshold is set to a value less than the initial tablet size (~12KB) so they can split
+  // but larger than the child tablet size (~6KB) to avoid a situation where we repeatedly try to
+  // split tablets that are too small to be split.
+  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_size_threshold_bytes", "10000"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("process_split_tablet_candidates_interval_msec", "60000"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_automatic_tablet_splitting", "true"));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte",
+       "--TEST_sleep_after_find_snapshot_dirs", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// When trying to run yb_admin with a command that is not supported, we should get a
+// YbAdminOpNotSupportedException.
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYBAdminUnsupportedCommands)) {
+  // Dummy command for yb_backup.py, no restore actually runs.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--TEST_yb_admin_unsupported_commands", "restore"}));
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 class YBFailSnapshotTest: public YBBackupTest {
   void SetUp() override {
     YBBackupTest::SetUp();
@@ -1176,7 +1288,9 @@ class YBFailSnapshotTest: public YBBackupTest {
   }
 };
 
-TEST_F(YBFailSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailBackupRestore)) {
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailBackupRestore),
+          YBFailSnapshotTest) {
   client::kv_table_test::CreateTable(
       client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_);
   const string& keyspace = table_.name().namespace_name();
@@ -1188,6 +1302,29 @@ TEST_F(YBFailSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailBackupRe
     {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace, "restore"});
   ASSERT_NOK(s);
   ASSERT_STR_CONTAINS(s.message().ToBuffer(), ", restoring failed!");
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackupWithLB)) {
+  // Create table with a lot of tablets.
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, CalcNumTablets(20), client_.get(), &table_);
+  const string& keyspace = table_.name().namespace_name();
+
+  const string backup_dir = GetTempDir("backup");
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
+
+  // Add in a new tserver to trigger the load balancer.
+  ASSERT_OK(cluster_->AddTabletServer());
+
+  // Start running the restore while the load balancer is balancing the load.
+  // Use the --TEST_sleep_during_download_dir param to inject a sleep before the rsync calls.
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace,
+       "--TEST_sleep_during_download_dir", "restore"}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }

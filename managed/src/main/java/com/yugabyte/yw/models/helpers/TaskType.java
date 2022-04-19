@@ -35,7 +35,11 @@ public enum TaskType {
 
   BackupUniverse("BackupUniverse"),
 
+  RestoreBackup("RestoreBackup"),
+
   MultiTableBackup("MultiTableBackup"),
+
+  CreateBackup("CreateBackup"),
 
   EditUniverse("EditUniverse"),
 
@@ -62,6 +66,8 @@ public enum TaskType {
   GFlagsKubernetesUpgrade("upgrade.GFlagsKubernetesUpgrade"),
 
   CertsRotate("upgrade.CertsRotate"),
+
+  CertsRotateKubernetesUpgrade("upgrade.CertsRotateKubernetesUpgrade"),
 
   TlsToggle("upgrade.TlsToggle"),
 
@@ -102,6 +108,8 @@ public enum TaskType {
 
   CreateKMSConfig("CreateKMSConfig"),
 
+  EditKMSConfig("EditKMSConfig"),
+
   DeleteKMSConfig("DeleteKMSConfig"),
 
   UpdateDiskSize("UpdateDiskSize"),
@@ -110,9 +118,11 @@ public enum TaskType {
 
   CreateXClusterConfig("CreateXClusterConfig"),
 
+  EditXClusterConfig("EditXClusterConfig"),
+
   DeleteXClusterConfig("DeleteXClusterConfig"),
 
-  EditXClusterConfig("EditXClusterConfig"),
+  SyncXClusterConfig("SyncXClusterConfig"),
 
   CreateSupportBundle("CreateSupportBundle"),
 
@@ -149,7 +159,11 @@ public enum TaskType {
 
   DeleteBackup("subtasks.DeleteBackup"),
 
+  DeleteBackupYb("subtasks.DeleteBackupYb"),
+
   DeleteCustomerConfig("DeleteCustomerConfig"),
+
+  DeleteCustomerStorageConfig("DeleteCustomerStorageConfig"),
 
   UpdateNodeProcess("subtasks.nodes.UpdateNodeProcess"),
 
@@ -181,6 +195,8 @@ public enum TaskType {
 
   WaitForLeaderBlacklistCompletion("subtasks.WaitForLeaderBlacklistCompletion"),
 
+  WaitForFollowerLag("subtasks.WaitForFollowerLag"),
+
   WaitForLoadBalance("subtasks.WaitForLoadBalance"),
 
   WaitForMasterLeader("subtasks.WaitForMasterLeader"),
@@ -200,11 +216,15 @@ public enum TaskType {
   // Tasks belonging to subtasks.xcluster classpath
   XClusterConfigSetup("subtasks.xcluster.XClusterConfigSetup"),
 
-  XClusterConfigDelete("subtasks.xcluster.XClusterConfigDelete"),
-
   XClusterConfigSetStatus("subtasks.xcluster.XClusterConfigSetStatus"),
 
   XClusterConfigModifyTables("subtasks.xcluster.XClusterConfigModifyTables"),
+
+  XClusterConfigRename("subtasks.xcluster.XClusterConfigRename"),
+
+  XClusterConfigDelete("subtasks.xcluster.XClusterConfigDelete"),
+
+  XClusterConfigSync("subtasks.xcluster.XClusterConfigSync"),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
@@ -223,9 +243,15 @@ public enum TaskType {
 
   BackupTable("subtasks.BackupTable"),
 
+  BackupTableYb("subtasks.BackupTableYb"),
+
   BackupUniverseKeys("subtasks.BackupUniverseKeys"),
 
+  RestoreBackupYb("subtasks.RestoreBackupYb"),
+
   RestoreUniverseKeys("subtasks.RestoreUniverseKeys"),
+
+  RestoreUniverseKeysYb("subtasks.RestoreUniverseKeysYb"),
 
   WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
 
@@ -252,13 +278,39 @@ public enum TaskType {
 
   CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
 
+  ManageAlertDefinitions("subtasks.ManageAlertDefinitions"),
+
   UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
 
   UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
 
   ResetUniverseVersion("subtasks.ResetUniverseVersion"),
 
-  DeleteCertificate("subtasks.DeleteCertificate");
+  DeleteCertificate("subtasks.DeleteCertificate"),
+
+  SetNodeStatus("subtasks.SetNodeStatus"),
+
+  CheckMasterLeader("subtasks.check.CheckMasterLeader"),
+
+  CheckMasters("subtasks.check.CheckMasters"),
+
+  CheckTServers("subtasks.check.CheckTServers"),
+
+  WaitForTServerHBs("subtasks.check.WaitForTServerHBs"),
+
+  CreatePrometheusSwamperConfig("subtasks.CreatePrometheusSwamperConfig"),
+
+  PreflightNodeCheck("subtasks.PreflightNodeCheck"),
+
+  RunYsqlUpgrade("subtasks.RunYsqlUpgrade"),
+
+  ResizeNode("upgrade.ResizeNode"),
+
+  CheckMemory("subtasks.check.CheckMemory"),
+
+  UpdateMountedDisks("subtasks.UpdateMountedDisks"),
+
+  TransferXClusterCerts("subtasks.TransferXClusterCerts");
 
   private String relativeClassPath;
 

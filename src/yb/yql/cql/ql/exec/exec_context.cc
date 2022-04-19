@@ -24,16 +24,23 @@
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/exec/rescheduler.h"
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
+
+DEFINE_int32(cql_prepare_child_threshold_ms, 2000 * yb::kTimeMultiplier,
+             "Timeout if preparing for child transaction takes longer"
+             "than the prescribed threshold.");
 
 namespace yb {
 namespace ql {
@@ -68,7 +75,8 @@ Status ExecContext::StartTransaction(
   TRACE("Start Transaction");
   transaction_start_time_ = MonoTime::Now();
   if (!transaction_) {
-    transaction_ = VERIFY_RESULT(ql_env->NewTransaction(transaction_, isolation_level));
+    transaction_ = VERIFY_RESULT(ql_env->NewTransaction(
+        transaction_, isolation_level, rescheduler->GetDeadline()));
   } else if (transaction_->IsRestartRequired()) {
     transaction_ = VERIFY_RESULT(transaction_->CreateRestartedTransaction());
   } else {
@@ -91,12 +99,26 @@ Status ExecContext::StartTransaction(
 
 Status ExecContext::PrepareChildTransaction(
     CoarseTimePoint deadline, ChildTransactionDataPB* data) {
-  ChildTransactionDataPB result =
-      VERIFY_RESULT(DCHECK_NOTNULL(transaction_.get())->PrepareChildFuture(
-           client::ForceConsistentRead::kTrue,
-           deadline).get());
-  *data = std::move(result);
-  return Status::OK();
+  auto future = DCHECK_NOTNULL(transaction_.get())->PrepareChildFuture(
+      client::ForceConsistentRead::kTrue, deadline);
+
+  // Set the deadline to be the earlier of the input deadline and the current timestamp
+  // plus the waiting time for the prepare child
+  auto future_deadline = std::min(
+      deadline,
+      CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cql_prepare_child_threshold_ms));
+
+  auto future_status = future.wait_until(future_deadline);
+
+  if (future_status == std::future_status::ready) {
+    *data = VERIFY_RESULT(std::move(future).get());
+    return Status::OK();
+  }
+
+  auto message = Format("Timed out waiting for prepare child status, left to deadline: $0",
+                        MonoDelta(deadline - CoarseMonoClock::now()));
+  LOG(INFO) << message;
+  return STATUS(TimedOut, message);
 }
 
 Status ExecContext::ApplyChildTransactionResult(const ChildTransactionResultPB& result) {
@@ -266,11 +288,11 @@ void TnodeContext::InitializePartition(QLReadRequestPB *req, bool continue_user_
   // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6":
   // hashed_column_values() will be [1] and hash_values_options_ will be [[2,3],[4,5],[6]].
   int set_cols_size = req->hashed_column_values().size();
-  int unset_cols_size = hash_values_options_->size();
+  auto unset_cols_size = hash_values_options_->size();
 
   // Initialize the missing columns with default values (e.g. h2, h3, h4 in example above).
-  req->mutable_hashed_column_values()->Reserve(set_cols_size + unset_cols_size);
-  for (int i = 0; i < unset_cols_size; i++) {
+  req->mutable_hashed_column_values()->Reserve(narrow_cast<int>(set_cols_size + unset_cols_size));
+  for (size_t i = 0; i < unset_cols_size; i++) {
     req->add_hashed_column_values();
   }
 
@@ -280,10 +302,11 @@ void TnodeContext::InitializePartition(QLReadRequestPB *req, bool continue_user_
   //    h4 = 6 since pos is "0 % 1 = 0", (start_position becomes 0 / 1 = 0).
   //    h3 = 4 since pos is "0 % 2 = 0", (start_position becomes 0 / 2 = 0).
   //    h2 = 2 since pos is "0 % 2 = 0", (start_position becomes 0 / 2 = 0).
-  for (int i = unset_cols_size - 1; i >= 0; i--) {
+  for (auto i = unset_cols_size; i > 0;) {
+    --i;
     const auto& options = (*hash_values_options_)[i];
-    int pos = start_partition % options.size();
-    *req->mutable_hashed_column_values(i + set_cols_size) = options[pos];
+    auto pos = start_partition % options.size();
+    *req->mutable_hashed_column_values(narrow_cast<int>(i + set_cols_size)) = options[pos];
     start_partition /= options.size();
   }
 }
@@ -300,7 +323,7 @@ void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
   uint64_t partition_counter = current_partition_index_;
   // Hash_values_options_ vector starts from the first column with an 'IN' restriction.
   const int hash_key_size = req->hashed_column_values().size();
-  const int fixed_cols_size = hash_key_size - hash_values_options_->size();
+  const auto fixed_cols_size = hash_key_size - hash_values_options_->size();
 
   // Set the right values for the missing/unset columns by converting partition index into positions
   // for each hash column and using the corresponding values from the hash values options vector.
@@ -308,10 +331,11 @@ void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
   //    h4 = 6 since pos is "3 % 1 = 0", new partition counter is "3 / 1 = 3".
   //    h3 = 5 since pos is "3 % 2 = 1", pos is non-zero which guarantees previous cols don't need
   //    to be changed (i.e. are the same as for previous partition index) so we break.
-  for (int i = hash_key_size - 1; i >= fixed_cols_size; i--) {
+  for (size_t i = hash_key_size; i > fixed_cols_size;) {
+    --i;
     const auto& options = (*hash_values_options_)[i - fixed_cols_size];
-    int pos = partition_counter % options.size();
-    *req->mutable_hashed_column_values(i) = options[pos];
+    auto pos = partition_counter % options.size();
+    *req->mutable_hashed_column_values(narrow_cast<int>(i)) = options[pos];
     if (pos != 0) break; // The previous position hash values must be unchanged.
     partition_counter /= options.size();
   }

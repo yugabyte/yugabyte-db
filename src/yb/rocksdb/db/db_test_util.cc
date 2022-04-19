@@ -23,15 +23,16 @@
 
 #include "yb/rocksdb/db/db_test_util.h"
 
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/rocksdb/util/logging.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
-#include "yb/util/header_manager_impl.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
-#include "yb/util/universe_key_manager.h"
 
 namespace rocksdb {
 
@@ -63,10 +64,10 @@ SpecialEnv::SpecialEnv(Env* base)
   table_write_callback_ = nullptr;
 }
 
-const string DBTestBase::kKeyId = "key_id";
-const string DBTestBase::kKeyFile = "universe_key_file";
+const string DBHolder::kKeyId = "key_id";
+const string DBHolder::kKeyFile = "universe_key_file";
 
-DBTestBase::DBTestBase(const std::string path, bool encryption_enabled)
+DBHolder::DBHolder(const std::string path, bool encryption_enabled)
     : option_config_(kDefault),
       mem_env_(!getenv("MEM_ENV") ? nullptr : new MockEnv(Env::Default())),
       env_(new SpecialEnv(mem_env_ ? mem_env_ : Env::Default())) {
@@ -89,7 +90,7 @@ DBTestBase::DBTestBase(const std::string path, bool encryption_enabled)
   Random::GetTLSInstance()->Reset(0xdeadbeef);
 }
 
-DBTestBase::~DBTestBase() {
+DBHolder::~DBHolder() {
   Env::Default()->CleanupFile(kKeyFile);
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
   rocksdb::SyncPoint::GetInstance()->LoadDependency({});
@@ -104,7 +105,7 @@ DBTestBase::~DBTestBase() {
   delete env_;
 }
 
-void DBTestBase::CreateEncryptedEnv() {
+void DBHolder::CreateEncryptedEnv() {
   auto bytes = yb::RandomBytes(32);
   yb::Slice key(bytes.data(), bytes.size());
   auto status = yb::WriteStringToFile(yb::Env::Default(), key, kKeyFile);
@@ -112,18 +113,18 @@ void DBTestBase::CreateEncryptedEnv() {
     LOG(FATAL) << "Could not write slice to file:" << status.ToString();
   }
 
-  auto res = yb::UniverseKeyManager::FromKey(kKeyId, key);
+  auto res = yb::encryption::UniverseKeyManager::FromKey(kKeyId, key);
   if (!res.ok()) {
     LOG(FATAL) << "Could not get key from bytes:" << res.status().ToString();
   }
   universe_key_manager_ = std::move(*res);
   encrypted_env_ = yb::NewRocksDBEncryptedEnv(
-      yb::DefaultHeaderManager(universe_key_manager_.get()));
+      yb::encryption::DefaultHeaderManager(universe_key_manager_.get()));
   delete env_;
   env_ = new rocksdb::SpecialEnv(encrypted_env_.get());
 }
 
-bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
+bool DBHolder::ShouldSkipOptions(int option_config, int skip_mask) {
 #ifdef ROCKSDB_LITE
     // These options are not supported in ROCKSDB_LITE
   if (option_config == kHashSkipList ||
@@ -180,7 +181,7 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
 
 // Switch to a fresh database with the next option configuration to
 // test.  Return false if there are no more configurations to test.
-bool DBTestBase::ChangeOptions(int skip_mask) {
+bool DBHolder::ChangeOptions(int skip_mask) {
   for (option_config_++; option_config_ < kEnd; option_config_++) {
     if (ShouldSkipOptions(option_config_, skip_mask)) {
       continue;
@@ -200,7 +201,7 @@ bool DBTestBase::ChangeOptions(int skip_mask) {
 }
 
 // Switch between different compaction styles.
-bool DBTestBase::ChangeCompactOptions() {
+bool DBHolder::ChangeCompactOptions() {
   if (option_config_ == kDefault) {
     option_config_ = kUniversalCompaction;
     Destroy(last_options_);
@@ -236,7 +237,7 @@ bool DBTestBase::ChangeCompactOptions() {
 
 // Switch between different filter policy
 // Jump from kDefault to kFilter to kFullFilter
-bool DBTestBase::ChangeFilterOptions() {
+bool DBHolder::ChangeFilterOptions() {
   if (option_config_ == kDefault) {
     option_config_ = kFilter;
   } else if (option_config_ == kFilter) {
@@ -253,14 +254,14 @@ bool DBTestBase::ChangeFilterOptions() {
 }
 
 // Return the current option configuration.
-Options DBTestBase::CurrentOptions(
+Options DBHolder::CurrentOptions(
     const anon::OptionsOverride& options_override) {
   Options options;
   options.write_buffer_size = 4090 * 4096;
   return CurrentOptions(options, options_override);
 }
 
-Options DBTestBase::CurrentOptions(
+Options DBHolder::CurrentOptions(
     const Options& defaultOptions,
     const anon::OptionsOverride& options_override) {
   // this redundant copy is to minimize code change w/o having lint error.
@@ -441,7 +442,7 @@ Options DBTestBase::CurrentOptions(
   return options;
 }
 
-void DBTestBase::CreateColumnFamilies(const std::vector<std::string>& cfs,
+void DBHolder::CreateColumnFamilies(const std::vector<std::string>& cfs,
                                       const Options& options) {
   ColumnFamilyOptions cf_opts(options);
   size_t cfi = handles_.size();
@@ -451,7 +452,7 @@ void DBTestBase::CreateColumnFamilies(const std::vector<std::string>& cfs,
   }
 }
 
-void DBTestBase::CreateAndReopenWithCF(const std::vector<std::string>& cfs,
+void DBHolder::CreateAndReopenWithCF(const std::vector<std::string>& cfs,
                                        const Options& options) {
   CreateColumnFamilies(cfs, options);
   std::vector<std::string> cfs_plus_default = cfs;
@@ -459,17 +460,17 @@ void DBTestBase::CreateAndReopenWithCF(const std::vector<std::string>& cfs,
   ReopenWithColumnFamilies(cfs_plus_default, options);
 }
 
-void DBTestBase::ReopenWithColumnFamilies(const std::vector<std::string>& cfs,
+void DBHolder::ReopenWithColumnFamilies(const std::vector<std::string>& cfs,
                                           const std::vector<Options>& options) {
   ASSERT_OK(TryReopenWithColumnFamilies(cfs, options));
 }
 
-void DBTestBase::ReopenWithColumnFamilies(const std::vector<std::string>& cfs,
+void DBHolder::ReopenWithColumnFamilies(const std::vector<std::string>& cfs,
                                           const Options& options) {
   ASSERT_OK(TryReopenWithColumnFamilies(cfs, options));
 }
 
-Status DBTestBase::TryReopenWithColumnFamilies(
+Status DBHolder::TryReopenWithColumnFamilies(
     const std::vector<std::string>& cfs, const std::vector<Options>& options) {
   Close();
   EXPECT_EQ(cfs.size(), options.size());
@@ -481,18 +482,18 @@ Status DBTestBase::TryReopenWithColumnFamilies(
   return DB::Open(db_opts, dbname_, column_families, &handles_, &db_);
 }
 
-Status DBTestBase::TryReopenWithColumnFamilies(
+Status DBHolder::TryReopenWithColumnFamilies(
     const std::vector<std::string>& cfs, const Options& options) {
   Close();
   std::vector<Options> v_opts(cfs.size(), options);
   return TryReopenWithColumnFamilies(cfs, v_opts);
 }
 
-void DBTestBase::Reopen(const Options& options) {
+void DBHolder::Reopen(const Options& options) {
   ASSERT_OK(TryReopen(options));
 }
 
-void DBTestBase::Close() {
+void DBHolder::Close() {
   for (auto h : handles_) {
     delete h;
   }
@@ -501,28 +502,28 @@ void DBTestBase::Close() {
   db_ = nullptr;
 }
 
-void DBTestBase::DestroyAndReopen(const Options& options) {
+void DBHolder::DestroyAndReopen(const Options& options) {
   // Destroy using last options
   Destroy(last_options_);
   ASSERT_OK(TryReopen(options));
 }
 
-void DBTestBase::Destroy(const Options& options) {
+void DBHolder::Destroy(const Options& options) {
   Close();
   ASSERT_OK(DestroyDB(dbname_, options));
 }
 
-Status DBTestBase::ReadOnlyReopen(const Options& options) {
+Status DBHolder::ReadOnlyReopen(const Options& options) {
   return DB::OpenForReadOnly(options, dbname_, &db_);
 }
 
-Status DBTestBase::TryReopen(const Options& options) {
+Status DBHolder::TryReopen(const Options& options) {
   Close();
   last_options_ = options;
   return DB::Open(options, dbname_, &db_);
 }
 
-Status DBTestBase::Flush(int cf) {
+Status DBHolder::Flush(int cf) {
   if (cf == 0) {
     return db_->Flush(FlushOptions());
   } else {
@@ -530,7 +531,7 @@ Status DBTestBase::Flush(int cf) {
   }
 }
 
-Status DBTestBase::Put(const Slice& k, const Slice& v, WriteOptions wo) {
+Status DBHolder::Put(const Slice& k, const Slice& v, WriteOptions wo) {
   if (kMergePut == option_config_) {
     return db_->Merge(wo, k, v);
   } else {
@@ -538,7 +539,7 @@ Status DBTestBase::Put(const Slice& k, const Slice& v, WriteOptions wo) {
   }
 }
 
-Status DBTestBase::Put(int cf, const Slice& k, const Slice& v,
+Status DBHolder::Put(int cf, const Slice& k, const Slice& v,
                        WriteOptions wo) {
   if (kMergePut == option_config_) {
     return db_->Merge(wo, handles_[cf], k, v);
@@ -547,23 +548,23 @@ Status DBTestBase::Put(int cf, const Slice& k, const Slice& v,
   }
 }
 
-Status DBTestBase::Delete(const std::string& k) {
+Status DBHolder::Delete(const std::string& k) {
   return db_->Delete(WriteOptions(), k);
 }
 
-Status DBTestBase::Delete(int cf, const std::string& k) {
+Status DBHolder::Delete(int cf, const std::string& k) {
   return db_->Delete(WriteOptions(), handles_[cf], k);
 }
 
-Status DBTestBase::SingleDelete(const std::string& k) {
+Status DBHolder::SingleDelete(const std::string& k) {
   return db_->SingleDelete(WriteOptions(), k);
 }
 
-Status DBTestBase::SingleDelete(int cf, const std::string& k) {
+Status DBHolder::SingleDelete(int cf, const std::string& k) {
   return db_->SingleDelete(WriteOptions(), handles_[cf], k);
 }
 
-std::string DBTestBase::Get(const std::string& k, const Snapshot* snapshot) {
+std::string DBHolder::Get(const std::string& k, const Snapshot* snapshot) {
   ReadOptions options;
   options.verify_checksums = true;
   options.snapshot = snapshot;
@@ -578,7 +579,7 @@ std::string DBTestBase::Get(const std::string& k, const Snapshot* snapshot) {
   return result;
 }
 
-std::string DBTestBase::Get(int cf, const std::string& k,
+std::string DBHolder::Get(int cf, const std::string& k,
                             const Snapshot* snapshot) {
   ReadOptions options;
   options.verify_checksums = true;
@@ -593,13 +594,13 @@ std::string DBTestBase::Get(int cf, const std::string& k,
   return result;
 }
 
-uint64_t DBTestBase::GetNumSnapshots() {
+uint64_t DBHolder::GetNumSnapshots() {
   uint64_t int_num;
   EXPECT_TRUE(dbfull()->GetIntProperty("rocksdb.num-snapshots", &int_num));
   return int_num;
 }
 
-uint64_t DBTestBase::GetTimeOldestSnapshots() {
+uint64_t DBHolder::GetTimeOldestSnapshots() {
   uint64_t int_num;
   EXPECT_TRUE(
       dbfull()->GetIntProperty("rocksdb.oldest-snapshot-time", &int_num));
@@ -608,7 +609,7 @@ uint64_t DBTestBase::GetTimeOldestSnapshots() {
 
 // Return a string that contains all key,value pairs in order,
 // formatted like "(k1->v1)(k2->v2)".
-std::string DBTestBase::Contents(int cf) {
+std::string DBHolder::Contents(int cf) {
   std::vector<std::string> forward;
   std::string result;
   Iterator* iter = (cf == 0) ? db_->NewIterator(ReadOptions())
@@ -634,7 +635,7 @@ std::string DBTestBase::Contents(int cf) {
   return result;
 }
 
-std::string DBTestBase::AllEntriesFor(const Slice& user_key, int cf) {
+std::string DBHolder::AllEntriesFor(const Slice& user_key, int cf) {
   Arena arena;
   ScopedArenaIterator iter;
   if (cf == 0) {
@@ -692,7 +693,7 @@ std::string DBTestBase::AllEntriesFor(const Slice& user_key, int cf) {
 }
 
 #ifndef ROCKSDB_LITE
-int DBTestBase::NumSortedRuns(int cf) {
+int DBHolder::NumSortedRuns(int cf) {
   ColumnFamilyMetaData cf_meta;
   if (cf == 0) {
     db_->GetColumnFamilyMetaData(&cf_meta);
@@ -708,7 +709,7 @@ int DBTestBase::NumSortedRuns(int cf) {
   return num_sr;
 }
 
-uint64_t DBTestBase::TotalSize(int cf) {
+uint64_t DBHolder::TotalSize(int cf) {
   ColumnFamilyMetaData cf_meta;
   if (cf == 0) {
     db_->GetColumnFamilyMetaData(&cf_meta);
@@ -718,7 +719,7 @@ uint64_t DBTestBase::TotalSize(int cf) {
   return cf_meta.size;
 }
 
-uint64_t DBTestBase::SizeAtLevel(int level) {
+uint64_t DBHolder::SizeAtLevel(int level) {
   std::vector<LiveFileMetaData> metadata;
   db_->GetLiveFilesMetaData(&metadata);
   uint64_t sum = 0;
@@ -730,7 +731,7 @@ uint64_t DBTestBase::SizeAtLevel(int level) {
   return sum;
 }
 
-size_t DBTestBase::TotalLiveFiles(int cf) {
+size_t DBHolder::TotalLiveFiles(int cf) {
   ColumnFamilyMetaData cf_meta;
   if (cf == 0) {
     db_->GetColumnFamilyMetaData(&cf_meta);
@@ -744,14 +745,14 @@ size_t DBTestBase::TotalLiveFiles(int cf) {
   return num_files;
 }
 
-size_t DBTestBase::CountLiveFiles() {
+size_t DBHolder::CountLiveFiles() {
   std::vector<LiveFileMetaData> metadata;
   db_->GetLiveFilesMetaData(&metadata);
   return metadata.size();
 }
 #endif  // ROCKSDB_LITE
 
-int DBTestBase::NumTableFilesAtLevel(int level, int cf) {
+int DBHolder::NumTableFilesAtLevel(int level, int cf) {
   std::string property;
   if (cf == 0) {
     // default cfd
@@ -765,7 +766,7 @@ int DBTestBase::NumTableFilesAtLevel(int level, int cf) {
   return atoi(property.c_str());
 }
 
-int DBTestBase::TotalTableFiles(int cf, int levels) {
+int DBHolder::TotalTableFiles(int cf, int levels) {
   if (levels == -1) {
     levels = CurrentOptions().num_levels;
   }
@@ -777,7 +778,7 @@ int DBTestBase::TotalTableFiles(int cf, int levels) {
 }
 
 // Return spread of files per level
-std::string DBTestBase::FilesPerLevel(int cf) {
+std::string DBHolder::FilesPerLevel(int cf) {
   int num_levels =
       (cf == 0) ? db_->NumberLevels() : db_->NumberLevels(handles_[1]);
   std::string result;
@@ -795,7 +796,7 @@ std::string DBTestBase::FilesPerLevel(int cf) {
   return result;
 }
 
-size_t DBTestBase::CountFiles() {
+size_t DBHolder::CountFiles() {
   std::vector<std::string> files;
   env_->GetChildrenWarnNotOk(dbname_, &files);
 
@@ -807,7 +808,7 @@ size_t DBTestBase::CountFiles() {
   return files.size() + logfiles.size();
 }
 
-uint64_t DBTestBase::Size(const Slice& start, const Slice& limit, int cf) {
+uint64_t DBHolder::Size(const Slice& start, const Slice& limit, int cf) {
   Range r(start, limit);
   uint64_t size;
   if (cf == 0) {
@@ -818,25 +819,25 @@ uint64_t DBTestBase::Size(const Slice& start, const Slice& limit, int cf) {
   return size;
 }
 
-void DBTestBase::Compact(int cf, const Slice& start, const Slice& limit,
+void DBHolder::Compact(int cf, const Slice& start, const Slice& limit,
                          uint32_t target_path_id) {
   CompactRangeOptions compact_options;
   compact_options.target_path_id = target_path_id;
   ASSERT_OK(db_->CompactRange(compact_options, handles_[cf], &start, &limit));
 }
 
-void DBTestBase::Compact(int cf, const Slice& start, const Slice& limit) {
+void DBHolder::Compact(int cf, const Slice& start, const Slice& limit) {
   ASSERT_OK(
       db_->CompactRange(CompactRangeOptions(), handles_[cf], &start, &limit));
 }
 
-void DBTestBase::Compact(const Slice& start, const Slice& limit) {
+void DBHolder::Compact(const Slice& start, const Slice& limit) {
   ASSERT_OK(db_->CompactRange(CompactRangeOptions(), &start, &limit));
 }
 
 // Do n memtable compactions, each of which produces an sstable
 // covering the range [small,large].
-void DBTestBase::MakeTables(int n, const std::string& small,
+void DBHolder::MakeTables(int n, const std::string& small,
                             const std::string& large, int cf) {
   for (int i = 0; i < n; i++) {
     ASSERT_OK(Put(cf, small, "begin"));
@@ -848,12 +849,12 @@ void DBTestBase::MakeTables(int n, const std::string& small,
 
 // Prevent pushing of new sstables into deeper levels by adding
 // tables that cover a specified range to all levels.
-void DBTestBase::FillLevels(const std::string& smallest,
+void DBHolder::FillLevels(const std::string& smallest,
                             const std::string& largest, int cf) {
   MakeTables(db_->NumberLevels(handles_[cf]), smallest, largest, cf);
 }
 
-void DBTestBase::MoveFilesToLevel(int level, int cf) {
+void DBHolder::MoveFilesToLevel(int level, int cf) {
   for (int l = 0; l < level; ++l) {
     if (cf > 0) {
       CHECK_OK(dbfull()->TEST_CompactRange(l, nullptr, nullptr, handles_[cf]));
@@ -863,7 +864,7 @@ void DBTestBase::MoveFilesToLevel(int level, int cf) {
   }
 }
 
-void DBTestBase::DumpFileCounts(const char* label) {
+void DBHolder::DumpFileCounts(const char* label) {
   fprintf(stderr, "---\n%s:\n", label);
   fprintf(stderr, "maxoverlap: %" PRIu64 "\n",
           dbfull()->TEST_MaxNextLevelOverlappingBytes());
@@ -875,13 +876,13 @@ void DBTestBase::DumpFileCounts(const char* label) {
   }
 }
 
-std::string DBTestBase::DumpSSTableList() {
+std::string DBHolder::DumpSSTableList() {
   std::string property;
   db_->GetProperty("rocksdb.sstables", &property);
   return property;
 }
 
-void DBTestBase::GetSstFiles(std::string path,
+void DBHolder::GetSstFiles(std::string path,
                              std::vector<std::string>* files) {
   env_->GetChildrenWarnNotOk(path, files);
 
@@ -893,14 +894,14 @@ void DBTestBase::GetSstFiles(std::string path,
       }), files->end());
 }
 
-int DBTestBase::GetSstFileCount(std::string path) {
+int DBHolder::GetSstFileCount(std::string path) {
   std::vector<std::string> files;
   GetSstFiles(path, &files);
   return static_cast<int>(files.size());
 }
 
 // this will generate non-overlapping files since it keeps increasing key_idx
-void DBTestBase::GenerateNewFile(int cf, Random* rnd, int* key_idx,
+void DBHolder::GenerateNewFile(int cf, Random* rnd, int* key_idx,
                                  bool nowait) {
   for (int i = 0; i < KNumKeysByGenerateNewFile; i++) {
     ASSERT_OK(Put(cf, Key(*key_idx), RandomString(rnd, (i == 99) ? 1 : 990)));
@@ -913,7 +914,7 @@ void DBTestBase::GenerateNewFile(int cf, Random* rnd, int* key_idx,
 }
 
 // this will generate non-overlapping files since it keeps increasing key_idx
-void DBTestBase::GenerateNewFile(Random* rnd, int* key_idx, bool nowait) {
+void DBHolder::GenerateNewFile(Random* rnd, int* key_idx, bool nowait) {
   for (int i = 0; i < KNumKeysByGenerateNewFile; i++) {
     ASSERT_OK(Put(Key(*key_idx), RandomString(rnd, (i == 99) ? 1 : 990)));
     (*key_idx)++;
@@ -924,9 +925,9 @@ void DBTestBase::GenerateNewFile(Random* rnd, int* key_idx, bool nowait) {
   }
 }
 
-const int DBTestBase::kNumKeysByGenerateNewRandomFile = 51;
+const int DBHolder::kNumKeysByGenerateNewRandomFile = 51;
 
-void DBTestBase::GenerateNewRandomFile(Random* rnd, bool nowait) {
+void DBHolder::GenerateNewRandomFile(Random* rnd, bool nowait) {
   for (int i = 0; i < kNumKeysByGenerateNewRandomFile; i++) {
     ASSERT_OK(Put("key" + RandomString(rnd, 7), RandomString(rnd, 2000)));
   }
@@ -937,7 +938,7 @@ void DBTestBase::GenerateNewRandomFile(Random* rnd, bool nowait) {
   }
 }
 
-std::string DBTestBase::IterStatus(Iterator* iter) {
+std::string DBHolder::IterStatus(Iterator* iter) {
   std::string result;
   if (iter->Valid()) {
     result = iter->key().ToString() + "->" + iter->value().ToString();
@@ -947,18 +948,18 @@ std::string DBTestBase::IterStatus(Iterator* iter) {
   return result;
 }
 
-Options DBTestBase::OptionsForLogIterTest() {
+Options DBHolder::OptionsForLogIterTest() {
   Options options = CurrentOptions();
   options.create_if_missing = true;
   options.WAL_ttl_seconds = 1000;
   return options;
 }
 
-std::string DBTestBase::DummyString(size_t len, char c) {
+std::string DBHolder::DummyString(size_t len, char c) {
   return std::string(len, c);
 }
 
-void DBTestBase::VerifyIterLast(std::string expected_key, int cf) {
+void DBHolder::VerifyIterLast(std::string expected_key, int cf) {
   Iterator* iter;
   ReadOptions ro;
   if (cf == 0) {
@@ -977,7 +978,7 @@ void DBTestBase::VerifyIterLast(std::string expected_key, int cf) {
 //   sets newValue with delta
 // If previous value is not empty,
 //   updates previous value with 'b' string of previous value size - 1.
-UpdateStatus DBTestBase::updateInPlaceSmallerSize(char* prevValue,
+UpdateStatus DBHolder::updateInPlaceSmallerSize(char* prevValue,
                                                   uint32_t* prevSize,
                                                   Slice delta,
                                                   std::string* newValue) {
@@ -992,7 +993,7 @@ UpdateStatus DBTestBase::updateInPlaceSmallerSize(char* prevValue,
   }
 }
 
-UpdateStatus DBTestBase::updateInPlaceSmallerVarintSize(char* prevValue,
+UpdateStatus DBHolder::updateInPlaceSmallerVarintSize(char* prevValue,
                                                         uint32_t* prevSize,
                                                         Slice delta,
                                                         std::string* newValue) {
@@ -1007,7 +1008,7 @@ UpdateStatus DBTestBase::updateInPlaceSmallerVarintSize(char* prevValue,
   }
 }
 
-UpdateStatus DBTestBase::updateInPlaceLargerSize(char* prevValue,
+UpdateStatus DBHolder::updateInPlaceLargerSize(char* prevValue,
                                                  uint32_t* prevSize,
                                                  Slice delta,
                                                  std::string* newValue) {
@@ -1015,14 +1016,14 @@ UpdateStatus DBTestBase::updateInPlaceLargerSize(char* prevValue,
   return UpdateStatus::UPDATED;
 }
 
-UpdateStatus DBTestBase::updateInPlaceNoAction(char* prevValue,
+UpdateStatus DBHolder::updateInPlaceNoAction(char* prevValue,
                                                uint32_t* prevSize, Slice delta,
                                                std::string* newValue) {
   return UpdateStatus::UPDATE_FAILED;
 }
 
 // Utility method to test InplaceUpdate
-void DBTestBase::validateNumberOfEntries(int numValues, int cf) {
+void DBHolder::validateNumberOfEntries(int numValues, int cf) {
   Arena arena;
   ScopedArenaIterator iter;
   if (cf != 0) {
@@ -1045,7 +1046,7 @@ void DBTestBase::validateNumberOfEntries(int numValues, int cf) {
   ASSERT_EQ(0, seq);
 }
 
-void DBTestBase::CopyFile(const std::string& source,
+void DBHolder::CopyFile(const std::string& source,
                           const std::string& destination, uint64_t size) {
   const EnvOptions soptions;
   unique_ptr<SequentialFile> srcfile;
@@ -1069,7 +1070,7 @@ void DBTestBase::CopyFile(const std::string& source,
   ASSERT_OK(destfile->Close());
 }
 
-std::unordered_map<std::string, uint64_t> DBTestBase::GetAllSSTFiles(
+std::unordered_map<std::string, uint64_t> DBHolder::GetAllSSTFiles(
     uint64_t* total_size) {
   std::unordered_map<std::string, uint64_t> res;
 

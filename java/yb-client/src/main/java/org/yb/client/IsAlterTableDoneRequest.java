@@ -32,10 +32,12 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import static org.yb.master.Master.*;
+import static org.yb.master.MasterDdlOuterClass.*;
+import static org.yb.master.MasterTypes.*;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 import org.jboss.netty.buffer.ChannelBuffer;
 
@@ -62,7 +64,7 @@ class IsAlterTableDoneRequest extends YRpc<IsAlterTableDoneResponse> {
     final IsAlterTableDoneRequestPB.Builder builder = IsAlterTableDoneRequestPB.newBuilder();
     TableIdentifierPB tableID = TableIdentifierPB.newBuilder()
                                 .setTableName(name)
-                                .setNamespace(Master.NamespaceIdentifierPB.newBuilder()
+                                .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder()
                                               .setName(this.keyspace))
                                 .build();
     builder.setTable(tableID);

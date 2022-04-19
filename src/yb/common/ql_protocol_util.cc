@@ -13,9 +13,12 @@
 
 #include "yb/common/ql_protocol_util.h"
 
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
@@ -110,7 +113,8 @@ bool RequireReadForExpressions(const QLWriteRequestPB& request) {
 // Note: If target columns are given this could just be e.g. a delete targeting a static column
 // which can also omit the range portion -- Analyzer will check these restrictions.
 bool IsRangeOperation(const QLWriteRequestPB& request, const Schema& schema) {
-  return request.range_column_values().size() < schema.num_range_key_columns() &&
+  return implicit_cast<size_t>(request.range_column_values().size()) <
+             schema.num_range_key_columns() &&
          request.column_values().empty();
 }
 
@@ -131,6 +135,18 @@ Result<int32_t> CQLDecodeLength(Slice* data) {
   const auto len = static_cast<int32_t>(NetworkByteOrder::Load32(data->data()));
   data->remove_prefix(sizeof(int32_t));
   return len;
+}
+
+void CQLEncodeLength(const ssize_t length, faststring* buffer) {
+  uint32_t byte_value;
+  NetworkByteOrder::Store32(&byte_value, narrow_cast<int32_t>(length));
+  buffer->append(&byte_value, sizeof(byte_value));
+}
+
+// Encode a 32-bit length into the buffer without extending the buffer. Caller should ensure the
+// buffer size is at least 4 bytes.
+void CQLEncodeLength(const ssize_t length, void* buffer) {
+  NetworkByteOrder::Store32(buffer, narrow_cast<int32_t>(length));
 }
 
 } // namespace yb

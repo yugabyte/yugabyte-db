@@ -8,11 +8,20 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 import java.io.File;
 import java.sql.Statement;
 
+import java.util.Map;
+
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgRegressPgStatMonitor extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_pg_conf", "shared_preload_libraries='pg_stat_monitor'");
+    return flagMap;
   }
 
   @Test

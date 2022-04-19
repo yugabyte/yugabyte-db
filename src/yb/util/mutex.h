@@ -82,7 +82,7 @@ class Mutex {
 
   // All private data is implicitly protected by native_handle_.
   // Be VERY careful to only access members under that lock.
-  pid_t owning_tid_;
+  uint64_t owning_tid_;
   std::unique_ptr<StackTrace> stack_trace_;
 #endif
 

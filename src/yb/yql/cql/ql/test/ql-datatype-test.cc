@@ -13,6 +13,8 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/ql_value.h"
+
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/decimal.h"
@@ -200,7 +202,7 @@ TEST_F(TestQLQuery, TestQLDecimalTypeInKey) {
   };
   vector<double> rates = { .0001, .022, 0001, .0001 };
 
-  for (int i = 0; i < names.size(); i++) {
+  for (size_t i = 0; i < names.size(); i++) {
     auto insert_stmt = Substitute("INSERT INTO accounts(name, balance, rate) VALUES('$0', $1, $2)",
                                   names[i], balances[i], rates[i]);
     LOG(INFO) << "Executing: " << insert_stmt;
@@ -250,7 +252,7 @@ TEST_F(TestQLQuery, TestQLVarIntTypeInKey) {
   };
   vector<double> rates = { .0001, .022, 0001, .0001 };
 
-  for (int i = 0; i < names.size(); i++) {
+  for (size_t i = 0; i < names.size(); i++) {
     auto insert_stmt = Substitute("INSERT INTO accounts(name, balance, rate) VALUES('$0', $1, $2)",
                                   names[i], balances[i], rates[i]);
     LOG(INFO) << "Executing: " << insert_stmt;

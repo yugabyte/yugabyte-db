@@ -163,7 +163,7 @@ bool Batcher::HasPendingOperations() const {
   return !ops_.empty();
 }
 
-int Batcher::CountBufferedOperations() const {
+size_t Batcher::CountBufferedOperations() const {
   if (state_ == BatcherState::kGatheringOps) {
     return ops_.size();
   } else {
@@ -365,10 +365,11 @@ std::map<PartitionKey, Status> Batcher::CollectOpsErrors() {
         const Schema& schema = GetSchema(op.yb_op->table()->schema());
         const PartitionSchema& partition_schema = op.yb_op->table()->partition_schema();
         const auto msg = Format(
-            "Row $0 not in partition $1, partition key: $2",
+            "Row $0 not in partition $1, partition key: $2, tablet: $3",
             op.yb_op->ToString(),
             partition_schema.PartitionDebugString(partition, schema),
-            Slice(partition_key).ToDebugHexString());
+            Slice(partition_key).ToDebugHexString(),
+            op.tablet->tablet_id());
         LOG_WITH_PREFIX(DFATAL) << msg;
         op.error = STATUS(InternalError, msg);
       }
@@ -485,6 +486,16 @@ void Batcher::ExecuteOperations(Initial initial) {
         std::bind(&Batcher::TransactionReady, shared_from_this(), _1))) {
       return;
     }
+  } else if (force_consistent_read_ &&
+             ops_info_.groups.size() > 1 &&
+             read_point_ &&
+             !read_point_->GetReadTime()) {
+    // Read time is not set but consistent read from multiple tablets without
+    // transaction is required. Use current time as a read time.
+    // Note: read_point_ is null in case of initdb. Nothing to do in this case.
+    read_point_->SetCurrentReadTime();
+    VLOG_WITH_PREFIX_AND_FUNC(3) << "Set current read time as a read time: "
+                                 << read_point_->GetReadTime();
   }
 
   if (state_ != BatcherState::kTransactionPrepare) {
@@ -663,15 +674,15 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
     // TODO: handle case where we get one of the more specific TS errors
     // like the tablet not being hosted?
 
-    if (err_pb.row_index() >= rpc.ops().size()) {
+    size_t row_index = err_pb.row_index();
+    if (row_index >= rpc.ops().size()) {
       LOG_WITH_PREFIX(ERROR) << "Received a per_row_error for an out-of-bound op index "
-                             << err_pb.row_index() << " (sent only "
-                             << rpc.ops().size() << " ops)";
+                             << row_index << " (sent only " << rpc.ops().size() << " ops)";
       LOG_WITH_PREFIX(ERROR) << "Response from tablet " << rpc.tablet().tablet_id() << ":\n"
-                 << rpc.resp().DebugString();
+                             << rpc.resp().DebugString();
       continue;
     }
-    shared_ptr<YBOperation> yb_op = rpc.ops()[err_pb.row_index()].yb_op;
+    shared_ptr<YBOperation> yb_op = rpc.ops()[row_index].yb_op;
     VLOG_WITH_PREFIX(1) << "Error on op " << yb_op->ToString() << ": "
                         << err_pb.error().ShortDebugString();
     rpc.ops()[err_pb.row_index()].error = StatusFromPB(err_pb.error());

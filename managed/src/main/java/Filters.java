@@ -9,7 +9,10 @@ public class Filters extends DefaultHttpFilters {
 
   @Inject
   public Filters(
-      CSRFFilter csrfFilter, CORSFilter corsFilter, RequestLoggingFilter requestLoggingFilter) {
-    super(csrfFilter, corsFilter, requestLoggingFilter);
+      CSRFFilter csrfFilter,
+      CORSFilter corsFilter,
+      RequestLoggingFilter requestLoggingFilter,
+      RequestHeaderFilter requestHeaderFilter) {
+    super(csrfFilter, corsFilter, requestLoggingFilter, requestHeaderFilter);
   }
 }

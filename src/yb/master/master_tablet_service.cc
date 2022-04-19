@@ -13,6 +13,8 @@
 
 #include "yb/master/master_tablet_service.h"
 
+#include "yb/common/common_flags.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/catalog_manager_if.h"
@@ -23,12 +25,15 @@
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
 DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
                  "Reject specified percentage of writes to the YSQL catalog tables.");
 TAG_FLAG(TEST_ysql_catalog_write_rejection_percentage, runtime);
+
+using namespace std::chrono_literals;
 
 namespace yb {
 namespace master {
@@ -43,30 +48,15 @@ MasterTabletServiceImpl::MasterTabletServiceImpl(MasterTabletServer* server, Mas
     : TabletServiceImpl(server), master_(master) {
 }
 
-bool MasterTabletServiceImpl::GetTabletOrRespond(
-    const tserver::ReadRequestPB* req,
-    tserver::ReadResponsePB* resp,
-    rpc::RpcContext* context,
-    std::shared_ptr<tablet::AbstractTablet>* tablet,
-    tablet::TabletPeerPtr looked_up_tablet_peer) {
+Result<std::shared_ptr<tablet::AbstractTablet>> MasterTabletServiceImpl::GetTabletForRead(
+  const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
+  YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet) {
   // Ignore looked_up_tablet_peer.
 
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, context)) {
-    return false;
-  }
+  RETURN_NOT_OK(l.first_failed_status());
 
-  const auto result = master_->catalog_manager()->GetSystemTablet(req->tablet_id());
-  if (PREDICT_FALSE(!result)) {
-    tserver::TabletServerErrorPB* error = resp->mutable_error();
-    StatusToPB(result.status(), error->mutable_status());
-    error->set_code(tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
-    context->RespondSuccess();
-    return false;
-  }
-
-  *tablet = *result;
-  return true;
+  return master_->catalog_manager()->GetSystemTablet(tablet_id);
 }
 
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
@@ -85,6 +75,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
       return;
   }
 
+  bool log_versions = false;
   for (const auto& pg_req : req->pgsql_write_batch()) {
     if (pg_req.is_ysql_catalog_change()) {
       const auto &res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
@@ -92,10 +83,27 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
         context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
             STATUS(InternalError, "Failed to increment YSQL catalog version"));
       }
+    } else if (FLAGS_log_ysql_catalog_versions && pg_req.table_id() == kPgYbCatalogVersionTableId) {
+      log_versions = true;
     }
   }
 
   tserver::TabletServiceImpl::Write(req, resp, std::move(context));
+
+  if (log_versions) {
+    uint64_t catalog_version;
+    uint64_t last_breaking_version;
+    // The above Write is async, so delay a bit to hopefully read the newly written values.  If the
+    // delay was not sufficient, it's not a big deal since this is just for logging.
+    SleepFor(100ms);
+    if (!master_->catalog_manager()->GetYsqlCatalogVersion(&catalog_version,
+                                                           &last_breaking_version).ok()) {
+      LOG_WITH_FUNC(ERROR) << "failed to get catalog version, ignoring";
+    } else {
+      LOG_WITH_FUNC(INFO) << "catalog version: " << catalog_version << ", breaking version: "
+                          << last_breaking_version;
+    }
+  }
 }
 
 void MasterTabletServiceImpl::IsTabletServerReady(

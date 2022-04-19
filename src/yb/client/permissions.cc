@@ -17,7 +17,7 @@
 
 #include "yb/client/client.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_dcl.pb.h"
 
 #include "yb/rpc/scheduler.h"
 

@@ -12,7 +12,9 @@ package com.yugabyte.yw.commissioner;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.TableManager;
+import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -36,6 +38,9 @@ public class BaseTaskDependencies {
   private final MetricService metricService;
   private final AlertConfigurationService alertConfigurationService;
   private final YBClientService ybService;
+  private final RestoreManagerYb restoreManagerYb;
   private final TableManager tableManager;
+  private final TableManagerYb tableManagerYb;
   private final PlatformExecutorFactory executorFactory;
+  private final TaskExecutor taskExecutor;
 }

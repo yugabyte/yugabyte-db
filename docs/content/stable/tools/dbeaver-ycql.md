@@ -15,14 +15,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/tools/dbeaver-ysql/" class="nav-link">
+    <a href="/preview/tools/dbeaver-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/tools/dbeaver-ycql/" class="nav-link active">
+    <a href="/preview/tools/dbeaver-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -38,13 +38,13 @@ showAsideToc: true
 
 Before you can start using DBeaver with YCQL, you need to perform the following:
 
-- Start YugabyteDB. 
+- Start YugabyteDB.
 
   For more information, see [Quick Start](/quick-start/install).
 
-- Install JRE or JDK for Java 8 or later. 
+- Install JRE or JDK for Java 8 or later.
 
-  Installers can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Note that some of the installers include a JRE accessible only to DBeaver. 
+  Installers can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Note that some of the installers include a JRE accessible only to DBeaver.
 
 - Install [DBeaver Enterprise Edition](https://dbeaver.com/download/enterprise/).
 
@@ -63,7 +63,7 @@ You can create a connection as follows:
   - **Host**: localhost
   - **Port**: 9042
   - **Keyspace**: system
-  - **User**: leave blank if YCQL authentication is not enabled. If enabled, enter username. 
+  - **User**: leave blank if YCQL authentication is not enabled. If enabled, enter username.
   - **Password**: leave blank if YCQL authentication is not enabled. If enabled, enter the password.
   - Select **Show all databases**.
 
@@ -77,4 +77,4 @@ You can expand the list to see all keyspaces available in YugabyteDB cluster, as
 
 ![img](/images/develop/tools/dbeaver/dbeaver-ycql-system.png)
 
-For sample databases to explore YugabyteDB CQL using DBeaver, see [Sample data](/latest/explore/json-support/jsonb-ycql/#root).
+For sample databases to explore YugabyteDB CQL using DBeaver, see [Sample data](/preview/explore/json-support/jsonb-ycql/#root).

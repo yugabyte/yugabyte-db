@@ -56,7 +56,6 @@
 
 #include "yb/util/status_log.h"
 
-using yb::docdb::EntryToString;
 using yb::docdb::StorageDbType;
 
 namespace rocksdb {
@@ -71,7 +70,7 @@ std::string DocDBKVFormatter::Format(
 
 SstFileReader::SstFileReader(
     const std::string& file_path, bool verify_checksum, OutputFormat output_format,
-    const DocDBKVFormatter& formatter)
+    const DocDBKVFormatter* formatter)
     : file_name_(file_path),
       read_num_(0),
       verify_checksum_(verify_checksum),
@@ -191,10 +190,10 @@ uint64_t SstFileReader::CalculateCompressedTableSize(
   table_options.block_size = block_size;
   BlockBasedTableFactory block_based_tf(table_options);
   unique_ptr<TableBuilder> table_builder;
-  table_builder.reset(block_based_tf.NewTableBuilder(
+  table_builder = block_based_tf.NewTableBuilder(
       tb_options,
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-      dest_writer.get()));
+      dest_writer.get());
   unique_ptr<InternalIterator> iter(table_reader_->NewIterator(ReadOptions()));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     if (!iter->status().ok()) {
@@ -374,7 +373,7 @@ Status SstFileReader::ReadSequential(bool print_kv,
           auto storage_type =
               (output_format_ == OutputFormat::kDecodedRegularDB ? StorageDbType::kRegular
                                                                  : StorageDbType::kIntents);
-          fprintf(stdout, "%s", docdb_kv_formatter_.Format(key, value, storage_type).c_str());
+          fprintf(stdout, "%s", docdb_kv_formatter_->Format(key, value, storage_type).c_str());
           break;
       }
     }
@@ -591,6 +590,13 @@ int SSTDumpTool::Run(int argc, char** argv) {
         fprintf(stdout, "# deleted keys: %" PRIu64 "\n",
                 rocksdb::GetDeletedKeys(
                     table_properties->user_collected_properties));
+        fprintf(stdout,
+                "  User collected properties:\n"
+                "  ------------------------------\n");
+        for (const auto& prop : table_properties->user_collected_properties) {
+          fprintf(
+              stdout, "  %s: %s\n", prop.first.c_str(), Slice(prop.second).ToDebugString().c_str());
+        }
       }
     }
   }

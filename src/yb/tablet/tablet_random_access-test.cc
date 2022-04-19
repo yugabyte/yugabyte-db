@@ -51,6 +51,7 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 
@@ -259,7 +260,7 @@ TEST_F(TestRandomAccess, Test) {
   flush_thread->Join();
 }
 
-void GenerateTestCase(vector<TestOp>* ops, int len) {
+void GenerateTestCase(vector<TestOp>* ops, size_t len) {
   bool exists = false;
   bool ops_pending = false;
   ops->clear();

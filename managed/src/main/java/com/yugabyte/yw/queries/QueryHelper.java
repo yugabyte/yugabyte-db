@@ -9,6 +9,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -20,13 +21,13 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
+@Slf4j
 @Singleton
 public class QueryHelper {
-  public static final Logger LOG = LoggerFactory.getLogger(QueryHelper.class);
   public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
 
   private static final String SLOW_QUERY_STATS_SQL =
@@ -64,20 +65,31 @@ public class QueryHelper {
       Universe universe, boolean fetchSlowQueries, String username, String password)
       throws IllegalArgumentException {
     ExecutorService threadPool = Executors.newFixedThreadPool(QUERY_EXECUTOR_THREAD_POOL);
-    Set<Future<JsonNode>> futures = new HashSet<Future<JsonNode>>();
+    Set<Future<JsonNode>> futures = new HashSet<>();
+    int ysqlErrorCount = 0;
+    int ycqlErrorCount = 0;
     ObjectNode responseJson = Json.newObject();
     ObjectNode ysqlJson = Json.newObject();
-    ysqlJson.put("errorCount", 0);
     ysqlJson.putArray("queries");
     ObjectNode ycqlJson = Json.newObject();
-    ycqlJson.put("errorCount", 0);
     ycqlJson.putArray("queries");
     for (NodeDetails node : universe.getNodes()) {
       if (node.isActive() && node.isTserver) {
-        String ip =
-            node.cloudInfo.private_ip == null
-                ? node.cloudInfo.private_dns
-                : node.cloudInfo.private_ip;
+        String ip = null;
+        CloudSpecificInfo cloudInfo = node.cloudInfo;
+
+        if (cloudInfo != null) {
+          ip =
+              node.cloudInfo.private_ip == null
+                  ? node.cloudInfo.private_dns
+                  : node.cloudInfo.private_ip;
+        }
+
+        if (ip == null) {
+          log.error("Node {} does not have a private IP or DNS name, skipping", node.nodeName);
+          continue;
+        }
+
         Callable<JsonNode> callable;
 
         if (fetchSlowQueries) {
@@ -101,6 +113,13 @@ public class QueryHelper {
       }
     }
 
+    if (futures.isEmpty()) {
+      throw new IllegalStateException(
+          "None of the nodes are accessible by either private IP or DNS");
+    }
+
+    threadPool.shutdown();
+
     try {
       Map<String, JsonNode> queryMap = new HashMap<>();
       for (Future<JsonNode> future : futures) {
@@ -112,11 +131,13 @@ public class QueryHelper {
           if (errorMessage.startsWith("\"FATAL: password authentication failed")) {
             throw new IllegalArgumentException("Incorrect Username or Password");
           }
-          String type = response.get("type").asText();
-          if (type == "ysql") {
-            ysqlJson.put("errorCount", ysqlJson.get("errorCount").asInt() + 1);
-          } else if (type == "ycql") {
-            ycqlJson.put("errorCount", ycqlJson.get("errorCount").asInt() + 1);
+          if (response.has("type")) {
+            String type = response.get("type").asText();
+            if ("ysql".equals(type)) {
+              ysqlErrorCount++;
+            } else if ("ycql".equals(type)) {
+              ycqlErrorCount++;
+            }
           }
         } else {
           if (fetchSlowQueries) {
@@ -151,7 +172,7 @@ public class QueryHelper {
                   int tmpTables =
                       previousQueryObj.get("local_blks_written").asInt()
                           + queryObject.get("local_blks_written").asInt();
-                  /**
+                  /*
                    * Formula to calculate std dev of two samples: Let mean, std dev, and size of
                    * sample A be X_a, S_a, n_a respectively; and mean, std dev, and size of sample B
                    * be X_b, S_b, n_b respectively. Then mean of combined sample X is given by n_a
@@ -193,18 +214,16 @@ public class QueryHelper {
         }
       }
     } catch (InterruptedException e) {
-      LOG.error("Error fetching live query data", e);
+      log.error("Error fetching live query data", e);
     } catch (ExecutionException e) {
-      LOG.error("Error fetching live query data", e);
-      e.printStackTrace();
-    } finally {
-      threadPool.shutdown();
+      log.error("Error fetching live query data", e.getCause());
     }
 
+    ysqlJson.put("errorCount", ysqlErrorCount);
+    ycqlJson.put("errorCount", ycqlErrorCount);
     responseJson.set("ysql", ysqlJson);
     responseJson.set("ycql", ycqlJson);
 
-    threadPool.shutdown();
     return responseJson;
   }
 

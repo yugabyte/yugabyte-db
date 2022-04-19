@@ -69,16 +69,49 @@ export default class UserProfileForm extends Component {
 
     showOrRedirect(customer.data.features, 'main.profile');
 
+    // Filter users for userUUID set during login
+    const loginUserId = localStorage.getItem('userId');
+    const getCurrentUser = isNonEmptyArray(users)
+      ? users.filter((u) => u.uuid === loginUserId)
+      : [];
+
+    const isLDAPUser = !!currentUser?.data?.ldapSpecifiedRole;
+
+    const defaultTimezoneOption = { value: '', label: 'Default' };
+    const initialValues = {
+      name: customer.data.name || '',
+      email: (getCurrentUser.length && getCurrentUser[0].email) || '',
+      code: customer.data.code || '',
+      customerId: customer.data.uuid,
+      password: '',
+      confirmPassword: '',
+      timezone: currentUser.data.timezone
+        ? {
+            value: currentUser.data.timezone,
+            label: this.formatTimezoneLabel(currentUser.data.timezone)
+          }
+        : defaultTimezoneOption
+    };
+    const timezoneOptions = [defaultTimezoneOption];
+    moment.tz.names().forEach((timezone) => {
+      timezoneOptions.push({
+        value: timezone,
+        label: this.formatTimezoneLabel(timezone)
+      });
+    });
+
     const validationSchema = Yup.object().shape({
       name: Yup.string().required('Enter name'),
 
       // Regex below matches either the default value 'admin' or a generic email address
-      email: Yup.string()
-        .matches(
-          /(^admin$)|(^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$)/i,
-          'This is not a valid email or value'
-        )
-        .required('Enter email'),
+      email: isLDAPUser
+        ? Yup.string().required('Enter Email or Username')
+        : Yup.string()
+            .matches(
+              /(^admin$)|(^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$)/i,
+              'This is not a valid email or value'
+            )
+            .required('Enter email'),
 
       code: Yup.string()
         .required('Enter Environment name')
@@ -102,35 +135,6 @@ export default class UserProfileForm extends Component {
       confirmPassword: Yup.string()
         .notRequired()
         .oneOf([Yup.ref('password')], "Passwords don't match")
-    });
-
-    // Filter users for userUUID set during login
-    const loginUserId = localStorage.getItem('userId');
-    const getCurrentUser = isNonEmptyArray(users)
-      ? users.filter((u) => u.uuid === loginUserId)
-      : [];
-
-    const defaultTimezoneOption = { value: '', label: 'Default' };
-    const initialValues = {
-      name: customer.data.name || '',
-      email: (getCurrentUser.length && getCurrentUser[0].email) || '',
-      code: customer.data.code || '',
-      customerId: customer.data.uuid,
-      password: '',
-      confirmPassword: '',
-      timezone: currentUser.data.timezone
-        ? {
-            value: currentUser.data.timezone,
-            label: this.formatTimezoneLabel(currentUser.data.timezone)
-          }
-        : defaultTimezoneOption
-    };
-    const timezoneOptions = [defaultTimezoneOption];
-    moment.tz.names().forEach((timezone) => {
-      timezoneOptions.push({
-        value: timezone,
-        label: this.formatTimezoneLabel(timezone)
-      });
     });
 
     return (
@@ -188,9 +192,9 @@ export default class UserProfileForm extends Component {
                         name="email"
                         readOnly={true}
                         type="text"
-                        label="Email"
+                        label="Email or Username"
                         component={YBFormInput}
-                        placeholder="Email Address"
+                        placeholder="Email or Username"
                       />
                       <Field
                         name="code"
@@ -209,28 +213,30 @@ export default class UserProfileForm extends Component {
                       />
                     </Col>
                   </Row>
-                  <Row>
-                    <Col sm={12}>
-                      <br />
-                      <h3>Change Password</h3>
-                      <Field
-                        name="password"
-                        type="password"
-                        component={YBFormInput}
-                        label="Password"
-                        autoComplete="new-password"
-                        placeholder="Enter New Password"
-                      />
-                      <Field
-                        name="confirmPassword"
-                        type="password"
-                        component={YBFormInput}
-                        label="Confirm Password"
-                        autoComplete="new-password"
-                        placeholder="Confirm New Password"
-                      />
-                    </Col>
-                  </Row>
+                  {!isLDAPUser && (
+                    <Row>
+                      <Col sm={12}>
+                        <br />
+                        <h3>Change Password</h3>
+                        <Field
+                          name="password"
+                          type="password"
+                          component={YBFormInput}
+                          label="Password"
+                          autoComplete="new-password"
+                          placeholder="Enter New Password"
+                        />
+                        <Field
+                          name="confirmPassword"
+                          type="password"
+                          component={YBFormInput}
+                          label="Confirm Password"
+                          autoComplete="new-password"
+                          placeholder="Confirm New Password"
+                        />
+                      </Col>
+                    </Row>
+                  )}
                 </Col>
                 <Col md={6} sm={12}>
                   <h3>API Key management</h3>

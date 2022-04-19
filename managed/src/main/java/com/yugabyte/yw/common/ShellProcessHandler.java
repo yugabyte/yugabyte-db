@@ -10,13 +10,20 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_EXECUTION_CANCELLED;
+import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_GENERIC_ERROR;
+import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
+
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -34,8 +41,12 @@ import org.slf4j.MarkerFactory;
 public class ShellProcessHandler {
   public static final Logger LOG = LoggerFactory.getLogger(ShellProcessHandler.class);
 
+  private static final Duration DESTROY_GRACE_TIMEOUT = Duration.ofMinutes(5);
+
   private final play.Configuration appConfig;
   private final boolean cloudLoggingEnabled;
+
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   static final Pattern ANSIBLE_FAIL_PAT =
       Pattern.compile(
@@ -44,6 +55,8 @@ public class ShellProcessHandler {
   static final Pattern ANSIBLE_FAILED_TASK_PAT =
       Pattern.compile("TASK.*?fatal.*?FAILED.*", Pattern.DOTALL);
   static final String ANSIBLE_IGNORING = "ignoring";
+  static final String COMMAND_OUTPUT_LOGS_DELETE = "yb.logs.cmdOutputDelete";
+  static final String YB_LOGS_MAX_MSG_SIZE = "yb.logs.max_msg_size";
 
   @Inject
   public ShellProcessHandler(play.Configuration appConfig) {
@@ -86,7 +99,7 @@ public class ShellProcessHandler {
     }
 
     ProcessBuilder pb = new ProcessBuilder(command);
-    Map envVars = pb.environment();
+    Map<String, String> envVars = pb.environment();
     if (extraEnvVars != null && !extraEnvVars.isEmpty()) {
       envVars.putAll(extraEnvVars);
     }
@@ -96,7 +109,7 @@ public class ShellProcessHandler {
     }
 
     ShellResponse response = new ShellResponse();
-    response.code = -1;
+    response.code = ERROR_CODE_GENERIC_ERROR;
     if (description == null) {
       response.setDescription(redactedCommand);
     } else {
@@ -130,12 +143,10 @@ public class ShellProcessHandler {
       }
       // TimeUnit.MINUTES.sleep(5);
       waitForProcessExit(process, tempOutputFile, tempErrorFile);
-      try (FileInputStream outputInputStream = new FileInputStream(tempOutputFile);
-          InputStreamReader outputReader = new InputStreamReader(outputInputStream);
-          BufferedReader outputStream = new BufferedReader(outputReader);
-          FileInputStream errorInputStream = new FileInputStream(tempErrorFile);
-          InputStreamReader errorReader = new InputStreamReader(errorInputStream);
-          BufferedReader errorStream = new BufferedReader(errorReader)) {
+      // We will only read last 20MB of process stdout and stderr file.
+      // stdout has `data` so we wont limit that.
+      try (BufferedReader outputStream = getLastNReader(tempOutputFile, Long.MAX_VALUE);
+          BufferedReader errorStream = getLastNReader(tempErrorFile, getMaxLogMsgSize())) {
         if (logCmdOutput) {
           LOG.debug("Proc stdout for '{}' :", response.description);
         }
@@ -177,7 +188,9 @@ public class ShellProcessHandler {
 
         response.code = process.exitValue();
         response.message =
-            (response.code == 0) ? processOutput.toString().trim() : processError.toString().trim();
+            (response.code == ERROR_CODE_SUCCESS)
+                ? processOutput.toString().trim()
+                : processError.toString().trim();
         String ansibleErrMsg =
             getAnsibleErrMsg(response.code, processOutput.toString(), processError.toString());
         if (ansibleErrMsg != null) {
@@ -185,33 +198,67 @@ public class ShellProcessHandler {
         }
       }
     } catch (IOException | InterruptedException e) {
-      response.code = -1;
+      response.code = ERROR_CODE_GENERIC_ERROR;
+      if (e instanceof InterruptedException) {
+        response.code = ERROR_CODE_EXECUTION_CANCELLED;
+      }
       LOG.error("Exception running command '{}'", response.description, e);
       response.message = e.getMessage();
       // Send a kill signal to ensure process is cleaned up in case of any failure.
       if (process != null && process.isAlive()) {
-        process.destroyForcibly();
+        // Only destroy sends SIGTERM to the process.
+        process.destroy();
+        try {
+          process.waitFor(DESTROY_GRACE_TIMEOUT.getSeconds(), TimeUnit.SECONDS);
+        } catch (InterruptedException e1) {
+          LOG.error(
+              "Process could not be destroyed gracefully within the specified time '{}'",
+              response.description);
+          process.destroyForcibly();
+        }
       }
     } finally {
       if (startMs > 0) {
         response.durationMs = System.currentTimeMillis() - startMs;
       }
       String status =
-          (0 == response.code) ? "success" : ("failure code=" + Integer.toString(response.code));
+          (ERROR_CODE_SUCCESS == response.code) ? "success" : ("failure code=" + response.code);
       LOG.info(
           "Completed proc '{}' status={} [ {} ms ]",
           response.description,
           status,
           response.durationMs);
-      if (tempOutputFile != null && tempOutputFile.exists()) {
-        tempOutputFile.delete();
-      }
-      if (tempErrorFile != null && tempErrorFile.exists()) {
-        tempErrorFile.delete();
+      if (runtimeConfigFactory.globalRuntimeConf().getBoolean(COMMAND_OUTPUT_LOGS_DELETE)) {
+        if (tempOutputFile != null && tempOutputFile.exists()) {
+          tempOutputFile.delete();
+        }
+        if (tempErrorFile != null && tempErrorFile.exists()) {
+          tempErrorFile.delete();
+        }
       }
     }
 
     return response;
+  }
+
+  private long getMaxLogMsgSize() {
+    return appConfig.getBytes(YB_LOGS_MAX_MSG_SIZE);
+  }
+
+  /** For a given file return a bufferred reader that reads only last N bytes. */
+  private static BufferedReader getLastNReader(File file, long lastNBytes)
+      throws FileNotFoundException {
+    final BufferedReader reader =
+        new BufferedReader(new InputStreamReader(new FileInputStream(file)));
+    long skip = file.length() - lastNBytes;
+    if (skip > 0) {
+      try {
+        LOG.warn("Skipped first {} bytes because max_msg_size= {}", reader.skip(skip), lastNBytes);
+      } catch (IOException e) {
+        LOG.warn("Unexpected exception when skipping large file", e);
+      }
+    }
+    return reader;
   }
 
   public ShellResponse run(List<String> command, Map<String, String> extraEnvVars) {
@@ -255,7 +302,7 @@ public class ShellProcessHandler {
 
   private static void tailStream(BufferedReader br) throws IOException {
 
-    String line = null;
+    String line;
     // Note: technically, this readLine can pick up incomplete lines as we race
     // with the process output being appended to this file but for the purposes
     // of logging, it is ok to log partial lines.
@@ -268,7 +315,7 @@ public class ShellProcessHandler {
 
   private static String getAnsibleErrMsg(int code, String stdout, String stderr) {
 
-    if (stderr == null || code == 0) return null;
+    if (stderr == null || code == ERROR_CODE_SUCCESS) return null;
 
     String result = null;
 
@@ -285,7 +332,7 @@ public class ShellProcessHandler {
         }
         Matcher m = ANSIBLE_FAILED_TASK_PAT.matcher(s);
         if (m.find()) {
-          result = ((result != null) ? (result + "\n") : "") + m.group(0);
+          result += "\n" + m.group(0);
         }
       }
     }

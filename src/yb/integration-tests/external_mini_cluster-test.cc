@@ -65,7 +65,7 @@ TEST_F(EMCTest, TestBasicOperation) {
   ASSERT_OK(cluster.Start());
 
   // Verify each of the masters.
-  for (int i = 0; i < opts.num_masters; i++) {
+  for (size_t i = 0; i < opts.num_masters; i++) {
     SCOPED_TRACE(i);
     ExternalMaster* master = CHECK_NOTNULL(cluster.master(i));
     HostPort master_rpc = master->bound_rpc_hostport();
@@ -85,7 +85,7 @@ TEST_F(EMCTest, TestBasicOperation) {
   }
 
   // Verify each of the tablet servers.
-  for (int i = 0; i < opts.num_tablet_servers; i++) {
+  for (size_t i = 0; i < opts.num_tablet_servers; i++) {
     SCOPED_TRACE(i);
     const ExternalTabletServer* const ts = CHECK_NOTNULL(cluster.tablet_server(i));
     const HostPort ts_rpc = ts->bound_rpc_hostport();

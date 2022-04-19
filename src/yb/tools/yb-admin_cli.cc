@@ -44,6 +44,7 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
@@ -178,13 +179,13 @@ Result<pair<int, bool>> GetTimeoutAndAddIndexesFlag(
   return std::make_pair(temp_pair.first, temp_pair.second.Test(AddIndexes::ADD_INDEXES));
 }
 
-YB_DEFINE_ENUM(ListTabletsFlags, (JSON));
+YB_DEFINE_ENUM(ListTabletsFlags, (JSON)(INCLUDE_FOLLOWERS));
 
 } // namespace
 
 Status ClusterAdminCli::Run(int argc, char** argv) {
   const string prog_name = argv[0];
-  FLAGS_logtostderr = 1;
+  FLAGS_logtostderr = true;
   FLAGS_minloglevel = 2;
   ParseCommandLineFlags(&argc, &argv, true);
   InitGoogleLoggingSafe(prog_name.c_str());
@@ -375,7 +376,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "list_tablets",
-      " <table> [max_tablets] (default 10, set 0 for max) [JSON]",
+      " <table> [max_tablets] (default 10, set 0 for max) [JSON] [include_followers]",
       [client](const CLIArguments& args) -> Status {
         std::pair<int, EnumBitSet<ListTabletsFlags>> arguments;
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
@@ -386,7 +387,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             }));
         RETURN_NOT_OK_PREPEND(
             client->ListTablets(
-                table_name, arguments.first, arguments.second.Test(ListTabletsFlags::JSON)),
+                table_name, arguments.first, arguments.second.Test(ListTabletsFlags::JSON),
+                arguments.second.Test(ListTabletsFlags::INCLUDE_FOLLOWERS)),
             Format("Unable to list tablets of table $0", table_name));
         return Status::OK();
       });
@@ -599,6 +601,20 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "flush_sys_catalog", "",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK_PREPEND(client->FlushSysCatalog(), "Unable to flush table sys_catalog");
+        return Status::OK();
+      });
+
+  Register(
+      "compact_sys_catalog", "",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK_PREPEND(client->CompactSysCatalog(), "Unable to compact table sys_catalog");
+        return Status::OK();
+      });
+
+  Register(
       "compact_table",
       " <table> [timeout_in_seconds] (default 20)"
       " [ADD_INDEXES] (default false)",
@@ -658,12 +674,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "change_master_config", " <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <0|1>",
+      "change_master_config", " <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> [<uuid>]",
       [client](const CLIArguments& args) -> Status {
-        int16 new_port = 0;
+        uint16_t new_port = 0;
         string new_host;
 
-        if (args.size() != 3 && args.size() != 4) {
+        if (args.size() < 3 || args.size() > 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
 
@@ -675,15 +691,13 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         new_host = args[1];
         new_port = VERIFY_RESULT(CheckedStoi(args[2]));
 
-        // For REMOVE_SERVER, default to using host:port to identify server
-        // to make it easier to remove down hosts
-        bool use_hostport = (change_type == "REMOVE_SERVER");
+        string given_uuid;
         if (args.size() == 4) {
-          use_hostport = VERIFY_RESULT(CheckedStoi(args[3])) != 0;
+          given_uuid = args[3];
         }
-        RETURN_NOT_OK_PREPEND(client->ChangeMasterConfig(change_type, new_host, new_port,
-                                                         use_hostport),
-                              "Unable to change master config");
+        RETURN_NOT_OK_PREPEND(
+            client->ChangeMasterConfig(change_type, new_host, new_port, given_uuid),
+            "Unable to change master config");
         return Status::OK();
       });
 
@@ -833,6 +847,26 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "disable_tablet_splitting", " <disable_duration_ms>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const int64_t disable_duration_ms = VERIFY_RESULT(CheckedStoll(args[0]));
+        RETURN_NOT_OK_PREPEND(client->DisableTabletSplitting(disable_duration_ms),
+                              "Unable to disable tablet splitting");
+        return Status::OK();
+      });
+
+  Register(
+      "is_tablet_splitting_complete", "",
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->IsTabletSplittingComplete(),
+                              "Unable to check if tablet splitting is complete");
+        return Status::OK();
+      });
+
+  Register(
       "create_transaction_table", " <table_name>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
@@ -861,6 +895,45 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               "Unable to upgrade YSQL cluster");
         return Status::OK();
       });
+
+  Register(
+      // Today we have a weird pattern recognization for table name.
+      // The expected input argument for the <table> is:
+      // <db type>.<namespace> <table name>
+      // (with a space in between).
+      // So the expected arguement size is 3 (= 2 for the table name + 1 for the retention time).
+      "set_wal_retention_secs", " <table> <seconds>", [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 3));
+
+        uint32_t wal_ret_secs = 0;
+        const auto table_name = VERIFY_RESULT(
+            ResolveSingleTableName(client, args.begin(), args.end(),
+            [&wal_ret_secs] (auto i, const auto& end) -> Status {
+              if (PREDICT_FALSE(i == end)) {
+                return STATUS(InvalidArgument, "Table name not found in the command");
+              }
+
+              const auto raw_time = VERIFY_RESULT(CheckedStoi(*i));
+              if (raw_time < 0) {
+                return STATUS(
+                    InvalidArgument, "WAL retention time must be non-negative integer in seconds");
+              }
+              wal_ret_secs = static_cast<uint32_t>(raw_time);
+              return Status::OK();
+            }
+            ));
+        RETURN_NOT_OK_PREPEND(
+            client->SetWalRetentionSecs(table_name, wal_ret_secs),
+            "Unable to set WAL retention time (sec) for the cluster");
+        return Status::OK();
+      });
+
+  Register("get_wal_retention_secs", " <table>", [client](const CLIArguments& args) -> Status {
+    RETURN_NOT_OK(CheckArgumentsCount(args.size(), 2, 2));
+    const auto table_name = VERIFY_RESULT(ResolveSingleTableName(client, args.begin(), args.end()));
+    RETURN_NOT_OK(client->GetWalRetentionSecs(table_name));
+    return Status::OK();
+  });
 } // NOLINT, prevents long function message
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(
@@ -921,7 +994,7 @@ Result<client::YBTableName> ResolveSingleTableName(ClusterAdminClientClass* clie
   return std::move(tables.front());
 }
 
-Status CheckArgumentsCount(int count, int min, int max) {
+Status CheckArgumentsCount(size_t count, size_t min, size_t max) {
   if (count < min) {
     return STATUS_FORMAT(
         InvalidArgument, "Too few arguments $0, should be in range [$1, $2]", count, min, max);
