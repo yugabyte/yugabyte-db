@@ -1,12 +1,10 @@
 ---
-title: JDBC drivers
-linkTitle: JDBC drivers
+title: Create database connection
+linkTitle: Create database connection
 description: JDBC drivers for YSQL
-headcontent: JDBC drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: JDBC drivers
     identifier: postgres-jdbc-driver
     parent: java-drivers
     weight: 500

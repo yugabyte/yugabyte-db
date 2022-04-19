@@ -1,16 +1,14 @@
 ---
-title: JDBC drivers
-linkTitle: JDBC drivers
+title: Create database connection
+linkTitle: Create database connection
 description: JDBC drivers for YSQL
-headcontent: JDBC drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: JDBC drivers
     identifier: yugabyte-jdbc-driver
     parent: java-drivers
     weight: 400
-isTocNested: true
+isTocNested: false
 showAsideToc: true
 ---
 
@@ -36,7 +34,7 @@ For Java Applications, JDBC driver provides database connectivity through the st
 
 [Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/preview/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc). Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers. This page provides details for getting started with `YugabyteDB JDBC Driver` for connecting to YugabyteDB YSQL API.
 
-## Step 1: Add the YugabyteDB JDBC Driver Dependency
+## Step 1: Setup the client dependencies
 
 ### Maven Dependency
 
@@ -66,7 +64,7 @@ implementation 'com.yugabyte:jdbc-yugabytedb:42.3.0'
 implementation 'com.zaxxer:HikariCP:4.0.3'
 ```
 
-## Step 2: Connect to your Cluster
+## Step 2: Set up the database connection
 
 After setting up the dependencies, we implement the Java client application that uses the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run query on the sample data.
 
@@ -105,7 +103,7 @@ Connection conn = DriverManager.getConnection(yburl);
 
 If you have created Free tier cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/), [Follow the steps](/preview/yugabyte-cloud/cloud-connect/connect-applications/) to download the Credentials and SSL Root certificate.
 
-## Step 3: Query the YugabyteDB Cluster from Your Application
+## Step 3: Write your application
 
 Next, Create a new Java class called `QuickStartApp.java` in the base package directory of your project. Copy the sample code below in order to setup a YugabyteDB Table and query the Table contents from the java client. Ensure you replace the connection string `yburl` with credentials of your cluster and SSL certs if required.
 

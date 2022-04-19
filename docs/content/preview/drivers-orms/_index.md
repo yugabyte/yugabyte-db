@@ -14,16 +14,14 @@ menu:
     weight: 570
 ---
 
-Connect applications to YugabyteDB databases using Yugabyte-supported drivers, ORMs, and application development frameworks.
+The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL, with the intent of supporting most PostgreSQL functionality. Client applications can make use of the [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) for reading and writing data in to YugabyteDB database. List of all the compatible PostgreSQl Drivers with YSQL can be reviewed in the compatibility matrix below.
 
-YugabyteDB **smart language drivers** enable client applications to connect to YugabyteDB clusters without the need for external load balancers. YugabyteDB smart drivers have the following features:
+In addition to the compatible upstream PostgreSQL Drivers, YugabyteDB **smart drivers** extends the PostgreSQL Drivers to enable clients applications to connect to YugabyteDB clusters without the need for external load balancers.Y YugabyteDB smart drivers have the following features:
 
 - **Cluster-aware**. Drivers know about all the data nodes in a YugabyteDB cluster, eliminating the need for an external load balancer.
 - [Topology-aware](/preview/deploy/multi-dc/). For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
 
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
-
-Along with the smart drivers, YugabyteDB also supports upstream [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) for the respective programming languages.
 
 ## Supported libraries
 
