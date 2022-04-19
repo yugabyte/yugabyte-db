@@ -397,6 +397,31 @@ int32_t CDCConsumer::cluster_config_version() const {
   return cluster_config_version_.load(std::memory_order_acquire);
 }
 
+Status CDCConsumer::ReloadCertificates() {
+  if (local_client_->secure_context) {
+    RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
+        local_client_->secure_context.get(), "" /* node_name */, "" /* root_dir*/,
+        server::SecureContextType::kInternal));
+  }
+
+  SharedLock<rw_spinlock> read_lock(producer_pollers_map_mutex_);
+  for (const auto& entry : remote_clients_) {
+    const auto& client = entry.second;
+    if (!client->secure_context) {
+      continue;
+    }
+
+    std::string cert_dir;
+    if (!FLAGS_certs_for_cdc_dir.empty()) {
+      cert_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, entry.first);
+    }
+    RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
+        client->secure_context.get(), cert_dir, "" /* node_name */));
+  }
+
+  return Status::OK();
+}
+
 } // namespace enterprise
 } // namespace tserver
 } // namespace yb

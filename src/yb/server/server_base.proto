@@ -140,6 +140,12 @@ message PingRequestPB {
 message PingResponsePB {
 }
 
+message ReloadCertificatesRequestPB {
+}
+
+message ReloadCertificatesResponsePB {
+}
+
 service GenericService {
   rpc SetFlag(SetFlagRequestPB)
     returns (SetFlagResponsePB);
@@ -160,4 +166,6 @@ service GenericService {
     returns (GetStatusResponsePB);
 
   rpc Ping(PingRequestPB) returns (PingResponsePB);
+
+  rpc ReloadCertificates(ReloadCertificatesRequestPB) returns (ReloadCertificatesResponsePB);
 }
