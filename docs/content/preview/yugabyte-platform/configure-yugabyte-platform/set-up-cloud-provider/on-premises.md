@@ -103,7 +103,7 @@ You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, 
 
   - Use the **Desired Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
   - Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
-  - Enabe the **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
+  - Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
   - The **Node Exporter User** field allows you to override the default Prometheus user. This is useful when the user is preprovisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
 
 ### Configure hardware for YugabyteDB nodes
@@ -115,14 +115,16 @@ Complete the **Instance Types** fields, as per the following illustration, to pr
 - Use the **Machine Type** field to define a value to be used internally as an identifier in the **Instance Type** universe field.
 - Use the **Num Cores** field to define the number of cores to be assigned to a node.
 - Use the **Mem Size GB** field to define the memory allocation of a node.
-- Use the **Vol size GB** field to define the disk volume of a node.
+- Use the **Vol Size GB** field to define the disk volume of a node.
 - Use the **Mount Paths** field to define a mount point with enough space to contain your node density. Use `/data`. If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
 
 ### Define regions and zones
 
-Complete the **Regions and Zones** fields, as per in the following illustration, to provide the location of YugabyteDB nodes. YugabyteDB Anywhere will use these values during the universe creation:
+Complete the **Regions and Zones** fields, as per the following illustration, to provide the location of YugabyteDB nodes:
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-3.png)
+
+<br><br>YugabyteDB Anywhere will use these values during the universe creation.
 
 ## Add YugabyteDB nodes
 
@@ -147,7 +149,7 @@ To provision your nodes manually, you have the following two options:
 
 This step is only required if you set **Manually Provision Nodes** to true and the SSH user has sudo privileges which require a password; otherwise you skip this step.
 
-You can manually provision each node using the pre-provisioning Python script, as follows:
+You can manually provision each node using the preprovisioning Python script, as follows:
 
 1. Login to YugabyteDB Anywhere virtual machine via SSH.
 
