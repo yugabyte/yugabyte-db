@@ -258,7 +258,7 @@ static bool insert_edge(GRAPH_global_context *ggctx, graphid edge_id,
 
 /*
  * Helper function to insert an entire vertex into the current GRAPH global
- * vertex hashtable.
+ * vertex hashtable. It will return false if there is a duplicate.
  */
 static bool insert_vertex_entry(GRAPH_global_context *ggctx, graphid vertex_id,
                                 Oid vertex_label_table_oid,
@@ -270,8 +270,12 @@ static bool insert_vertex_entry(GRAPH_global_context *ggctx, graphid vertex_id,
     /* search for the vertex */
     ve = (vertex_entry *)hash_search(ggctx->vertex_hashtable,
                                      (void *)&vertex_id, HASH_ENTER, &found);
-    /* we should never have duplicates */
-    Assert(!found);
+
+    /* we should never have duplicates, return false */
+    if (found)
+    {
+        return false;
+    }
 
     /* again, MemSet may not be needed here */
     MemSet(ve, 0, sizeof(vertex_entry));
@@ -417,10 +421,11 @@ static void load_vertex_hashtable(GRAPH_global_context *ggctx)
             inserted = insert_vertex_entry(ggctx, vertex_id,
                                            vertex_label_table_oid,
                                            vertex_properties);
-            /* this insert must not fail */
+
+            /* this insert must not fail, it means there is a duplicate */
             if (!inserted)
             {
-                 elog(ERROR, "insert_vertex_entry: failed to insert");
+                 elog(ERROR, "insert_vertex_entry: failed due to duplicate");
             }
         }
 
@@ -528,6 +533,7 @@ static void load_edge_hashtable(GRAPH_global_context *ggctx)
             inserted = insert_edge(ggctx, edge_id, edge_properties,
                                    edge_vertex_start_id, edge_vertex_end_id,
                                    edge_label_table_oid);
+
             /* this insert must not fail */
             if (!inserted)
             {
