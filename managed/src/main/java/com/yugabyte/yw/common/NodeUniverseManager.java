@@ -48,7 +48,7 @@ public class NodeUniverseManager extends DevopsBase {
     // yb_home_dir denotes a custom starting directory for the remote file. (Eg: ~/, /mnt/d0, etc.)
     actionArgs.add("--yb_home_dir");
     actionArgs.add(ybHomeDir);
-    actionArgs.add("--source_node_file");
+    actionArgs.add("--source_node_files");
     actionArgs.add(sourceNodeFile);
     actionArgs.add("--target_local_file");
     actionArgs.add(targetLocalFile);
@@ -92,9 +92,12 @@ public class NodeUniverseManager extends DevopsBase {
     List<String> command = new ArrayList<>();
     command.add("timeout");
     command.add(String.valueOf(timeoutSec));
+    Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
+    if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
+      command.add("env sslmode=\"require\"");
+    }
     command.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     command.add("-h");
-    Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
     if (cluster.userIntent.isYSQLAuthEnabled()) {
       command.add("$(dirname \"$(ls /tmp/.yb.*/.s.PGSQL.* | head -1)\")");
     } else {
@@ -104,9 +107,6 @@ public class NodeUniverseManager extends DevopsBase {
     command.add(String.valueOf(node.ysqlServerRpcPort));
     command.add("-U");
     command.add("yugabyte");
-    if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
-      command.add("\"sslmode=require\"");
-    }
     command.add("-d");
     command.add(dbName);
     command.add("-c");
@@ -181,10 +181,21 @@ public class NodeUniverseManager extends DevopsBase {
               universe.getUniverseDetails().nodePrefix,
               isMultiAz ? AvailabilityZone.getOrBadRequest(node.azUuid).name : null,
               AvailabilityZone.get(node.azUuid).getUnmaskedConfig());
+      // TODO(bhavin192): this might need an updated when we have
+      // multiple releases in one namespace.
+      String kubeconfig =
+          PlacementInfoUtil.getConfigPerNamespace(
+                  cluster.placementInfo, universe.getUniverseDetails().nodePrefix, provider)
+              .get(namespace);
+      if (kubeconfig == null) {
+        throw new RuntimeException("kubeconfig cannot be null");
+      }
 
       commandArgs.add("k8s");
       commandArgs.add("--namespace");
       commandArgs.add(namespace);
+      commandArgs.add("--kubeconfig");
+      commandArgs.add(kubeconfig);
     } else if (!getNodeDeploymentMode(node, universe).equals(Common.CloudType.unknown)) {
       AccessKey accessKey =
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);

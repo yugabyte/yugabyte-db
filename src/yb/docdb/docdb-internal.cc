@@ -31,14 +31,14 @@ KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
     return KeyType::kPlainSubDocKey;
   }
 
-  if (slice[0] == ValueTypeAsChar::kTransactionId) {
+  if (slice[0] == KeyEntryTypeAsChar::kTransactionId) {
     if (slice.size() == TransactionId::StaticSize() + 1) {
       return KeyType::kTransactionMetadata;
     } else {
       return KeyType::kReverseTxnKey;
     }
   }
-  if (slice[0] == ValueTypeAsChar::kExternalTransactionId) {
+  if (slice[0] == KeyEntryTypeAsChar::kExternalTransactionId) {
     return KeyType::kExternalIntents;
   }
 

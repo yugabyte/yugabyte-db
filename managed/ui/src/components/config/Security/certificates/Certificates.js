@@ -168,7 +168,7 @@ class Certificates extends Component {
   };
 
   formatActionButtons = (cell, row) => {
-    const downloadDisabled = row.type !== 'SelfSigned';
+    const downloadEnabled = ['SelfSigned', 'HashicorpVault'].includes(row.type);
     const deleteDisabled = row.inUse;
     const payload = {
       name: row.name,
@@ -206,20 +206,20 @@ class Certificates extends Component {
         </MenuItem>
         <MenuItem
           onClick={() => {
-            if (!downloadDisabled) {
+            if (downloadEnabled) {
               this.setState({ selectedCert: payload });
               this.props.showDownloadCertificateModal();
             }
           }}
-          disabled={downloadDisabled}
+          disabled={!downloadEnabled}
         >
           <i className="fa fa-download"></i> Download YSQL Cert
         </MenuItem>
         <MenuItem
           onClick={() => {
-            !downloadDisabled && this.downloadRootCertificate(row);
+            downloadEnabled && this.downloadRootCertificate(row);
           }}
-          disabled={downloadDisabled}
+          disabled={!downloadEnabled}
         >
           <i className="fa fa-download"></i> Download Root CA Cert
         </MenuItem>

@@ -34,25 +34,33 @@ class DocWriteBatch;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
 class KeyBytes;
+class KeyEntryValue;
 class ManualHistoryRetentionPolicy;
 class PgsqlWriteOperation;
 class PrimitiveValue;
 class QLWriteOperation;
 class RedisWriteOperation;
+class SchemaPacking;
+class SchemaPackingStorage;
 class SharedLockManager;
 class SubDocKey;
 class YQLRowwiseIteratorIf;
 class YQLStorageIf;
 
 struct ApplyTransactionState;
+struct CompactionSchemaPacking;
 struct DocDB;
+struct DocReadContext;
+struct IntentKeyValueForCDC;
 struct KeyBounds;
 struct LockBatchEntry;
 
 using DocKeyHash = uint16_t;
 using LockBatchEntries = std::vector<LockBatchEntry>;
+using DocReadContextPtr = std::shared_ptr<DocReadContext>;
 
-enum class ValueType;
+enum class KeyEntryType;
+enum class ValueEntryType;
 
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 

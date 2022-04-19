@@ -33,8 +33,8 @@ public class AuditControllerTest extends FakeDBApplication {
   private Customer customer1, customer2;
   private Users user1, user2;
   private String authToken1, authToken2;
-  private UUID taskUUID1, taskUUID2;
-  private Audit audit1, audit2, audit3, audit4;
+  private UUID taskUUID1, taskUUID2, taskUUID3;
+  private Audit audit1, audit2, audit3, audit4, audit5, audit6;
 
   @Before
   public void setUp() {
@@ -45,13 +45,19 @@ public class AuditControllerTest extends FakeDBApplication {
     authToken1 = user1.createAuthToken();
     authToken2 = user2.createAuthToken();
     ObjectNode params = Json.newObject();
+    Audit.TargetType target = Audit.TargetType.Universe;
+    String targetID = "Test TargetID";
+    Audit.ActionType action = Audit.ActionType.Create;
     params.put("foo", "bar");
-    audit1 = Audit.create(user1, "/test/call", "GET", params, null);
+    audit1 = Audit.create(user1, "/test/call", "GET", null, null, null, params, null);
     taskUUID1 = UUID.randomUUID();
     taskUUID2 = UUID.randomUUID();
-    audit2 = Audit.create(user1, "/test/call1", "DELETE", params, taskUUID1);
-    audit3 = Audit.create(user2, "/test/call2", "PUT", params, taskUUID2);
-    audit4 = Audit.create(user2, "/test/call4", "GET", params, null);
+    taskUUID3 = UUID.randomUUID();
+    audit2 = Audit.create(user1, "/test/call1", "DELETE", null, null, null, params, taskUUID1);
+    audit3 = Audit.create(user2, "/test/call2", "PUT", null, null, null, params, taskUUID2);
+    audit4 = Audit.create(user2, "/test/call4", "GET", null, null, null, params, null);
+    audit5 = Audit.create(user1, "/test/call5", "PUT", target, null, action, params, taskUUID3);
+    audit6 = Audit.create(user2, "/test/call6", "POST", target, targetID, action, params, null);
   }
 
   @Test
@@ -64,7 +70,7 @@ public class AuditControllerTest extends FakeDBApplication {
                 .cookie(validCookie));
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(json.size(), 2);
+    assertEquals(json.size(), 3);
   }
 
   @Test

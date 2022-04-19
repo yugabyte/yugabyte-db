@@ -492,8 +492,7 @@ class DBImpl : public DB {
   const std::string dbname_;
   unique_ptr<VersionSet> versions_;
   const DBOptions db_options_;
-  Statistics* stats_;
-
+  std::shared_ptr<Statistics> stats_;
   InternalIterator* NewInternalIterator(const ReadOptions&,
                                         ColumnFamilyData* cfd,
                                         SuperVersion* super_version,
@@ -596,9 +595,6 @@ class DBImpl : public DB {
 
   // Wait for memtable flushed
   Status WaitForFlushMemTable(ColumnFamilyData* cfd);
-
-  void RecordFlushIOStats();
-  void RecordCompactionIOStats();
 
 #ifndef ROCKSDB_LITE
   Status CompactFilesImpl(

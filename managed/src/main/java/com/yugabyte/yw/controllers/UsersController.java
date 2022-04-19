@@ -12,6 +12,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.UserProfileFormData;
 import com.yugabyte.yw.forms.UserRegisterFormData;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -108,7 +109,13 @@ public class UsersController extends AuthenticatedController {
     Users user =
         Users.create(
             formData.getEmail(), formData.getPassword(), formData.getRole(), customerUUID, false);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.User,
+            Objects.toString(user.uuid, null),
+            Audit.ActionType.Create,
+            Json.toJson(formData));
     return PlatformResults.withData(userService.getUserWithFeatures(customer, user));
   }
 
@@ -132,7 +139,9 @@ public class UsersController extends AuthenticatedController {
               "Cannot delete primary user %s for customer %s", userUUID.toString(), customerUUID));
     }
     if (user.delete()) {
-      auditService().createAuditEntry(ctx(), request());
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(), Audit.TargetType.User, userUUID.toString(), Audit.ActionType.Delete);
       return YBPSuccess.empty();
     } else {
       throw new PlatformServiceException(
@@ -171,7 +180,13 @@ public class UsersController extends AuthenticatedController {
     }
     user.setRole(Role.valueOf(role));
     user.save();
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.User,
+            userUUID.toString(),
+            Audit.ActionType.ChangeUserRole,
+            request().body().asJson());
     return YBPSuccess.empty();
   }
 
@@ -207,6 +222,12 @@ public class UsersController extends AuthenticatedController {
       if (formData.getPassword().equals(formData.getConfirmPassword())) {
         user.setPassword(formData.getPassword());
         user.save();
+        auditService()
+            .createAuditEntryWithReqBody(
+                ctx(),
+                Audit.TargetType.User,
+                userUUID.toString(),
+                Audit.ActionType.ChangeUserPassword);
         return YBPSuccess.empty();
       }
     }
@@ -256,8 +277,14 @@ public class UsersController extends AuthenticatedController {
         throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
       }
       user.setRole(formData.getRole());
-      auditService().createAuditEntry(ctx(), request());
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.User,
+            userUUID.toString(),
+            Audit.ActionType.Update,
+            Json.toJson(formData));
     user.save();
     return ok(Json.toJson(user));
   }

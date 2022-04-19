@@ -42,6 +42,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -64,6 +65,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -123,7 +125,6 @@ public class ImportController extends AuthenticatedController {
     ImportUniverseFormData importForm = formData.get();
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
 
     if (importForm.singleStep) {
       importForm.currentState = State.BEGIN;
@@ -135,21 +136,42 @@ public class ImportController extends AuthenticatedController {
       if (res.status() != Http.Status.OK) {
         return res;
       }
-      return finishUniverseImport(importForm, customer, results);
+      res = finishUniverseImport(importForm, customer, results);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Universe,
+              Objects.toString(results.universeUUID, null),
+              Audit.ActionType.Import,
+              Json.toJson(formData.rawData()));
+      return res;
     } else {
+      Result res;
       switch (importForm.currentState) {
         case BEGIN:
-          return importUniverseMasters(importForm, customer, results);
+          res = importUniverseMasters(importForm, customer, results);
+          break;
         case IMPORTED_MASTERS:
-          return importUniverseTservers(importForm, customer, results);
+          res = importUniverseTservers(importForm, customer, results);
+          break;
         case IMPORTED_TSERVERS:
-          return finishUniverseImport(importForm, customer, results);
+          res = finishUniverseImport(importForm, customer, results);
+          break;
         case FINISHED:
-          return PlatformResults.withData(results);
+          res = PlatformResults.withData(results);
+          break;
         default:
           throw new PlatformServiceException(
               BAD_REQUEST, "Unknown current state: " + importForm.currentState.toString());
       }
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Universe,
+              Objects.toString(results.universeUUID, null),
+              Audit.ActionType.Import,
+              Json.toJson(formData.rawData()));
+      return res;
     }
   }
 
@@ -209,7 +231,7 @@ public class ImportController extends AuthenticatedController {
     }
 
     if (!Util.isValidUniverseNameFormat(universeName)) {
-      throw new PlatformServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
+      throw new PlatformServiceException(BAD_REQUEST, Util.UNIVERSE_NAME_ERROR_MESG);
     }
 
     if (masterAddresses == null || masterAddresses.isEmpty()) {

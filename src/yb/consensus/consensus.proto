@@ -529,6 +529,29 @@ message StartRemoteBootstrapResponsePB {
   optional tserver.TabletServerErrorPB error = 1;
 }
 
+// An unsafe change configuration request for the tablet with 'tablet_id'.
+message UnsafeChangeConfigRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+  required bytes tablet_id = 2;
+
+  // Sender identification, it could be a static string as well.
+  required bytes caller_id = 3;
+
+  // The raft config sent to destination server.
+  // Only the 'permanent_uuid' of each peer in the config is
+  // required (address-related information is ignored by the server).
+  // The peers specified in the 'new_config' are required to be a
+  // subset of (or equal to) the peers in the committed config on the
+  // destination replica.
+  required RaftConfigPB new_config = 4;
+}
+
+// The unsafe change configuration response. 'error' field is set if operation failed.
+message UnsafeChangeConfigResponsePB {
+  optional tserver.TabletServerErrorPB error = 1;
+}
+
 // A Raft implementation.
 service ConsensusService {
   // Analogous to AppendEntries in Raft, but only used for followers.
@@ -546,6 +569,9 @@ service ConsensusService {
   // an operation to change the role of a server between VOTER and PRE_VOTER.
   // An OK response means the operation was successful.
   rpc ChangeConfig(ChangeConfigRequestPB) returns (ChangeConfigResponsePB);
+
+  // Implements unsafe config change operation for manual recovery use cases.
+  rpc UnsafeChangeConfig(UnsafeChangeConfigRequestPB) returns (UnsafeChangeConfigResponsePB);
 
   rpc GetNodeInstance(GetNodeInstanceRequestPB) returns (GetNodeInstanceResponsePB);
 

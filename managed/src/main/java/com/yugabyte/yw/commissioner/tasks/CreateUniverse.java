@@ -18,8 +18,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
@@ -84,9 +83,6 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
         // Verify the task params.
         verifyParams(UniverseOpType.CREATE);
       }
-
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       boolean isYCQLAuthEnabled =
@@ -173,7 +169,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           universe,
           taskParams().nodeDetailsSet,
           false /* isShell */,
-          false /* ignore node status check */);
+          false /* ignore node status check */,
+          false /*ignoreUseCustomImageConfig*/);
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
 
@@ -257,7 +254,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;

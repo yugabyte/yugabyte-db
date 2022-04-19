@@ -781,7 +781,7 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
     }
 
     if (should_stop || ops.size() >= 10) {
-      Status s = session->Flush();
+      Status s = session->TEST_Flush();
       ASSERT_TRUE(s.ok() || s.IsBusy() || s.IsIOError());
       auto result = AnalyzeResponse(ops);
       ops.clear();
@@ -892,7 +892,7 @@ TEST_P(AlterTableTest, TestInsertAfterAlterTable) {
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeout(15s);
   session->Apply(insert);
-  auto flush_status = session->FlushAndGetOpsErrors();
+  auto flush_status = session->TEST_FlushAndGetOpsErrors();
   const auto& s = flush_status.status;
   if (!s.ok()) {
     ASSERT_EQ(1, flush_status.errors.size());

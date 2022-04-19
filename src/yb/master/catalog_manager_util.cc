@@ -401,5 +401,20 @@ CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& p
   return Status::OK();
 }
 
+bool CMPerTableLoadState::CompareLoads(const TabletServerId &ts1, const TabletServerId &ts2) {
+  if (per_ts_load_[ts1] != per_ts_load_[ts2]) {
+    return per_ts_load_[ts1] < per_ts_load_[ts2];
+  }
+  if (global_load_state_->GetGlobalLoad(ts1) == global_load_state_->GetGlobalLoad(ts2)) {
+    return ts1 < ts2;
+  }
+  return global_load_state_->GetGlobalLoad(ts1) < global_load_state_->GetGlobalLoad(ts2);
+}
+
+void CMPerTableLoadState::SortLoad() {
+  Comparator comp(this);
+  std::sort(sorted_load_.begin(), sorted_load_.end(), comp);
+}
+
 } // namespace master
 } // namespace yb

@@ -53,12 +53,25 @@ while [[ $# -gt 0 ]]; do
 done
 
 YB_HOME_DIR=${YB_HOME_DIR:=/home/yugabyte}
-YB_TSERVER_LOGS_DIR=${YB_HOME_DIR}/tserver/logs/
 
-UNRECOGNIZED_STATUS_REGEX='server process \(PID \d+\) exited with unrecognized status .*'
-TERMINATED_BY_SIGNAL_REGEX='server process \(PID \d+\) was terminated by signal .*'
-TERMINATED_BY_EXCEPTION_REGEX='server process \(PID \d+\) was terminated by exception .*'
-EXITED_WITH_CODE_REGEX='server process \(PID \d+\) exited with exit code .*'
+PIDFILE=${YB_HOME_DIR}/collect_metrics.pid
+if [ -f $PIDFILE ]
+then
+  PID=$(cat "$PIDFILE")
+  PID_CHECK_STATUS=$(ps -p $PID > /dev/null 2>&1; echo $?)
+  if [ "$PID_CHECK_STATUS" -eq 0 ]
+  then
+    echo "Process $PID already running"
+    exit 1
+  fi
+fi
+
+PID_CREATE_STATUS=$(echo $$ > $PIDFILE; echo $?)
+if [ "$PID_CREATE_STATUS" -ne 0 ]
+then
+  echo "Could not create $PIDFILE"
+  exit 1
+fi
 
 PROCESS_MASTER="yb-master"
 PROCESS_TSERVER="yb-tserver"
@@ -69,6 +82,7 @@ YSQL_SERVER_HTTP_ENDPOINT="{{NODE_PRIVATE_IP}}:{{YSQL_SERVER_HTTP_PORT}}"
 YSQLSH_CMD_TEMPLATE="{{YSQLSH_CMD_TEMPLATE}}"
 MASTER_INDEX="{{MASTER_INDEX}}"
 TSERVER_INDEX="{{TSERVER_INDEX}}"
+TEST_READ_WRITE="{{TEST_READ_WRITE}}"
 
 metrics=""
 
@@ -125,32 +139,6 @@ get_postgres_worker_count()
   [[ -z "$postmaster_pid" ]] && { echo "postmaster not running" ; return 1; }
   local postgres_worker_count=$(ps --no-headers --ppid "$postmaster_pid" -o pid= | wc -l)
   echo "$postgres_worker_count"
-  return $?
-}
-
-cat_today_logs()
-{
-  local directory=$1
-  local filename_prefix=$2
-  [[ ! -d "$directory" ]] && { echo "$directory is not a directory" ; return 1; }
-  local today=$(date +"%Y-%m-%d")
-  find "$directory" -regex ".*$filename_prefix$today.*" -print0 | sort -z | while read -d $'\0' file
-  do
-    if [ "$file" == "*.gz" ]; then
-      zcat "$file"
-    else
-      cat "$file"
-    fi
-  done
-  return $?
-}
-
-get_postgres_worker_terminated_count()
-{
-  local regex=$1
-  local terminated_count=$(cat_today_logs "$YB_TSERVER_LOGS_DIR" "postgresql-" | \
-    grep -cP "$regex")
-  echo "$terminated_count"
   return $?
 }
 
@@ -228,6 +216,7 @@ ysql_connect()
 
 ysql_write_read()
 {
+  [[ ! "${TEST_READ_WRITE,,}" == "true" ]] && { echo "Read Write test is disabled"; return 1; }
   [[ -z "$YSQLSH_CMD_TEMPLATE" ]] && { echo "YSQL is disabled"; return 1; }
   local tserver_pid=$(get_tserver_pid)
   [[ -z "$tserver_pid" ]] && { echo "TServer is not running"; return 1; }
@@ -306,14 +295,6 @@ collect_metric 'yb_node_boot_time{process="master"}' "get_boot_time $PROCESS_MAS
 collect_metric 'yb_node_boot_time{process="tserver"}' "get_boot_time $PROCESS_TSERVER"
 collect_metric 'yb_node_boot_time{process="postmaster"}' 'get_postmaster_boot_time'
 collect_metric 'yb_node_postgres_worker_count' 'get_postgres_worker_count'
-collect_metric 'yb_node_postgres_worker_terminated_count{reason="unrecognized_status"}' \
- "get_postgres_worker_terminated_count \"$UNRECOGNIZED_STATUS_REGEX\""
-collect_metric 'yb_node_postgres_worker_terminated_count{reason="terminated_by_signal"}' \
- "get_postgres_worker_terminated_count \"$TERMINATED_BY_SIGNAL_REGEX\""
-collect_metric 'yb_node_postgres_worker_terminated_count{reason="terminated_by_exception"}' \
- "get_postgres_worker_terminated_count \"$TERMINATED_BY_EXCEPTION_REGEX\""
-collect_metric 'yb_node_postgres_worker_terminated_count{reason="exited_with_code"}' \
- "get_postgres_worker_terminated_count \"$EXITED_WITH_CODE_REGEX\""
 collect_metric 'yb_node_postgres_rss{process="postmaster"}' 'get_postmaster_rss'
 collect_metric 'yb_node_postgres_rss{process="workers"}' 'get_postgres_workers_rss'
 collect_metric 'yb_node_is_master_leader' "is_master_leader"

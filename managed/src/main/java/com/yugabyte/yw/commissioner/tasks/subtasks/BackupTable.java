@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
@@ -23,6 +24,7 @@ import javax.inject.Inject;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 
 @Slf4j
 public class BackupTable extends AbstractTaskBase {
@@ -55,7 +57,10 @@ public class BackupTable extends AbstractTaskBase {
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       Map<String, String> config = universe.getConfig();
       if (config.isEmpty() || config.getOrDefault(Universe.TAKE_BACKUPS, "true").equals("true")) {
+        BackupTableParams.ActionType actionType = taskParams().actionType;
         if (taskParams().backupList != null) {
+          long totalBackupSize = 0L;
+          int backupIdx = 0;
           for (BackupTableParams backupParams : taskParams().backupList) {
             backupParams.backupUuid = taskParams().backupUuid;
             ShellResponse response = tableManager.createBackup(backupParams);
@@ -70,14 +75,31 @@ public class BackupTable extends AbstractTaskBase {
             if (response.code != 0 || jsonNode.has("error")) {
               log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
               throw new RuntimeException(response.message);
-            } else {
-              log.info("[" + getName() + "] STDOUT: " + response.message);
             }
+
+            log.info("[" + getName() + "] STDOUT: " + response.message);
+            if (actionType == BackupTableParams.ActionType.CREATE) {
+              long backupSize = BackupUtil.extractBackupSize(jsonNode);
+              List<BackupUtil.RegionLocations> locations =
+                  BackupUtil.extractPerRegionLocationsFromBackupScriptResponse(jsonNode);
+              if (CollectionUtils.isNotEmpty(locations)) {
+                backup.setPerRegionLocations(backupIdx, locations);
+              }
+              backup.setBackupSizeInBackupList(backupIdx, backupSize);
+              totalBackupSize += backupSize;
+            }
+            backupIdx++;
           }
 
+          if (actionType == BackupTableParams.ActionType.CREATE) {
+            backup.save();
+            backup.setCompletionTime(backup.getUpdateTime());
+            backup.setTotalBackupSize(totalBackupSize);
+          }
           backup.transitionState(Backup.BackupState.Completed);
         } else {
           ShellResponse response = tableManager.createBackup(taskParams());
+          processShellResponse(response);
           JsonNode jsonNode = null;
           try {
             jsonNode = Json.parse(response.message);
@@ -90,6 +112,17 @@ public class BackupTable extends AbstractTaskBase {
             throw new RuntimeException(response.message);
           } else {
             log.info("[" + getName() + "] STDOUT: " + response.message);
+            if (actionType == BackupTableParams.ActionType.CREATE) {
+              long backupSize = BackupUtil.extractBackupSize(jsonNode);
+              backup.save();
+              backup.setCompletionTime(backup.getUpdateTime());
+              backup.setTotalBackupSize(backupSize);
+              List<BackupUtil.RegionLocations> locations =
+                  BackupUtil.extractPerRegionLocationsFromBackupScriptResponse(jsonNode);
+              if (CollectionUtils.isNotEmpty(locations)) {
+                backup.setPerRegionLocations(-1, locations);
+              }
+            }
             backup.transitionState(Backup.BackupState.Completed);
           }
         }

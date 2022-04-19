@@ -44,6 +44,8 @@ import com.google.protobuf.CodedOutputStream;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import com.stumbleupon.async.Deferred;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Pair;
 import org.yb.util.Slice;
@@ -69,6 +71,7 @@ import java.io.IOException;
  */
 @InterfaceAudience.Private
 public abstract class YRpc<R> {
+  public static final Logger LOG = LoggerFactory.getLogger(YRpc.class);
 
   // Service names.
   protected static final String GENERIC_SERVICE_NAME = "yb.server.GenericService";

@@ -6,12 +6,17 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.AZUtil;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -25,6 +30,9 @@ import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.CustomerConfig.ConfigState;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import org.junit.After;
 import org.junit.Before;
@@ -45,6 +53,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
 
   @Mock Scheduler mockScheduler;
 
+  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
+
   MockedStatic<AWSUtil> mockAWSUtil;
 
   MockedStatic<GCPUtil> mockGCPUtil;
@@ -56,6 +66,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   private BackupGarbageCollector backupGC;
   private CustomerConfigService customerConfigService;
   private TableManagerYb tableManagerYb;
+  private BackupUtil mockBackupUtil;
 
   @Before
   public void setUp() {
@@ -66,9 +77,15 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     mockAWSUtil = Mockito.mockStatic(AWSUtil.class);
     mockGCPUtil = Mockito.mockStatic(GCPUtil.class);
     mockAZUtil = Mockito.mockStatic(AZUtil.class);
+    mockBackupUtil = mock(BackupUtil.class);
     backupGC =
         new BackupGarbageCollector(
-            mockExecutionContext, mockActorSystem, customerConfigService, tableManagerYb);
+            mockExecutionContext,
+            mockActorSystem,
+            customerConfigService,
+            mockRuntimeConfigFactory,
+            tableManagerYb,
+            mockBackupUtil);
   }
 
   @After
@@ -86,7 +103,9 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
-    mockAWSUtil.when(() -> AWSUtil.canCredentialListObjects(any())).thenReturn(true);
+    List<String> backupLocations = new ArrayList<>();
+    backupLocations.add(backup.getBackupInfo().storageLocation);
+    when(mockBackupUtil.getBackupLocations(backup)).thenReturn(backupLocations);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -101,7 +120,9 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
-    mockGCPUtil.when(() -> GCPUtil.canCredentialListObjects(any())).thenReturn(true);
+    List<String> backupLocations = new ArrayList<>();
+    backupLocations.add(backup.getBackupInfo().storageLocation);
+    when(mockBackupUtil.getBackupLocations(backup)).thenReturn(backupLocations);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -116,7 +137,9 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
-    mockAZUtil.when(() -> AZUtil.canCredentialListObjects(any())).thenReturn(true);
+    List<String> backupLocations = new ArrayList<>();
+    backupLocations.add(backup.getBackupInfo().storageLocation);
+    when(mockBackupUtil.getBackupLocations(backup)).thenReturn(backupLocations);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -164,7 +187,9 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
-    mockAWSUtil.when(() -> AWSUtil.canCredentialListObjects(any())).thenReturn(false);
+    doThrow(new PlatformServiceException(BAD_REQUEST, "error"))
+        .when(mockBackupUtil)
+        .validateStorageConfig(any());
     backupGC.scheduleRunner();
     backup = Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID);
     assertEquals(BackupState.FailedToDelete, backup.state);
@@ -195,7 +220,6 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     bp.universeUUID = defaultUniverse.universeUUID;
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
-    mockAWSUtil.when(() -> AWSUtil.canCredentialListObjects(any())).thenReturn(true);
     mockAWSUtil
         .when(() -> AWSUtil.deleteKeyIfExists(any(), any()))
         .thenThrow(new RuntimeException());
@@ -224,8 +248,10 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     bp.universeUUID = defaultUniverse.universeUUID;
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
-    mockAWSUtil.when(() -> AWSUtil.canCredentialListObjects(any())).thenReturn(true);
     customerConfig.setState(ConfigState.QueuedForDeletion);
+    List<String> backupLocations = new ArrayList<>();
+    backupLocations.add(backup.getBackupInfo().storageLocation);
+    when(mockBackupUtil.getBackupLocations(backup)).thenReturn(backupLocations);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -244,7 +270,6 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     bp.universeUUID = defaultUniverse.universeUUID;
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.Completed);
-    mockAWSUtil.when(() -> AWSUtil.canCredentialListObjects(any())).thenReturn(true);
     customerConfig.setState(ConfigState.QueuedForDeletion);
     backupGC.scheduleRunner();
     assertThrows(
@@ -261,7 +286,9 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     bp.universeUUID = defaultUniverse.universeUUID;
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
-    mockAWSUtil.when(() -> AWSUtil.canCredentialListObjects(any())).thenReturn(false);
+    doThrow(new PlatformServiceException(BAD_REQUEST, "error"))
+        .when(mockBackupUtil)
+        .validateStorageConfig(any());
     customerConfig.setState(ConfigState.QueuedForDeletion);
     backupGC.scheduleRunner();
     assertThrows(
@@ -270,5 +297,21 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
             customerConfigService.getOrBadRequest(defaultCustomer.uuid, customerConfig.configUUID));
     backup.refresh();
     assertEquals(BackupState.FailedToDelete, backup.state);
+  }
+
+  @Test
+  public void testAlreadyRunningBackupGC() {
+    backupGC.setRunningState(true);
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    customerConfig.setState(ConfigState.QueuedForDeletion);
+    backupGC.scheduleRunner();
+    backup.refresh();
+    assertEquals(BackupState.Completed, backup.state);
+    backupGC.setRunningState(false);
   }
 }

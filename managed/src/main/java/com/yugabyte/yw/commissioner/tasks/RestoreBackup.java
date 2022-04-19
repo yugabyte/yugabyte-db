@@ -1,9 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
@@ -33,8 +31,6 @@ public class RestoreBackup extends UniverseTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
@@ -43,39 +39,12 @@ public class RestoreBackup extends UniverseTaskBase {
         throw new RuntimeException("A backup for this universe is already in progress.");
       }
 
+      if (taskParams().alterLoadBalancer) {
+        createLoadBalancerStateChangeTask(false)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
       UserTaskDetails.SubTaskGroupType groupType = UserTaskDetails.SubTaskGroupType.RestoringBackup;
-
-      if (taskParams().backupData != null) {
-        Backup backup =
-            Backup.getOrBadRequest(taskParams().customerUUID, taskParams().backupData.backupUUID);
-        BackupTableParams backupParams = backup.getBackupInfo();
-        if (backupParams.backupList != null) {
-          for (BackupTableParams params : backupParams.backupList) {
-
-            if (KmsConfig.get(taskParams().kmsConfigUUID) != null) {
-              RestoreBackupParams restoreParams =
-                  createParamsBody(taskParams(), params, ActionType.RESTORE_KEYS);
-              createRestoreBackupTask(restoreParams).setSubTaskGroupType(groupType);
-              createEncryptedUniverseKeyRestoreTaskYb(restoreParams).setSubTaskGroupType(groupType);
-            }
-
-            RestoreBackupParams restoreParams =
-                createParamsBody(taskParams(), params, ActionType.RESTORE);
-            createRestoreBackupTask(restoreParams).setSubTaskGroupType(groupType);
-          }
-        } else {
-          if (KmsConfig.get(taskParams().kmsConfigUUID) != null) {
-            RestoreBackupParams restoreParams =
-                createParamsBody(taskParams(), backupParams, ActionType.RESTORE_KEYS);
-            createRestoreBackupTask(restoreParams).setSubTaskGroupType(groupType);
-            createEncryptedUniverseKeyRestoreTaskYb(restoreParams).setSubTaskGroupType(groupType);
-          }
-
-          RestoreBackupParams restoreParams =
-              createParamsBody(taskParams(), backupParams, ActionType.RESTORE);
-          createRestoreBackupTask(restoreParams).setSubTaskGroupType(groupType);
-        }
-      } else if (taskParams().backupStorageInfoList != null) {
+      if (taskParams().backupStorageInfoList != null) {
         for (BackupStorageInfo backupStorageInfo : taskParams().backupStorageInfoList) {
           if (KmsConfig.get(taskParams().kmsConfigUUID) != null) {
             RestoreBackupParams restoreParams =
@@ -91,14 +60,27 @@ public class RestoreBackup extends UniverseTaskBase {
       }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
+      if (taskParams().alterLoadBalancer) {
+        createLoadBalancerStateChangeTask(true)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
 
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      if (taskParams().alterLoadBalancer) {
+        // Clear previous tasks if any.
+        getRunnableTask().reset();
+        // If the task failed, we don't want the loadbalancer to be
+        // disabled, so we enable it again in case of errors.
+        createLoadBalancerStateChangeTask(true)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        getRunnableTask().runSubTasks();
+      }
       throw t;
     } finally {
       // Run an unlock in case the task failed before getting to the unlock. It is okay if it
@@ -110,33 +92,11 @@ public class RestoreBackup extends UniverseTaskBase {
   }
 
   private RestoreBackupParams createParamsBody(
-      RestoreBackupParams params, BackupTableParams backupParams, ActionType actionType) {
-    RestoreBackupParams restoreParams = new RestoreBackupParams();
-    restoreParams.customerUUID = params.customerUUID;
-    restoreParams.universeUUID = params.universeUUID;
-    restoreParams.restoreTimeStamp = params.restoreTimeStamp;
-    restoreParams.kmsConfigUUID = params.kmsConfigUUID;
-    restoreParams.backupStorageInfoList = new ArrayList<>();
-    restoreParams.actionType = actionType;
-
-    BackupStorageInfo backupStorageInfo = new BackupStorageInfo();
-    restoreParams.backupStorageInfoList.add(backupStorageInfo);
-    backupStorageInfo.backupType = backupParams.backupType;
-    backupStorageInfo.storageLocation = backupParams.storageLocation;
-    backupStorageInfo.storageConfigUUID = backupParams.storageConfigUUID;
-    backupStorageInfo.keyspace = backupParams.getKeyspace();
-    backupStorageInfo.sse = backupParams.sse;
-    backupStorageInfo.tableNameList = backupParams.tableNameList;
-    backupStorageInfo.tableUUIDList = backupParams.tableUUIDList;
-
-    return restoreParams;
-  }
-
-  private RestoreBackupParams createParamsBody(
       RestoreBackupParams params, BackupStorageInfo backupStorageInfo, ActionType actionType) {
     RestoreBackupParams restoreParams = new RestoreBackupParams();
     restoreParams.customerUUID = params.customerUUID;
     restoreParams.universeUUID = params.universeUUID;
+    restoreParams.storageConfigUUID = params.storageConfigUUID;
     restoreParams.restoreTimeStamp = params.restoreTimeStamp;
     restoreParams.kmsConfigUUID = params.kmsConfigUUID;
     restoreParams.backupStorageInfoList = new ArrayList<>();

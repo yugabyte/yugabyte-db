@@ -75,6 +75,9 @@ class CDCTabletMetrics {
   // Lag between last record applied on consumer and producer.
   scoped_refptr<AtomicGauge<int64_t> > async_replication_committed_lag_micros;
 
+  // Info about if a tablet has fallen too far behind in replication.
+  scoped_refptr<AtomicGauge<bool>> is_bootstrap_required;
+
  private:
   scoped_refptr<MetricEntity> entity_;
 };

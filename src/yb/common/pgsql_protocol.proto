@@ -20,6 +20,7 @@ import "yb/common/common.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
 import "yb/common/value.proto";
+import "yb/rpc/lightweight_message.proto";
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.
@@ -255,6 +256,9 @@ message PgsqlWriteRequestPB {
   // to convert between DocDB and Postgres formats.
   // One entry per column referenced.
   repeated PgsqlColRefPB col_refs = 21;
+
+  // Used only in pg client.
+  optional bytes partition_key = 22;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -341,13 +345,13 @@ message PgsqlReadRequestPB {
   // - In general, hash_code should be set by PgGate, but for some reasons, when the field
   // "ybctid_column_value" is used, hash_code is set by "common" lib.
   optional uint32 hash_code = 4;
-  optional PgsqlExpressionPB ybctid_column_value = 20;
+  optional PgsqlExpressionPB ybctid_column_value = 20 [(rpc.lightweight_field).pointer = true];
 
   // Primary key.
   // - Partition columns are used to compute the hash code,
   //   e.g. for h1 = 1 AND h2 = 2 partition_column_values would be [1, 2].
   // - Range columns combining with partition columns are used for indexing.
-  repeated PgsqlExpressionPB partition_column_values = 5;
+  repeated PgsqlExpressionPB partition_column_values = 5 [(rpc.lightweight_field).pointer = true];
   repeated PgsqlExpressionPB range_column_values = 18;
 
   // For select using local secondary index: this request selects the ybbasectids to fetch the rows
@@ -402,7 +406,7 @@ message PgsqlReadRequestPB {
 
   //------------------------------------------------------------------------------------------------
   // Paging state retrieved from the last response.
-  optional PgsqlPagingStatePB paging_state = 14;
+  optional PgsqlPagingStatePB paging_state = 14 [(rpc.lightweight_field).pointer = true];
 
   // Return paging state when "limit" number of rows are returned? In case when "limit" is the
   // page size, this is set for PgsqlResponsePB to return the paging state for the next fetch.
@@ -447,7 +451,7 @@ message PgsqlReadRequestPB {
   optional bool is_for_backfill = 29 [default = false];
 
   // If present, the request is to collect random sample
-  optional PgsqlSamplingStatePB sampling_state = 30;
+  optional PgsqlSamplingStatePB sampling_state = 30 [(rpc.lightweight_field).pointer = true];
 
   // Instruction for BACKFILL operation from the tablet server.
   // This is the serialized-string of "message PgsqlBackfillSpecPB" which will be used by
@@ -465,6 +469,9 @@ message PgsqlReadRequestPB {
   // to convert between DocDB and Postgres formats.
   // One entry per column referenced.
   repeated PgsqlColRefPB col_refs = 34;
+
+  // Used only in pg client.
+  optional bytes partition_key = 35;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -497,7 +504,7 @@ message PgsqlResponsePB {
   optional int32 rows_data_sidecar = 4;
 
   // Paging state for continuing the read in the next QLReadRequestPB fetch.
-  optional PgsqlPagingStatePB paging_state = 5;
+  optional PgsqlPagingStatePB paging_state = 5 [(rpc.lightweight_field).pointer = true];
 
   // When client sends a request that has a batch of many arguments, server might process only a
   // subset of the arguments. Attribute "batch_arg_count" is to indicate how many arguments have
@@ -527,7 +534,7 @@ message PgsqlResponsePB {
   optional uint32 txn_error_code = 9;
 
   // Random sample state to hand over to the next block
-  optional PgsqlSamplingStatePB sampling_state = 11;
+  optional PgsqlSamplingStatePB sampling_state = 11 [(rpc.lightweight_field).pointer = true];
 
   // Instruction for BACKFILL operation from master/table server.
   // This is the serialized-string of "message PgsqlBackfillSpecPB".

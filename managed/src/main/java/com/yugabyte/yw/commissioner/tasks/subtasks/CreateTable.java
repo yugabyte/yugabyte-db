@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -20,11 +21,13 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import io.swagger.annotations.ApiModelProperty;
 import java.net.InetSocketAddress;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Random;
@@ -32,6 +35,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.YBClient;
@@ -84,28 +88,14 @@ public class CreateTable extends AbstractTaskBase {
     }
     TableDetails tableDetails = taskParams().tableDetails;
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    UniverseDefinitionTaskParams.Cluster primaryCluster =
-        universe.getUniverseDetails().getPrimaryCluster();
 
     String createTableStatement = tableDetails.getPgSqlCreateTableString(taskParams().ifNotExist);
-    List<NodeDetails> tserverLiveNodes =
-        universe
-            .getUniverseDetails()
-            .getNodesInCluster(primaryCluster.uuid)
-            .stream()
-            .filter(nodeDetails -> nodeDetails.isTserver)
-            .filter(nodeDetails -> nodeDetails.state == NodeState.Live)
-            .collect(Collectors.toList());
-    if (tserverLiveNodes.isEmpty()) {
-      throw new IllegalStateException(
-          "No live TServers for a table creation op in " + taskParams().universeUUID);
-    }
+
     boolean tableCreated = false;
-    Random random = new Random();
     int attempt = 0;
     Instant timeout = Instant.now().plusSeconds(MAX_TIMEOUT_SEC);
     while (Instant.now().isBefore(timeout) || attempt < 2) {
-      NodeDetails randomTServer = tserverLiveNodes.get(random.nextInt(tserverLiveNodes.size()));
+      NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
       ShellResponse response =
           nodeUniverseManager.runYsqlCommand(
               randomTServer, universe, tableDetails.keyspace, createTableStatement);
@@ -117,15 +107,7 @@ public class CreateTable extends AbstractTaskBase {
             randomTServer.nodeName,
             response.code,
             response.message);
-        try {
-          Thread.sleep(RETRY_DELAY_SEC);
-        } catch (InterruptedException e) {
-          throw new RuntimeException(
-              "Wait between table creation attempts was interrupted "
-                  + "for universe "
-                  + universe.name,
-              e);
-        }
+        waitFor(Duration.ofMillis(RETRY_DELAY_SEC));
       } else {
         tableCreated = true;
         break;

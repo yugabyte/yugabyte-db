@@ -14,35 +14,43 @@
 #ifndef YB_YQL_PGGATE_PGGATE_H_
 #define YB_YQL_PGGATE_PGGATE_H_
 
-#include <algorithm>
 #include <functional>
-#include <thread>
+#include <memory>
 #include <unordered_map>
 
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/seq/for_each.hpp>
-
-#include "yb/util/metrics.h"
-#include "yb/util/mem_tracker.h"
-#include "yb/common/ybc_util.h"
-
-#include "yb/client/callbacks.h"
 #include "yb/client/async_initializer.h"
-#include "yb/server/server_base_options.h"
+#include "yb/client/client_fwd.h"
+
+#include "yb/common/pg_types.h"
+#include "yb/common/transaction.h"
+
+#include "yb/gutil/casts.h"
+#include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/server/hybrid_clock.h"
+#include "yb/server/server_base_options.h"
+
+#include "yb/tserver/tserver_util_fwd.h"
+
+#include "yb/util/mem_tracker.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
+
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_env.h"
-#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_statement.h"
-#include "yb/yql/pggate/type_mapping.h"
-
-#include "yb/server/hybrid_clock.h"
-#include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
+class PgSysTablePrefetcher;
+class PgSession;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -52,7 +60,6 @@ class PggateOptions : public yb::server::ServerBaseOptions {
   static const uint16_t kDefaultWebPort = 13000;
 
   PggateOptions();
-  virtual ~PggateOptions() {}
 };
 
 struct PgApiContext {
@@ -85,16 +92,10 @@ class PgApiImpl {
  public:
   PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
             YBCPgCallbacks pg_callbacks);
-  virtual ~PgApiImpl();
+  ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {
     return &pg_callbacks_;
-  }
-
-  //------------------------------------------------------------------------------------------------
-  // Access function to Pggate attribute.
-  client::YBClient* client() {
-    return async_client_init_.client();
   }
 
   void ResetCatalogReadTime();
@@ -105,7 +106,7 @@ class PgApiImpl {
 
   // Initialize a session to process statements that come from the same client connection.
   // If database_name is empty, a session is created without connecting to any database.
-  CHECKED_STATUS InitSession(const PgEnv *pg_env, const string& database_name);
+  CHECKED_STATUS InitSession(const PgEnv *pg_env, const std::string& database_name);
 
   // YB Memctx: Create, Destroy, and Reset must be "static" because a few contexts are created
   //            before YugaByte environments including PgGate are created and initialized.
@@ -245,7 +246,9 @@ class PgApiImpl {
                                 bool add_primary_key,
                                 const bool colocated,
                                 const PgObjectId& tablegroup_oid,
+                                const ColocationId colocation_id,
                                 const PgObjectId& tablespace_oid,
+                                const PgObjectId& matview_pg_table_oid,
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
@@ -307,6 +310,7 @@ class PgApiImpl {
                                 const bool skip_index_backfill,
                                 bool if_not_exist,
                                 const PgObjectId& tablegroup_oid,
+                                const YBCPgOid& colocation_id,
                                 const PgObjectId& tablespace_oid,
                                 PgStatement **handle);
 
@@ -364,6 +368,16 @@ class PgApiImpl {
                                 bool start_inclusive, uint64_t start_hash_val,
                                 bool end_valid, bool end_inclusive,
                                 uint64_t end_hash_val);
+
+  CHECKED_STATUS DmlAddRowUpperBound(YBCPgStatement handle,
+                                    int n_col_values,
+                                    YBCPgExpr *col_values,
+                                    bool is_inclusive);
+
+  CHECKED_STATUS DmlAddRowLowerBound(YBCPgStatement handle,
+                                    int n_col_values,
+                                    YBCPgExpr *col_values,
+                                    bool is_inclusive);
 
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
   CHECKED_STATUS DmlBindTable(YBCPgStatement handle);
@@ -473,19 +487,19 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
-  PgTxnManager* GetPgTxnManager() { return pg_txn_manager_.get(); }
-
   CHECKED_STATUS BeginTransaction();
   CHECKED_STATUS RecreateTransaction();
   CHECKED_STATUS RestartTransaction();
-  CHECKED_STATUS MaybeResetTransactionReadPoint();
+  CHECKED_STATUS ResetTransactionReadPoint();
+  CHECKED_STATUS RestartReadPoint();
   CHECKED_STATUS CommitTransaction();
-  void AbortTransaction();
+  CHECKED_STATUS AbortTransaction();
   CHECKED_STATUS SetTransactionIsolationLevel(int isolation);
   CHECKED_STATUS SetTransactionReadOnly(bool read_only);
   CHECKED_STATUS SetTransactionDeferrable(bool deferrable);
   CHECKED_STATUS EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   CHECKED_STATUS EnterSeparateDdlTxnMode();
+  bool HasWriteOperationsInDdlTxnMode() const;
   CHECKED_STATUS ExitSeparateDdlTxnMode();
   void ClearSeparateDdlTxnMode();
   CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
@@ -541,6 +555,10 @@ class PgApiImpl {
 
   Result<client::TabletServersInfo> ListTabletServers();
 
+  void StartSysTablePrefetching();
+  void StopSysTablePrefetching();
+  void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
+
   //------------------------------------------------------------------------------------------------
   // System Validation.
   CHECKED_STATUS ValidatePlacement(const char *placement_info);
@@ -557,9 +575,6 @@ class PgApiImpl {
   std::shared_ptr<MemTracker> mem_tracker_;
 
   PgApiContext::MessengerHolder messenger_holder_;
-
-  // YBClient is to communicate with either master or tserver.
-  yb::client::AsyncClientInitialiser async_client_init_;
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
@@ -583,6 +598,7 @@ class PgApiImpl {
   std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
 
   scoped_refptr<PgSession> pg_session_;
+  std::unique_ptr<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
 };
 
 }  // namespace pggate

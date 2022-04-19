@@ -129,7 +129,7 @@ CHECKED_STATUS BuildSubDocument(
     }
     Value doc_value;
     RETURN_NOT_OK(doc_value.Decode(value));
-    ValueType value_type = doc_value.value_type();
+    auto value_type = doc_value.value_type();
     if (key == data.subdocument_key) {
       if (write_time == DocHybridTime::kMin)
         return STATUS(Corruption, "No hybrid timestamp found on entry");
@@ -137,7 +137,7 @@ CHECKED_STATUS BuildSubDocument(
       // We may need to update the TTL in individual columns.
       if (write_time.hybrid_time() >= data.exp.write_ht) {
         // We want to keep the default TTL otherwise.
-        if (doc_value.ttl() != Value::kMaxTtl) {
+        if (doc_value.ttl() != ValueControlFields::kMaxTtl) {
           data.exp.write_ht = write_time.hybrid_time();
           data.exp.ttl = doc_value.ttl();
         } else if (data.exp.ttl.IsNegative()) {
@@ -153,13 +153,13 @@ CHECKED_STATUS BuildSubDocument(
       // Treat an expired value as a tombstone written at the same time as the original value.
       if (HasExpiredTTL(data.exp.write_ht, data.exp.ttl, iter->read_time().read)) {
         doc_value = Value::Tombstone();
-        value_type = ValueType::kTombstone;
+        value_type = ValueEntryType::kTombstone;
       }
 
       const bool is_collection = IsCollectionType(value_type);
       // We have found some key that matches our entire subdocument_key, i.e. we didn't skip ahead
       // to a lower level key (with optional object init markers).
-      if (is_collection || value_type == ValueType::kTombstone) {
+      if (is_collection || value_type == ValueEntryType::kTombstone) {
         if (low_ts < write_time) {
           low_ts = write_time;
         }
@@ -183,7 +183,7 @@ CHECKED_STATUS BuildSubDocument(
         // Choose the user supplied timestamp if present.
         const UserTimeMicros user_timestamp = doc_value.user_timestamp();
         doc_value.mutable_primitive_value()->SetWriteTime(
-            user_timestamp == Value::kInvalidUserTimestamp
+            user_timestamp == ValueControlFields::kInvalidUserTimestamp
             ? write_time.hybrid_time().GetPhysicalValueMicros()
             : doc_value.user_timestamp());
         if (!data.high_index->CanInclude(current_values_observed)) {
@@ -201,7 +201,7 @@ CHECKED_STATUS BuildSubDocument(
         return STATUS_FORMAT(Corruption, "Expected primitive value type, got $0", value_type);
       }
     }
-    SubDocument descendant{PrimitiveValue(ValueType::kInvalid)};
+    SubDocument descendant{PrimitiveValue(ValueEntryType::kInvalid)};
     // TODO: what if the key we found is the same as before?
     //       We'll get into an infinite recursion then.
     {
@@ -211,7 +211,7 @@ CHECKED_STATUS BuildSubDocument(
           num_values_observed));
 
     }
-    if (descendant.value_type() == ValueType::kInvalid) {
+    if (descendant.value_type() == ValueEntryType::kInvalid) {
       // The document was not found in this level (maybe a tombstone was encountered).
       continue;
     }
@@ -260,7 +260,7 @@ CHECKED_STATUS BuildSubDocument(
       Slice temp = key;
       temp.remove_prefix(data.subdocument_key.size());
       for (;;) {
-        PrimitiveValue child;
+        KeyEntryValue child;
         RETURN_NOT_OK(child.DecodeFromKey(&temp));
         if (temp.empty()) {
           current->SetChild(child, std::move(descendant));
@@ -302,11 +302,10 @@ Status FindLastWriteTime(
     return Status::OK();
   }
 
-  uint64_t merge_flags = 0;
-  MonoDelta ttl;
-  ValueType value_type;
-  RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type, &merge_flags, &ttl));
-  if (value_type == ValueType::kInvalid) {
+  auto value_copy = value;
+  auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_copy));
+  auto value_type = DecodeValueEntryType(value_copy);
+  if (value_type == ValueEntryType::kInvalid) {
     return Status::OK();
   }
 
@@ -317,9 +316,11 @@ Status FindLastWriteTime(
   Expiration new_exp = *exp;
   if (doc_ht.hybrid_time() >= exp->write_ht) {
     // We want to keep the default TTL otherwise.
-    if (ttl != Value::kMaxTtl || merge_flags == Value::kTtlFlag || exp->always_override) {
+    if (control_fields.ttl != ValueControlFields::kMaxTtl ||
+        control_fields.merge_flags == ValueControlFields::kTtlFlag ||
+        exp->always_override) {
       new_exp.write_ht = doc_ht.hybrid_time();
-      new_exp.ttl = ttl;
+      new_exp.ttl = control_fields.ttl;
     } else if (exp->ttl.IsNegative()) {
       new_exp.ttl = -new_exp.ttl;
     }
@@ -327,7 +328,7 @@ Status FindLastWriteTime(
 
   // If we encounter a TTL row, we assign max_overwrite_time to be the write time of the
   // original value/init marker.
-  if (merge_flags == Value::kTtlFlag) {
+  if (control_fields.merge_flags == ValueControlFields::kTtlFlag) {
     DocHybridTime new_ht;
     RETURN_NOT_OK(iter->NextFullValue(&new_ht, &value));
 
@@ -337,15 +338,14 @@ Status FindLastWriteTime(
     if (!iter->valid() && !new_exp.ttl.IsNegative()) {
       new_exp.ttl = -new_exp.ttl;
     } else {
-      ValueType value_type;
-      RETURN_NOT_OK(Value::DecodePrimitiveValueType(value, &value_type));
+      RETURN_NOT_OK(Value::DecodePrimitiveValueType(value));
       // Because we still do not know whether we are seeking something expired,
       // we must take the max_overwrite_time as if the value were not expired.
       doc_ht = new_ht;
     }
   }
 
-  if ((value_type == ValueType::kTombstone || value_type == ValueType::kInvalid) &&
+  if ((value_type == ValueEntryType::kTombstone || value_type == ValueEntryType::kInvalid) &&
       !new_exp.ttl.IsNegative()) {
     new_exp.ttl = -new_exp.ttl;
   }
@@ -357,8 +357,9 @@ Status FindLastWriteTime(
             << *max_overwrite_time;
   }
 
-  if (result_value)
+  if (result_value) {
     RETURN_NOT_OK(result_value->Decode(value));
+  }
 
   return Status::OK();
 }
@@ -381,7 +382,7 @@ yb::Status GetRedisSubDocument(
 yb::Status GetRedisSubDocument(
     IntentAwareIterator *db_iter,
     const GetRedisSubDocumentData& data,
-    const vector<PrimitiveValue>* projection,
+    const vector<KeyEntryValue>* projection,
     const SeekFwdSuffices seek_fwd_suffices) {
   // TODO(dtxn) scan through all involved transactions first to cache statuses in a batch,
   // so during building subdocument we don't need to request them one by one.
@@ -428,13 +429,13 @@ yb::Status GetRedisSubDocument(
 
   // By this point, key_slice is the DocKey and all the subkeys of subdocument_key. Check for
   // init-marker / tombstones at the top level; update max_overwrite_ht.
-  Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
+  Value doc_value = Value(PrimitiveValue(ValueEntryType::kInvalid));
   RETURN_NOT_OK(FindLastWriteTime(db_iter, key_slice, &max_overwrite_ht, &data.exp, &doc_value));
 
-  const ValueType value_type = doc_value.value_type();
+  const auto value_type = doc_value.value_type();
 
   if (data.return_type_only) {
-    *data.doc_found = value_type != ValueType::kInvalid &&
+    *data.doc_found = value_type != ValueEntryType::kInvalid &&
       !data.exp.ttl.IsNegative();
     // Check for expiration.
     if (*data.doc_found && max_overwrite_ht != DocHybridTime::kMin) {
@@ -449,20 +450,20 @@ yb::Status GetRedisSubDocument(
   }
 
   if (projection == nullptr) {
-    *data.result = SubDocument(ValueType::kInvalid);
+    *data.result = SubDocument(ValueEntryType::kInvalid);
     int64 num_values_observed = 0;
     IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
     RETURN_NOT_OK(BuildSubDocument(db_iter, data, max_overwrite_ht,
                                    &num_values_observed));
-    *data.doc_found = data.result->value_type() != ValueType::kInvalid;
+    *data.doc_found = data.result->value_type() != ValueEntryType::kInvalid;
     if (*data.doc_found) {
-      if (value_type == ValueType::kRedisSet) {
+      if (value_type == ValueEntryType::kRedisSet) {
         RETURN_NOT_OK(data.result->ConvertToRedisSet());
-      } else if (value_type == ValueType::kRedisTS) {
+      } else if (value_type == ValueEntryType::kRedisTS) {
         RETURN_NOT_OK(data.result->ConvertToRedisTS());
-      } else if (value_type == ValueType::kRedisSortedSet) {
+      } else if (value_type == ValueEntryType::kRedisSortedSet) {
         RETURN_NOT_OK(data.result->ConvertToRedisSortedSet());
-      } else if (value_type == ValueType::kRedisList) {
+      } else if (value_type == ValueEntryType::kRedisList) {
         RETURN_NOT_OK(data.result->ConvertToRedisList());
       }
     }
@@ -476,7 +477,7 @@ yb::Status GetRedisSubDocument(
   key_bytes.Reserve(data.subdocument_key.size() + kMaxBytesPerEncodedHybridTime + 32);
   key_bytes.AppendRawBytes(data.subdocument_key);
   const size_t subdocument_key_size = key_bytes.size();
-  for (const PrimitiveValue& subkey : *projection) {
+  for (const auto& subkey : *projection) {
     // Append subkey to subdocument key. Reserve extra kMaxBytesPerEncodedHybridTime + 1 bytes in
     // key_bytes to avoid the internal buffer from getting reallocated and moved by SeekForward()
     // appending the hybrid time, thereby invalidating the buffer pointer saved by prefix_scope.
@@ -485,12 +486,12 @@ yb::Status GetRedisSubDocument(
     // This seek is to initialize the iterator for BuildSubDocument call.
     IntentAwareIteratorPrefixScope prefix_scope(key_bytes, db_iter);
     db_iter->SeekForward(&key_bytes);
-    SubDocument descendant(ValueType::kInvalid);
+    SubDocument descendant(ValueEntryType::kInvalid);
     int64 num_values_observed = 0;
     RETURN_NOT_OK(BuildSubDocument(
         db_iter, data.Adjusted(key_bytes, &descendant), max_overwrite_ht,
         &num_values_observed));
-    *data.doc_found = descendant.value_type() != ValueType::kInvalid;
+    *data.doc_found = descendant.value_type() != ValueEntryType::kInvalid;
     data.result->SetChild(subkey, std::move(descendant));
 
     // Restore subdocument key by truncating the appended subkey.

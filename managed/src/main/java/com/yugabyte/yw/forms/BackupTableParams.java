@@ -3,7 +3,9 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.Backup.StorageConfigType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
@@ -37,6 +39,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Action type")
   public ActionType actionType;
 
+  @ApiModelProperty(value = "Full Table type backup")
+  public boolean isFullBackup = false;
+
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
 
@@ -50,6 +55,9 @@ public class BackupTableParams extends TableManagerParams {
   // of backing up an entire universe transactionally
   @ApiModelProperty(value = "Backups")
   public List<BackupTableParams> backupList;
+
+  @ApiModelProperty(value = "Per region locations")
+  public List<BackupUtil.RegionLocations> regionLocations;
 
   // Specifies the frequency for running the backup in milliseconds.
   @ApiModelProperty(value = "Frequency to run the backup, in milliseconds")
@@ -71,6 +79,9 @@ public class BackupTableParams extends TableManagerParams {
   // Should backup script enable verbose logging.
   @ApiModelProperty(value = "Is verbose logging enabled")
   public boolean enableVerboseLogs = false;
+
+  @ApiModelProperty(value = "Alter load balancer state")
+  public boolean alterLoadBalancer = false;
 
   // Should the backup be transactional across tables
   @ApiModelProperty(value = "Is backup transactional across tables")
@@ -104,6 +115,12 @@ public class BackupTableParams extends TableManagerParams {
 
   @ApiModelProperty(value = "User name of the new tables owner")
   public String newOwner = null;
+
+  @ApiModelProperty(value = "Backup size in bytes")
+  public long backupSizeInBytes = 0L;
+
+  @ApiModelProperty(value = "Type of backup storage config")
+  public StorageConfigType storageConfigType = null;
 
   @JsonIgnore
   public Set<String> getTableNames() {

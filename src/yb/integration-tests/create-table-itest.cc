@@ -304,9 +304,8 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   ASSERT_EQ(tablets.size(), kNumTablets) << "Tablets on TS0: " << tablets;
 }
 
-// Regression test for KUDU-1317. Ensure that, when a table is created,
-// the tablets are well spread out across the machines in the cluster and
-// that recovery from failures will be well parallelized.
+// Ensure that, when a table is created,
+// the tablets are well spread out across the machines in the cluster.
 TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   const int kNumServers = 10;
   const int kNumTablets = 20;
@@ -325,65 +324,12 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
             .num_tablets(kNumTablets)
             .Create());
 
-  // Computing the standard deviation of the number of replicas per server.
-  const double kMeanPerServer = kNumTablets * 3.0 / kNumServers;
-  double sum_squared_deviation = 0;
-  vector<int> tablet_counts;
+  // Load should be equal on all the 10 servers without any deviation.
   for (int ts_idx = 0; ts_idx < kNumServers; ts_idx++) {
     auto num_replicas = inspect_->ListTabletsOnTS(ts_idx).size();
     LOG(INFO) << "TS " << ts_idx << " has " << num_replicas << " tablets";
-    double deviation = static_cast<double>(num_replicas) - kMeanPerServer;
-    sum_squared_deviation += deviation * deviation;
+    ASSERT_EQ(num_replicas, 6);
   }
-  double stddev = 0.0;
-  // The denominator in the following formula is kNumServers - 1 instead of kNumServers because
-  // of Bessel's correction for unbiased estimation of variance.
-  if (kNumServers > 1) {
-    stddev = sqrt(sum_squared_deviation / (kNumServers - 1));
-  }
-  LOG(INFO) << "stddev = " << stddev;
-  LOG(INFO) << "mean = " << kMeanPerServer;
-  // We want to ensure that stddev is small compared to mean.
-  const double threshold_ratio = 0.2;
-  // We are verifying that stddev is less than 20% of the mean + 1.0.
-  // "+ 1.0" is needed because stddev is inflated by discreet counting.
-
-  // In 100 runs, the maximum threshold needed was 10%. 20% is a safe value to prevent
-  // failures from random chance.
-  ASSERT_LE(stddev, kMeanPerServer * threshold_ratio + 1.0);
-
-  // Construct a map from tablet ID to the set of servers that each tablet is hosted on.
-  multimap<string, int> tablet_to_servers;
-  for (int ts_idx = 0; ts_idx < kNumServers; ts_idx++) {
-    vector<string> tablets = inspect_->ListTabletsOnTS(ts_idx);
-    for (const string& tablet_id : tablets) {
-      tablet_to_servers.insert(std::make_pair(tablet_id, ts_idx));
-    }
-  }
-
-  // For each server, count how many other servers it shares tablets with.
-  // This is highly correlated to how well parallelized recovery will be
-  // in the case the server crashes.
-  int sum_num_peers = 0;
-  for (int ts_idx = 0; ts_idx < kNumServers; ts_idx++) {
-    vector<string> tablets = inspect_->ListTabletsOnTS(ts_idx);
-    set<int> peer_servers;
-    for (const string& tablet_id : tablets) {
-      auto peer_indexes = tablet_to_servers.equal_range(tablet_id);
-      for (auto it = peer_indexes.first; it != peer_indexes.second; ++it) {
-        peer_servers.insert(it->second);
-      }
-    }
-
-    peer_servers.erase(ts_idx);
-    LOG(INFO) << "Server " << ts_idx << " has " << peer_servers.size() << " peers";
-    sum_num_peers += peer_servers.size();
-  }
-
-  // On average, servers should have at least half the other servers as peers.
-  double avg_num_peers = static_cast<double>(sum_num_peers) / kNumServers;
-  LOG(INFO) << "avg_num_peers = " << avg_num_peers;
-  ASSERT_GE(avg_num_peers, kNumServers / 2);
 }
 
 TEST_F(CreateTableITest, TestNoAllocBlacklist) {

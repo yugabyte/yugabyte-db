@@ -31,6 +31,7 @@
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/util/opid.h"
+#include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 
 DEFINE_string(ts_flags, "", "Flags to pass through to tablet servers");
@@ -86,6 +87,7 @@ void TabletServerIntegrationTestBase::CreateCluster(
   // Disable load balancer for master by default for these tests. You can override this through
   // setting flags in the passed in non_default_master_flags argument.
   opts.extra_master_flags.push_back("--enable_load_balancing=false");
+  opts.extra_master_flags.push_back(yb::Format("--replication_factor=$0", FLAGS_num_replicas));
   for (const std::string& flag : non_default_master_flags) {
     opts.extra_master_flags.push_back(flag);
   }
@@ -178,7 +180,7 @@ itest::TServerDetails* TabletServerIntegrationTestBase::GetLeaderReplicaOrNull(
     replicas_copy.push_back((*range.first).second);
   }
 
-  std::random_shuffle(replicas_copy.begin(), replicas_copy.end());
+  std::shuffle(replicas_copy.begin(), replicas_copy.end(), yb::ThreadLocalRandom());
   for (itest::TServerDetails* replica : replicas_copy) {
     if (GetReplicaStatusAndCheckIfLeader(replica, tablet_id,
                                          MonoDelta::FromMilliseconds(100)).ok()) {

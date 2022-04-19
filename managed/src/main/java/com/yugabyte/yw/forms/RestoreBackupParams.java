@@ -28,15 +28,18 @@ public class RestoreBackupParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Action type")
   public ActionType actionType;
 
-  @ApiModelProperty(value = "Data of the backup to be restored")
-  public BackupData backupData;
-
   @ApiModelProperty(value = "Backup's storage info to restore")
   public List<BackupStorageInfo> backupStorageInfoList;
 
   // Should backup script enable verbose logging.
   @ApiModelProperty(value = "Is verbose logging enabled")
   public boolean enableVerboseLogs = false;
+
+  @ApiModelProperty(value = "Storage config uuid")
+  public UUID storageConfigUUID;
+
+  @ApiModelProperty(value = "Alter load balancer state")
+  public boolean alterLoadBalancer = true;
 
   // The number of concurrent commands to run on nodes over SSH
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
@@ -62,30 +65,11 @@ public class RestoreBackupParams extends UniverseTaskParams {
     @ApiModelProperty(value = "Storage location")
     public String storageLocation;
 
-    @ApiModelProperty(value = "Storage config uuid")
-    public UUID storageConfigUUID;
-
     @ApiModelProperty(value = "Keyspace name")
     public String keyspace;
 
     @ApiModelProperty(value = "Tables")
     public List<String> tableNameList;
-
-    @ApiModelProperty(value = "Table UUIDs")
-    public List<UUID> tableUUIDList;
-
-    @ApiModelProperty(value = "Is SSE")
-    public boolean sse = false;
-  }
-
-  @ApiModel(description = "Backup Info for doing restore operation")
-  public static class BackupData {
-
-    @ApiModelProperty(value = "Backup UUID")
-    public UUID backupUUID = null;
-
-    @ApiModelProperty(value = "Storage config uuid")
-    public UUID storageConfigUUID;
 
     @ApiModelProperty(value = "Is SSE")
     public boolean sse = false;

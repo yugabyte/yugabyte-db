@@ -44,7 +44,7 @@ using tserver::enterprise::CDCConsumer;
 
 namespace enterprise {
 
-void TwoDCTestBase::Destroy() {
+void TwoDCTestBase::TearDown() {
   LOG(INFO) << "Destroying CDC Clusters";
   if (consumer_cluster()) {
     if (consumer_cluster_.pg_supervisor_) {
@@ -63,10 +63,9 @@ void TwoDCTestBase::Destroy() {
   }
 
   producer_cluster_.client_.reset();
-  // The following call may produce heap-use-after-free error in ASAN build for TwoDCTestParams.
-  // Since cancelling all outgoing RPCs before we reset the client needs some design change, comment
-  // out the call for now.
-  // consumer_cluster_.client_.reset();
+  consumer_cluster_.client_.reset();
+
+  YBTest::TearDown();
 }
 
 Status TwoDCTestBase::SetupUniverseReplication(
@@ -249,6 +248,22 @@ Status TwoDCTestBase::CorrectlyPollingAllTablets(
     return false;
   }, MonoDelta::FromSeconds(kRpcTimeout), "Num producer tablets being polled");
 }
+
+Status TwoDCTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
+    auto proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+    master::GetUniverseReplicationRequestPB req;
+    master::GetUniverseReplicationResponsePB resp;
+    return WaitFor([proxy, &req, &resp, producer_uuid]() -> Result<bool> {
+      req.set_producer_id(producer_uuid);
+      rpc::RpcController rpc;
+      Status s = proxy->GetUniverseReplication(req, &resp, &rpc);
+
+      return resp.has_error() && resp.error().code() == master::MasterErrorPB::OBJECT_NOT_FOUND;
+    }, MonoDelta::FromSeconds(kRpcTimeout), "Waiting for universe to delete");
+  }
 
 } // namespace enterprise
 } // namespace yb

@@ -90,6 +90,10 @@ void Uuid::ToBytes(std::array<uint8_t, kUuidSize>* out) const {
   memcpy(out->data(), boost_uuid_.data, kUuidSize);
 }
 
+void Uuid::ToBytes(void* out) const {
+  memcpy(out, boost_uuid_.data, kUuidSize);
+}
+
 Slice Uuid::AsSlice() const {
   return Slice(boost_uuid_.data, boost_uuid_.size());
 }

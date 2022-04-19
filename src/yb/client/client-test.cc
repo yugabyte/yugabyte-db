@@ -130,7 +130,6 @@ DECLARE_int32(min_backoff_ms_exponent);
 DECLARE_int32(max_backoff_ms_exponent);
 DECLARE_bool(TEST_force_master_lookup_all_tablets);
 DECLARE_double(TEST_simulate_lookup_timeout_probability);
-DECLARE_string(TEST_fail_to_fast_resolve_address);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
@@ -258,7 +257,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       client = client_.get();
     }
     std::shared_ptr<YBSession> session = client->NewSession();
-    session->SetTimeout(10s);
+    session->SetTimeout(10s * kTimeMultiplier);
     return session;
   }
 
@@ -368,7 +367,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     client_table_.AddColumns({"key"}, req);
     auto session = client_->NewSession();
     session->SetTimeout(60s);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
     for (const auto& row : rowblock->rows()) {
@@ -1044,7 +1043,7 @@ TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
   // Try inserting without specifying a key: should fail.
   client_table_.AddInt32ColumnValue(insert->mutable_request(), "int_val", 54321);
   client_table_.AddStringColumnValue(insert->mutable_request(), "string_val", "hello world");
-  ASSERT_OK(session->ApplyAndFlush(insert));
+  ASSERT_OK(session->TEST_ApplyAndFlush(insert));
   ASSERT_EQ(QLResponsePB::YQL_STATUS_RUNTIME_ERROR, insert->response().status());
 
   // Retry
@@ -1102,14 +1101,14 @@ TEST_F(ClientTest, TestWriteTimeout) {
     FLAGS_master_inject_latency_on_tablet_lookups_ms = 110;
     session->SetTimeout(100ms);
     ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
-    const auto flush_status = session->FlushAndGetOpsErrors();
+    const auto flush_status = session->TEST_FlushAndGetOpsErrors();
     ASSERT_TRUE(flush_status.status.IsIOError())
         << "unexpected status: " << flush_status.status.ToString();
     auto error = GetSingleErrorFromFlushStatus(flush_status);
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_TRUE(std::regex_match(
         error->status().ToString(),
-        std::regex(".*GetTableLocations \\{.*\\} failed: RPC timed out after deadline expired.*")))
+        std::regex(".*GetTableLocations \\{.*\\} timed out after deadline expired, passed.*")))
         << error->status().ToString();
   }
 
@@ -1121,7 +1120,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     SetAtomicFlag(0, &FLAGS_log_inject_latency_ms_stddev);
 
     ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
-    const auto flush_status = session->FlushAndGetOpsErrors();
+    const auto flush_status = session->TEST_FlushAndGetOpsErrors();
     ASSERT_TRUE(flush_status.status.IsIOError()) << AsString(flush_status.status.ToString());
     auto error = GetSingleErrorFromFlushStatus(flush_status);
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
@@ -1156,7 +1155,7 @@ TEST_F(ClientTest, TestSessionClose) {
   // have a pending operation.
   ASSERT_TRUE(session->Close().IsIllegalState());
 
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
 
   ASSERT_OK(session->Close());
 }
@@ -1208,7 +1207,7 @@ TEST_F(ClientTest, TestBatchWithDuplicates) {
   // key "2" which will succeed. Flushing should not return an error.
   ApplyInsertToSession(session.get(), client_table_, 1, 1, "Attempted dup");
   ApplyInsertToSession(session.get(), client_table_, 2, 1, "Should succeed");
-  Status s = session->Flush();
+  Status s = session->TEST_Flush();
   ASSERT_TRUE(s.ok());
 
   // Verify that the other row was successfully inserted
@@ -1244,7 +1243,7 @@ void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
 
   // Try a write.
   ApplyInsertToSession(session.get(), client_table_, 1, 1, "x");
-  const auto flush_status = session->FlushAndGetOpsErrors();
+  const auto flush_status = session->TEST_FlushAndGetOpsErrors();
   ASSERT_TRUE(flush_status.status.IsIOError()) << flush_status.status.ToString();
 
   auto error = GetSingleErrorFromFlushStatus(flush_status);
@@ -1360,14 +1359,14 @@ TEST_F(ClientTest, TestMutateDeletedRow) {
 
   // Attempt update deleted row
   ApplyUpdateToSession(session.get(), client_table_, 1, 2);
-  Status s = session->Flush();
+  Status s = session->TEST_Flush();
   ASSERT_TRUE(s.ok());
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
 
   // Attempt delete deleted row
   ApplyDeleteToSession(session.get(), client_table_, 1);
-  s = session->Flush();
+  s = session->TEST_Flush();
   ASSERT_TRUE(s.ok());
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(0, rows.size());
@@ -1378,14 +1377,14 @@ TEST_F(ClientTest, TestMutateNonexistentRow) {
 
   // Attempt update nonexistent row
   ApplyUpdateToSession(session.get(), client_table_, 1, 2);
-  Status s = session->Flush();
+  Status s = session->TEST_Flush();
   ASSERT_TRUE(s.ok());
   auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(1, rows.size());
 
   // Attempt delete nonexistent row
   ApplyDeleteToSession(session.get(), client_table_, 1);
-  s = session->Flush();
+  s = session->TEST_Flush();
   ASSERT_TRUE(s.ok());
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(0, rows.size());
@@ -1403,7 +1402,7 @@ TEST_F(ClientTest, TestWriteWithBadSchema) {
   auto session = CreateSession();
   std::shared_ptr<YBqlOp> op;
   ApplyInsertToSession(session.get(), client_table_, 12345, 12345, "x", &op);
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
   ASSERT_EQ(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH, op->response().status());
 }
 
@@ -2660,7 +2659,7 @@ class ClientTestWithHashAndRangePk : public ClientTest {
 // This tests https://github.com/yugabyte/yugabyte-db/issues/9806 with a scenario
 // when the batcher is emptied due to part of tablet lookups failing, but callback was not called.
 TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
-  constexpr auto kNumRowsPerBatch = 100;
+  constexpr auto kNumRowsPerBatch = RegularBuildVsSanitizers(100, 10);
   constexpr auto kWriters = 4;
   const auto kTotalNumBatches = 50;
   const auto kFlushTimeout = 10s * kTimeMultiplier;
@@ -2704,7 +2703,7 @@ TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
       ASSERT_OK(cluster_->mini_master()->catalog_manager()
           .TEST_IncrementTablePartitionListVersion(table->id()));
       table->MarkPartitionsAsStale();
-      SleepFor(10ms);
+      SleepFor(10ms * kTimeMultiplier);
     }
   });
 
@@ -2738,7 +2737,6 @@ class ClientTestWithThreeMasters : public ClientTest {
 };
 
 TEST_F_EX(ClientTest, IsMultiMasterWithFailingHostnameResolution, ClientTestWithThreeMasters) {
-  google::FlagSaver flag_saver;
   // TEST_RpcAddress is 1-indexed.
   string hostname = server::TEST_RpcAddress(cluster_->LeaderMasterIdx() + 1,
                                             server::Private::kFalse);
@@ -2748,9 +2746,7 @@ TEST_F_EX(ClientTest, IsMultiMasterWithFailingHostnameResolution, ClientTestWith
   ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
 
   // Fail resolution of the old leader master's hostname.
-  FLAGS_TEST_fail_to_fast_resolve_address = hostname;
-  LOG(INFO) << "Setting FLAGS_TEST_fail_to_fast_resolve_address to: "
-            << FLAGS_TEST_fail_to_fast_resolve_address;
+  TEST_SetFailToFastResolveAddress(hostname);
 
   // Make a client request to the leader master, since that master is no longer the leader, we will
   // check that we have a MultiMaster setup. That check should not fail even though one of the

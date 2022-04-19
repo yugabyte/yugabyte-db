@@ -116,8 +116,6 @@ const char* MetricUnit::Name(Type unit) {
       return "messages";
     case kContextSwitches:
       return "context switches";
-    case kFiles:
-      return "files";
     default:
       return "UNKNOWN UNIT";
   }
@@ -399,6 +397,9 @@ scoped_refptr<Counter> CounterPrototype::Instantiate(
 }
 
 Counter::Counter(const CounterPrototype* proto) : Metric(proto) {
+}
+
+Counter::Counter(std::unique_ptr<CounterPrototype> proto) : Metric(std::move(proto)) {
 }
 
 int64_t Counter::value() const {

@@ -765,6 +765,22 @@ try_complete_step(Step *step, int flags)
 			td *= USECS_PER_SEC;
 			td += (int64) current_time.tv_usec - (int64) start_time.tv_usec;
 
+			/* Yugabyte specific logic:
+			 *   Since we don't use pg_locks, we can't determine if a session is blocked on another
+			 *   session using the PREP_WAITING function above. So, we instead assume that being blocked
+			 *   for >= 2 second means the session is waiting on another session.
+			 *
+			 *   This is not a perfect check but good enough for now.
+			 *
+			 *   TODO(Piyush): Replace this by a deterministic check when pessimistic locking is
+			 *   implemented and wait queue information is exposed via Pg.
+			 */
+			if (td > 2 * USECS_PER_SEC && !canceled) {
+					if (!(flags & STEP_RETRY))
+						printf("step %s: %s <waiting ...>\n", step->name, step->sql);
+					return true;
+			}
+
 			/*
 			 * After 180 seconds, try to cancel the query.
 			 *

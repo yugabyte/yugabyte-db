@@ -13,7 +13,9 @@ import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -27,9 +29,12 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -126,15 +131,23 @@ public class NodeInstanceController extends AuthenticatedController {
 
     NodeInstanceFormData nodeInstanceFormData = parseJsonAndValidate(NodeInstanceFormData.class);
     List<NodeInstanceData> nodeDataList = nodeInstanceFormData.nodes;
+    List<String> createdNodeUuids = new ArrayList<String>();
     Map<String, NodeInstance> nodes = new HashMap<>();
     for (NodeInstanceData nodeData : nodeDataList) {
       if (!NodeInstance.checkIpInUse(nodeData.ip)) {
         NodeInstance node = NodeInstance.create(zoneUuid, nodeData);
         nodes.put(node.getDetails().ip, node);
+        createdNodeUuids.add(node.getNodeUuid().toString());
       }
     }
     if (nodes.size() > 0) {
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(nodeInstanceFormData));
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.NodeInstance,
+              createdNodeUuids.toString(),
+              Audit.ActionType.Create,
+              Json.toJson(nodeInstanceFormData));
       return PlatformResults.withData(nodes);
     }
     throw new PlatformServiceException(
@@ -175,11 +188,18 @@ public class NodeInstanceController extends AuthenticatedController {
         nodeAction.getCustomerTask(),
         node.getNodeName());
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.NodeInstance,
+            Objects.toString(node.getNodeUuid(), null),
+            Audit.ActionType.Create,
+            Json.toJson(nodeActionFormData),
+            taskUUID);
     return Results.status(OK);
   }
 
-  @ApiOperation(value = "Delete a node instance")
+  @ApiOperation(value = "Delete a node instance", response = YBPSuccess.class)
   public Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
     Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(providerUUID);
@@ -187,9 +207,14 @@ public class NodeInstanceController extends AuthenticatedController {
     if (nodeToBeFound.isInUse()) {
       throw new PlatformServiceException(BAD_REQUEST, "Node is in use");
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.NodeInstance,
+            Objects.toString(nodeToBeFound.getNodeUuid(), null),
+            Audit.ActionType.Delete);
     nodeToBeFound.delete();
-    auditService().createAuditEntry(ctx(), request());
-    return Results.status(OK);
+    return YBPSuccess.empty();
   }
 
   @ApiOperation(value = "Update a node", response = YBPTask.class)
@@ -274,7 +299,14 @@ public class NodeInstanceController extends AuthenticatedController {
         universe.universeUUID,
         universe.name,
         nodeName);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(nodeActionFormData), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.NodeInstance,
+            nodeName,
+            Audit.ActionType.Update,
+            Json.toJson(nodeActionFormData),
+            taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 

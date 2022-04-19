@@ -50,6 +50,7 @@ Axios
 Azure
 B-tree
 backfilling
+backoff
 backport
 backported
 backporting
@@ -437,7 +438,6 @@ polyfills
 pooler
 postfixed
 postgres.ai
-PostgreSQL
 precompile
 precompiled
 preconfigure
@@ -537,6 +537,7 @@ reverifies
 reverify
 roadmap
 roadmaps
+rollback
 rollout
 rollouts
 rsync
@@ -566,6 +567,7 @@ scrollable
 Semgrep
 Sendmail
 Sentry
+serializable
 serializer
 serializers
 serializing

@@ -18,8 +18,15 @@
 #ifndef YB_YQL_PGGATE_PG_TABLEDESC_H_
 #define YB_YQL_PGGATE_PG_TABLEDESC_H_
 
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/partition.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/schema.h"
+
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
+
+#include "yb/master/master_ddl.pb.h"
 
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -32,7 +39,14 @@ namespace pggate {
 // This class can be used to describe any reference of a column.
 class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
  public:
-  explicit PgTableDesc(const client::YBTablePtr& table);
+  PgTableDesc(const PgObjectId& id, const master::GetTableSchemaResponsePB& resp,
+              std::shared_ptr<client::VersionedTablePartitionList> partitions);
+
+  CHECKED_STATUS Init();
+
+  const PgObjectId& id() const {
+    return id_;
+  }
 
   const client::YBTableName& table_name() const;
 
@@ -53,6 +67,8 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   const std::vector<std::string>& GetPartitions() const;
 
+  const std::string& LastPartition() const;
+
   size_t GetPartitionCount() const;
 
   // When reading a row given its associated ybctid, the ybctid value is decoded to the row.
@@ -62,7 +78,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   Result<size_t> FindPartitionIndex(const Slice& ybctid) const;
 
   // These values are set by  PgGate to optimize query to narrow the scanning range of a query.
-  CHECKED_STATUS SetScanBoundary(PgsqlReadRequestPB *req,
+  CHECKED_STATUS SetScanBoundary(LWPgsqlReadRequestPB *req,
                                  const string& partition_lower_bound,
                                  bool lower_bound_is_inclusive,
                                  const string& partition_upper_bound,
@@ -72,22 +88,18 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   bool IsColocated() const;
 
+  YBCPgOid GetColocationId() const;
+
   uint32_t schema_version() const;
 
-  // TODO(PgClient) Remove those operations.
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlInsert();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlUpdate();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlDelete();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlTruncateColocated();
-
-  std::unique_ptr<client::YBPgsqlReadOp> NewPgsqlSelect();
-  std::unique_ptr<client::YBPgsqlReadOp> NewPgsqlSample();
-
  private:
-  // TODO(PgClient) While we have YbOps on postgres side, we have to keep YBTable.
-  client::YBTablePtr table_;
-
+  PgObjectId id_;
+  master::GetTableSchemaResponsePB resp_;
   const std::shared_ptr<const client::VersionedTablePartitionList> table_partitions_;
+
+  client::YBTableName table_name_;
+  Schema schema_;
+  PartitionSchema partition_schema_;
 
   // Attr number to column index map.
   std::unordered_map<int, size_t> attr_num_map_;

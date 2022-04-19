@@ -1,7 +1,7 @@
 ---
 title: Back Up and Restore Yugabyte Platform
 headerTitle: Back Up and Restore Yugabyte Platform
-linkTitle: Back Up and Restore Yugabyte Platform
+linkTitle: Back Up Yugabyte Platform
 description: Use a script file to back up and restore Yugabyte Platform.
 menu:
   stable:
@@ -14,14 +14,14 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/yugabyte-platform/administer-yugabyte-platform/back-up-restore-yp" class="nav-link active">
+    <a href="/preview/yugabyte-platform/administer-yugabyte-platform/back-up-restore-yp" class="nav-link active">
       <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/administer-yugabyte-platform/back-up-restore-k8s" class="nav-link">
+    <a href="/preview/yugabyte-platform/administer-yugabyte-platform/back-up-restore-k8s" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>

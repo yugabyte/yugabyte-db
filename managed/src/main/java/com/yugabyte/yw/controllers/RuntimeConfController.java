@@ -17,10 +17,12 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.RuntimeConfigFormData;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ConfigEntry;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
@@ -161,6 +163,7 @@ public class RuntimeConfController extends AuthenticatedController {
   @ApiOperation(
       value = "Get a configuration key",
       nickname = "getConfigurationKey",
+      response = String.class,
       produces = "text/plain")
   public Result getKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
@@ -182,7 +185,10 @@ public class RuntimeConfController extends AuthenticatedController {
     return ok(value);
   }
 
-  @ApiOperation(value = "Update a configuration key", consumes = "text/plain")
+  @ApiOperation(
+      value = "Update a configuration key",
+      consumes = "text/plain",
+      response = YBPSuccess.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "newValue",
@@ -216,17 +222,29 @@ public class RuntimeConfController extends AuthenticatedController {
         (logValue.length() < 50 ? logValue : "[long value hidden]"),
         logValue.length());
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).setValue(path, newValue);
-
-    return ok();
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.RuntimeConfigKey,
+            scopeUUID.toString() + ":" + path,
+            Audit.ActionType.Update,
+            request().body().asJson());
+    return YBPSuccess.empty();
   }
 
-  @ApiOperation(value = "Delete a configuration key")
+  @ApiOperation(value = "Delete a configuration key", response = YBPSuccess.class)
   public Result deleteKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
       throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
 
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).deleteEntry(path);
-    return ok();
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.RuntimeConfigKey,
+            scopeUUID.toString() + ":" + path,
+            Audit.ActionType.Delete);
+    return YBPSuccess.empty();
   }
 
   private RuntimeConfig<? extends Model> getMutableRuntimeConfigForScopeOrFail(

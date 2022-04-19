@@ -36,7 +36,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
@@ -179,6 +179,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             return new RuntimeConfig<>(mockRuntimeConfig);
           }
         };
+    healthChecker.initialize();
   }
 
   private Universe setupUniverse(String name) {

@@ -16,6 +16,7 @@
 #include "../../../../src/yb/master/catalog_manager.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/snapshot_coordinator_context.h"
+#include "yb/cdc/cdc_service.proxy.h"
 
 namespace yb {
 
@@ -59,7 +60,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                 rpc::RpcContext* rpc);
 
   CHECKED_STATUS ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
-                                    ImportSnapshotMetaResponsePB* resp);
+                                    ImportSnapshotMetaResponsePB* resp,
+                                    rpc::RpcContext* rpc);
 
   CHECKED_STATUS CreateSnapshotSchedule(const CreateSnapshotScheduleRequestPB* req,
                                         CreateSnapshotScheduleResponsePB* resp,
@@ -189,7 +191,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     return snapshot_coordinator_;
   }
 
-  size_t GetNumLiveTServersForActiveCluster() override;
+  Result<size_t> GetNumLiveTServersForActiveCluster() override;
+
+  CHECKED_STATUS ClearFailedUniverse();
 
  private:
   friend class SnapshotLoader;
@@ -240,7 +244,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                             CreateObjects create_objects);
   CHECKED_STATUS ImportSnapshotWaitForTables(const SnapshotInfoPB& snapshot_pb,
                                              ImportSnapshotMetaResponsePB* resp,
-                                             ExternalTableSnapshotDataMap* tables_data);
+                                             ExternalTableSnapshotDataMap* tables_data,
+                                             CoarseTimePoint deadline);
   CHECKED_STATUS ImportSnapshotProcessTablets(const SnapshotInfoPB& snapshot_pb,
                                               ImportSnapshotMetaResponsePB* resp,
                                               ExternalTableSnapshotDataMap* tables_data);
@@ -280,6 +285,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   const Schema& schema() override;
 
+  const docdb::DocReadContext& doc_read_context();
+
   void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) override;
 
   AsyncTabletSnapshotOpPtr CreateAsyncTabletSnapshotOp(
@@ -300,7 +307,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const std::vector<TabletInfoPtr>& hidden_tablets,
       const ScheduleMinRestoreTime& schedule_min_restore_time);
   // Will filter tables content, so pass it by value here.
-  void CleanupHiddenTables(std::vector<TableInfoPtr> tables);
+  void CleanupHiddenTables(
+      std::vector<TableInfoPtr> tables,
+      const ScheduleMinRestoreTime& schedule_min_restore_time);
 
   rpc::Scheduler& Scheduler() override;
 
@@ -341,17 +350,16 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                           const TSHeartbeatRequestPB* req,
                                           TSHeartbeatResponsePB* resp);
 
-  scoped_refptr<ClusterConfigInfo> GetClusterConfigInfo() const {
-    return cluster_config_;
-  }
+  // Helper functions for GetTableSchemaCallback, GetTablegroupSchemaCallback
+  // and GetColocatedTabletSchemaCallback.
 
-  // Helper functions for GetTableSchemaCallback and GetColocatedTabletSchemaCallback:
   // Validates a single table's schema with the corresponding table on the consumer side, and
-  // updates consumer_table_id with the new table id.
+  // updates consumer_table_id with the new table id. Return the consumer table schema if the
+  // validation is successful.
   CHECKED_STATUS ValidateTableSchema(
       const std::shared_ptr<client::YBTableInfo>& info,
       const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
-      TableId* consumer_table_id);
+      GetTableSchemaResponsePB* resp);
   // Adds a validated table to the sys catalog table map for the given universe, and if all tables
   // have been validated, creates a CDC stream for each table.
   CHECKED_STATUS AddValidatedTableAndCreateCdcStreams(
@@ -362,6 +370,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void GetTableSchemaCallback(
       const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& info,
+      const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
+  void GetTablegroupSchemaCallback(
+      const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
+      const TablegroupId& producer_tablegroup_id,
       const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
   void GetColocatedTabletSchemaCallback(
       const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
@@ -390,6 +402,17 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Maps producer universe id to the corresponding cdc stream for that table.
   typedef std::unordered_map<std::string, CDCStreamId> XClusterConsumerTableStreamInfoMap;
+
+  std::shared_ptr<cdc::CDCServiceProxy> GetCDCServiceProxy(
+      client::internal::RemoteTabletServer* ts);
+
+  Result<client::internal::RemoteTabletServer*> GetLeaderTServer(
+      client::internal::RemoteTabletPtr tablet);
+
+  CHECKED_STATUS IsBootstrapRequired(scoped_refptr<UniverseReplicationInfo> universe,
+                                     const TableId& producer_table,
+                                     const std::unordered_map<TableId, std::string>&
+                                     table_bootstrap_ids);
 
   // Gets the set of CDC stream info for an xCluster consumer table.
   XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTable(const TableId& table_id)
@@ -434,6 +457,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   typedef std::unordered_map<std::string, scoped_refptr<UniverseReplicationInfo>>
       UniverseReplicationInfoMap;
   UniverseReplicationInfoMap universe_replication_map_ GUARDED_BY(mutex_);
+
+  // List of universe ids to universes that must be deleted
+  std::deque<std::string> universes_to_clear_ GUARDED_BY(mutex_);
 
   // mutex on should_send_consumer_registry_mutex_.
   mutable simple_spinlock should_send_consumer_registry_mutex_;

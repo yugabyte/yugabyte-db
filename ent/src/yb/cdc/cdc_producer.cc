@@ -11,6 +11,7 @@
 // under the License.
 
 #include "yb/cdc/cdc_producer.h"
+#include "yb/cdc/cdc_common_util.h"
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/common/schema.h"
@@ -34,12 +35,18 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
+
 DEFINE_int32(cdc_transaction_timeout_ms, 0,
   "Don't check for an aborted transaction unless its original write is lagging by this duration.");
 
-// Todo(Rahul): Enable this by default (https://github.com/yugabyte/yugabyte-db/issues/6128)
 DEFINE_bool(cdc_enable_replicate_intents, true,
             "Enable replication of intents before they've been committed.");
+
+DEFINE_test_flag(bool, xcluster_simulate_have_more_records, false,
+                 "Whether GetChanges should indicate that it has more records for safe time "
+                 "calculation.");
 
 namespace yb {
 namespace cdc {
@@ -49,22 +56,11 @@ using consensus::ReplicateMsgs;
 using docdb::PrimitiveValue;
 using tablet::TransactionParticipant;
 
-YB_STRONGLY_TYPED_BOOL(ReplicateIntents);
-
-namespace {
-
-// Use boost::unordered_map instead of std::unordered_map because gcc release build
-// fails to compile correctly when TxnStatusMap is used with Result<> (due to what seems like
-// a bug in gcc where it tries to incorrectly destroy Status part of Result).
-typedef boost::unordered_map<
-    TransactionId, TransactionStatusResult, TransactionIdHash> TxnStatusMap;
-typedef std::pair<uint64_t, size_t> RecordTimeIndex;
-
 void AddColumnToMap(const ColumnSchema& col_schema,
-                    const docdb::PrimitiveValue& col,
+                    const docdb::KeyEntryValue& col,
                     cdc::KeyValuePairPB* kv_pair) {
   kv_pair->set_key(col_schema.name());
-  PrimitiveValue::ToQLValuePB(col, col_schema.type(), kv_pair->mutable_value());
+  col.ToQLValuePB(col_schema.type(), kv_pair->mutable_value());
 }
 
 void AddPrimaryKey(const docdb::SubDocKey& decoded_key,
@@ -340,7 +336,7 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
       }
 
       // Check whether operation is WRITE or DELETE.
-      if (decoded_value.value_type() == docdb::ValueType::kTombstone &&
+      if (decoded_value.value_type() == docdb::ValueEntryType::kTombstone &&
           decoded_key.num_subkeys() == 0) {
         record->set_operation(CDCRecordPB::DELETE);
       } else {
@@ -370,14 +366,14 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
       kv_pair->set_key(write_pair.key());
       kv_pair->mutable_value()->set_binary_value(write_pair.value());
     } else if (record->operation() == CDCRecordPB_OperationType_WRITE) {
-      PrimitiveValue column_id;
+      docdb::KeyEntryValue column_id;
       Slice key_column = write_pair.key().data() + key_size;
-      RETURN_NOT_OK(PrimitiveValue::DecodeKey(&key_column, &column_id));
-      if (column_id.value_type() == docdb::ValueType::kColumnId) {
+      RETURN_NOT_OK(column_id.DecodeFromKey(&key_column));
+      if (column_id.type() == docdb::KeyEntryType::kColumnId) {
         const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
         AddColumnToMap(col, decoded_value.primitive_value(), record->add_changes());
-      } else if (column_id.value_type() != docdb::ValueType::kSystemColumnId) {
-        LOG(DFATAL) << "Unexpected value type in key: " << column_id.value_type();
+      } else if (column_id.type() != docdb::KeyEntryType::kSystemColumnId) {
+        LOG(DFATAL) << "Unexpected value type in key: " << column_id.type();
       }
     }
   }
@@ -413,18 +409,25 @@ CHECKED_STATUS PopulateSplitOpRecord(const ReplicateMsgPtr& msg, CDCRecordPB* re
   return Status::OK();
 }
 
-} // namespace
+Result<HybridTime> GetSafeTimeForTarget(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                                        HybridTime ht_of_last_returned_message,
+                                        HaveMoreMessages have_more_messages) {
+  if (ht_of_last_returned_message != HybridTime::kInvalid && have_more_messages) {
+    return ht_of_last_returned_message;
+  }
+  return tablet_peer->LeaderSafeTime();
+}
 
-Status GetChanges(const std::string& stream_id,
-                  const std::string& tablet_id,
-                  const OpId& from_op_id,
-                  const StreamMetadata& stream_metadata,
-                  const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                  const MemTrackerPtr& mem_tracker,
-                  consensus::ReplicateMsgsHolder* msgs_holder,
-                  GetChangesResponsePB* resp,
-                  int64_t* last_readable_opid_index,
-                  const CoarseTimePoint deadline) {
+Status GetChangesForXCluster(const std::string& stream_id,
+                             const std::string& tablet_id,
+                             const OpId& from_op_id,
+                             const StreamMetadata& stream_metadata,
+                             const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                             const MemTrackerPtr& mem_tracker,
+                             consensus::ReplicateMsgsHolder* msgs_holder,
+                             GetChangesResponsePB* resp,
+                             int64_t* last_readable_opid_index,
+                             const CoarseTimePoint deadline) {
   auto replicate_intents = ReplicateIntents(GetAtomicFlag(&FLAGS_cdc_enable_replicate_intents));
   // Request scope on transaction participant so that transactions are not removed from participant
   // while RequestScope is active.
@@ -482,6 +485,18 @@ Status GetChanges(const std::string& stream_id,
 
   if (consumption) {
     consumption.Add(resp->SpaceUsedLong());
+  }
+  auto ht_of_last_returned_message = messages.empty() ?
+      HybridTime::kInvalid : HybridTime(messages.back()->hybrid_time());
+  auto have_more_messages = PREDICT_FALSE(FLAGS_TEST_xcluster_simulate_have_more_records) ?
+      HaveMoreMessages::kTrue : read_ops.have_more_messages;
+  auto safe_time_result = GetSafeTimeForTarget(
+      tablet_peer, ht_of_last_returned_message, have_more_messages);
+  if (safe_time_result.ok()) {
+    resp->set_safe_hybrid_time((*safe_time_result).ToUint64());
+  } else {
+    YB_LOG_EVERY_N_SECS(WARNING, 10) <<
+        "Could not compute safe time: " << safe_time_result.status();
   }
   *msgs_holder = consensus::ReplicateMsgsHolder(
       nullptr, std::move(messages), std::move(consumption));

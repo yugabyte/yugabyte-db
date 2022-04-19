@@ -59,7 +59,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
     SupportBundle supportBundle = taskParams().supportBundle;
     try {
       Path gzipPath = generateBundle(supportBundle);
-      supportBundle.setPath(gzipPath);
+      supportBundle.setPathObject(gzipPath);
       supportBundle.setStatus(SupportBundleStatusType.Success);
     } catch (IOException | RuntimeException e) {
       taskParams().supportBundle.setStatus(SupportBundleStatusType.Failed);
@@ -109,7 +109,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
           supportBundleComponent.downloadComponentBetweenDates(
               customer, universe, bundlePath, new Date(Long.MIN_VALUE), supportBundle.getEndDate());
         }
-        // Default : If no dates are specified, download all the files without date range filtering
+        // Default : If no dates are specified, download all the files from last n days
         else {
           int default_date_range = config.getInt("yb.support_bundle.default_date_range");
           Date defaultEndDate = supportBundleUtil.getTodaysDate();
@@ -130,6 +130,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
 
       tarOS.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
       addFilesToTarGZ(bundlePath.toString(), "", tarOS);
+      FileUtils.deleteDirectory(new File(bundlePath.toAbsolutePath().toString()));
     }
     log.debug(
         "Finished aggregating logs for support bundle with UUID {}", supportBundle.getBundleUUID());

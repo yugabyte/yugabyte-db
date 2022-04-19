@@ -3289,8 +3289,43 @@ RI_FKey_trigger_type(Oid tgfoid)
 	return RI_TRIGGER_NONE;
 }
 
-YBCPgYBTupleIdDescriptor*
-YBBuildFKTupleIdDescriptor(Trigger *trigger, Relation fk_rel, HeapTuple new_row)
+void
+YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel, HeapTuple new_row)
 {
-	return YBCBuildYBTupleIdDescriptor(ri_FetchConstraintInfo(trigger, fk_rel, false), new_row);
+	YBCPgYBTupleIdDescriptor *descr = YBCBuildYBTupleIdDescriptor(
+		ri_FetchConstraintInfo(trigger, fk_rel, false /* rel_is_pk */), new_row);
+	/*
+	 * Check that ybctid for row in source table can be build from referenced table tuple
+	 * (i.e. no type casting is required)
+	 */
+	if (descr)
+	{
+		/*
+		 * Foreign key with at least one null value of real (non system) column
+		 * will not be checked, no need to add it into the cache.
+		 */
+		bool null_found = false;
+		for (YBCPgAttrValueDescriptor *attr = descr->attrs,
+			*end = descr->attrs + descr->nattrs;
+			attr != end && !null_found; ++attr)
+			null_found = attr->is_null && (attr->attr_num > 0);
+
+		if (!null_found)
+			HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr));
+		pfree(descr);
+	}
+}
+
+/*
+ * Check if a trigger description contains any non RI trigger.
+ */
+bool
+HasNonRITrigger(const TriggerDesc* trigDesc)
+{
+	for (int i = trigDesc ? trigDesc->numtriggers : 0; i > 0; i--)
+	{
+		if (RI_FKey_trigger_type(trigDesc->triggers[i - 1].tgfoid) == RI_TRIGGER_NONE)
+			return true;
+	}
+	return false;
 }

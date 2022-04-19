@@ -1580,6 +1580,18 @@ run_java_test() {
     mvn_opts+=( -X )
   fi
 
+  # YB_EXTRA_MVN_OPTIONS_IN_TESTS is last and takes precedence since it is a user-supplied option.
+  # Example:
+  #   Running
+  #     export YB_EXTRA_MVN_OPTIONS_IN_TESTS='-Dstyle.color=always -Dfoo=bar'
+  #     ./yb_build.sh --java-test ... --java-test-args '-X -Dstyle.color=never'
+  #   adds these as last mvn options: -Dstyle.color=always -Dfoo=bar -X -Dstyle.color=never
+  # Word splitting is intentional here, so YB_EXTRA_MVN_OPTIONS_IN_TESTS is not quoted.
+  # shellcheck disable=SC2206
+  mvn_opts+=(
+    ${YB_EXTRA_MVN_OPTIONS_IN_TESTS:-}
+  )
+
   if ! which mvn >/dev/null; then
     fatal "Maven not found on PATH. PATH: $PATH"
   fi

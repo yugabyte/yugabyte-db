@@ -73,6 +73,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/opid.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
@@ -314,7 +315,7 @@ class LogEntryBatch {
   int64_t offset_;
 
   // Segment sequence number for this entry batch.
-  uint64_t active_segment_sequence_number_;
+  int64_t active_segment_sequence_number_;
 
   enum LogEntryState {
     kEntryInitialized,
@@ -339,6 +340,11 @@ class Log::Appender {
   Status Init();
 
   CHECKED_STATUS Submit(LogEntryBatch* item) {
+    ScopedRWOperation operation(&task_stream_counter_);
+    RETURN_NOT_OK(operation);
+    if (!task_stream_) {
+      return STATUS(IllegalState, "Appender stopped");
+    }
     return task_stream_->Submit(item);
   }
 
@@ -371,7 +377,7 @@ class Log::Appender {
   Log* const log_;
 
   // Lock to protect access to thread_ during shutdown.
-  mutable std::mutex lock_;
+  RWOperationCounter task_stream_counter_;
   unique_ptr<TaskStream<LogEntryBatch>> task_stream_;
 
   // vector of entry batches in group, to execute callbacks after call to Sync.
@@ -383,6 +389,7 @@ class Log::Appender {
 
 Log::Appender::Appender(Log *log, ThreadPool* append_thread_pool)
     : log_(log),
+      task_stream_counter_(Format("Appender for $0", log->tablet_id())),
       task_stream_(new TaskStream<LogEntryBatch>(
           std::bind(&Log::Appender::ProcessBatch, this, _1), append_thread_pool,
           FLAGS_taskstream_queue_max_size,
@@ -481,7 +488,11 @@ void Log::Appender::GroupWork() {
 }
 
 void Log::Appender::Shutdown() {
-  std::lock_guard<std::mutex> lock_guard(lock_);
+  ScopedRWOperationPause pause(&task_stream_counter_, CoarseMonoClock::now() + 15s, Stop::kTrue);
+  if (!pause.ok()) {
+    LOG(DFATAL) << "Failed to stop appender";
+    return;
+  }
   if (task_stream_) {
     VLOG_WITH_PREFIX(1) << "Shutting down log task stream";
     task_stream_->Stop();
@@ -881,16 +892,10 @@ void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
   // over to a new segment, we set the first operation in the footer immediately.
   // Update the index bounds for the current segment.
   for (const LogEntryPB& entry_pb : batch->entry_batch_pb_.entry()) {
-    int64_t index = entry_pb.replicate().id().index();
-    if (!footer_builder_.has_min_replicate_index() ||
-        index < footer_builder_.min_replicate_index()) {
-      footer_builder_.set_min_replicate_index(index);
-      min_replicate_index_.store(index, std::memory_order_release);
-    }
-    if (!footer_builder_.has_max_replicate_index() ||
-        index > footer_builder_.max_replicate_index()) {
-      footer_builder_.set_max_replicate_index(index);
-    }
+    UpdateSegmentFooterIndexes(entry_pb.replicate(), &footer_builder_);
+  }
+  if (footer_builder_.has_min_replicate_index()) {
+    min_replicate_index_.store(footer_builder_.min_replicate_index(), std::memory_order_release);
   }
 }
 
@@ -1313,7 +1318,108 @@ Status Log::FlushIndex() {
   return log_index_->Flush();
 }
 
-Status Log::CopyTo(const std::string& dest_wal_dir) {
+Result<SegmentOpIdRelation> Log::GetSegmentOpIdRelation(
+    ReadableLogSegment* segment, const OpId& op_id) {
+  const auto& footer = segment->footer();
+  VLOG_WITH_PREFIX_AND_FUNC(2) << "footer.has_max_replicate_index(): "
+                               << footer.has_max_replicate_index()
+                               << " footer.max_replicate_index(): "
+                               << footer.max_replicate_index();
+
+  if (footer.has_max_replicate_index() && op_id.index > footer.max_replicate_index()) {
+    return SegmentOpIdRelation::kOpIdAfterSegment;
+  }
+
+  auto read_entries = segment->ReadEntries();
+  RETURN_NOT_OK(read_entries.status);
+
+  const auto has_replicate = [](const std::unique_ptr<LogEntryPB>& entry) {
+    return entry->has_replicate();
+  };
+  const auto first_replicate =
+      std::find_if(read_entries.entries.cbegin(), read_entries.entries.cend(), has_replicate);
+
+  if (first_replicate == read_entries.entries.cend()) {
+    return SegmentOpIdRelation::kEmptySegment;
+  }
+
+  const auto first_op_id = OpId::FromPB((*first_replicate)->replicate().id());
+  if (op_id < first_op_id) {
+    return SegmentOpIdRelation::kOpIdBeforeSegment;
+  }
+
+  // first_op_id <= up_to_op_id
+
+  const auto last_replicate = std::find_if(
+      read_entries.entries.crbegin(), read_entries.entries.crend(), has_replicate);
+  const auto last_op_id = OpId::FromPB((*last_replicate)->replicate().id());
+
+  if (op_id > last_op_id) {
+    return SegmentOpIdRelation::kOpIdAfterSegment;
+  }
+
+  if (op_id == last_op_id) {
+    return SegmentOpIdRelation::kOpIdIsLast;
+  }
+
+  // first_op_id <= up_to_op_id < last_op_id
+  return SegmentOpIdRelation::kOpIdIsInsideAndNotLast;
+}
+
+Result<bool> Log::CopySegmentUpTo(
+    ReadableLogSegment* segment, const std::string& dest_wal_dir, const OpId& up_to_op_id) {
+  SegmentOpIdRelation relation = up_to_op_id.valid() && !up_to_op_id.empty()
+                                     ? VERIFY_RESULT(GetSegmentOpIdRelation(segment, up_to_op_id))
+                                     : SegmentOpIdRelation::kOpIdAfterSegment;
+  auto* const env = options_.env;
+  const auto sequence_number = segment->header().sequence_number();
+  const auto file_name = FsManager::GetWalSegmentFileName(sequence_number);
+  const auto src_path = JoinPathSegments(wal_dir_, file_name);
+  SCHECK_EQ(src_path, segment->path(), InternalError, "Log segment path does not match");
+  const auto dest_path = JoinPathSegments(dest_wal_dir, file_name);
+
+  bool stop = false;
+  switch (relation) {
+    case SegmentOpIdRelation::kOpIdBeforeSegment:
+      // Stop copying segments.
+      return true;
+
+    case SegmentOpIdRelation::kOpIdIsLast:
+      // Stop after copying the current segment.
+      stop = true;
+      FALLTHROUGH_INTENDED;
+    case SegmentOpIdRelation::kEmptySegment:
+      FALLTHROUGH_INTENDED;
+    case SegmentOpIdRelation::kOpIdAfterSegment:
+      // Copy (hard-link) the whole segment.
+      RETURN_NOT_OK(env->LinkFile(src_path, dest_path));
+      VLOG_WITH_PREFIX(1) << Format("Hard linked $0 to $1", src_path, dest_path);
+      return stop;
+
+    case SegmentOpIdRelation::kOpIdIsInsideAndNotLast:
+      // Copy part of the segment up to up_to_op_id.
+      std::unique_ptr<WritableFile> dest_file;
+      auto opts = GetNewSegmentWritableFileOptions();
+      RETURN_NOT_OK(env->NewWritableFile(opts, dest_path, &dest_file));
+      std::shared_ptr<WritableFile> shared_dest_file(dest_file.release());
+
+      // Rebuild log index for this segment, it might be not necessary after
+      // https://github.com/yugabyte/yugabyte-db/issues/10960 is fixed.
+      auto copied_log_index = make_scoped_refptr(new LogIndex(dest_wal_dir));
+      RETURN_NOT_OK(
+          segment->CopyTo(up_to_op_id, dest_path, shared_dest_file, copied_log_index.get()));
+      RETURN_NOT_OK(copied_log_index->Flush());
+
+      VLOG_WITH_PREFIX(1) << Format(
+          "Copied $0 to $1, up to $2", src_path, dest_path, up_to_op_id);
+      return false;
+  }
+  FATAL_INVALID_ENUM_VALUE(SegmentOpIdRelation, relation);
+}
+
+Status Log::CopyTo(const std::string& dest_wal_dir, const OpId up_to_op_id) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "dest_wal_dir: " << dest_wal_dir
+                               << " up_to_op_id: " << AsString(up_to_op_id);
   // We mainly need log_copy_mutex_ to simplify managing of log_copy_min_index_.
   std::lock_guard<decltype(log_copy_mutex_)> log_copy_lock(log_copy_mutex_);
   auto se = ScopeExit([this]() {
@@ -1365,38 +1471,17 @@ Status Log::CopyTo(const std::string& dest_wal_dir) {
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options_.env, dest_wal_dir),
                         Format("Failed to create tablet WAL dir $0", dest_wal_dir));
 
-  RETURN_NOT_OK(log_index->Flush());
+  const auto has_op_id_limit = up_to_op_id.valid() && !up_to_op_id.empty();
 
-  auto* const env = options_.env;
+  RETURN_NOT_OK(
+      log_index->CopyTo(options_.env, dest_wal_dir, has_op_id_limit ? up_to_op_id.index : -1));
 
-  {
-    for (const auto& segment : segments) {
-      const auto sequence_number = segment->header().sequence_number();
-      const auto file_name = FsManager::GetWalSegmentFileName(sequence_number);
-      const auto src_path = JoinPathSegments(wal_dir_, file_name);
-      SCHECK_EQ(src_path, segment->path(), InternalError, "Log segment path does not match");
-      const auto dest_path = JoinPathSegments(dest_wal_dir, file_name);
-
-      RETURN_NOT_OK(env->LinkFile(src_path, dest_path));
-      VLOG_WITH_PREFIX(1) << Format("Hard linked $0 to $1", src_path, dest_path);
+  for (const auto& segment : segments) {
+    if (VERIFY_RESULT(CopySegmentUpTo(segment.get(), dest_wal_dir, up_to_op_id))) {
+      break;
     }
   }
 
-  const auto files = VERIFY_RESULT(env->GetChildren(wal_dir_, ExcludeDots::kTrue));
-
-  for (const auto& file : files) {
-    const auto src_path = JoinPathSegments(wal_dir_, file);
-    const auto dest_path = JoinPathSegments(dest_wal_dir, file);
-
-    if (FsManager::IsWalSegmentFileName(file)) {
-      // Already processed above.
-    } else if (!boost::starts_with(file, kSegmentPlaceholderFilePrefix)) {
-      RETURN_NOT_OK_PREPEND(
-          CopyFile(env, src_path, dest_path),
-          Format("Failed to copy file $0 to $1", src_path, dest_path));
-      VLOG_WITH_PREFIX(1) << Format("Copied $0 to $1", src_path, dest_path);
-    }
-  }
   return Status::OK();
 }
 
@@ -1404,14 +1489,19 @@ uint64_t Log::NextSegmentDesiredSize() {
   return std::min(cur_max_segment_size_ * 2, max_segment_size_);
 }
 
-Status Log::PreAllocateNewSegment() {
-  TRACE_EVENT1("log", "PreAllocateNewSegment", "file", next_segment_path_);
-  CHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationInProgress);
-
+WritableFileOptions Log::GetNewSegmentWritableFileOptions() {
   WritableFileOptions opts;
   // We always want to sync on close: https://github.com/yugabyte/yugabyte-db/issues/3490
   opts.sync_on_close = true;
   opts.o_direct = durable_wal_write_;
+  return opts;
+}
+
+Status Log::PreAllocateNewSegment() {
+  TRACE_EVENT1("log", "PreAllocateNewSegment", "file", next_segment_path_);
+  CHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationInProgress);
+
+  auto opts = GetNewSegmentWritableFileOptions();
   RETURN_NOT_OK(CreatePlaceholderSegment(opts, &next_segment_path_, &next_segment_file_));
 
   if (options_.preallocate_segments) {

@@ -15,6 +15,7 @@
 #define YB_COMMON_COMMON_FWD_H
 
 #include <memory>
+#include <vector>
 
 #include "yb/common/common.fwd.h"
 #include "yb/common/pgsql_protocol.fwd.h"
@@ -57,26 +58,24 @@ class QLValue;
 struct DeletedColumn;
 struct IndexColumn;
 struct OpId;
+struct PgObjectId;
 struct QLTableColumn;
 struct ReadHybridTime;
 struct TransactionMetadata;
 struct TransactionOperationContext;
 struct TransactionStatusResult;
 
-using PgTableOid = uint32_t;
+using ColocationId = uint32_t;
+
 using QLTypePtr = std::shared_ptr<QLType>;
+
+using PgObjectIds = std::vector<PgObjectId>;
 
 enum class PgSystemAttrNum : int;
 enum class QLNameOption : int8_t;
 enum class YBHashSchema;
 
-enum SortingType : uint8_t {
-  kNotSpecified = 0,
-  kAscending,          // ASC, NULLS FIRST
-  kDescending,         // DESC, NULLS FIRST
-  kAscendingNullsLast, // ASC, NULLS LAST
-  kDescendingNullsLast // DESC, NULLS LAST
-};
+enum SortingType : uint8_t;
 
 namespace common {
 

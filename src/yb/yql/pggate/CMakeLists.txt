@@ -27,6 +27,9 @@ set(PGGATE_SRCS
     pggate.cc
     pggate_thread_local_vars.cc
     pg_client.cc
+    pg_op.cc
+    pg_operation_buffer.cc
+    pg_perform_future.cc
     pg_sample.cc
     pg_session.cc
     pg_statement.cc
@@ -46,7 +49,8 @@ set(PGGATE_SRCS
     pg_value.cc
     pg_memctx.cc
     pg_callbacks.cc
-    pg_tools.cc)
+    pg_tools.cc
+    pg_sys_table_prefetcher.cc)
 
 ADD_YB_LIBRARY(yb_pggate_flags
                SRCS pggate_flags.cc

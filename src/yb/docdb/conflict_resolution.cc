@@ -189,11 +189,11 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     const auto conflicting_intent_types = kIntentTypeSetConflicts[type.ToUIntPtr()];
 
     KeyBytes upperbound_key(*intent_key_prefix);
-    upperbound_key.AppendValueType(ValueType::kMaxByte);
+    upperbound_key.AppendKeyEntryType(KeyEntryType::kMaxByte);
     intent_key_upperbound_ = upperbound_key.AsSlice();
 
     size_t original_size = intent_key_prefix->size();
-    intent_key_prefix->AppendValueType(ValueType::kIntentTypeSet);
+    intent_key_prefix->AppendKeyEntryType(KeyEntryType::kIntentTypeSet);
     // Have only weak intents, so could skip other weak intents.
     if (!HasStrong(type)) {
       char value = 1 << kStrongIntentFlag;
@@ -236,7 +236,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       const auto intent_mask = kIntentTypeSetMask[existing_intent.types.ToUIntPtr()];
       if ((conflicting_intent_types & intent_mask) != 0) {
         auto transaction_id = decoded_value.transaction_id;
-        bool lock_only = decoded_value.body.starts_with(ValueTypeAsChar::kRowLock);
+        bool lock_only = decoded_value.body.starts_with(KeyEntryTypeAsChar::kRowLock);
 
         // TODO(savepoints) - if the intent corresponds to an aborted subtransaction, ignore.
         if (!context_->IgnoreConflictsWith(transaction_id)) {
@@ -619,8 +619,10 @@ class StrongConflictChecker {
       value_iter_hash_ = hash;
     }
     value_iter_.Seek(intent_key);
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "Check conflicts in regular DB; Seek: "
-                                 << intent_key.ToDebugString() << ", strong: " << strong;
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
+        << SubDocKey::DebugSliceToString(intent_key) << "), strong: " << strong << ", wait_policy: "
+        << AsString(wait_policy);
     // If we are resolving conflicts for writing a strong intent, look at records in regular RocksDB
     // with the same key as the intent's key (not including hybrid time) and any child keys. This is
     // because a strong intent indicates deletion or replacement of the entire subdocument tree and
@@ -638,12 +640,12 @@ class StrongConflictChecker {
     // that entire document subtree (similar to a strong intent), so it would have the same exact
     // key as the weak intent (not including hybrid time).
     while (value_iter_.Valid() &&
-           (intent_key.starts_with(ValueTypeAsChar::kGroupEnd) ||
+           (intent_key.starts_with(KeyEntryTypeAsChar::kGroupEnd) ||
             value_iter_.key().starts_with(intent_key))) {
       auto existing_key = value_iter_.key();
       auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&existing_key));
       if (existing_key.empty() ||
-          existing_key[existing_key.size() - 1] != ValueTypeAsChar::kHybridTime) {
+          existing_key[existing_key.size() - 1] != KeyEntryTypeAsChar::kHybridTime) {
         return STATUS_FORMAT(
             Corruption, "Hybrid time expected at end of key: $0",
             value_iter_.key().ToDebugString());
@@ -748,7 +750,13 @@ class ConflictResolverContextBase : public ConflictResolverContext {
         return STATUS(InternalError, "Skip locking since entity is already locked",
                       TransactionError(TransactionErrorCode::kSkipLocking));
       }
-      if (our_priority < their_priority) {
+
+      // READ COMMITTED txns require a guarantee that no txn abort it. They can handle facing a
+      // kConflict due to another txn's conflicting intent, but can't handle aborts. To ensure
+      // these guarantees -
+      //   1. all READ COMMITTED txns are given kHighestPriority and
+      //   2. a kConflict is raised even if their_priority equals our_priority.
+      if (our_priority <= their_priority) {
         return MakeConflictStatus(
             our_transaction_id, transaction.id, "higher priority", GetConflictsMetric());
       }
@@ -1086,16 +1094,16 @@ Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_sourc
   INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");
   result.doc_path.remove_suffix(doc_ht_size + 3);
   auto intent_type_and_doc_ht = result.doc_path.end();
-  if (intent_type_and_doc_ht[0] == ValueTypeAsChar::kObsoleteIntentType) {
+  if (intent_type_and_doc_ht[0] == KeyEntryTypeAsChar::kObsoleteIntentType) {
     result.types = ObsoleteIntentTypeToSet(intent_type_and_doc_ht[1]);
-  } else if (intent_type_and_doc_ht[0] == ValueTypeAsChar::kObsoleteIntentTypeSet) {
+  } else if (intent_type_and_doc_ht[0] == KeyEntryTypeAsChar::kObsoleteIntentTypeSet) {
     result.types = ObsoleteIntentTypeSetToNew(intent_type_and_doc_ht[1]);
   } else {
-    INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, ValueTypeAsChar::kIntentTypeSet,
+    INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, KeyEntryTypeAsChar::kIntentTypeSet,
         "intent type set type expected");
     result.types = IntentTypeSet(intent_type_and_doc_ht[1]);
   }
-  INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, ValueTypeAsChar::kHybridTime,
+  INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, KeyEntryTypeAsChar::kHybridTime,
                     "hybrid time value type expected");
   result.doc_ht = Slice(result.doc_path.end() + 2, doc_ht_size + 1);
   return result;
@@ -1107,17 +1115,15 @@ std::string DebugIntentKeyToString(Slice intent_key) {
     LOG(WARNING) << "Failed to parse: " << intent_key.ToDebugHexString() << ": " << parsed.status();
     return intent_key.ToDebugHexString();
   }
-  DocHybridTime doc_ht;
-  auto status = doc_ht.DecodeFromEnd(parsed->doc_ht);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to decode doc ht: " << intent_key.ToDebugHexString() << ": " << status;
+  auto doc_ht = DocHybridTime::DecodeFromEnd(parsed->doc_ht);
+  if (!doc_ht.ok()) {
+    LOG(WARNING) << "Failed to decode doc ht: " << intent_key.ToDebugHexString() << ": "
+                 << doc_ht.status();
     return intent_key.ToDebugHexString();
   }
-  return Format("$0 (key: $1 type: $2 doc_ht: $3 )",
-                intent_key.ToDebugHexString(),
-                SubDocKey::DebugSliceToString(parsed->doc_path),
-                parsed->types,
-                doc_ht.ToString());
+  return Format("$0 (key: $1 type: $2 doc_ht: $3)",
+                intent_key.ToDebugHexString(), SubDocKey::DebugSliceToString(parsed->doc_path),
+                parsed->types, *doc_ht);
 }
 
 } // namespace docdb

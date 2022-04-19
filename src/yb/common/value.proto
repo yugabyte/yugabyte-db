@@ -34,6 +34,12 @@ message QLMapValuePB {
 enum QLVirtualValuePB {
   LIMIT_MAX = 1;
   LIMIT_MIN = 2;
+  COUNTER = 3;
+  SS_FORWARD = 4;
+  SS_REVERSE = 5;
+  TOMBSTONE = 6;
+  NULL_LOW = 7;
+  ARRAY = 8;
 }
 
 // A QL value
@@ -161,4 +167,19 @@ enum QLOperator {
   // Operators that take no operand. For use in "if" clause only currently.
   QL_OP_EXISTS = 20;     // IF EXISTS
   QL_OP_NOT_EXISTS = 21; // IF NOT EXISTS
+}
+
+message DatumMessagePB {
+  optional string column_name = 1;
+  optional int64 column_type = 2;
+  oneof datum {
+    int32 datum_int32 = 3;
+    int64 datum_int64 = 4;
+    float datum_float = 5;
+    double datum_double = 6;
+    bool datum_bool = 7;
+    string datum_string = 8;
+    bytes datum_bytes = 9;
+    bool datum_missing = 10;
+  }
 }

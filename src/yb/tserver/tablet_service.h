@@ -238,6 +238,9 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       UpgradeYsqlResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void TestRetry(
+      const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
+
  private:
   TabletServer* server_;
 
@@ -249,6 +252,7 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   mutable std::mutex backfill_lock_;
   std::condition_variable backfill_cond_;
   std::atomic<int32_t> num_tablets_backfilling_{0};
+  std::atomic<int32_t> num_test_retry_calls{0};
 };
 
 class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
@@ -273,6 +277,10 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
   virtual void ChangeConfig(const consensus::ChangeConfigRequestPB* req,
                             consensus::ChangeConfigResponsePB* resp,
                             rpc::RpcContext context) override;
+
+  virtual void UnsafeChangeConfig(const consensus::UnsafeChangeConfigRequestPB* req,
+                                  consensus::UnsafeChangeConfigResponsePB* resp,
+                                  rpc::RpcContext context) override;
 
   virtual void GetNodeInstance(const consensus::GetNodeInstanceRequestPB* req,
                                consensus::GetNodeInstanceResponsePB* resp,

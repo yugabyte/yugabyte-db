@@ -80,7 +80,7 @@ void YsqlTransactionDdl::VerifyTransaction(
       [this, rpc_handle, transaction_metadata, complete_callback]
           (Status status, const tserver::GetTransactionStatusResponsePB& resp) {
         auto retained = rpcs_.Unregister(rpc_handle);
-        TransactionReceived(transaction_metadata, complete_callback, status, resp);
+        TransactionReceived(transaction_metadata, complete_callback, std::move(status), resp);
       });
   (**rpc_handle).SendRpc();
 }
@@ -89,9 +89,6 @@ void YsqlTransactionDdl::TransactionReceived(
     const TransactionMetadata& transaction,
     std::function<Status(bool)> complete_callback,
     Status txn_status, const tserver::GetTransactionStatusResponsePB& resp) {
-  YB_LOG_EVERY_N_SECS(INFO, 1) << "TransactionReceived: " << txn_status.ToString()
-                               << " : " << resp.DebugString();
-
   if (!txn_status.ok()) {
     LOG(WARNING) << "Transaction Status attempt (" << transaction.ToString()
                  << ") failed with status " << txn_status;
@@ -111,7 +108,7 @@ void YsqlTransactionDdl::TransactionReceived(
     // #5981: Maybe have the same heuristic as above?
   } else {
     YB_LOG_EVERY_N_SECS(INFO, 1) << "Got Response for " << transaction.ToString()
-                                 << ": " << resp.DebugString();
+                                 << ", resp: " << resp.ShortDebugString();
     bool is_pending = (resp.status_size() == 0);
     for (int i = 0; i < resp.status_size() && !is_pending; ++i) {
       // NOTE: COMMITTED state is also "pending" because we need APPLIED.
@@ -140,7 +137,7 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
   }
   const tablet::Tablet* catalog_tablet = tablet_peer->tablet();
   const Schema& pg_database_schema =
-      *VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema;
+      VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema();
 
   // Use Scan to query the 'pg_database' table, filtering by our 'oid'.
   Schema projection;
@@ -156,7 +153,7 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(e_oid_val);
-    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);

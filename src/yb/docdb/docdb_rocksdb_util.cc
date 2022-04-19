@@ -66,7 +66,7 @@ DEFINE_int32(rocksdb_base_background_compactions, -1,
              "Number threads to do background compactions.");
 DEFINE_int32(rocksdb_max_background_compactions, -1,
              "Increased number of threads to do background compactions (used when compactions need "
-             "to catch up.)");
+             "to catch up.) Unless rocksdb_disable_compactions=true, this cannot be set to zero.");
 DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
              "Number of files to trigger level-0 compaction. -1 if compaction should not be "
              "triggered by number of files at all.");
@@ -81,9 +81,9 @@ DEFINE_uint64(rocksdb_universal_compaction_always_include_size_threshold, 64_MB,
              "Always include files of smaller or equal size in a compaction.");
 DEFINE_int32(rocksdb_universal_compaction_min_merge_width, 4,
              "The minimum number of files in a single compaction run.");
-DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 256_MB,
+DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
              "Use to control write rate of flush and compaction.");
-DEFINE_string(rocksdb_compact_flush_rate_limit_sharing_mode, "none",
+DEFINE_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
               "Allows to control rate limit sharing/calculation across RocksDB instances\n"
               "  tserver - rate limit is shared across all RocksDB instances"
               " at tabset server level\n"
@@ -215,9 +215,7 @@ bool KeyValueEncodingFormatValidator(const char* flag_name, const std::string& f
 
 } // namespace
 
-__attribute__((unused))
 DEFINE_validator(compression_type, &CompressionTypeValidator);
-__attribute__((unused))
 DEFINE_validator(regular_tablets_data_block_key_value_encoding, &KeyValueEncodingFormatValidator);
 
 using std::shared_ptr;
@@ -243,7 +241,7 @@ void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
 
 KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht) {
   char buf[kMaxBytesPerEncodedHybridTime + 1];
-  buf[0] = ValueTypeAsChar::kHybridTime;
+  buf[0] = KeyEntryTypeAsChar::kHybridTime;
   auto end = doc_ht.EncodedInDocDbFormat(buf + 1);
   return KeyBytes(key, Slice(buf, end));
 }
@@ -253,9 +251,9 @@ void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter) {
 }
 
 void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
-  key_bytes->AppendValueType(ValueType::kMaxByte);
+  key_bytes->AppendKeyEntryType(KeyEntryType::kMaxByte);
   SeekForward(*key_bytes, iter);
-  key_bytes->RemoveValueTypeSuffix(ValueType::kMaxByte);
+  key_bytes->RemoveKeyEntryTypeSuffix(KeyEntryType::kMaxByte);
 }
 
 void SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key,
@@ -392,7 +390,10 @@ int32_t GetMaxBackgroundCompactions() {
   }
   int rocksdb_max_background_compactions = FLAGS_rocksdb_max_background_compactions;
 
-  if (rocksdb_max_background_compactions >= 0) {
+  if (rocksdb_max_background_compactions == 0) {
+    LOG(FATAL) << "--rocksdb_max_background_compactions may not be set to zero with compactions "
+        << "enabled. Either change this flag or set --rocksdb_disable_compactions=true.";
+  } else if (rocksdb_max_background_compactions > 0) {
     return rocksdb_max_background_compactions;
   }
 
@@ -508,10 +509,9 @@ void AddSupportedFilterPolicy(
   table_options->supported_filter_policies->emplace(filter_policy->Name(), filter_policy);
 }
 
-PriorityThreadPool* GetGlobalPriorityThreadPool
-  (const scoped_refptr<MetricEntity>& metric_entity = nullptr) {
+PriorityThreadPool* GetGlobalPriorityThreadPool() {
     static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
-      GetGlobalRocksDBPriorityThreadPoolSize(), metric_entity);
+      GetGlobalRocksDBPriorityThreadPoolSize());
     return &priority_thread_pool_for_compactions_and_flushes;
 }
 
@@ -535,7 +535,11 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
   }
 
   auto priority_thread_pool_size = FLAGS_priority_thread_pool_size;
-  if (priority_thread_pool_size >= 0) {
+
+  if (priority_thread_pool_size == 0) {
+    LOG(FATAL) << "--priority_thread_pool_size may not be set to zero with compactions "
+        << "enabled. Either change this flag or set --rocksdb_disable_compactions=true.";
+  } else if (priority_thread_pool_size > 0) {
     return priority_thread_pool_size;
   }
 
@@ -568,7 +572,8 @@ void InitRocksDBOptions(
     rocksdb::Options* options, const string& log_prefix,
     const shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
-    rocksdb::BlockBasedTableOptions table_options) {
+    rocksdb::BlockBasedTableOptions table_options,
+    const uint64_t group_no) {
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
   options->create_if_missing = true;
@@ -579,6 +584,7 @@ void InitRocksDBOptions(
   options->boundary_extractor = DocBoundaryValuesExtractorInstance();
   options->compaction_measure_io_stats = FLAGS_rocksdb_compaction_measure_io_stats;
   options->memory_monitor = tablet_options.memory_monitor;
+  options->disk_group_no = group_no;
   if (FLAGS_db_write_buffer_size != -1) {
     options->write_buffer_size = FLAGS_db_write_buffer_size;
   } else {
@@ -586,10 +592,7 @@ void InitRocksDBOptions(
   }
   options->env = tablet_options.rocksdb_env;
   options->checkpoint_env = rocksdb::Env::Default();
-  options->priority_thread_pool_for_compactions_and_flushes =
-    (tablet_options.ServerMetricEntity) ?
-    GetGlobalPriorityThreadPool(tablet_options.ServerMetricEntity) :
-    GetGlobalPriorityThreadPool();
+  options->priority_thread_pool_for_compactions_and_flushes = GetGlobalPriorityThreadPool();
 
   if (FLAGS_num_reserved_small_compaction_threads != -1) {
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;

@@ -14,6 +14,7 @@ package org.yb.util;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.File;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -131,7 +132,8 @@ public final class YBBackupUtil {
     }
 
     processCommand.addAll(args);
-    assert(processCommand.contains("create") || processCommand.contains("restore"));
+    assert(processCommand.contains("create") || processCommand.contains("restore")
+        || processCommand.contains("delete"));
     final String output = runProcess(processCommand, defaultYbBackupTimeoutInSeconds);
     LOG.info("yb_backup output: " + output);
 
@@ -146,41 +148,49 @@ public final class YBBackupUtil {
   }
 
   public static String getTempBackupDir() {
-    return TestUtils.getBaseTmpDir() + "/backup";
+    return TestUtils.getBaseTmpDir() + "/backup-" + new Random().nextInt(Integer.MAX_VALUE);
   }
 
-  public static void runYbBackupCreate(String... args) throws Exception {
-    runYbBackupCreate(Arrays.asList(args));
+  public static String runYbBackupCreate(String... args) throws Exception {
+    return runYbBackupCreate(Arrays.asList(args));
   }
 
-  public static void runYbBackupCreate(List<String> args) throws Exception {
-    List<String> processCommand = new ArrayList<String>(Arrays.asList(
-        "--backup_location", getTempBackupDir(),
-        "create"));
+  public static String runYbBackupCreate(List<String> args) throws Exception {
+    List<String> processCommand = new ArrayList<String>(Arrays.asList("create"));
     processCommand.addAll(args);
     final String output = runYbBackup(processCommand);
     JSONObject json = new JSONObject(output);
     final String url = json.getString("snapshot_url");
     LOG.info("SUCCESS. Backup-create operation result - snapshot url: " + url);
+    return output;
   }
 
-  public static void runYbBackupRestore(String... args) throws Exception {
-    runYbBackupRestore(Arrays.asList(args));
+  public static void runYbBackupRestore(String backupDir, String... args) throws Exception {
+    runYbBackupRestore(backupDir, Arrays.asList(args));
   }
 
-  public static void runYbBackupRestore(List<String> args) throws Exception {
+  public static void runYbBackupCommand(String command, String backupDir, List<String> args)
+      throws Exception {
     List<String> processCommand = new ArrayList<String>(Arrays.asList(
-        "--backup_location", getTempBackupDir(),
-        "restore"));
+        "--backup_location", backupDir,
+        command));
     processCommand.addAll(args);
     final String output = runYbBackup(processCommand);
     JSONObject json = new JSONObject(output);
     final boolean resultOk = json.getBoolean("success");
-    LOG.info("SUCCESS. Backup-restore operation result: " + resultOk);
+    LOG.info("SUCCESS. Backup-" + command + " operation result: " + resultOk);
 
     if (!resultOk) {
-      throw new YBBackupException("Backup-restore operation result: " + resultOk);
+      throw new YBBackupException("Backup-" + command + " operation result: " + resultOk);
     }
+  }
+
+  public static void runYbBackupRestore(String backupDir, List<String> args) throws Exception {
+    runYbBackupCommand("restore", backupDir, args);
+  }
+
+  public static void runYbBackupDelete(String backupDir) throws Exception {
+    runYbBackupCommand("delete", backupDir, new ArrayList<String>());
   }
 
   public static String runYbAdmin(String... args) throws Exception {

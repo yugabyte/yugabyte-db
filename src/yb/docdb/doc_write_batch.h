@@ -14,6 +14,9 @@
 #ifndef YB_DOCDB_DOC_WRITE_BATCH_H
 #define YB_DOCDB_DOC_WRITE_BATCH_H
 
+#include "yb/bfql/tserver_opcodes.h"
+
+#include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
 
@@ -62,6 +65,101 @@ struct LazyIterator {
   }
 };
 
+YB_DEFINE_ENUM(ValueRefType, (kPb)(kValueType));
+
+// This class references value that should be inserted to DocWriteBatch.
+// Also it contains various options for this value.
+class ValueRef {
+ public:
+  explicit ValueRef(const QLValuePB& value_pb,
+                    SortingType sorting_type = SortingType::kNotSpecified,
+                    bfql::TSOpcode write_instruction = bfql::TSOpcode::kScalarInsert)
+      : value_pb_(&value_pb), sorting_type_(sorting_type), write_instruction_(write_instruction),
+        list_extend_order_(ListExtendOrder::APPEND), value_type_(ValueEntryType::kInvalid) {
+  }
+
+  explicit ValueRef(const QLValuePB& value_pb,
+                    const ValueRef& value_ref)
+      : value_pb_(&value_pb), sorting_type_(value_ref.sorting_type_),
+        write_instruction_(value_ref.write_instruction_),
+        list_extend_order_(value_ref.list_extend_order_),
+        value_type_(ValueEntryType::kInvalid) {
+  }
+
+  explicit ValueRef(const QLValuePB& value_pb,
+                    ListExtendOrder list_extend_order)
+      : value_pb_(&value_pb), sorting_type_(SortingType::kNotSpecified),
+        write_instruction_(bfql::TSOpcode::kScalarInsert),
+        list_extend_order_(list_extend_order),
+        value_type_(ValueEntryType::kInvalid) {
+  }
+
+  explicit ValueRef(ValueEntryType key_entry_type);
+
+  explicit ValueRef(std::reference_wrapper<const Slice> encoded_value)
+      : encoded_value_(&encoded_value.get()) {}
+
+  const QLValuePB& value_pb() const {
+    return *value_pb_;
+  }
+
+  void set_sorting_type(SortingType value) {
+    sorting_type_ = value;
+  }
+
+  SortingType sorting_type() const {
+    return sorting_type_;
+  }
+
+  ListExtendOrder list_extend_order() const {
+    return list_extend_order_;
+  }
+
+  void set_list_extend_order(ListExtendOrder value) {
+    list_extend_order_ = value;
+  }
+
+  void set_custom_value_type(ValueEntryType value) {
+    value_type_ = value;
+  }
+
+  ValueEntryType custom_value_type() const {
+    return value_type_;
+  }
+
+  bfql::TSOpcode write_instruction() const {
+    return write_instruction_;
+  }
+
+  void set_write_instruction(bfql::TSOpcode value) {
+    write_instruction_ = value;
+  }
+
+  const Slice* encoded_value() const {
+    return encoded_value_;
+  }
+
+  bool is_array() const;
+
+  bool is_set() const;
+
+  bool is_map() const;
+
+  ValueEntryType ContainerValueType() const;
+
+  bool IsTombstoneOrPrimitive() const;
+
+  std::string ToString() const;
+
+ private:
+  const QLValuePB* value_pb_;
+  SortingType sorting_type_;
+  bfql::TSOpcode write_instruction_;
+  ListExtendOrder list_extend_order_;
+  ValueEntryType value_type_;
+  const Slice* encoded_value_ = nullptr;
+};
+
 // This controls whether "init markers" are required at all intermediate levels.
 YB_DEFINE_ENUM(InitMarkerBehavior,
                // This is used in Redis. We need to keep track of document types such as strings,
@@ -90,34 +188,38 @@ class DocWriteBatch {
   // if necessary and possible.
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
-      const Value& value,
+      const ValueControlFields& control_fields,
+      const ValueRef& value,
       LazyIterator* doc_iter);
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
-      const Value& value,
+      const ValueControlFields& control_fields,
+      const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId);
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
-      const Value& value,
+      const ValueControlFields& control_fields,
+      const ValueRef& value,
       std::unique_ptr<IntentAwareIterator> intent_iter) {
     LazyIterator iter(std::move(intent_iter));
-    return SetPrimitive(doc_path, value, &iter);
+    return SetPrimitive(doc_path, control_fields, value, &iter);
   }
 
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
-      const PrimitiveValue& value,
+      const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp) {
-    return SetPrimitive(doc_path, Value(value, Value::kMaxTtl, user_timestamp),
-                        read_ht, deadline, query_id);
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp) {
+    return SetPrimitive(
+        doc_path, ValueControlFields { .user_timestamp = user_timestamp }, value, read_ht,
+        deadline, query_id);
   }
 
   // Extend the SubDocument in the given key. We'll support List with Append and Prepend mode later.
@@ -126,65 +228,62 @@ class DocWriteBatch {
   // efficient by not calling SetPrimitive internally.
   CHECKED_STATUS ExtendSubDocument(
       const DocPath& doc_path,
-      const SubDocument& value,
+      const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      MonoDelta ttl = Value::kMaxTtl,
-      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
+      MonoDelta ttl = ValueControlFields::kMaxTtl,
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
 
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
-      const SubDocument& value,
+      const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      MonoDelta ttl = Value::kMaxTtl,
-      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp,
+      MonoDelta ttl = ValueControlFields::kMaxTtl,
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp,
       bool init_marker_ttl = true);
 
   CHECKED_STATUS ExtendList(
       const DocPath& doc_path,
-      const SubDocument& value,
+      const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      MonoDelta ttl = Value::kMaxTtl,
-      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
+      MonoDelta ttl = ValueControlFields::kMaxTtl,
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
 
   // 'indices' must be sorted. List indexes are not zero indexed, the first element is list[1].
   CHECKED_STATUS ReplaceRedisInList(
-      const DocPath &doc_path,
-      const std::vector<int64_t>& indices,
-      const std::vector<SubDocument>& values,
+      const DocPath& doc_path,
+      int64_t index,
+      const ValueRef& value,
       const ReadHybridTime& read_ht,
       const CoarseTimePoint deadline,
       const rocksdb::QueryId query_id,
       const Direction dir = Direction::kForward,
       const int64_t start_index = 0,
       std::vector<string>* results = nullptr,
-      MonoDelta default_ttl = Value::kMaxTtl,
-      MonoDelta write_ttl = Value::kMaxTtl);
+      MonoDelta default_ttl = ValueControlFields::kMaxTtl,
+      MonoDelta write_ttl = ValueControlFields::kMaxTtl);
 
   CHECKED_STATUS ReplaceCqlInList(
       const DocPath &doc_path,
       const int index,
-      const SubDocument& value,
+      const ValueRef& value,
       const ReadHybridTime& read_ht,
       const CoarseTimePoint deadline,
       const rocksdb::QueryId query_id,
-      MonoDelta default_ttl = Value::kMaxTtl,
-      MonoDelta write_ttl = Value::kMaxTtl);
+      MonoDelta default_ttl = ValueControlFields::kMaxTtl,
+      MonoDelta write_ttl = ValueControlFields::kMaxTtl);
 
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp) {
-    return SetPrimitive(doc_path, PrimitiveValue::kTombstone,
-                        read_ht, deadline, query_id, user_timestamp);
-  }
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
 
   void Clear();
   bool IsEmpty() const { return put_batch_.empty(); }
@@ -233,13 +332,13 @@ class DocWriteBatch {
   // (e.g: init markers) is maintained for subdocuments starting at the given subkey_index.
   CHECKED_STATUS SetPrimitiveInternal(
       const DocPath& doc_path,
-      const Value& value,
+      const ValueControlFields& control_fields,
+      const ValueRef& value,
       LazyIterator* doc_iter,
-      bool is_deletion,
-      size_t num_subkeys);
+      bool is_deletion);
 
   // Handle the user provided timestamp during writes.
-  Result<bool> SetPrimitiveInternalHandleUserTimestamp(const Value &value,
+  Result<bool> SetPrimitiveInternalHandleUserTimestamp(const ValueControlFields& control_fields,
                                                        LazyIterator* doc_iter);
 
   bool required_init_markers() {

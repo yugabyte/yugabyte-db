@@ -33,6 +33,7 @@
 #ifndef YB_INTEGRATION_TESTS_MINI_CLUSTER_H_
 #define YB_INTEGRATION_TESTS_MINI_CLUSTER_H_
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <thread>
@@ -55,6 +56,7 @@
 
 #include "yb/util/env.h"
 #include "yb/util/port_picker.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 
@@ -125,7 +127,7 @@ class MiniCluster : public MiniClusterBase {
   void Shutdown();
   CHECKED_STATUS FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
-      tablet::FlushFlags flags = tablet::FlushFlags::kAll);
+      tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
   CHECKED_STATUS CompactTablets();
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();
@@ -291,6 +293,10 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
 
 std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(
     MiniCluster* cluster);
+
+Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
+    MiniCluster* cluster, const TableId& table_id, size_t num_active_leaders,
+    MonoDelta timeout = std::chrono::seconds(30) * kTimeMultiplier);
 
 CHECKED_STATUS WaitUntilTabletHasLeader(
     MiniCluster* cluster, const std::string& tablet_id, MonoTime deadline);

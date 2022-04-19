@@ -40,20 +40,18 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgAlterTableAddPrimaryKey.class);
 
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("TEST_sequential_colocation_ids", "true");
+    return flagMap;
+  }
+
   @Test
   public void simplest() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE TABLE nopk (id int)");
       alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
-    }
-  }
-
-  @Test
-  public void withNoForceRowLevelSecurity() throws Exception {
-    try (Statement stmt = connection.createStatement()) {
-      stmt.executeUpdate("CREATE TABLE nopk (id int)");
-      alterAddPrimaryKey(stmt, "nopk", "NO FORCE ROW LEVEL SECURITY, " +
-                                       "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
     }
   }
 
@@ -334,17 +332,23 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO normal_table VALUES (1)");
       stmt.executeUpdate("INSERT INTO normal_table VALUES (2)");
 
-      stmt.executeUpdate("CREATE TABLE nopk_c (id int)");
+      stmt.executeUpdate("CREATE TABLE nopk_c (id int) WITH (colocation_id=100500)");
       stmt.executeUpdate("INSERT INTO nopk_c VALUES (3)");
       stmt.executeUpdate("INSERT INTO nopk_c VALUES (4)");
 
-      stmt.executeUpdate("CREATE TABLE nopk_nc (id int) WITH (colocated = false)");
+      stmt.executeUpdate("CREATE TABLE nopk_nc (id int) WITH (colocated=false)");
       stmt.executeUpdate("INSERT INTO nopk_nc VALUES (5)");
       stmt.executeUpdate("INSERT INTO nopk_nc VALUES (6)");
 
       assertEquals(1, getNumTablets(stmt, "normal_table"));
       assertEquals(1, getNumTablets(stmt, "nopk_c"));
       assertEquals(NUM_TABLET_SERVERS, getNumTablets(stmt, "nopk_nc"));
+
+      assertRowList(stmt, colocatedPropsSql, Arrays.asList(
+          new Row("normal_table", true, null, 20001),
+          new Row("normal_table_pkey", null, null, null),
+          new Row("nopk_c", true, null, 100500),
+          new Row("nopk_nc", false, null, null)));
 
       runInvalidQuery(stmt, "ALTER TABLE nopk_c ADD PRIMARY KEY (id HASH)",
           "cannot colocate hash partitioned table");
@@ -355,6 +359,15 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       alterAddPrimaryKey(stmt, "nopk_c", "ADD PRIMARY KEY (id)", 0, 1);
       alterAddPrimaryKey(stmt, "nopk_nc", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
       assertEquals(1, getNumTablets(stmt, "normal_table"));
+
+      // Colocation IDs are not persisted.
+      assertRowList(stmt, colocatedPropsSql, Arrays.asList(
+          new Row("normal_table", true, null, 20001),
+          new Row("normal_table_pkey", null, null, null),
+          new Row("nopk_c", true, null, 20002),
+          new Row("nopk_c_pkey", null, null, null),
+          new Row("nopk_nc", false, null, null),
+          new Row("nopk_nc_pkey", null, null, null)));
 
       assertRowList(stmt, "SELECT * FROM normal_table ORDER BY id", Arrays.asList(
           new Row(1),
@@ -383,14 +396,22 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO nopk VALUES (3)");
       stmt.executeUpdate("INSERT INTO nopk VALUES (4)");
 
-      stmt.executeUpdate("CREATE TABLE nopk2 (id int, id2 int unique)"
-          + " TABLEGROUP tgroup1");
+      stmt.executeUpdate("CREATE TABLE nopk2 (id int, id2 int UNIQUE WITH (colocation_id=100501))"
+          + " WITH (colocation_id=100500) TABLEGROUP tgroup1");
       stmt.executeUpdate("INSERT INTO nopk2 VALUES (5, 5)");
       stmt.executeUpdate("INSERT INTO nopk2 VALUES (6, 6)");
 
       assertEquals(1, getNumTablets(stmt, "normal_table"));
       assertEquals(1, getNumTablets(stmt, "nopk"));
       assertEquals(1, getNumTablets(stmt, "nopk2"));
+
+      assertRowList(stmt, colocatedPropsSql, Arrays.asList(
+          new Row("normal_table", true, "tgroup1", 20001),
+          new Row("normal_table_pkey", null, null, null),
+          new Row("nopk", true, "tgroup1", 20002),
+          new Row("nopk2", true, "tgroup1", 100500),
+          new Row("nopk2_id2_key", true, "tgroup1", 100501)));
+
       alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 0, 1);
       alterAddPrimaryKey(stmt, "nopk2", "ADD PRIMARY KEY (id)", 0, 1);
 
@@ -404,19 +425,21 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
           new Row(5, 5),
           new Row(6, 6)));
 
-      assertRowList(stmt,
-        "SELECT s.relname, pg_yb_tablegroup.grpname " +
-        "FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) " +
-        "s, pg_yb_tablegroup WHERE opts LIKE " +
-        "CONCAT('%tablegroup=', CAST(pg_yb_tablegroup.oid AS text), '%') " +
-        "ORDER BY s", Arrays.asList(
-          new Row("nopk", "tgroup1"),
-          new Row("nopk2", "tgroup1"),
-          new Row("nopk2_id2_key", "tgroup1"),
-          new Row("nopk2_pkey", "tgroup1"),
-          new Row("nopk_pkey", "tgroup1"),
-          new Row("normal_table", "tgroup1"),
-          new Row("normal_table_pkey", "tgroup1")));
+      // Colocation IDs are not persisted.
+      // Colocation ID changes:
+      //   normal_table:  20001 (unchanged)
+      //   nopk:          20002 -> 20003
+      //   nopk2:         100500 -> 20002 (since 20002 was freed)
+      //   nopk2_id2_key: 100501 -> 20004
+      assertRowList(stmt, colocatedPropsSql, Arrays.asList(
+          new Row("normal_table", true, "tgroup1", 20001),
+          new Row("normal_table_pkey", null, null, null),
+          new Row("nopk", true, "tgroup1", 20003),
+          new Row("nopk_pkey", null, null, null),
+          new Row("nopk2", true, "tgroup1", 20002),
+          new Row("nopk2_id2_key", true, "tgroup1", 20004),
+          new Row("nopk2_pkey", null, null, null)));
+
       assertEquals(1, getNumTablets(stmt, "normal_table"));
       assertEquals(1, getNumTablets(stmt, "nopk"));
       assertEquals(1, getNumTablets(stmt, "nopk2"));
@@ -744,6 +767,13 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
   // Helpers
   //
 
+  private String colocatedPropsSql = ""
+      + "SELECT c.relname, ps.is_colocated, tg.grpname, ps.colocation_id "
+      + "FROM pg_class c, yb_table_properties(c.oid) ps "
+      + "LEFT JOIN pg_yb_tablegroup tg ON tg.oid = ps.tablegroup_oid "
+      + "WHERE c.relname LIKE 'normal_table%' OR  c.relname LIKE 'nopk%' "
+      + "ORDER BY c.oid";
+
   /**
    * Execute ALTER TABLE with the given alter spec, ensuring everything was migrated properly.
    */
@@ -855,12 +885,18 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
     assertRows(oldState.indexes, newState.indexes);
     assertRows(oldState.foreignKeys, newState.foreignKeys);
     assertRows(oldState.triggers, newState.triggers);
-    assertEquals(oldState.reloptions, newState.reloptions);
+
+    // Colocation ID does not persist through ALTER ADD PK.
+    Map<String, String> expectedReloptions = new TreeMap<>(oldState.reloptions);
+    assertEquals(expectedReloptions, newState.reloptions);
 
     Map<String, String> expectedYbProps = new TreeMap<>(oldState.ybProps);
     expectedYbProps.put("num_hash_key_columns", String.valueOf(expectedNumHashKeyCols));
     expectedYbProps.put("num_tablets", String.valueOf(expectedNumTablets));
-    assertEquals(expectedYbProps, newState.ybProps);
+    expectedYbProps.remove("colocation_id");
+    Map<String, String> actualYbProps = new TreeMap<>(newState.ybProps);
+    actualYbProps.remove("colocation_id");
+    assertEquals(expectedYbProps, actualYbProps);
   }
 
   private Map<String, String> getYbTableProperties(
@@ -911,6 +947,7 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       //      and dropped columns.
       //  * Index query doesn't include PK index.
       //  * Index query selects column names instead of attnums.
+      //  * Index query and definition filters out colocation ID (warning - brittle regexp!).
       //  * Attribute-related queries don't include attnum (replaced by ORDER BY).
       //  * Queries don't include tableoids because we don't care.
       //  * Queries don't include OIDs that are expected to change.
@@ -952,7 +989,10 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       PreparedStatement getIndexes = conn.prepareStatement(
           "SELECT t.relname AS indexname, "
               + "   inh.inhparent AS parentidx, "
-              + "   pg_catalog.pg_get_indexdef(i.indexrelid) AS indexdef, "
+              + "   REPLACE(REGEXP_REPLACE(pg_catalog.pg_get_indexdef(i.indexrelid),"
+              + "                          'colocation_id=''\\d+'',?',"
+              + "                          ''),"
+              + "           ' WITH ()', '') AS indexdef, "
               + "   i.indnkeyatts AS indnkeyatts, "
               + "   i.indnatts AS indnatts, "
               + "   ARRAY(SELECT a.attname FROM UNNEST(i.indkey) k "
@@ -965,7 +1005,10 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
               + "   pg_catalog.pg_get_constraintdef(c.oid, false) AS condef, "
               + "   (SELECT spcname FROM pg_catalog.pg_tablespace s WHERE s.oid = t.reltablespace)"
               + "     AS tablespace, "
-              + "   t.reloptions AS indreloptions, "
+              + "   array_remove(t.reloptions, 'colocation_id=' || ("
+              + "       SELECT option_value FROM pg_options_to_table(t.reloptions)"
+              + "       WHERE option_name = 'colocation_id')"
+              + "     ) AS indreloptions, "
               + "   (SELECT pg_catalog.array_agg(attnum ORDER BY attnum) "
               + "     FROM pg_catalog.pg_attribute "
               + "     WHERE attrelid = i.indexrelid AND "

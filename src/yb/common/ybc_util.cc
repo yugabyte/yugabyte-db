@@ -47,6 +47,14 @@ bool yb_force_global_transaction = false;
 
 bool suppress_nonpg_logs = false;
 
+bool yb_binary_restore = false;
+
+// If this is set in the user's session to a positive value, it will supersede the gflag
+// ysql_session_max_batch_size.
+int ysql_session_max_batch_size = 0;
+
+int ysql_max_in_flight_ops = 0;
+
 namespace yb {
 
 namespace {
@@ -262,6 +270,10 @@ bool YBCIsTxnConflictError(uint16_t txn_errcode) {
 
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode) {
   return txn_errcode == to_underlying(TransactionErrorCode::kSkipLocking);
+}
+
+uint16_t YBCGetTxnConflictErrorCode() {
+  return to_underlying(TransactionErrorCode::kConflict);
 }
 
 YBCStatus YBCInit(const char* argv0,

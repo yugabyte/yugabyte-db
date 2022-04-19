@@ -208,7 +208,7 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
   fs_opts.read_only = true;
   FsManager fs_manager(env, fs_opts);
 
-  RETURN_NOT_OK(fs_manager.Open());
+  RETURN_NOT_OK(fs_manager.CheckAndOpenFileSystemRoots());
   std::unique_ptr<LogReader> reader;
   RETURN_NOT_OK(LogReader::Open(env,
                                 scoped_refptr<LogIndex>(),

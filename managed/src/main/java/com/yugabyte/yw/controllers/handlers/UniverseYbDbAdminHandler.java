@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
@@ -44,6 +45,7 @@ public class UniverseYbDbAdminHandler {
 
   @Inject play.Configuration appConfig;
   @Inject ConfigHelper configHelper;
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
   @Inject YcqlQueryExecutor ycqlQueryExecutor;
 
@@ -65,7 +67,7 @@ public class UniverseYbDbAdminHandler {
 
   public void setDatabaseCredentials(
       Customer customer, Universe universe, DatabaseSecurityFormData dbCreds) {
-    if (!customer.code.equals("cloud")) {
+    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer type.");
     }
 
@@ -81,7 +83,7 @@ public class UniverseYbDbAdminHandler {
   }
 
   public void createUserInDB(Customer customer, Universe universe, DatabaseUserFormData data) {
-    if (!customer.code.equals("cloud")) {
+    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer type.");
     }
     data.validation();

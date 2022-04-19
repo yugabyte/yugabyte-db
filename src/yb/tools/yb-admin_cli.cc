@@ -44,6 +44,7 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
@@ -184,7 +185,7 @@ YB_DEFINE_ENUM(ListTabletsFlags, (JSON)(INCLUDE_FOLLOWERS));
 
 Status ClusterAdminCli::Run(int argc, char** argv) {
   const string prog_name = argv[0];
-  FLAGS_logtostderr = 1;
+  FLAGS_logtostderr = true;
   FLAGS_minloglevel = 2;
   ParseCommandLineFlags(&argc, &argv, true);
   InitGoogleLoggingSafe(prog_name.c_str());
@@ -842,6 +843,26 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         const string tablet_id = args[0];
         RETURN_NOT_OK_PREPEND(client->SplitTablet(tablet_id),
                               Format("Unable to start split of tablet $0", tablet_id));
+        return Status::OK();
+      });
+
+  Register(
+      "disable_tablet_splitting", " <disable_duration_ms>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const int64_t disable_duration_ms = VERIFY_RESULT(CheckedStoll(args[0]));
+        RETURN_NOT_OK_PREPEND(client->DisableTabletSplitting(disable_duration_ms),
+                              "Unable to disable tablet splitting");
+        return Status::OK();
+      });
+
+  Register(
+      "is_tablet_splitting_complete", "",
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->IsTabletSplittingComplete(),
+                              "Unable to check if tablet splitting is complete");
         return Status::OK();
       });
 

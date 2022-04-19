@@ -109,7 +109,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
     GenerateDataForRow(table_->schema(), 17 /* record_id */, &random_, req);
 
     session->Apply(insert);
-    RETURN_NOT_OK(session->Flush());
+    RETURN_NOT_OK(session->TEST_Flush());
     return Status::OK();
   }
 
@@ -131,7 +131,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 TEST_F(YBTabletUtilTest, VerifySingleKeyIsFound) {
   string output;
   ASSERT_OK(WriteData());
-  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAll));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
   string db_path = ASSERT_RESULT(GetTabletDbPath());
 
   vector<string> argv = {

@@ -56,10 +56,7 @@ extern const TransactionOperationContext kNonTransactionalOperationContext;
 
 // Generate a random primitive value.
 PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng);
-
-// Generate a random sequence of primitive values.
-std::vector<PrimitiveValue> GenRandomPrimitiveValues(RandomNumberGenerator* rng,
-                                                     int max_num = kMaxNumRandomDocKeyParts);
+ValueRef GenRandomPrimitiveValue(RandomNumberGenerator* rng, QLValuePB* holder);
 
 // Generate a "minimal" DocKey.
 DocKey CreateMinimalDocKey(RandomNumberGenerator* rng, UseHash use_hash);
@@ -197,7 +194,7 @@ class DocDBLoadGenerator {
   // intents.
   const ResolveIntentsDuringRead resolve_intents_;
 
-  std::vector<PrimitiveValue> possible_subkeys_;
+  std::vector<KeyEntryValue> possible_subkeys_;
   int iteration_;
   InMemDocDbState in_mem_docdb_;
 

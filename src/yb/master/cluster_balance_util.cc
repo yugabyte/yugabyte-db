@@ -177,15 +177,13 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     const tablet::RaftGroupStatePB& tablet_state = replica.state;
     const bool replica_is_stale = replica.IsStale();
     VLOG(2) << "Tablet " << tablet_id << " for table " << table_id_
-              << " is in state " << RaftGroupStatePB_Name(tablet_state);
+              << " is in state " << RaftGroupStatePB_Name(tablet_state) << " on peer " << ts_uuid;
     if (tablet_state == tablet::RUNNING) {
       RETURN_NOT_OK(AddRunningTablet(tablet_id, ts_uuid, replica.fs_data_dir));
     } else if (!replica_is_stale &&
                 (tablet_state == tablet::BOOTSTRAPPING || tablet_state == tablet::NOT_STARTED)) {
       // Keep track of transitioning state (not running, but not in a stopped or failed state).
       RETURN_NOT_OK(AddStartingTablet(tablet_id, ts_uuid));
-      VLOG(1) << "Increased total_starting to "
-                  << total_starting_ << " for tablet " << tablet_id << " and table " << table_id_;
       auto counter_it = meta_ts.path_to_starting_tablets_count.find(replica.fs_data_dir);
       if (counter_it != meta_ts.path_to_starting_tablets_count.end()) {
         ++counter_it->second;
@@ -413,8 +411,8 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
   // If we ask to use placement information, check against it.
   if (placement_info && !GetValidPlacement(to_ts, placement_info).has_value()) {
-    LOG(INFO) << "tablet server " << to_ts << " has invalid placement info. "
-              << "Not allowing it to take more tablets.";
+    YB_LOG_EVERY_N_SECS(INFO, 30) << "tablet server " << to_ts << " has invalid placement info. "
+                                  << "Not allowing it to take more tablets.";
     return false;
   }
   // If this server has a pending tablet delete, don't use it.
@@ -784,6 +782,8 @@ Status PerTableLoadState::AddStartingTablet(
     if (tablets_missing_replicas_.count(tablet_id) == 0) {
       tablets_over_replicated_.insert(tablet_id);
     }
+    VLOG(1) << "Increased total_starting to "
+                << total_starting_ << " for tablet " << tablet_id << " and table " << table_id_;
   }
   return Status::OK();
 }

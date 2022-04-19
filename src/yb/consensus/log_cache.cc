@@ -304,6 +304,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
                                << ", to_op_index: " << to_op_index
                                << ", max_size_bytes: " << max_size_bytes;
   ReadOpsResult result;
+  int64_t starting_op_segment_seq_num;
   result.preceding_op = VERIFY_RESULT(LookupOpId(after_op_index));
 
   std::unique_lock<simple_spinlock> l(lock_);
@@ -341,9 +342,21 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
 
       ReplicateMsgs raw_replicate_ptrs;
       RETURN_NOT_OK_PREPEND(
-        log_->GetLogReader()->ReadReplicatesInRange(
-            next_index, up_to, remaining_space, &raw_replicate_ptrs, deadline),
-        Substitute("Failed to read ops $0..$1", next_index, up_to));
+          log_->GetLogReader()->ReadReplicatesInRange(
+              next_index, up_to, remaining_space, &raw_replicate_ptrs, &starting_op_segment_seq_num,
+              &result.header_schema, &(result.header_schema_version), deadline),
+          Substitute("Failed to read ops $0..$1", next_index, up_to));
+
+      if ((starting_op_segment_seq_num != -1) && !result.header_schema.IsInitialized()) {
+        scoped_refptr<log::ReadableLogSegment> segment =
+            log_->GetLogReader()->GetSegmentBySequenceNumber(starting_op_segment_seq_num);
+
+        if (segment != nullptr && segment->header().has_unused_schema()) {
+          result.header_schema.CopyFrom(segment->header().unused_schema());
+          result.header_schema_version = segment->header().unused_schema_version();
+        }
+      }
+
       metrics_.disk_reads->IncrementBy(raw_replicate_ptrs.size());
       LOG_WITH_PREFIX_UNLOCKED(INFO)
           << "Successfully read " << raw_replicate_ptrs.size() << " ops from disk.";
@@ -358,10 +371,24 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
           break;
         }
         result.messages.push_back(msg);
+        if (msg->op_type() == consensus::OperationType::CHANGE_METADATA_OP) {
+          result.header_schema.CopyFrom(msg->change_metadata_request().schema());
+          result.header_schema_version = msg->change_metadata_request().schema_version();
+        }
         result.read_from_disk_size += current_message_size;
         next_index++;
       }
     } else {
+      starting_op_segment_seq_num = VERIFY_RESULT(log_->GetLogReader()->LookupHeader(next_index));
+
+      if ((starting_op_segment_seq_num != -1)) {
+        scoped_refptr<log::ReadableLogSegment> segment =
+            log_->GetLogReader()->GetSegmentBySequenceNumber(starting_op_segment_seq_num);
+        if (segment != nullptr && segment->header().has_unused_schema()) {
+          result.header_schema.CopyFrom(segment->header().unused_schema());
+          result.header_schema_version = segment->header().unused_schema_version();
+        }
+      }
       // Pull contiguous messages from the cache until the size limit is achieved.
       for (; iter != cache_.end(); ++iter) {
         if (to_op_index > 0 && next_index > to_op_index) {
@@ -380,11 +407,15 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
         }
 
         result.messages.push_back(msg);
+        if (msg->op_type() == consensus::OperationType::CHANGE_METADATA_OP) {
+          result.header_schema.CopyFrom(msg->change_metadata_request().schema());
+          result.header_schema_version = msg->change_metadata_request().schema_version();
+        }
         next_index++;
       }
     }
   }
-  result.have_more_messages = remaining_space < 0;
+  result.have_more_messages = HaveMoreMessages(remaining_space < 0);
   return result;
 }
 

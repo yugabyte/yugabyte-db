@@ -20,17 +20,23 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_path.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_compaction_context.h"
 #include "yb/rocksdb/compaction_filter.h"
 
 namespace yb {
 namespace docdb {
 
+void SetValueFromQLBinaryWrapper(
+  QLValuePB ql_value,
+  const int pg_data_type,
+  DatumMessagePB* cdc_datum_message = NULL);
+
 struct ExternalIntent {
   DocPath doc_path;
-  Value value;
+  std::string value;
 };
 
 // A wrapper around a RocksDB instance and provides utility functions on top of it, such as
@@ -40,10 +46,8 @@ struct ExternalIntent {
 class DocDBRocksDBUtil {
 
  public:
-  DocDBRocksDBUtil() {}
-  explicit DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior)
-      : init_marker_behavior_(init_marker_behavior) {
-  }
+  DocDBRocksDBUtil();
+  explicit DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior);
 
   virtual ~DocDBRocksDBUtil() {}
   virtual CHECKED_STATUS InitRocksDBDir() = 0;
@@ -110,13 +114,22 @@ class DocDBRocksDBUtil {
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
-      const Value& value,
+      const ValueRef& value,
+      HybridTime hybrid_time,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max()) {
+    return SetPrimitive(doc_path, ValueControlFields(), value, hybrid_time, read_ht);
+  }
+
+  CHECKED_STATUS SetPrimitive(
+      const DocPath& doc_path,
+      const ValueControlFields& control_fields,
+      const ValueRef& value,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
-      const PrimitiveValue& value,
+      const QLValuePB& value,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
@@ -128,34 +141,34 @@ class DocDBRocksDBUtil {
 
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
-      const SubDocument& value,
+      const ValueRef& value,
       HybridTime hybrid_time,
-      MonoDelta ttl = Value::kMaxTtl,
+      MonoDelta ttl = ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS ExtendSubDocument(
       const DocPath& doc_path,
-      const SubDocument& value,
+      const ValueRef& value,
       HybridTime hybrid_time,
-      MonoDelta ttl = Value::kMaxTtl,
+      MonoDelta ttl = ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS ExtendList(
       const DocPath& doc_path,
-      const SubDocument& value,
+      const ValueRef& value,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   CHECKED_STATUS ReplaceInList(
       const DocPath &doc_path,
       const int target_cql_index,
-      const SubDocument& value,
+      const ValueRef& value,
       const ReadHybridTime& read_ht,
       const HybridTime& hybrid_time,
       const rocksdb::QueryId query_id,
-      MonoDelta default_ttl = Value::kMaxTtl,
-      MonoDelta ttl = Value::kMaxTtl,
-      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
+      MonoDelta default_ttl = ValueControlFields::kMaxTtl,
+      MonoDelta ttl = ValueControlFields::kMaxTtl,
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
 
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,
@@ -221,7 +234,7 @@ class DocDBRocksDBUtil {
   std::shared_ptr<std::function<uint64_t()>> max_file_size_for_compaction_;
 
   rocksdb::WriteOptions write_options_;
-  Schema schema_;
+  DocReadContext doc_read_context_;
   boost::optional<TransactionId> current_txn_id_;
   mutable IntraTxnWriteId intra_txn_write_id_ = 0;
   IsolationLevel txn_isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;

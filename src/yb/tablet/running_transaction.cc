@@ -69,7 +69,7 @@ void RunningTransaction::AddReplicatedBatch(
   size_t batch_idx, boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
   VLOG_WITH_PREFIX(4) << __func__ << "(" << batch_idx << ")";
   replicated_batches_.Set(batch_idx);
-  encoded_replicated_batches->push_back(docdb::ValueTypeAsChar::kBitSet);
+  encoded_replicated_batches->push_back(docdb::KeyEntryTypeAsChar::kBitSet);
   replicated_batches_.EncodeTo(encoded_replicated_batches);
 }
 
@@ -303,9 +303,18 @@ void RunningTransaction::DoStatusReceived(const Status& status,
       return;
     }
 
-    if (response.status_hybrid_time().size() == 1 &&
-        response.status().size() == 1 &&
-        response.aborted_subtxn_set().size() == 1) {
+    if (response.status_hybrid_time().size() != 1 ||
+        response.status().size() != 1 ||
+        (response.aborted_subtxn_set().size() != 0 && response.aborted_subtxn_set().size() != 1)) {
+      LOG_WITH_PREFIX(DFATAL)
+          << "Wrong number of status, status hybrid time, or aborted subtxn set entries, "
+          << "exactly one entry expected: "
+          << response.ShortDebugString();
+    } else if (PREDICT_FALSE(response.aborted_subtxn_set().empty())) {
+      YB_LOG_EVERY_N(WARNING, 1)
+          << "Empty aborted_subtxn_set in transaction status response. "
+          << "This should only happen when nodes are on different versions, e.g. during upgrade.";
+    } else {
       auto aborted_subtxn_set_or_status = AbortedSubTransactionSet::FromPB(
           response.aborted_subtxn_set(0).set());
       if (aborted_subtxn_set_or_status.ok()) {
@@ -318,11 +327,6 @@ void RunningTransaction::DoStatusReceived(const Status& status,
             << "error - " << aborted_subtxn_set_or_status.status().ToString()
             << " response - " << response.ShortDebugString();
       }
-    } else {
-      LOG_WITH_PREFIX(DFATAL)
-          << "Wrong number of status, status hybrid time, or aborted subtxn set entries, "
-          << "exactly one entry expected: "
-          << response.ShortDebugString();
     }
 
     LOG_IF_WITH_PREFIX(DFATAL, response.coordinator_safe_time().size() > 1)
@@ -506,6 +510,11 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
     std::lock_guard<std::mutex> lock(context_.mutex_);
     context_.RemoveUnlocked(id(), RemoveReason::kLargeApplied, &min_running_notifier);
   }
+}
+
+void RunningTransaction::SetOpId(const OpId& id) {
+  opId.index = id.index;
+  opId.term = id.term;
 }
 
 bool RunningTransaction::ProcessingApply() const {

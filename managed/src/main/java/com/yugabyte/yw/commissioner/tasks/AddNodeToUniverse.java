@@ -14,13 +14,14 @@ import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -63,9 +64,6 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Update the DB to prevent other changes from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
@@ -76,17 +74,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
-      if (currentNode.state != NodeState.Removed && currentNode.state != NodeState.Decommissioned) {
-        String msg =
-            "Node "
-                + taskParams().nodeName
-                + " is not in removed or decommissioned state"
-                + ", but is in "
-                + currentNode.state
-                + ", so cannot be added.";
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
+      currentNode.validateActionOnState(NodeActionType.ADD);
 
       preTaskActions();
 
@@ -159,7 +147,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
               universe.name);
 
           // Set gflags for master.
-          createGFlagsOverrideTasks(node, ServerType.MASTER, true /* isShell */);
+          createGFlagsOverrideTasks(
+              node,
+              ServerType.MASTER,
+              true /* isShell */,
+              VmUpgradeTaskType.None,
+              false /*ignoreUseCustomImageConfig*/);
 
           // Start a shell master process.
           createStartMasterTasks(node).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
@@ -225,7 +218,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;

@@ -16,7 +16,6 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +32,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
 
   @InjectMocks private RestartUniverse restartUniverse;
 
-  private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE =
+  private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -41,6 +40,20 @@ public class RestartUniverseTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.WaitForFollowerLag,
+          TaskType.SetNodeState);
+
+  private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE_TSERVER =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.ModifyBlackList,
           TaskType.WaitForFollowerLag,
           TaskType.SetNodeState);
 
@@ -56,22 +69,13 @@ public class RestartUniverseTest extends UpgradeTaskTest {
     return submitTask(requestParams, TaskType.RestartUniverse, commissioner);
   }
 
-  private void assertCommonTasks(
-      Map<Integer, List<TaskInfo>> subTasksByPosition, int startPosition) {
-    int position = startPosition;
-    List<TaskType> commonNodeTasks =
-        new ArrayList<>(
-            ImmutableList.of(TaskType.LoadBalancerStateChange, TaskType.UniverseUpdateSucceeded));
-    for (TaskType commonNodeTask : commonNodeTasks) {
-      assertTaskType(subTasksByPosition.get(position), commonNodeTask);
-      position++;
-    }
-  }
-
   private int assertSequence(
       Map<Integer, List<TaskInfo>> subTasksByPosition, ServerType serverType, int startPosition) {
     int position = startPosition;
-    List<TaskType> taskSequence = ROLLING_RESTART_TASK_SEQUENCE;
+    List<TaskType> taskSequence =
+        serverType == MASTER
+            ? ROLLING_RESTART_TASK_SEQUENCE_MASTER
+            : ROLLING_RESTART_TASK_SEQUENCE_TSERVER;
     List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
     for (int nodeIdx : nodeOrder) {
       String nodeName = String.format("host-n%d", nodeIdx);
@@ -104,10 +108,9 @@ public class RestartUniverseTest extends UpgradeTaskTest {
 
     int position = 0;
     position = assertSequence(subTasksByPosition, MASTER, position);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     position = assertSequence(subTasksByPosition, TSERVER, position);
-    assertCommonTasks(subTasksByPosition, position);
-    assertEquals(49, position);
+    assertEquals(58, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

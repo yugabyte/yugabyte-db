@@ -38,20 +38,23 @@ using namespace std::literals;
 DEFINE_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
               "Delay for snapshot cleanup after deletion.");
 
-DEFINE_int64(max_concurrent_snapshot_rpcs, 0,
+DEFINE_int64(max_concurrent_snapshot_rpcs, -1,
              "Maximum number of tablet snapshot RPCs that can be outstanding. "
-             "Only used if its value is >= 0. Default value is 0 which means that "
+             "Only used if its value is >= 0. If its value is 0 then it means that "
              "INT_MAX number of snapshot rpcs can be concurrent. "
              "If its value is < 0 then the max_concurrent_snapshot_rpcs_per_tserver gflag and "
-             "the number of TServers in the primary cluster is used to determine "
+             "the number of TServers in the primary cluster are used to determine "
              "the number of maximum number of tablet snapshot RPCs that can be outstanding.");
 TAG_FLAG(max_concurrent_snapshot_rpcs, runtime);
 
-DEFINE_int64(max_concurrent_snapshot_rpcs_per_tserver, 5,
+DEFINE_int64(max_concurrent_snapshot_rpcs_per_tserver, 1,
              "Maximum number of tablet snapshot RPCs per tserver that can be outstanding. "
              "Only used if the value of the gflag max_concurrent_snapshot_rpcs is < 0. "
              "When used it is multiplied with the number of TServers in the active cluster "
-             "(not read-replicas) to obtain the total maximum concurrent snapshot RPCs.");
+             "(not read-replicas) to obtain the total maximum concurrent snapshot RPCs. If "
+             "the cluster config is not found and we are not able to determine the number of "
+             "live tservers then the total maximum concurrent snapshot RPCs is just the "
+             "value of this flag.");
 TAG_FLAG(max_concurrent_snapshot_rpcs_per_tserver, runtime);
 
 namespace yb {
@@ -141,7 +144,7 @@ Status SnapshotState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out) {
   auto pair = out->add_write_pairs();
   pair->set_key(encoded_key.AsSlice().cdata(), encoded_key.size());
   faststring value;
-  value.push_back(docdb::ValueTypeAsChar::kString);
+  value.push_back(docdb::ValueEntryTypeAsChar::kString);
   SysSnapshotEntryPB entry;
   RETURN_NOT_OK(ToEntryPB(&entry, ForClient::kFalse));
   pb_util::AppendToString(entry, &value);

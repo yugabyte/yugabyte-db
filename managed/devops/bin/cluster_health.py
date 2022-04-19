@@ -30,7 +30,7 @@ from six import string_types, PY2, PY3
 
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
-RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+).*"
+RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+|PRE_RELEASE).*"
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
@@ -174,24 +174,15 @@ class Report:
 ###################################################################################################
 def check_output(cmd, env):
     try:
-        timeout = CMD_TIMEOUT_SEC
-        command = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
-        while command.poll() is None and timeout > 0:
-            time.sleep(1)
-            timeout -= 1
-        if command.poll() is None and timeout <= 0:
-            command.kill()
-            command.wait()
-            return 'Error executing command {}: timeout occurred'.format(cmd)
-
-        output, stderr = command.communicate()
-        if not stderr:
-            return output.decode('utf-8').encode("ascii", "ignore").decode("ascii")
-        else:
-            return 'Error executing command {}: {}'.format(cmd, stderr)
-    except subprocess.CalledProcessError as e:
+        output = subprocess.check_output(
+            cmd, stderr=subprocess.STDOUT, env=env, timeout=CMD_TIMEOUT_SEC)
+        return str(output.decode('utf-8').encode("ascii", "ignore").decode("ascii"))
+    except subprocess.CalledProcessError as ex:
         return 'Error executing command {}: {}'.format(
-            cmd, e.output.decode("utf-8").encode("ascii", "ignore"))
+            cmd, ex.output.decode("utf-8").encode("ascii", "ignore"))
+    except subprocess.TimeoutExpired:
+        return 'Error: timed out executing command {} for {} seconds'.format(
+            cmd, CMD_TIMEOUT_SEC)
 
 
 def safe_pipe(command_str):
@@ -224,7 +215,7 @@ class NodeChecker():
                  start_time_ms, namespace_to_config, ysql_port, ycql_port, redis_port,
                  enable_tls_client, root_and_client_root_ca_same, ssl_protocol, enable_ysql,
                  enable_ysql_auth, master_http_port, tserver_http_port, ysql_server_http_port,
-                 collect_metrics_script, universe_version):
+                 collect_metrics_script, test_read_write, universe_version):
         self.node = node
         self.node_name = node_name
         self.master_index = master_index
@@ -253,6 +244,7 @@ class NodeChecker():
         self.tserver_http_port = tserver_http_port
         self.ysql_server_http_port = ysql_server_http_port
         self.collect_metrics_script = collect_metrics_script
+        self.test_read_write = test_read_write
         self.universe_version = universe_version
         self.additional_info = {}
 
@@ -325,7 +317,7 @@ class NodeChecker():
         return output
 
     def get_disk_utilization(self):
-        remote_cmd = 'df -hl -x squashfs 2>/dev/null'
+        remote_cmd = 'df -hl -x squashfs -x overlay 2>/dev/null'
         return self._remote_check_output(remote_cmd)
 
     def check_disk_utilization(self):
@@ -342,14 +334,23 @@ class NodeChecker():
         if len(lines) < 2:
             return e.fill_and_return_entry([output], True)
 
-        msgs.append(lines[0])
-        for line in lines[1:]:
+        found_header = False
+        for line in lines:
             msgs.append(line)
             if not line:
+                continue
+            if line.startswith("Filesystem"):
+                found_header = True
+                continue
+            if not found_header:
                 continue
             percentage = line.split()[4][:-1]
             if int(percentage) > DISK_UTILIZATION_THRESHOLD_PCT:
                 found_error = True
+
+        if not found_header:
+            return e.fill_and_return_entry([output], True)
+
         return e.fill_and_return_entry(msgs, found_error)
 
     def get_certificate_expiration_date(self, cert_path):
@@ -661,7 +662,7 @@ class NodeChecker():
         logging.info("Checking redis cli works for node {}".format(self.node))
         e = self._new_entry("Connectivity with redis-cli")
         redis_cli = '{}/bin/redis-cli'.format(YB_TSERVER_DIR)
-        remote_cmd = 'echo "ping" | {} -h {} -p {}'.format(redis_cli, self.node, self.redis_port)
+        remote_cmd = '{} -h {} -p {} ping'.format(redis_cli, self.node, self.redis_port)
 
         output = self._remote_check_output(remote_cmd).strip()
 
@@ -680,8 +681,8 @@ class NodeChecker():
             host = '__local_ysql_socket__'
             port_args = ""
 
-        ysqlsh_cmd = "{} -h {} {} -U yugabyte".format(
-            ysqlsh, host, port_args, '"sslmode=require"' if self.enable_tls_client else '')
+        ysqlsh_cmd = "{} {} -h {} {} -U yugabyte".format(
+            'env sslmode="require"' if (self.enable_tls_client) else '', ysqlsh, host, port_args, )
 
         return ysqlsh_cmd
 
@@ -711,7 +712,7 @@ class NodeChecker():
 
         errors = []
         output = self._remote_check_output(remote_cmd).strip()
-        if not (output.startswith('You are connected to database')):
+        if 'You are connected to database' not in output:
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
@@ -722,10 +723,12 @@ class NodeChecker():
         remote_cmd = "timedatectl status"
         output = self._remote_check_output(remote_cmd).strip()
 
-        clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: )|' +
-                            r'(systemd-timesyncd\.service active: ))(.*)$', output, re.MULTILINE)
+        clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: ))(.*)$',
+                            output, re.MULTILINE)
         if clock_re:
-            ntp_enabled_answer = clock_re.group(8)
+            ntp_enabled_answer = clock_re.group(7).strip()
+        elif "systemd-timesyncd.service active:" in output:  # Ignore this check, see PLAT-3373
+            ntp_enabled_answer = "yes"
         else:
             return e.fill_and_return_entry(["Error getting NTP state - incorrect answer format"],
                                            True)
@@ -740,7 +743,7 @@ class NodeChecker():
 
         clock_re = re.match(r'((.|\n)*)(NTP service: )(.*)$', output, re.MULTILINE)
         if clock_re:
-            ntp_service_answer = clock_re.group(4)
+            ntp_service_answer = clock_re.group(4).strip()
             # Oracle8 NTP service: n/a not supported anymore
             if ntp_service_answer in ("n/a"):
                 errors = []
@@ -748,7 +751,7 @@ class NodeChecker():
         clock_re = re.match(r'((.|\n)*)((NTP synchronized: )|(System clock synchronized: ))(.*)$',
                             output, re.MULTILINE)
         if clock_re:
-            ntp_synchronized_answer = clock_re.group(6)
+            ntp_synchronized_answer = clock_re.group(6).strip()
         else:
             return e.fill_and_return_entry([
                 "Error getting NTP synchronization state - incorrect answer format"], True)
@@ -759,6 +762,15 @@ class NodeChecker():
             else:
                 errors.append("Error getting NTP synchronization state {}"
                               .format(ntp_synchronized_answer))
+
+        # Check if a time sync service is running. Stderr redirection is necessary since
+        # "service does not exist" prints to stderr but should not error.
+        remote_cmd = ""
+        for ntp_service in ["chronyd", "ntp", "ntpd", "systemd-timesyncd"]:
+            remote_cmd = remote_cmd + "systemctl status " + ntp_service + " 2>&1; "
+        output = self._remote_check_output(remote_cmd).strip()
+        if "Active: active (running)" not in output:
+            errors.append("NTP service not running")
 
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
@@ -787,6 +799,7 @@ class NodeChecker():
         script_content = script_content.replace('{{YSQLSH_CMD_TEMPLATE}}', ysqlsh_cmd_template)
         script_content = script_content.replace('{{MASTER_INDEX}}', str(self.master_index))
         script_content = script_content.replace('{{TSERVER_INDEX}}', str(self.tserver_index))
+        script_content = script_content.replace('{{TEST_READ_WRITE}}', str(self.test_read_write))
 
         script_dir = os.path.dirname(os.path.abspath(self.collect_metrics_script))
         node_script = os.path.join(script_dir, "cluster_health_" + self.node + ".sh")
@@ -975,6 +988,7 @@ class Cluster():
         self.tserver_http_port = data["tserverHttpPort"]
         self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.collect_metrics_script = data["collectMetricsScript"]
+        self.test_read_write = data["testReadWrite"]
 
 
 class UniverseDefinition():
@@ -1034,7 +1048,8 @@ def main():
                         c.ycql_port, c.redis_port, c.enable_tls_client,
                         c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql,
                         c.enable_ysql_auth, c.master_http_port, c.tserver_http_port,
-                        c.ysql_server_http_port, c.collect_metrics_script, universe_version)
+                        c.ysql_server_http_port, c.collect_metrics_script, c.test_read_write,
+                        universe_version)
 
                 coordinator.add_precheck(checker, "check_openssl_availability")
                 coordinator.add_precheck(checker, "upload_collect_metrics_script")

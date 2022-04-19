@@ -46,6 +46,8 @@
 #include "yb/common/partition.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/dynamic_annotations.h"
@@ -78,7 +80,7 @@ struct TableInfo {
   TableType table_type;
 
   // The table schema, secondary index map, index info (for index table only) and schema version.
-  std::unique_ptr<Schema> schema;
+  const std::unique_ptr<docdb::DocReadContext> doc_read_context;
   std::unique_ptr<IndexMap> index_map;
   std::unique_ptr<IndexInfo> index_info;
   uint32_t schema_version = 0;
@@ -110,6 +112,7 @@ struct TableInfo {
             const IndexMap& index_map,
             const std::vector<DeletedColumn>& deleted_cols,
             uint32_t schema_version);
+  ~TableInfo();
 
   CHECKED_STATUS LoadFromPB(const TableInfoPB& pb);
   void ToPB(TableInfoPB* pb) const;
@@ -119,6 +122,8 @@ struct TableInfo {
     ToPB(&pb);
     return pb.ShortDebugString();
   }
+
+  const Schema& schema() const;
 };
 
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
@@ -337,6 +342,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   void RemoveTable(const TableId& table_id);
 
+  // Returns a list of all tables colocated on this tablet.
+  std::vector<TableId> GetAllColocatedTables();
+
   // Set / get the remote bootstrap / tablet data state.
   void set_tablet_data_state(TabletDataState state);
   TabletDataState tablet_data_state() const;
@@ -531,6 +539,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   HybridTime restoration_hybrid_time_ GUARDED_BY(data_mutex_) = HybridTime::kMin;
 
+  // SPLIT_OP ID designated for this tablet (so child tablets will have this unset until they've
+  // been split themselves).
   OpId split_op_id_ GUARDED_BY(data_mutex_);
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
 

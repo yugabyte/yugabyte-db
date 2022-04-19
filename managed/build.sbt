@@ -128,7 +128,7 @@ libraryDependencies ++= Seq(
   "org.mockito" % "mockito-core" % "2.13.0",
   "org.mockito" % "mockito-inline" % "3.8.0" % Test,
   "org.mindrot" % "jbcrypt" % "0.4",
-  "org.postgresql" % "postgresql" % "42.2.23",
+  "org.postgresql" % "postgresql" % "42.2.25",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
   "org.apache.commons" % "commons-compress" % "1.21",
@@ -171,8 +171,8 @@ libraryDependencies ++= Seq(
   "commons-codec" % "commons-codec" % "1.15",
   "com.google.cloud" % "google-cloud-storage" % "2.2.1",
   "org.projectlombok" % "lombok" % "1.18.20",
-  "com.squareup.okhttp3" % "okhttp" % "4.9.1",
-  "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test,
+  "com.squareup.okhttp3" % "okhttp" % "4.9.2",
+  "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.kamon" %% "kamon-bundle" % "2.2.2",
   "io.kamon" %% "kamon-prometheus" % "2.2.2",
   "org.unix4j" % "unix4j-command" % "0.6",
@@ -347,6 +347,16 @@ lazy val pythongen = project.in(file("client/python"))
     openApiConfigFile := "client/python/openapi-python-config.json"
   )
 
+// Generate a Go API client.
+lazy val gogen = project.in(file("client/go"))
+  .settings(
+    openApiInputSpec := "src/main/resources/swagger.json",
+    openApiGeneratorName := "go",
+    openApiOutputDir := "client/go/generated",
+    openApiValidateSpec := SettingDisabled,
+    openApiConfigFile := "client/go/openapi-go-config.json"
+  )
+
 packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate).value
 
 runPlatformTask := {
@@ -365,7 +375,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.15-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.16-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:
@@ -378,7 +388,8 @@ libraryDependencies ++= Seq(
   "io.netty" % "netty" % "3.10.6.Final",
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.44.Final",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
-  "org.slf4j" % "slf4j-ext" % "1.7.26"
+  "org.slf4j" % "slf4j-ext" % "1.7.26",
+  "net.minidev" % "json-smart" % "2.4.8"
 )
 // https://mvnrepository.com/artifact/eu.unicredit/sbt-swagger-codegen-lib
 //libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
@@ -484,9 +495,22 @@ swaggerGen := Def.taskDyn {
       .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file"),
     (javagen / openApiGenerate),
     compileJavaGenClient,
-    (pythongen / openApiGenerate)
+    (pythongen / openApiGenerate),
+    (gogen / openApiGenerate)
   )
 }.value
 
 // TODO: Should we trigger swagger gen on compile??
 // swaggerGen := swaggerGen.triggeredBy(compile in Compile).value
+
+val grafanaGen: TaskKey[Unit] = taskKey[Unit](
+  "generate dashboard.json"
+)
+
+grafanaGen := Def.taskDyn {
+  val file = (resourceDirectory in Compile).value / "metric" / "Dashboard.json"
+  Def.sequential(
+    (runMain in Test)
+      .toTask(s" com.yugabyte.yw.controllers.GrafanaGenTest $file")
+  )
+}.value

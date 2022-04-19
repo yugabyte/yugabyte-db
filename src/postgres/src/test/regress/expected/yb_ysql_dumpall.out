@@ -13,6 +13,8 @@ SET standard_conforming_strings = on;
 
 CREATE ROLE postgres;
 ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
+CREATE ROLE yb_db_admin;
+ALTER ROLE yb_db_admin WITH NOSUPERUSER NOINHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 CREATE ROLE yb_extension;
 ALTER ROLE yb_extension WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 CREATE ROLE yb_fdw;
@@ -39,9 +41,10 @@ CREATE TABLESPACE z OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"n
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.5.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.5.1.0-b0
+-- Dumped from database version 11.2-YB-2.11.3.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.11.3.0-b0
 
+SET yb_binary_restore = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -51,6 +54,7 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
+SET yb_enable_create_with_table_oid = true;
 
 --
 -- YSQL database dump complete
@@ -62,9 +66,10 @@ SET row_security = off;
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.5.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.5.1.0-b0
+-- Dumped from database version 11.2-YB-2.11.3.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.11.3.0-b0
 
+SET yb_binary_restore = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -74,6 +79,7 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
+SET yb_enable_create_with_table_oid = true;
 
 --
 -- YSQL database dump complete
@@ -83,9 +89,10 @@ SET row_security = off;
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.5.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.5.1.0-b0
+-- Dumped from database version 11.2-YB-2.11.3.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.11.3.0-b0
 
+SET yb_binary_restore = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -95,6 +102,7 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
+SET yb_enable_create_with_table_oid = true;
 
 --
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
@@ -107,6 +115,7 @@ ALTER DATABASE system_platform OWNER TO postgres;
 
 \connect system_platform
 
+SET yb_binary_restore = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -116,6 +125,7 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
+SET yb_enable_create_with_table_oid = true;
 
 --
 -- Name: DATABASE system_platform; Type: COMMENT; Schema: -; Owner: postgres
@@ -132,9 +142,10 @@ COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.5.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.5.1.0-b0
+-- Dumped from database version 11.2-YB-2.11.3.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.11.3.0-b0
 
+SET yb_binary_restore = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -144,6 +155,7 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
+SET yb_enable_create_with_table_oid = true;
 
 --
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
@@ -156,6 +168,7 @@ ALTER DATABASE yugabyte OWNER TO postgres;
 
 \connect yugabyte
 
+SET yb_binary_restore = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -165,6 +178,7 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
+SET yb_enable_create_with_table_oid = true;
 
 --
 -- Name: DATABASE yugabyte; Type: COMMENT; Schema: -; Owner: postgres
@@ -181,9 +195,18 @@ SET default_with_oids = false;
 -- Name: table1; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: x
 --
 
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16390'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16389'::pg_catalog.oid);
+
 CREATE TABLE public.table1 (
     id integer
-);
+)
+SPLIT INTO 3 TABLETS;
 
 
 ALTER TABLE public.table1 OWNER TO yugabyte_test;
@@ -194,9 +217,18 @@ SET default_tablespace = z;
 -- Name: table2; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: z
 --
 
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16394'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16393'::pg_catalog.oid);
+
 CREATE TABLE public.table2 (
     name character varying
-);
+)
+SPLIT INTO 3 TABLETS;
 
 
 ALTER TABLE public.table2 OWNER TO yugabyte_test;
@@ -221,7 +253,7 @@ COPY public.table2 (name) FROM stdin;
 -- Name: idx1; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: z
 --
 
-CREATE INDEX idx1 ON public.table1 USING lsm (id HASH);
+CREATE INDEX idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
 
 
 SET default_tablespace = x;
@@ -230,7 +262,7 @@ SET default_tablespace = x;
 -- Name: idx2; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: x
 --
 
-CREATE INDEX idx2 ON public.table2 USING lsm (name HASH);
+CREATE INDEX idx2 ON public.table2 USING lsm (name HASH) SPLIT INTO 3 TABLETS;
 
 
 --

@@ -1105,3 +1105,2609 @@ SELECT * FROM pk_int WHERE c0 > ALL(ARRAY[3, 4]);
  c0
 ----
 (0 rows)
+
+-- test row comparison expressions
+CREATE TABLE pk_range_int_asc (r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc, r2 asc, r3 asc));
+INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (2,3,2);
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=67 loops=1)
+   Index Cond: (ROW(r1, r2, r3) <= ROW(2, 3, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (2,3,2);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  0 |  0 |  1 |  1
+  0 |  0 |  2 |  2
+  0 |  0 |  3 |  3
+  0 |  0 |  4 |  4
+  0 |  1 |  0 |  5
+  0 |  1 |  1 |  6
+  0 |  1 |  2 |  7
+  0 |  1 |  3 |  8
+  0 |  1 |  4 |  9
+  0 |  2 |  0 | 10
+  0 |  2 |  1 | 11
+  0 |  2 |  2 | 12
+  0 |  2 |  3 | 13
+  0 |  2 |  4 | 14
+  0 |  3 |  0 | 15
+  0 |  3 |  1 | 16
+  0 |  3 |  2 | 17
+  0 |  3 |  3 | 18
+  0 |  3 |  4 | 19
+  0 |  4 |  0 | 20
+  0 |  4 |  1 | 21
+  0 |  4 |  2 | 22
+  0 |  4 |  3 | 23
+  0 |  4 |  4 | 24
+  1 |  0 |  0 | 25
+  1 |  0 |  1 | 26
+  1 |  0 |  2 | 27
+  1 |  0 |  3 | 28
+  1 |  0 |  4 | 29
+  1 |  1 |  0 | 30
+  1 |  1 |  1 | 31
+  1 |  1 |  2 | 32
+  1 |  1 |  3 | 33
+  1 |  1 |  4 | 34
+  1 |  2 |  0 | 35
+  1 |  2 |  1 | 36
+  1 |  2 |  2 | 37
+  1 |  2 |  3 | 38
+  1 |  2 |  4 | 39
+  1 |  3 |  0 | 40
+  1 |  3 |  1 | 41
+  1 |  3 |  2 | 42
+  1 |  3 |  3 | 43
+  1 |  3 |  4 | 44
+  1 |  4 |  0 | 45
+  1 |  4 |  1 | 46
+  1 |  4 |  2 | 47
+  1 |  4 |  3 | 48
+  1 |  4 |  4 | 49
+  2 |  0 |  0 | 50
+  2 |  0 |  1 | 51
+  2 |  0 |  2 | 52
+  2 |  0 |  3 | 53
+  2 |  0 |  4 | 54
+  2 |  1 |  0 | 55
+  2 |  1 |  1 | 56
+  2 |  1 |  2 | 57
+  2 |  1 |  3 | 58
+  2 |  1 |  4 | 59
+  2 |  2 |  0 | 60
+  2 |  2 |  1 | 61
+  2 |  2 |  2 | 62
+  2 |  2 |  3 | 63
+  2 |  2 |  4 | 64
+  2 |  3 |  0 | 65
+  2 |  3 |  1 | 66
+  2 |  3 |  2 | 67
+(67 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, v, r3) <= (2,3,60,1);
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=64 loops=1)
+   Index Cond: (ROW(r1, r2) <= ROW(2, 3))
+   Filter: (ROW(r1, r2, v, r3) <= ROW(2, 3, 60, 1))
+   Rows Removed by Filter: 5
+(4 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, v, r3) <= (2,3,60,1);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  0 |  0 |  1 |  1
+  0 |  0 |  2 |  2
+  0 |  0 |  3 |  3
+  0 |  0 |  4 |  4
+  0 |  1 |  0 |  5
+  0 |  1 |  1 |  6
+  0 |  1 |  2 |  7
+  0 |  1 |  3 |  8
+  0 |  1 |  4 |  9
+  0 |  2 |  0 | 10
+  0 |  2 |  1 | 11
+  0 |  2 |  2 | 12
+  0 |  2 |  3 | 13
+  0 |  2 |  4 | 14
+  0 |  3 |  0 | 15
+  0 |  3 |  1 | 16
+  0 |  3 |  2 | 17
+  0 |  3 |  3 | 18
+  0 |  3 |  4 | 19
+  0 |  4 |  0 | 20
+  0 |  4 |  1 | 21
+  0 |  4 |  2 | 22
+  0 |  4 |  3 | 23
+  0 |  4 |  4 | 24
+  1 |  0 |  0 | 25
+  1 |  0 |  1 | 26
+  1 |  0 |  2 | 27
+  1 |  0 |  3 | 28
+  1 |  0 |  4 | 29
+  1 |  1 |  0 | 30
+  1 |  1 |  1 | 31
+  1 |  1 |  2 | 32
+  1 |  1 |  3 | 33
+  1 |  1 |  4 | 34
+  1 |  2 |  0 | 35
+  1 |  2 |  1 | 36
+  1 |  2 |  2 | 37
+  1 |  2 |  3 | 38
+  1 |  2 |  4 | 39
+  1 |  3 |  0 | 40
+  1 |  3 |  1 | 41
+  1 |  3 |  2 | 42
+  1 |  3 |  3 | 43
+  1 |  3 |  4 | 44
+  1 |  4 |  0 | 45
+  1 |  4 |  1 | 46
+  1 |  4 |  2 | 47
+  1 |  4 |  3 | 48
+  1 |  4 |  4 | 49
+  2 |  0 |  0 | 50
+  2 |  0 |  1 | 51
+  2 |  0 |  2 | 52
+  2 |  0 |  3 | 53
+  2 |  0 |  4 | 54
+  2 |  1 |  0 | 55
+  2 |  1 |  1 | 56
+  2 |  1 |  2 | 57
+  2 |  1 |  3 | 58
+  2 |  1 |  4 | 59
+  2 |  2 |  0 | 60
+  2 |  2 |  1 | 61
+  2 |  2 |  2 | 62
+  2 |  2 |  3 | 63
+  2 |  2 |  4 | 64
+(64 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) < (2,3,2);
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=66 loops=1)
+   Index Cond: (ROW(r1, r2, r3) < ROW(2, 3, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) < (2,3,2);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  0 |  0 |  1 |  1
+  0 |  0 |  2 |  2
+  0 |  0 |  3 |  3
+  0 |  0 |  4 |  4
+  0 |  1 |  0 |  5
+  0 |  1 |  1 |  6
+  0 |  1 |  2 |  7
+  0 |  1 |  3 |  8
+  0 |  1 |  4 |  9
+  0 |  2 |  0 | 10
+  0 |  2 |  1 | 11
+  0 |  2 |  2 | 12
+  0 |  2 |  3 | 13
+  0 |  2 |  4 | 14
+  0 |  3 |  0 | 15
+  0 |  3 |  1 | 16
+  0 |  3 |  2 | 17
+  0 |  3 |  3 | 18
+  0 |  3 |  4 | 19
+  0 |  4 |  0 | 20
+  0 |  4 |  1 | 21
+  0 |  4 |  2 | 22
+  0 |  4 |  3 | 23
+  0 |  4 |  4 | 24
+  1 |  0 |  0 | 25
+  1 |  0 |  1 | 26
+  1 |  0 |  2 | 27
+  1 |  0 |  3 | 28
+  1 |  0 |  4 | 29
+  1 |  1 |  0 | 30
+  1 |  1 |  1 | 31
+  1 |  1 |  2 | 32
+  1 |  1 |  3 | 33
+  1 |  1 |  4 | 34
+  1 |  2 |  0 | 35
+  1 |  2 |  1 | 36
+  1 |  2 |  2 | 37
+  1 |  2 |  3 | 38
+  1 |  2 |  4 | 39
+  1 |  3 |  0 | 40
+  1 |  3 |  1 | 41
+  1 |  3 |  2 | 42
+  1 |  3 |  3 | 43
+  1 |  3 |  4 | 44
+  1 |  4 |  0 | 45
+  1 |  4 |  1 | 46
+  1 |  4 |  2 | 47
+  1 |  4 |  3 | 48
+  1 |  4 |  4 | 49
+  2 |  0 |  0 | 50
+  2 |  0 |  1 | 51
+  2 |  0 |  2 | 52
+  2 |  0 |  3 | 53
+  2 |  0 |  4 | 54
+  2 |  1 |  0 | 55
+  2 |  1 |  1 | 56
+  2 |  1 |  2 | 57
+  2 |  1 |  3 | 58
+  2 |  1 |  4 | 59
+  2 |  2 |  0 | 60
+  2 |  2 |  1 | 61
+  2 |  2 |  2 | 62
+  2 |  2 |  3 | 63
+  2 |  2 |  4 | 64
+  2 |  3 |  0 | 65
+  2 |  3 |  1 | 66
+(66 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (3,3,2);
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=92 loops=1)
+   Index Cond: (ROW(r1, r2, r3) <= ROW(3, 3, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (3,3,2);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  0 |  0 |  1 |  1
+  0 |  0 |  2 |  2
+  0 |  0 |  3 |  3
+  0 |  0 |  4 |  4
+  0 |  1 |  0 |  5
+  0 |  1 |  1 |  6
+  0 |  1 |  2 |  7
+  0 |  1 |  3 |  8
+  0 |  1 |  4 |  9
+  0 |  2 |  0 | 10
+  0 |  2 |  1 | 11
+  0 |  2 |  2 | 12
+  0 |  2 |  3 | 13
+  0 |  2 |  4 | 14
+  0 |  3 |  0 | 15
+  0 |  3 |  1 | 16
+  0 |  3 |  2 | 17
+  0 |  3 |  3 | 18
+  0 |  3 |  4 | 19
+  0 |  4 |  0 | 20
+  0 |  4 |  1 | 21
+  0 |  4 |  2 | 22
+  0 |  4 |  3 | 23
+  0 |  4 |  4 | 24
+  1 |  0 |  0 | 25
+  1 |  0 |  1 | 26
+  1 |  0 |  2 | 27
+  1 |  0 |  3 | 28
+  1 |  0 |  4 | 29
+  1 |  1 |  0 | 30
+  1 |  1 |  1 | 31
+  1 |  1 |  2 | 32
+  1 |  1 |  3 | 33
+  1 |  1 |  4 | 34
+  1 |  2 |  0 | 35
+  1 |  2 |  1 | 36
+  1 |  2 |  2 | 37
+  1 |  2 |  3 | 38
+  1 |  2 |  4 | 39
+  1 |  3 |  0 | 40
+  1 |  3 |  1 | 41
+  1 |  3 |  2 | 42
+  1 |  3 |  3 | 43
+  1 |  3 |  4 | 44
+  1 |  4 |  0 | 45
+  1 |  4 |  1 | 46
+  1 |  4 |  2 | 47
+  1 |  4 |  3 | 48
+  1 |  4 |  4 | 49
+  2 |  0 |  0 | 50
+  2 |  0 |  1 | 51
+  2 |  0 |  2 | 52
+  2 |  0 |  3 | 53
+  2 |  0 |  4 | 54
+  2 |  1 |  0 | 55
+  2 |  1 |  1 | 56
+  2 |  1 |  2 | 57
+  2 |  1 |  3 | 58
+  2 |  1 |  4 | 59
+  2 |  2 |  0 | 60
+  2 |  2 |  1 | 61
+  2 |  2 |  2 | 62
+  2 |  2 |  3 | 63
+  2 |  2 |  4 | 64
+  2 |  3 |  0 | 65
+  2 |  3 |  1 | 66
+  2 |  3 |  2 | 67
+  2 |  3 |  3 | 68
+  2 |  3 |  4 | 69
+  2 |  4 |  0 | 70
+  2 |  4 |  1 | 71
+  2 |  4 |  2 | 72
+  2 |  4 |  3 | 73
+  2 |  4 |  4 | 74
+  3 |  0 |  0 | 75
+  3 |  0 |  1 | 76
+  3 |  0 |  2 | 77
+  3 |  0 |  3 | 78
+  3 |  0 |  4 | 79
+  3 |  1 |  0 | 80
+  3 |  1 |  1 | 81
+  3 |  1 |  2 | 82
+  3 |  1 |  3 | 83
+  3 |  1 |  4 | 84
+  3 |  2 |  0 | 85
+  3 |  2 |  1 | 86
+  3 |  2 |  2 | 87
+  3 |  2 |  3 | 88
+  3 |  2 |  4 | 89
+  3 |  3 |  0 | 90
+  3 |  3 |  1 | 91
+  3 |  3 |  2 | 92
+(92 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (3,3,2);
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=34 loops=1)
+   Index Cond: (ROW(r1, r2, r3) >= ROW(3, 3, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (3,3,2);
+ r1 | r2 | r3 |  v  
+----+----+----+-----
+  3 |  3 |  2 |  92
+  3 |  3 |  3 |  93
+  3 |  3 |  4 |  94
+  3 |  4 |  0 |  95
+  3 |  4 |  1 |  96
+  3 |  4 |  2 |  97
+  3 |  4 |  3 |  98
+  3 |  4 |  4 |  99
+  4 |  0 |  0 | 100
+  4 |  0 |  1 | 101
+  4 |  0 |  2 | 102
+  4 |  0 |  3 | 103
+  4 |  0 |  4 | 104
+  4 |  1 |  0 | 105
+  4 |  1 |  1 | 106
+  4 |  1 |  2 | 107
+  4 |  1 |  3 | 108
+  4 |  1 |  4 | 109
+  4 |  2 |  0 | 110
+  4 |  2 |  1 | 111
+  4 |  2 |  2 | 112
+  4 |  2 |  3 | 113
+  4 |  2 |  4 | 114
+  4 |  3 |  0 | 115
+  4 |  3 |  1 | 116
+  4 |  3 |  2 | 117
+  4 |  3 |  3 | 118
+  4 |  3 |  4 | 119
+  4 |  4 |  0 | 120
+  4 |  4 |  1 | 121
+  4 |  4 |  2 | 122
+  4 |  4 |  3 | 123
+  4 |  4 |  4 | 124
+  5 |  0 |  0 | 125
+(34 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) > (3,3,2);
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=33 loops=1)
+   Index Cond: (ROW(r1, r2, r3) > ROW(3, 3, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) > (3,3,2);
+ r1 | r2 | r3 |  v  
+----+----+----+-----
+  3 |  3 |  3 |  93
+  3 |  3 |  4 |  94
+  3 |  4 |  0 |  95
+  3 |  4 |  1 |  96
+  3 |  4 |  2 |  97
+  3 |  4 |  3 |  98
+  3 |  4 |  4 |  99
+  4 |  0 |  0 | 100
+  4 |  0 |  1 | 101
+  4 |  0 |  2 | 102
+  4 |  0 |  3 | 103
+  4 |  0 |  4 | 104
+  4 |  1 |  0 | 105
+  4 |  1 |  1 | 106
+  4 |  1 |  2 | 107
+  4 |  1 |  3 | 108
+  4 |  1 |  4 | 109
+  4 |  2 |  0 | 110
+  4 |  2 |  1 | 111
+  4 |  2 |  2 | 112
+  4 |  2 |  3 | 113
+  4 |  2 |  4 | 114
+  4 |  3 |  0 | 115
+  4 |  3 |  1 | 116
+  4 |  3 |  2 | 117
+  4 |  3 |  3 | 118
+  4 |  3 |  4 | 119
+  4 |  4 |  0 | 120
+  4 |  4 |  1 | 121
+  4 |  4 |  2 | 122
+  4 |  4 |  3 | 123
+  4 |  4 |  4 | 124
+  5 |  0 |  0 | 125
+(33 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (1,4,5) AND (r1, r2, r3) <= (2,4,5);
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=25 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 4, 5)) AND (ROW(r1, r2, r3) <= ROW(2, 4, 5)))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (1,4,5) AND (r1, r2, r3) <= (2,4,5);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  2 |  0 |  0 | 50
+  2 |  0 |  1 | 51
+  2 |  0 |  2 | 52
+  2 |  0 |  3 | 53
+  2 |  0 |  4 | 54
+  2 |  1 |  0 | 55
+  2 |  1 |  1 | 56
+  2 |  1 |  2 | 57
+  2 |  1 |  3 | 58
+  2 |  1 |  4 | 59
+  2 |  2 |  0 | 60
+  2 |  2 |  1 | 61
+  2 |  2 |  2 | 62
+  2 |  2 |  3 | 63
+  2 |  2 |  4 | 64
+  2 |  3 |  0 | 65
+  2 |  3 |  1 | 66
+  2 |  3 |  2 | 67
+  2 |  3 |  3 | 68
+  2 |  3 |  4 | 69
+  2 |  4 |  0 | 70
+  2 |  4 |  1 | 71
+  2 |  4 |  2 | 72
+  2 |  4 |  3 | 73
+  2 |  4 |  4 | 74
+(25 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (1,2,3) AND (r1, r2, r3) <= (1,3,2) AND r3 IN (3,2,6);
+                                                          QUERY PLAN                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=2 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 2, 3)) AND (ROW(r1, r2, r3) <= ROW(1, 3, 2)) AND (r3 = ANY ('{3,2,6}'::integer[])))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (1,2,3) AND (r1, r2, r3) <= (1,3,2) AND r3 IN (3,2,6);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  1 |  2 |  3 | 38
+  1 |  3 |  2 | 42
+(2 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (1,1,5) AND (r1, r2, r3) <= (1,4,5) ORDER BY r1 DESC, r2 DESC, r3 DESC;
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Index Scan Backward using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=15 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 1, 5)) AND (ROW(r1, r2, r3) <= ROW(1, 4, 5)))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (1,1,5) AND (r1, r2, r3) <= (1,4,5) ORDER BY r1 DESC, r2 DESC, r3 DESC;
+ r1 | r2 | r3 | v  
+----+----+----+----
+  1 |  4 |  4 | 49
+  1 |  4 |  3 | 48
+  1 |  4 |  2 | 47
+  1 |  4 |  1 | 46
+  1 |  4 |  0 | 45
+  1 |  3 |  4 | 44
+  1 |  3 |  3 | 43
+  1 |  3 |  2 | 42
+  1 |  3 |  1 | 41
+  1 |  3 |  0 | 40
+  1 |  2 |  4 | 39
+  1 |  2 |  3 | 38
+  1 |  2 |  2 | 37
+  1 |  2 |  1 | 36
+  1 |  2 |  0 | 35
+(15 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) = (1,6,5);
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=0 loops=1)
+   Index Cond: ((r1 = 1) AND (r2 = 6) AND (r3 = 5))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) = (1,6,5);
+ r1 | r2 | r3 | v 
+----+----+----+---
+(0 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,6,5) AND (r1,r2,r3) < (1,6,5);
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=49 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) <= ROW(1, 6, 5)) AND (ROW(r1, r2, r3) < ROW(1, 6, 5)))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,6,5) AND (r1,r2,r3) < (1,6,5);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  0 |  0 |  1 |  1
+  0 |  0 |  2 |  2
+  0 |  0 |  3 |  3
+  0 |  0 |  4 |  4
+  0 |  1 |  0 |  5
+  0 |  1 |  1 |  6
+  0 |  1 |  2 |  7
+  0 |  1 |  3 |  8
+  0 |  1 |  4 |  9
+  0 |  2 |  0 | 10
+  0 |  2 |  1 | 11
+  0 |  2 |  2 | 12
+  0 |  2 |  3 | 13
+  0 |  2 |  4 | 14
+  0 |  3 |  0 | 15
+  0 |  3 |  1 | 16
+  0 |  3 |  2 | 17
+  0 |  3 |  3 | 18
+  0 |  3 |  4 | 19
+  0 |  4 |  0 | 20
+  0 |  4 |  1 | 21
+  0 |  4 |  2 | 22
+  0 |  4 |  3 | 23
+  0 |  4 |  4 | 24
+  1 |  0 |  0 | 25
+  1 |  0 |  1 | 26
+  1 |  0 |  2 | 27
+  1 |  0 |  3 | 28
+  1 |  0 |  4 | 29
+  1 |  1 |  0 | 30
+  1 |  1 |  1 | 31
+  1 |  1 |  2 | 32
+  1 |  1 |  3 | 33
+  1 |  1 |  4 | 34
+  1 |  2 |  0 | 35
+  1 |  2 |  1 | 36
+  1 |  2 |  2 | 37
+  1 |  2 |  3 | 38
+  1 |  2 |  4 | 39
+  1 |  3 |  0 | 40
+  1 |  3 |  1 | 41
+  1 |  3 |  2 | 42
+  1 |  3 |  3 | 43
+  1 |  3 |  4 | 44
+  1 |  4 |  0 | 45
+  1 |  4 |  1 | 46
+  1 |  4 |  2 | 47
+  1 |  4 |  3 | 48
+  1 |  4 |  4 | 49
+(49 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) > (1,2,3) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) >= (1,2,3);
+                                                                                               QUERY PLAN                                                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=0 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) <= ROW(1, 1, 5)) AND (ROW(r1, r2, r3) < ROW(1, 2, 4)) AND (ROW(r1, r2, r3) > ROW(1, 2, 3)) AND (ROW(r1, r2, r3) < ROW(1, 2, 4)) AND (ROW(r1, r2, r3) >= ROW(1, 2, 3)))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) > (1,2,3) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) >= (1,2,3);
+ r1 | r2 | r3 | v 
+----+----+----+---
+(0 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=4 loops=1)
+   Index Cond: ((ROW(r1, r3) <= ROW(1, 3)) AND (ROW(r1, r2) < ROW(1, 3)) AND (ROW(r1, r2) >= ROW(1, 2)))
+   Rows Removed by Index Recheck: 6
+(3 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  1 |  2 |  0 | 35
+  1 |  2 |  1 | 36
+  1 |  2 |  2 | 37
+  1 |  2 |  3 | 38
+(4 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);
+                                                                   QUERY PLAN                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=1 loops=1)
+   Index Cond: ((ROW(r1, r3) <= ROW(1, 3)) AND (ROW(r1, r2) < ROW(1, 3)) AND (ROW(r1, r2) >= ROW(1, 2)) AND (r1 = 1) AND (r2 = 2) AND (r3 = 3))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  1 |  2 |  3 | 38
+(1 row)
+
+DROP TABLE pk_range_int_asc;
+-- test row comparison expressions where we have differing column orderings
+CREATE TABLE pk_range_asc_desc_asc (r1 BIGINT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc, r2 desc, r3 asc));
+INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) <= (2,3,2);
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=67 loops=1)
+   Index Cond: (ROW(r1, r2, r3) <= ROW(2, 3, 2))
+   Rows Removed by Index Recheck: 7
+(3 rows)
+
+SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) <= (2,3,2);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  0 |  4 |  0 | 20
+  0 |  4 |  1 | 21
+  0 |  4 |  2 | 22
+  0 |  4 |  3 | 23
+  0 |  4 |  4 | 24
+  0 |  3 |  0 | 15
+  0 |  3 |  1 | 16
+  0 |  3 |  2 | 17
+  0 |  3 |  3 | 18
+  0 |  3 |  4 | 19
+  0 |  2 |  0 | 10
+  0 |  2 |  1 | 11
+  0 |  2 |  2 | 12
+  0 |  2 |  3 | 13
+  0 |  2 |  4 | 14
+  0 |  1 |  0 |  5
+  0 |  1 |  1 |  6
+  0 |  1 |  2 |  7
+  0 |  1 |  3 |  8
+  0 |  1 |  4 |  9
+  0 |  0 |  1 |  1
+  0 |  0 |  2 |  2
+  0 |  0 |  3 |  3
+  0 |  0 |  4 |  4
+  1 |  4 |  0 | 45
+  1 |  4 |  1 | 46
+  1 |  4 |  2 | 47
+  1 |  4 |  3 | 48
+  1 |  4 |  4 | 49
+  1 |  3 |  0 | 40
+  1 |  3 |  1 | 41
+  1 |  3 |  2 | 42
+  1 |  3 |  3 | 43
+  1 |  3 |  4 | 44
+  1 |  2 |  0 | 35
+  1 |  2 |  1 | 36
+  1 |  2 |  2 | 37
+  1 |  2 |  3 | 38
+  1 |  2 |  4 | 39
+  1 |  1 |  0 | 30
+  1 |  1 |  1 | 31
+  1 |  1 |  2 | 32
+  1 |  1 |  3 | 33
+  1 |  1 |  4 | 34
+  1 |  0 |  0 | 25
+  1 |  0 |  1 | 26
+  1 |  0 |  2 | 27
+  1 |  0 |  3 | 28
+  1 |  0 |  4 | 29
+  2 |  3 |  0 | 65
+  2 |  3 |  1 | 66
+  2 |  3 |  2 | 67
+  2 |  2 |  0 | 60
+  2 |  2 |  1 | 61
+  2 |  2 |  2 | 62
+  2 |  2 |  3 | 63
+  2 |  2 |  4 | 64
+  2 |  1 |  0 | 55
+  2 |  1 |  1 | 56
+  2 |  1 |  2 | 57
+  2 |  1 |  3 | 58
+  2 |  1 |  4 | 59
+  2 |  0 |  0 | 50
+  2 |  0 |  1 | 51
+  2 |  0 |  2 | 52
+  2 |  0 |  3 | 53
+  2 |  0 |  4 | 54
+(67 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, v, r3) <= (2,3,60,1);
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=64 loops=1)
+   Index Cond: (ROW(r1, r2) <= ROW(2, 3))
+   Rows Removed by Index Recheck: 5
+   Filter: (ROW(r1, r2, v, r3) <= ROW(2, 3, 60, 1))
+   Rows Removed by Filter: 5
+(5 rows)
+
+SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, v, r3) <= (2,3,60,1);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  0 |  4 |  0 | 20
+  0 |  4 |  1 | 21
+  0 |  4 |  2 | 22
+  0 |  4 |  3 | 23
+  0 |  4 |  4 | 24
+  0 |  3 |  0 | 15
+  0 |  3 |  1 | 16
+  0 |  3 |  2 | 17
+  0 |  3 |  3 | 18
+  0 |  3 |  4 | 19
+  0 |  2 |  0 | 10
+  0 |  2 |  1 | 11
+  0 |  2 |  2 | 12
+  0 |  2 |  3 | 13
+  0 |  2 |  4 | 14
+  0 |  1 |  0 |  5
+  0 |  1 |  1 |  6
+  0 |  1 |  2 |  7
+  0 |  1 |  3 |  8
+  0 |  1 |  4 |  9
+  0 |  0 |  1 |  1
+  0 |  0 |  2 |  2
+  0 |  0 |  3 |  3
+  0 |  0 |  4 |  4
+  1 |  4 |  0 | 45
+  1 |  4 |  1 | 46
+  1 |  4 |  2 | 47
+  1 |  4 |  3 | 48
+  1 |  4 |  4 | 49
+  1 |  3 |  0 | 40
+  1 |  3 |  1 | 41
+  1 |  3 |  2 | 42
+  1 |  3 |  3 | 43
+  1 |  3 |  4 | 44
+  1 |  2 |  0 | 35
+  1 |  2 |  1 | 36
+  1 |  2 |  2 | 37
+  1 |  2 |  3 | 38
+  1 |  2 |  4 | 39
+  1 |  1 |  0 | 30
+  1 |  1 |  1 | 31
+  1 |  1 |  2 | 32
+  1 |  1 |  3 | 33
+  1 |  1 |  4 | 34
+  1 |  0 |  0 | 25
+  1 |  0 |  1 | 26
+  1 |  0 |  2 | 27
+  1 |  0 |  3 | 28
+  1 |  0 |  4 | 29
+  2 |  2 |  0 | 60
+  2 |  2 |  1 | 61
+  2 |  2 |  2 | 62
+  2 |  2 |  3 | 63
+  2 |  2 |  4 | 64
+  2 |  1 |  0 | 55
+  2 |  1 |  1 | 56
+  2 |  1 |  2 | 57
+  2 |  1 |  3 | 58
+  2 |  1 |  4 | 59
+  2 |  0 |  0 | 50
+  2 |  0 |  1 | 51
+  2 |  0 |  2 | 52
+  2 |  0 |  3 | 53
+  2 |  0 |  4 | 54
+(64 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) >= (1,7,2);
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=76 loops=1)
+   Index Cond: (ROW(r1, r2, r3) >= ROW(1, 7, 2))
+   Rows Removed by Index Recheck: 25
+(3 rows)
+
+SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) >= (1,7,2);
+ r1 | r2 | r3 |  v  
+----+----+----+-----
+  2 |  4 |  0 |  70
+  2 |  4 |  1 |  71
+  2 |  4 |  2 |  72
+  2 |  4 |  3 |  73
+  2 |  4 |  4 |  74
+  2 |  3 |  0 |  65
+  2 |  3 |  1 |  66
+  2 |  3 |  2 |  67
+  2 |  3 |  3 |  68
+  2 |  3 |  4 |  69
+  2 |  2 |  0 |  60
+  2 |  2 |  1 |  61
+  2 |  2 |  2 |  62
+  2 |  2 |  3 |  63
+  2 |  2 |  4 |  64
+  2 |  1 |  0 |  55
+  2 |  1 |  1 |  56
+  2 |  1 |  2 |  57
+  2 |  1 |  3 |  58
+  2 |  1 |  4 |  59
+  2 |  0 |  0 |  50
+  2 |  0 |  1 |  51
+  2 |  0 |  2 |  52
+  2 |  0 |  3 |  53
+  2 |  0 |  4 |  54
+  3 |  4 |  0 |  95
+  3 |  4 |  1 |  96
+  3 |  4 |  2 |  97
+  3 |  4 |  3 |  98
+  3 |  4 |  4 |  99
+  3 |  3 |  0 |  90
+  3 |  3 |  1 |  91
+  3 |  3 |  2 |  92
+  3 |  3 |  3 |  93
+  3 |  3 |  4 |  94
+  3 |  2 |  0 |  85
+  3 |  2 |  1 |  86
+  3 |  2 |  2 |  87
+  3 |  2 |  3 |  88
+  3 |  2 |  4 |  89
+  3 |  1 |  0 |  80
+  3 |  1 |  1 |  81
+  3 |  1 |  2 |  82
+  3 |  1 |  3 |  83
+  3 |  1 |  4 |  84
+  3 |  0 |  0 |  75
+  3 |  0 |  1 |  76
+  3 |  0 |  2 |  77
+  3 |  0 |  3 |  78
+  3 |  0 |  4 |  79
+  4 |  4 |  0 | 120
+  4 |  4 |  1 | 121
+  4 |  4 |  2 | 122
+  4 |  4 |  3 | 123
+  4 |  4 |  4 | 124
+  4 |  3 |  0 | 115
+  4 |  3 |  1 | 116
+  4 |  3 |  2 | 117
+  4 |  3 |  3 | 118
+  4 |  3 |  4 | 119
+  4 |  2 |  0 | 110
+  4 |  2 |  1 | 111
+  4 |  2 |  2 | 112
+  4 |  2 |  3 | 113
+  4 |  2 |  4 | 114
+  4 |  1 |  0 | 105
+  4 |  1 |  1 | 106
+  4 |  1 |  2 | 107
+  4 |  1 |  3 | 108
+  4 |  1 |  4 | 109
+  4 |  0 |  0 | 100
+  4 |  0 |  1 | 101
+  4 |  0 |  2 | 102
+  4 |  0 |  3 | 103
+  4 |  0 |  4 | 104
+  5 |  0 |  0 | 125
+(76 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) > (8,7,3);
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=0 loops=1)
+   Index Cond: (ROW(r1, r2, r3) > ROW(8, 7, 3))
+(2 rows)
+
+SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) > (8,7,3);
+ r1 | r2 | r3 | v 
+----+----+----+---
+(0 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1);
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=37 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 7, 2)) AND (ROW(r1, r2, r3) <= ROW(3, 2, 1)))
+   Rows Removed by Index Recheck: 38
+(3 rows)
+
+SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  2 |  4 |  0 | 70
+  2 |  4 |  1 | 71
+  2 |  4 |  2 | 72
+  2 |  4 |  3 | 73
+  2 |  4 |  4 | 74
+  2 |  3 |  0 | 65
+  2 |  3 |  1 | 66
+  2 |  3 |  2 | 67
+  2 |  3 |  3 | 68
+  2 |  3 |  4 | 69
+  2 |  2 |  0 | 60
+  2 |  2 |  1 | 61
+  2 |  2 |  2 | 62
+  2 |  2 |  3 | 63
+  2 |  2 |  4 | 64
+  2 |  1 |  0 | 55
+  2 |  1 |  1 | 56
+  2 |  1 |  2 | 57
+  2 |  1 |  3 | 58
+  2 |  1 |  4 | 59
+  2 |  0 |  0 | 50
+  2 |  0 |  1 | 51
+  2 |  0 |  2 | 52
+  2 |  0 |  3 | 53
+  2 |  0 |  4 | 54
+  3 |  2 |  0 | 85
+  3 |  2 |  1 | 86
+  3 |  1 |  0 | 80
+  3 |  1 |  1 | 81
+  3 |  1 |  2 | 82
+  3 |  1 |  3 | 83
+  3 |  1 |  4 | 84
+  3 |  0 |  0 | 75
+  3 |  0 |  1 | 76
+  3 |  0 |  2 | 77
+  3 |  0 |  3 | 78
+  3 |  0 |  4 | 79
+(37 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1) ORDER BY r1 DESC, r2 ASC, r3 DESC;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Index Scan Backward using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=37 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 7, 2)) AND (ROW(r1, r2, r3) <= ROW(3, 2, 1)))
+   Rows Removed by Index Recheck: 38
+(3 rows)
+
+SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1) ORDER BY r1 DESC, r2 ASC, r3 DESC;
+ r1 | r2 | r3 | v  
+----+----+----+----
+  3 |  0 |  4 | 79
+  3 |  0 |  3 | 78
+  3 |  0 |  2 | 77
+  3 |  0 |  1 | 76
+  3 |  0 |  0 | 75
+  3 |  1 |  4 | 84
+  3 |  1 |  3 | 83
+  3 |  1 |  2 | 82
+  3 |  1 |  1 | 81
+  3 |  1 |  0 | 80
+  3 |  2 |  1 | 86
+  3 |  2 |  0 | 85
+  2 |  0 |  4 | 54
+  2 |  0 |  3 | 53
+  2 |  0 |  2 | 52
+  2 |  0 |  1 | 51
+  2 |  0 |  0 | 50
+  2 |  1 |  4 | 59
+  2 |  1 |  3 | 58
+  2 |  1 |  2 | 57
+  2 |  1 |  1 | 56
+  2 |  1 |  0 | 55
+  2 |  2 |  4 | 64
+  2 |  2 |  3 | 63
+  2 |  2 |  2 | 62
+  2 |  2 |  1 | 61
+  2 |  2 |  0 | 60
+  2 |  3 |  4 | 69
+  2 |  3 |  3 | 68
+  2 |  3 |  2 | 67
+  2 |  3 |  1 | 66
+  2 |  3 |  0 | 65
+  2 |  4 |  4 | 74
+  2 |  4 |  3 | 73
+  2 |  4 |  2 | 72
+  2 |  4 |  1 | 71
+  2 |  4 |  0 | 70
+(37 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=4 loops=1)
+   Index Cond: ((ROW(r1, r3) <= ROW(1, 3)) AND (ROW(r1, r2) < ROW(1, 3)) AND (ROW(r1, r2) >= ROW(1, 2)))
+   Rows Removed by Index Recheck: 21
+(3 rows)
+
+SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  1 |  2 |  0 | 35
+  1 |  2 |  1 | 36
+  1 |  2 |  2 | 37
+  1 |  2 |  3 | 38
+(4 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);
+                                                                   QUERY PLAN                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=1 loops=1)
+   Index Cond: ((ROW(r1, r3) <= ROW(1, 3)) AND (ROW(r1, r2) < ROW(1, 3)) AND (ROW(r1, r2) >= ROW(1, 2)) AND (r1 = 1) AND (r2 = 2) AND (r3 = 3))
+(2 rows)
+
+SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  1 |  2 |  3 | 38
+(1 row)
+
+DROP TABLE pk_range_asc_desc_asc;
+CREATE TABLE pk_range_desc_asc_desc (r1 BIGINT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 desc, r2 asc, r3 desc));
+INSERT INTO pk_range_desc_asc_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) <= (2,3,2);
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=67 loops=1)
+   Index Cond: (ROW(r1, r2, r3) <= ROW(2, 3, 2))
+   Rows Removed by Index Recheck: 7
+(3 rows)
+
+SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) <= (2,3,2);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  2 |  0 |  4 | 54
+  2 |  0 |  3 | 53
+  2 |  0 |  2 | 52
+  2 |  0 |  1 | 51
+  2 |  0 |  0 | 50
+  2 |  1 |  4 | 59
+  2 |  1 |  3 | 58
+  2 |  1 |  2 | 57
+  2 |  1 |  1 | 56
+  2 |  1 |  0 | 55
+  2 |  2 |  4 | 64
+  2 |  2 |  3 | 63
+  2 |  2 |  2 | 62
+  2 |  2 |  1 | 61
+  2 |  2 |  0 | 60
+  2 |  3 |  2 | 67
+  2 |  3 |  1 | 66
+  2 |  3 |  0 | 65
+  1 |  0 |  4 | 29
+  1 |  0 |  3 | 28
+  1 |  0 |  2 | 27
+  1 |  0 |  1 | 26
+  1 |  0 |  0 | 25
+  1 |  1 |  4 | 34
+  1 |  1 |  3 | 33
+  1 |  1 |  2 | 32
+  1 |  1 |  1 | 31
+  1 |  1 |  0 | 30
+  1 |  2 |  4 | 39
+  1 |  2 |  3 | 38
+  1 |  2 |  2 | 37
+  1 |  2 |  1 | 36
+  1 |  2 |  0 | 35
+  1 |  3 |  4 | 44
+  1 |  3 |  3 | 43
+  1 |  3 |  2 | 42
+  1 |  3 |  1 | 41
+  1 |  3 |  0 | 40
+  1 |  4 |  4 | 49
+  1 |  4 |  3 | 48
+  1 |  4 |  2 | 47
+  1 |  4 |  1 | 46
+  1 |  4 |  0 | 45
+  0 |  0 |  4 |  4
+  0 |  0 |  3 |  3
+  0 |  0 |  2 |  2
+  0 |  0 |  1 |  1
+  0 |  1 |  4 |  9
+  0 |  1 |  3 |  8
+  0 |  1 |  2 |  7
+  0 |  1 |  1 |  6
+  0 |  1 |  0 |  5
+  0 |  2 |  4 | 14
+  0 |  2 |  3 | 13
+  0 |  2 |  2 | 12
+  0 |  2 |  1 | 11
+  0 |  2 |  0 | 10
+  0 |  3 |  4 | 19
+  0 |  3 |  3 | 18
+  0 |  3 |  2 | 17
+  0 |  3 |  1 | 16
+  0 |  3 |  0 | 15
+  0 |  4 |  4 | 24
+  0 |  4 |  3 | 23
+  0 |  4 |  2 | 22
+  0 |  4 |  1 | 21
+  0 |  4 |  0 | 20
+(67 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, v, r3) <= (2,3,60,1);
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=64 loops=1)
+   Index Cond: (ROW(r1, r2) <= ROW(2, 3))
+   Rows Removed by Index Recheck: 5
+   Filter: (ROW(r1, r2, v, r3) <= ROW(2, 3, 60, 1))
+   Rows Removed by Filter: 5
+(5 rows)
+
+SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, v, r3) <= (2,3,60,1);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  2 |  0 |  4 | 54
+  2 |  0 |  3 | 53
+  2 |  0 |  2 | 52
+  2 |  0 |  1 | 51
+  2 |  0 |  0 | 50
+  2 |  1 |  4 | 59
+  2 |  1 |  3 | 58
+  2 |  1 |  2 | 57
+  2 |  1 |  1 | 56
+  2 |  1 |  0 | 55
+  2 |  2 |  4 | 64
+  2 |  2 |  3 | 63
+  2 |  2 |  2 | 62
+  2 |  2 |  1 | 61
+  2 |  2 |  0 | 60
+  1 |  0 |  4 | 29
+  1 |  0 |  3 | 28
+  1 |  0 |  2 | 27
+  1 |  0 |  1 | 26
+  1 |  0 |  0 | 25
+  1 |  1 |  4 | 34
+  1 |  1 |  3 | 33
+  1 |  1 |  2 | 32
+  1 |  1 |  1 | 31
+  1 |  1 |  0 | 30
+  1 |  2 |  4 | 39
+  1 |  2 |  3 | 38
+  1 |  2 |  2 | 37
+  1 |  2 |  1 | 36
+  1 |  2 |  0 | 35
+  1 |  3 |  4 | 44
+  1 |  3 |  3 | 43
+  1 |  3 |  2 | 42
+  1 |  3 |  1 | 41
+  1 |  3 |  0 | 40
+  1 |  4 |  4 | 49
+  1 |  4 |  3 | 48
+  1 |  4 |  2 | 47
+  1 |  4 |  1 | 46
+  1 |  4 |  0 | 45
+  0 |  0 |  4 |  4
+  0 |  0 |  3 |  3
+  0 |  0 |  2 |  2
+  0 |  0 |  1 |  1
+  0 |  1 |  4 |  9
+  0 |  1 |  3 |  8
+  0 |  1 |  2 |  7
+  0 |  1 |  1 |  6
+  0 |  1 |  0 |  5
+  0 |  2 |  4 | 14
+  0 |  2 |  3 | 13
+  0 |  2 |  2 | 12
+  0 |  2 |  1 | 11
+  0 |  2 |  0 | 10
+  0 |  3 |  4 | 19
+  0 |  3 |  3 | 18
+  0 |  3 |  2 | 17
+  0 |  3 |  1 | 16
+  0 |  3 |  0 | 15
+  0 |  4 |  4 | 24
+  0 |  4 |  3 | 23
+  0 |  4 |  2 | 22
+  0 |  4 |  1 | 21
+  0 |  4 |  0 | 20
+(64 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) >= (1,7,2);
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=76 loops=1)
+   Index Cond: (ROW(r1, r2, r3) >= ROW(1, 7, 2))
+   Rows Removed by Index Recheck: 25
+(3 rows)
+
+SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) >= (1,7,2);
+ r1 | r2 | r3 |  v  
+----+----+----+-----
+  5 |  0 |  0 | 125
+  4 |  0 |  4 | 104
+  4 |  0 |  3 | 103
+  4 |  0 |  2 | 102
+  4 |  0 |  1 | 101
+  4 |  0 |  0 | 100
+  4 |  1 |  4 | 109
+  4 |  1 |  3 | 108
+  4 |  1 |  2 | 107
+  4 |  1 |  1 | 106
+  4 |  1 |  0 | 105
+  4 |  2 |  4 | 114
+  4 |  2 |  3 | 113
+  4 |  2 |  2 | 112
+  4 |  2 |  1 | 111
+  4 |  2 |  0 | 110
+  4 |  3 |  4 | 119
+  4 |  3 |  3 | 118
+  4 |  3 |  2 | 117
+  4 |  3 |  1 | 116
+  4 |  3 |  0 | 115
+  4 |  4 |  4 | 124
+  4 |  4 |  3 | 123
+  4 |  4 |  2 | 122
+  4 |  4 |  1 | 121
+  4 |  4 |  0 | 120
+  3 |  0 |  4 |  79
+  3 |  0 |  3 |  78
+  3 |  0 |  2 |  77
+  3 |  0 |  1 |  76
+  3 |  0 |  0 |  75
+  3 |  1 |  4 |  84
+  3 |  1 |  3 |  83
+  3 |  1 |  2 |  82
+  3 |  1 |  1 |  81
+  3 |  1 |  0 |  80
+  3 |  2 |  4 |  89
+  3 |  2 |  3 |  88
+  3 |  2 |  2 |  87
+  3 |  2 |  1 |  86
+  3 |  2 |  0 |  85
+  3 |  3 |  4 |  94
+  3 |  3 |  3 |  93
+  3 |  3 |  2 |  92
+  3 |  3 |  1 |  91
+  3 |  3 |  0 |  90
+  3 |  4 |  4 |  99
+  3 |  4 |  3 |  98
+  3 |  4 |  2 |  97
+  3 |  4 |  1 |  96
+  3 |  4 |  0 |  95
+  2 |  0 |  4 |  54
+  2 |  0 |  3 |  53
+  2 |  0 |  2 |  52
+  2 |  0 |  1 |  51
+  2 |  0 |  0 |  50
+  2 |  1 |  4 |  59
+  2 |  1 |  3 |  58
+  2 |  1 |  2 |  57
+  2 |  1 |  1 |  56
+  2 |  1 |  0 |  55
+  2 |  2 |  4 |  64
+  2 |  2 |  3 |  63
+  2 |  2 |  2 |  62
+  2 |  2 |  1 |  61
+  2 |  2 |  0 |  60
+  2 |  3 |  4 |  69
+  2 |  3 |  3 |  68
+  2 |  3 |  2 |  67
+  2 |  3 |  1 |  66
+  2 |  3 |  0 |  65
+  2 |  4 |  4 |  74
+  2 |  4 |  3 |  73
+  2 |  4 |  2 |  72
+  2 |  4 |  1 |  71
+  2 |  4 |  0 |  70
+(76 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1);
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=37 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 7, 2)) AND (ROW(r1, r2, r3) <= ROW(3, 2, 1)))
+   Rows Removed by Index Recheck: 38
+(3 rows)
+
+SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  3 |  0 |  4 | 79
+  3 |  0 |  3 | 78
+  3 |  0 |  2 | 77
+  3 |  0 |  1 | 76
+  3 |  0 |  0 | 75
+  3 |  1 |  4 | 84
+  3 |  1 |  3 | 83
+  3 |  1 |  2 | 82
+  3 |  1 |  1 | 81
+  3 |  1 |  0 | 80
+  3 |  2 |  1 | 86
+  3 |  2 |  0 | 85
+  2 |  0 |  4 | 54
+  2 |  0 |  3 | 53
+  2 |  0 |  2 | 52
+  2 |  0 |  1 | 51
+  2 |  0 |  0 | 50
+  2 |  1 |  4 | 59
+  2 |  1 |  3 | 58
+  2 |  1 |  2 | 57
+  2 |  1 |  1 | 56
+  2 |  1 |  0 | 55
+  2 |  2 |  4 | 64
+  2 |  2 |  3 | 63
+  2 |  2 |  2 | 62
+  2 |  2 |  1 | 61
+  2 |  2 |  0 | 60
+  2 |  3 |  4 | 69
+  2 |  3 |  3 | 68
+  2 |  3 |  2 | 67
+  2 |  3 |  1 | 66
+  2 |  3 |  0 | 65
+  2 |  4 |  4 | 74
+  2 |  4 |  3 | 73
+  2 |  4 |  2 | 72
+  2 |  4 |  1 | 71
+  2 |  4 |  0 | 70
+(37 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1) ORDER BY r1 DESC, r2 ASC, r3 DESC;
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=37 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 7, 2)) AND (ROW(r1, r2, r3) <= ROW(3, 2, 1)))
+   Rows Removed by Index Recheck: 38
+(3 rows)
+
+SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1) ORDER BY r1 DESC, r2 ASC, r3 DESC;
+ r1 | r2 | r3 | v  
+----+----+----+----
+  3 |  0 |  4 | 79
+  3 |  0 |  3 | 78
+  3 |  0 |  2 | 77
+  3 |  0 |  1 | 76
+  3 |  0 |  0 | 75
+  3 |  1 |  4 | 84
+  3 |  1 |  3 | 83
+  3 |  1 |  2 | 82
+  3 |  1 |  1 | 81
+  3 |  1 |  0 | 80
+  3 |  2 |  1 | 86
+  3 |  2 |  0 | 85
+  2 |  0 |  4 | 54
+  2 |  0 |  3 | 53
+  2 |  0 |  2 | 52
+  2 |  0 |  1 | 51
+  2 |  0 |  0 | 50
+  2 |  1 |  4 | 59
+  2 |  1 |  3 | 58
+  2 |  1 |  2 | 57
+  2 |  1 |  1 | 56
+  2 |  1 |  0 | 55
+  2 |  2 |  4 | 64
+  2 |  2 |  3 | 63
+  2 |  2 |  2 | 62
+  2 |  2 |  1 | 61
+  2 |  2 |  0 | 60
+  2 |  3 |  4 | 69
+  2 |  3 |  3 | 68
+  2 |  3 |  2 | 67
+  2 |  3 |  1 | 66
+  2 |  3 |  0 | 65
+  2 |  4 |  4 | 74
+  2 |  4 |  3 | 73
+  2 |  4 |  2 | 72
+  2 |  4 |  1 | 71
+  2 |  4 |  0 | 70
+(37 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=4 loops=1)
+   Index Cond: ((ROW(r1, r3) <= ROW(1, 3)) AND (ROW(r1, r2) < ROW(1, 3)) AND (ROW(r1, r2) >= ROW(1, 2)))
+   Rows Removed by Index Recheck: 21
+(3 rows)
+
+SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  1 |  2 |  3 | 38
+  1 |  2 |  2 | 37
+  1 |  2 |  1 | 36
+  1 |  2 |  0 | 35
+(4 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);
+                                                                   QUERY PLAN                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=1 loops=1)
+   Index Cond: ((ROW(r1, r3) <= ROW(1, 3)) AND (ROW(r1, r2) < ROW(1, 3)) AND (ROW(r1, r2) >= ROW(1, 2)) AND (r1 = 1) AND (r2 = 2) AND (r3 = 3))
+(2 rows)
+
+SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  1 |  2 |  3 | 38
+(1 row)
+
+DROP TABLE pk_range_desc_asc_desc;
+CREATE TABLE pk_range_int_desc (r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 desc, r2 desc, r3 desc));
+INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (2,3,2);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=67 loops=1)
+   Index Cond: (ROW(r1, r2, r3) <= ROW(2, 3, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (2,3,2);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  2 |  3 |  2 | 67
+  2 |  3 |  1 | 66
+  2 |  3 |  0 | 65
+  2 |  2 |  4 | 64
+  2 |  2 |  3 | 63
+  2 |  2 |  2 | 62
+  2 |  2 |  1 | 61
+  2 |  2 |  0 | 60
+  2 |  1 |  4 | 59
+  2 |  1 |  3 | 58
+  2 |  1 |  2 | 57
+  2 |  1 |  1 | 56
+  2 |  1 |  0 | 55
+  2 |  0 |  4 | 54
+  2 |  0 |  3 | 53
+  2 |  0 |  2 | 52
+  2 |  0 |  1 | 51
+  2 |  0 |  0 | 50
+  1 |  4 |  4 | 49
+  1 |  4 |  3 | 48
+  1 |  4 |  2 | 47
+  1 |  4 |  1 | 46
+  1 |  4 |  0 | 45
+  1 |  3 |  4 | 44
+  1 |  3 |  3 | 43
+  1 |  3 |  2 | 42
+  1 |  3 |  1 | 41
+  1 |  3 |  0 | 40
+  1 |  2 |  4 | 39
+  1 |  2 |  3 | 38
+  1 |  2 |  2 | 37
+  1 |  2 |  1 | 36
+  1 |  2 |  0 | 35
+  1 |  1 |  4 | 34
+  1 |  1 |  3 | 33
+  1 |  1 |  2 | 32
+  1 |  1 |  1 | 31
+  1 |  1 |  0 | 30
+  1 |  0 |  4 | 29
+  1 |  0 |  3 | 28
+  1 |  0 |  2 | 27
+  1 |  0 |  1 | 26
+  1 |  0 |  0 | 25
+  0 |  4 |  4 | 24
+  0 |  4 |  3 | 23
+  0 |  4 |  2 | 22
+  0 |  4 |  1 | 21
+  0 |  4 |  0 | 20
+  0 |  3 |  4 | 19
+  0 |  3 |  3 | 18
+  0 |  3 |  2 | 17
+  0 |  3 |  1 | 16
+  0 |  3 |  0 | 15
+  0 |  2 |  4 | 14
+  0 |  2 |  3 | 13
+  0 |  2 |  2 | 12
+  0 |  2 |  1 | 11
+  0 |  2 |  0 | 10
+  0 |  1 |  4 |  9
+  0 |  1 |  3 |  8
+  0 |  1 |  2 |  7
+  0 |  1 |  1 |  6
+  0 |  1 |  0 |  5
+  0 |  0 |  4 |  4
+  0 |  0 |  3 |  3
+  0 |  0 |  2 |  2
+  0 |  0 |  1 |  1
+(67 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r2, v, r3) <= (2,3,60,1);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=64 loops=1)
+   Index Cond: (ROW(r1, r2) <= ROW(2, 3))
+   Filter: (ROW(r1, r2, v, r3) <= ROW(2, 3, 60, 1))
+   Rows Removed by Filter: 5
+(4 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r2, v, r3) <= (2,3,60,1);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  2 |  2 |  4 | 64
+  2 |  2 |  3 | 63
+  2 |  2 |  2 | 62
+  2 |  2 |  1 | 61
+  2 |  2 |  0 | 60
+  2 |  1 |  4 | 59
+  2 |  1 |  3 | 58
+  2 |  1 |  2 | 57
+  2 |  1 |  1 | 56
+  2 |  1 |  0 | 55
+  2 |  0 |  4 | 54
+  2 |  0 |  3 | 53
+  2 |  0 |  2 | 52
+  2 |  0 |  1 | 51
+  2 |  0 |  0 | 50
+  1 |  4 |  4 | 49
+  1 |  4 |  3 | 48
+  1 |  4 |  2 | 47
+  1 |  4 |  1 | 46
+  1 |  4 |  0 | 45
+  1 |  3 |  4 | 44
+  1 |  3 |  3 | 43
+  1 |  3 |  2 | 42
+  1 |  3 |  1 | 41
+  1 |  3 |  0 | 40
+  1 |  2 |  4 | 39
+  1 |  2 |  3 | 38
+  1 |  2 |  2 | 37
+  1 |  2 |  1 | 36
+  1 |  2 |  0 | 35
+  1 |  1 |  4 | 34
+  1 |  1 |  3 | 33
+  1 |  1 |  2 | 32
+  1 |  1 |  1 | 31
+  1 |  1 |  0 | 30
+  1 |  0 |  4 | 29
+  1 |  0 |  3 | 28
+  1 |  0 |  2 | 27
+  1 |  0 |  1 | 26
+  1 |  0 |  0 | 25
+  0 |  4 |  4 | 24
+  0 |  4 |  3 | 23
+  0 |  4 |  2 | 22
+  0 |  4 |  1 | 21
+  0 |  4 |  0 | 20
+  0 |  3 |  4 | 19
+  0 |  3 |  3 | 18
+  0 |  3 |  2 | 17
+  0 |  3 |  1 | 16
+  0 |  3 |  0 | 15
+  0 |  2 |  4 | 14
+  0 |  2 |  3 | 13
+  0 |  2 |  2 | 12
+  0 |  2 |  1 | 11
+  0 |  2 |  0 | 10
+  0 |  1 |  4 |  9
+  0 |  1 |  3 |  8
+  0 |  1 |  2 |  7
+  0 |  1 |  1 |  6
+  0 |  1 |  0 |  5
+  0 |  0 |  4 |  4
+  0 |  0 |  3 |  3
+  0 |  0 |  2 |  2
+  0 |  0 |  1 |  1
+(64 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) < (2,3,2);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=66 loops=1)
+   Index Cond: (ROW(r1, r2, r3) < ROW(2, 3, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) < (2,3,2);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  2 |  3 |  1 | 66
+  2 |  3 |  0 | 65
+  2 |  2 |  4 | 64
+  2 |  2 |  3 | 63
+  2 |  2 |  2 | 62
+  2 |  2 |  1 | 61
+  2 |  2 |  0 | 60
+  2 |  1 |  4 | 59
+  2 |  1 |  3 | 58
+  2 |  1 |  2 | 57
+  2 |  1 |  1 | 56
+  2 |  1 |  0 | 55
+  2 |  0 |  4 | 54
+  2 |  0 |  3 | 53
+  2 |  0 |  2 | 52
+  2 |  0 |  1 | 51
+  2 |  0 |  0 | 50
+  1 |  4 |  4 | 49
+  1 |  4 |  3 | 48
+  1 |  4 |  2 | 47
+  1 |  4 |  1 | 46
+  1 |  4 |  0 | 45
+  1 |  3 |  4 | 44
+  1 |  3 |  3 | 43
+  1 |  3 |  2 | 42
+  1 |  3 |  1 | 41
+  1 |  3 |  0 | 40
+  1 |  2 |  4 | 39
+  1 |  2 |  3 | 38
+  1 |  2 |  2 | 37
+  1 |  2 |  1 | 36
+  1 |  2 |  0 | 35
+  1 |  1 |  4 | 34
+  1 |  1 |  3 | 33
+  1 |  1 |  2 | 32
+  1 |  1 |  1 | 31
+  1 |  1 |  0 | 30
+  1 |  0 |  4 | 29
+  1 |  0 |  3 | 28
+  1 |  0 |  2 | 27
+  1 |  0 |  1 | 26
+  1 |  0 |  0 | 25
+  0 |  4 |  4 | 24
+  0 |  4 |  3 | 23
+  0 |  4 |  2 | 22
+  0 |  4 |  1 | 21
+  0 |  4 |  0 | 20
+  0 |  3 |  4 | 19
+  0 |  3 |  3 | 18
+  0 |  3 |  2 | 17
+  0 |  3 |  1 | 16
+  0 |  3 |  0 | 15
+  0 |  2 |  4 | 14
+  0 |  2 |  3 | 13
+  0 |  2 |  2 | 12
+  0 |  2 |  1 | 11
+  0 |  2 |  0 | 10
+  0 |  1 |  4 |  9
+  0 |  1 |  3 |  8
+  0 |  1 |  2 |  7
+  0 |  1 |  1 |  6
+  0 |  1 |  0 |  5
+  0 |  0 |  4 |  4
+  0 |  0 |  3 |  3
+  0 |  0 |  2 |  2
+  0 |  0 |  1 |  1
+(66 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (3,3,2);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=92 loops=1)
+   Index Cond: (ROW(r1, r2, r3) <= ROW(3, 3, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (3,3,2);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  3 |  3 |  2 | 92
+  3 |  3 |  1 | 91
+  3 |  3 |  0 | 90
+  3 |  2 |  4 | 89
+  3 |  2 |  3 | 88
+  3 |  2 |  2 | 87
+  3 |  2 |  1 | 86
+  3 |  2 |  0 | 85
+  3 |  1 |  4 | 84
+  3 |  1 |  3 | 83
+  3 |  1 |  2 | 82
+  3 |  1 |  1 | 81
+  3 |  1 |  0 | 80
+  3 |  0 |  4 | 79
+  3 |  0 |  3 | 78
+  3 |  0 |  2 | 77
+  3 |  0 |  1 | 76
+  3 |  0 |  0 | 75
+  2 |  4 |  4 | 74
+  2 |  4 |  3 | 73
+  2 |  4 |  2 | 72
+  2 |  4 |  1 | 71
+  2 |  4 |  0 | 70
+  2 |  3 |  4 | 69
+  2 |  3 |  3 | 68
+  2 |  3 |  2 | 67
+  2 |  3 |  1 | 66
+  2 |  3 |  0 | 65
+  2 |  2 |  4 | 64
+  2 |  2 |  3 | 63
+  2 |  2 |  2 | 62
+  2 |  2 |  1 | 61
+  2 |  2 |  0 | 60
+  2 |  1 |  4 | 59
+  2 |  1 |  3 | 58
+  2 |  1 |  2 | 57
+  2 |  1 |  1 | 56
+  2 |  1 |  0 | 55
+  2 |  0 |  4 | 54
+  2 |  0 |  3 | 53
+  2 |  0 |  2 | 52
+  2 |  0 |  1 | 51
+  2 |  0 |  0 | 50
+  1 |  4 |  4 | 49
+  1 |  4 |  3 | 48
+  1 |  4 |  2 | 47
+  1 |  4 |  1 | 46
+  1 |  4 |  0 | 45
+  1 |  3 |  4 | 44
+  1 |  3 |  3 | 43
+  1 |  3 |  2 | 42
+  1 |  3 |  1 | 41
+  1 |  3 |  0 | 40
+  1 |  2 |  4 | 39
+  1 |  2 |  3 | 38
+  1 |  2 |  2 | 37
+  1 |  2 |  1 | 36
+  1 |  2 |  0 | 35
+  1 |  1 |  4 | 34
+  1 |  1 |  3 | 33
+  1 |  1 |  2 | 32
+  1 |  1 |  1 | 31
+  1 |  1 |  0 | 30
+  1 |  0 |  4 | 29
+  1 |  0 |  3 | 28
+  1 |  0 |  2 | 27
+  1 |  0 |  1 | 26
+  1 |  0 |  0 | 25
+  0 |  4 |  4 | 24
+  0 |  4 |  3 | 23
+  0 |  4 |  2 | 22
+  0 |  4 |  1 | 21
+  0 |  4 |  0 | 20
+  0 |  3 |  4 | 19
+  0 |  3 |  3 | 18
+  0 |  3 |  2 | 17
+  0 |  3 |  1 | 16
+  0 |  3 |  0 | 15
+  0 |  2 |  4 | 14
+  0 |  2 |  3 | 13
+  0 |  2 |  2 | 12
+  0 |  2 |  1 | 11
+  0 |  2 |  0 | 10
+  0 |  1 |  4 |  9
+  0 |  1 |  3 |  8
+  0 |  1 |  2 |  7
+  0 |  1 |  1 |  6
+  0 |  1 |  0 |  5
+  0 |  0 |  4 |  4
+  0 |  0 |  3 |  3
+  0 |  0 |  2 |  2
+  0 |  0 |  1 |  1
+(92 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (3,3,2);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=34 loops=1)
+   Index Cond: (ROW(r1, r2, r3) >= ROW(3, 3, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (3,3,2);
+ r1 | r2 | r3 |  v  
+----+----+----+-----
+  5 |  0 |  0 | 125
+  4 |  4 |  4 | 124
+  4 |  4 |  3 | 123
+  4 |  4 |  2 | 122
+  4 |  4 |  1 | 121
+  4 |  4 |  0 | 120
+  4 |  3 |  4 | 119
+  4 |  3 |  3 | 118
+  4 |  3 |  2 | 117
+  4 |  3 |  1 | 116
+  4 |  3 |  0 | 115
+  4 |  2 |  4 | 114
+  4 |  2 |  3 | 113
+  4 |  2 |  2 | 112
+  4 |  2 |  1 | 111
+  4 |  2 |  0 | 110
+  4 |  1 |  4 | 109
+  4 |  1 |  3 | 108
+  4 |  1 |  2 | 107
+  4 |  1 |  1 | 106
+  4 |  1 |  0 | 105
+  4 |  0 |  4 | 104
+  4 |  0 |  3 | 103
+  4 |  0 |  2 | 102
+  4 |  0 |  1 | 101
+  4 |  0 |  0 | 100
+  3 |  4 |  4 |  99
+  3 |  4 |  3 |  98
+  3 |  4 |  2 |  97
+  3 |  4 |  1 |  96
+  3 |  4 |  0 |  95
+  3 |  3 |  4 |  94
+  3 |  3 |  3 |  93
+  3 |  3 |  2 |  92
+(34 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) > (3,3,2);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=33 loops=1)
+   Index Cond: (ROW(r1, r2, r3) > ROW(3, 3, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) > (3,3,2);
+ r1 | r2 | r3 |  v  
+----+----+----+-----
+  5 |  0 |  0 | 125
+  4 |  4 |  4 | 124
+  4 |  4 |  3 | 123
+  4 |  4 |  2 | 122
+  4 |  4 |  1 | 121
+  4 |  4 |  0 | 120
+  4 |  3 |  4 | 119
+  4 |  3 |  3 | 118
+  4 |  3 |  2 | 117
+  4 |  3 |  1 | 116
+  4 |  3 |  0 | 115
+  4 |  2 |  4 | 114
+  4 |  2 |  3 | 113
+  4 |  2 |  2 | 112
+  4 |  2 |  1 | 111
+  4 |  2 |  0 | 110
+  4 |  1 |  4 | 109
+  4 |  1 |  3 | 108
+  4 |  1 |  2 | 107
+  4 |  1 |  1 | 106
+  4 |  1 |  0 | 105
+  4 |  0 |  4 | 104
+  4 |  0 |  3 | 103
+  4 |  0 |  2 | 102
+  4 |  0 |  1 | 101
+  4 |  0 |  0 | 100
+  3 |  4 |  4 |  99
+  3 |  4 |  3 |  98
+  3 |  4 |  2 |  97
+  3 |  4 |  1 |  96
+  3 |  4 |  0 |  95
+  3 |  3 |  4 |  94
+  3 |  3 |  3 |  93
+(33 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (1,4,5) AND (r1, r2, r3) <= (2,4,5);
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=25 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 4, 5)) AND (ROW(r1, r2, r3) <= ROW(2, 4, 5)))
+(2 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (1,4,5) AND (r1, r2, r3) <= (2,4,5);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  2 |  4 |  4 | 74
+  2 |  4 |  3 | 73
+  2 |  4 |  2 | 72
+  2 |  4 |  1 | 71
+  2 |  4 |  0 | 70
+  2 |  3 |  4 | 69
+  2 |  3 |  3 | 68
+  2 |  3 |  2 | 67
+  2 |  3 |  1 | 66
+  2 |  3 |  0 | 65
+  2 |  2 |  4 | 64
+  2 |  2 |  3 | 63
+  2 |  2 |  2 | 62
+  2 |  2 |  1 | 61
+  2 |  2 |  0 | 60
+  2 |  1 |  4 | 59
+  2 |  1 |  3 | 58
+  2 |  1 |  2 | 57
+  2 |  1 |  1 | 56
+  2 |  1 |  0 | 55
+  2 |  0 |  4 | 54
+  2 |  0 |  3 | 53
+  2 |  0 |  2 | 52
+  2 |  0 |  1 | 51
+  2 |  0 |  0 | 50
+(25 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (1,2,3) AND (r1, r2, r3) <= (1,3,2) AND r3 IN (3,2,6);
+                                                          QUERY PLAN                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=2 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 2, 3)) AND (ROW(r1, r2, r3) <= ROW(1, 3, 2)) AND (r3 = ANY ('{3,2,6}'::integer[])))
+(2 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (1,2,3) AND (r1, r2, r3) <= (1,3,2) AND r3 IN (3,2,6);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  1 |  3 |  2 | 42
+  1 |  2 |  3 | 38
+(2 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (1,4,5) AND (r1, r2, r3) <= (1,6,5) ORDER BY r1 ASC, r2 ASC, r3 ASC;
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Index Scan Backward using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=0 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 4, 5)) AND (ROW(r1, r2, r3) <= ROW(1, 6, 5)))
+(2 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (1,4,5) AND (r1, r2, r3) <= (1,6,5) ORDER BY r1 ASC, r2 ASC, r3 ASC;
+ r1 | r2 | r3 | v 
+----+----+----+---
+(0 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) = (1,6,5);
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=0 loops=1)
+   Index Cond: ((r1 = 1) AND (r2 = 6) AND (r3 = 5))
+(2 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) = (1,6,5);
+ r1 | r2 | r3 | v 
+----+----+----+---
+(0 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (1,6,5) AND (r1,r2,r3) < (1,6,5);
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=49 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) <= ROW(1, 6, 5)) AND (ROW(r1, r2, r3) < ROW(1, 6, 5)))
+(2 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (1,6,5) AND (r1,r2,r3) < (1,6,5);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  1 |  4 |  4 | 49
+  1 |  4 |  3 | 48
+  1 |  4 |  2 | 47
+  1 |  4 |  1 | 46
+  1 |  4 |  0 | 45
+  1 |  3 |  4 | 44
+  1 |  3 |  3 | 43
+  1 |  3 |  2 | 42
+  1 |  3 |  1 | 41
+  1 |  3 |  0 | 40
+  1 |  2 |  4 | 39
+  1 |  2 |  3 | 38
+  1 |  2 |  2 | 37
+  1 |  2 |  1 | 36
+  1 |  2 |  0 | 35
+  1 |  1 |  4 | 34
+  1 |  1 |  3 | 33
+  1 |  1 |  2 | 32
+  1 |  1 |  1 | 31
+  1 |  1 |  0 | 30
+  1 |  0 |  4 | 29
+  1 |  0 |  3 | 28
+  1 |  0 |  2 | 27
+  1 |  0 |  1 | 26
+  1 |  0 |  0 | 25
+  0 |  4 |  4 | 24
+  0 |  4 |  3 | 23
+  0 |  4 |  2 | 22
+  0 |  4 |  1 | 21
+  0 |  4 |  0 | 20
+  0 |  3 |  4 | 19
+  0 |  3 |  3 | 18
+  0 |  3 |  2 | 17
+  0 |  3 |  1 | 16
+  0 |  3 |  0 | 15
+  0 |  2 |  4 | 14
+  0 |  2 |  3 | 13
+  0 |  2 |  2 | 12
+  0 |  2 |  1 | 11
+  0 |  2 |  0 | 10
+  0 |  1 |  4 |  9
+  0 |  1 |  3 |  8
+  0 |  1 |  2 |  7
+  0 |  1 |  1 |  6
+  0 |  1 |  0 |  5
+  0 |  0 |  4 |  4
+  0 |  0 |  3 |  3
+  0 |  0 |  2 |  2
+  0 |  0 |  1 |  1
+(49 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (1,1,5) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) > (1,2,3) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) >= (1,2,3);
+                                                                                               QUERY PLAN                                                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=0 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) <= ROW(1, 1, 5)) AND (ROW(r1, r2, r3) < ROW(1, 2, 4)) AND (ROW(r1, r2, r3) > ROW(1, 2, 3)) AND (ROW(r1, r2, r3) < ROW(1, 2, 4)) AND (ROW(r1, r2, r3) >= ROW(1, 2, 3)))
+(2 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (1,1,5) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) > (1,2,3) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) >= (1,2,3);
+ r1 | r2 | r3 | v 
+----+----+----+---
+(0 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=4 loops=1)
+   Index Cond: ((ROW(r1, r3) <= ROW(1, 3)) AND (ROW(r1, r2) < ROW(1, 3)) AND (ROW(r1, r2) >= ROW(1, 2)))
+   Rows Removed by Index Recheck: 6
+(3 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  1 |  2 |  3 | 38
+  1 |  2 |  2 | 37
+  1 |  2 |  1 | 36
+  1 |  2 |  0 | 35
+(4 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);
+                                                                   QUERY PLAN                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=1 loops=1)
+   Index Cond: ((ROW(r1, r3) <= ROW(1, 3)) AND (ROW(r1, r2) < ROW(1, 3)) AND (ROW(r1, r2) >= ROW(1, 2)) AND (r1 = 1) AND (r2 = 2) AND (r3 = 3))
+(2 rows)
+
+SELECT * FROM pk_range_int_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);
+ r1 | r2 | r3 | v  
+----+----+----+----
+  1 |  2 |  3 | 38
+(1 row)
+
+DROP TABLE pk_range_int_desc;
+CREATE TABLE pk_range_int_text (r1 INT, r2 TEXT, r3 BIGINT, v INT, PRIMARY KEY(r1 asc, r2 asc, r3 asc));
+INSERT INTO pk_range_int_text SELECT i/25, concat('abc', ((i/5) % 5)::TEXT), i % 5, i FROM generate_series(1, 125) AS i;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) <= (2,'ab2'::text,2);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=49 loops=1)
+   Index Cond: (ROW(r1, r2, r3) <= ROW(2, 'ab2'::text, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) <= (2,'ab2'::text,2);
+ r1 |  r2  | r3 | v  
+----+------+----+----
+  0 | abc0 |  1 |  1
+  0 | abc0 |  2 |  2
+  0 | abc0 |  3 |  3
+  0 | abc0 |  4 |  4
+  0 | abc1 |  0 |  5
+  0 | abc1 |  1 |  6
+  0 | abc1 |  2 |  7
+  0 | abc1 |  3 |  8
+  0 | abc1 |  4 |  9
+  0 | abc2 |  0 | 10
+  0 | abc2 |  1 | 11
+  0 | abc2 |  2 | 12
+  0 | abc2 |  3 | 13
+  0 | abc2 |  4 | 14
+  0 | abc3 |  0 | 15
+  0 | abc3 |  1 | 16
+  0 | abc3 |  2 | 17
+  0 | abc3 |  3 | 18
+  0 | abc3 |  4 | 19
+  0 | abc4 |  0 | 20
+  0 | abc4 |  1 | 21
+  0 | abc4 |  2 | 22
+  0 | abc4 |  3 | 23
+  0 | abc4 |  4 | 24
+  1 | abc0 |  0 | 25
+  1 | abc0 |  1 | 26
+  1 | abc0 |  2 | 27
+  1 | abc0 |  3 | 28
+  1 | abc0 |  4 | 29
+  1 | abc1 |  0 | 30
+  1 | abc1 |  1 | 31
+  1 | abc1 |  2 | 32
+  1 | abc1 |  3 | 33
+  1 | abc1 |  4 | 34
+  1 | abc2 |  0 | 35
+  1 | abc2 |  1 | 36
+  1 | abc2 |  2 | 37
+  1 | abc2 |  3 | 38
+  1 | abc2 |  4 | 39
+  1 | abc3 |  0 | 40
+  1 | abc3 |  1 | 41
+  1 | abc3 |  2 | 42
+  1 | abc3 |  3 | 43
+  1 | abc3 |  4 | 44
+  1 | abc4 |  0 | 45
+  1 | abc4 |  1 | 46
+  1 | abc4 |  2 | 47
+  1 | abc4 |  3 | 48
+  1 | abc4 |  4 | 49
+(49 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_text WHERE (r1, r2, v, r3) <= (2,'abc3'::text,60,1);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=64 loops=1)
+   Index Cond: (ROW(r1, r2) <= ROW(2, 'abc3'::text))
+   Filter: (ROW(r1, r2, v, r3) <= ROW(2, 'abc3'::text, 60, 1))
+   Rows Removed by Filter: 5
+(4 rows)
+
+SELECT * FROM pk_range_int_text WHERE (r1, r2, v, r3) <= (2,'abc3'::text,60,1);
+ r1 |  r2  | r3 | v  
+----+------+----+----
+  0 | abc0 |  1 |  1
+  0 | abc0 |  2 |  2
+  0 | abc0 |  3 |  3
+  0 | abc0 |  4 |  4
+  0 | abc1 |  0 |  5
+  0 | abc1 |  1 |  6
+  0 | abc1 |  2 |  7
+  0 | abc1 |  3 |  8
+  0 | abc1 |  4 |  9
+  0 | abc2 |  0 | 10
+  0 | abc2 |  1 | 11
+  0 | abc2 |  2 | 12
+  0 | abc2 |  3 | 13
+  0 | abc2 |  4 | 14
+  0 | abc3 |  0 | 15
+  0 | abc3 |  1 | 16
+  0 | abc3 |  2 | 17
+  0 | abc3 |  3 | 18
+  0 | abc3 |  4 | 19
+  0 | abc4 |  0 | 20
+  0 | abc4 |  1 | 21
+  0 | abc4 |  2 | 22
+  0 | abc4 |  3 | 23
+  0 | abc4 |  4 | 24
+  1 | abc0 |  0 | 25
+  1 | abc0 |  1 | 26
+  1 | abc0 |  2 | 27
+  1 | abc0 |  3 | 28
+  1 | abc0 |  4 | 29
+  1 | abc1 |  0 | 30
+  1 | abc1 |  1 | 31
+  1 | abc1 |  2 | 32
+  1 | abc1 |  3 | 33
+  1 | abc1 |  4 | 34
+  1 | abc2 |  0 | 35
+  1 | abc2 |  1 | 36
+  1 | abc2 |  2 | 37
+  1 | abc2 |  3 | 38
+  1 | abc2 |  4 | 39
+  1 | abc3 |  0 | 40
+  1 | abc3 |  1 | 41
+  1 | abc3 |  2 | 42
+  1 | abc3 |  3 | 43
+  1 | abc3 |  4 | 44
+  1 | abc4 |  0 | 45
+  1 | abc4 |  1 | 46
+  1 | abc4 |  2 | 47
+  1 | abc4 |  3 | 48
+  1 | abc4 |  4 | 49
+  2 | abc0 |  0 | 50
+  2 | abc0 |  1 | 51
+  2 | abc0 |  2 | 52
+  2 | abc0 |  3 | 53
+  2 | abc0 |  4 | 54
+  2 | abc1 |  0 | 55
+  2 | abc1 |  1 | 56
+  2 | abc1 |  2 | 57
+  2 | abc1 |  3 | 58
+  2 | abc1 |  4 | 59
+  2 | abc2 |  0 | 60
+  2 | abc2 |  1 | 61
+  2 | abc2 |  2 | 62
+  2 | abc2 |  3 | 63
+  2 | abc2 |  4 | 64
+(64 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) < (2,'abc3'::text,2);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=66 loops=1)
+   Index Cond: (ROW(r1, r2, r3) < ROW(2, 'abc3'::text, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) < (2,'abc3'::text,2);
+ r1 |  r2  | r3 | v  
+----+------+----+----
+  0 | abc0 |  1 |  1
+  0 | abc0 |  2 |  2
+  0 | abc0 |  3 |  3
+  0 | abc0 |  4 |  4
+  0 | abc1 |  0 |  5
+  0 | abc1 |  1 |  6
+  0 | abc1 |  2 |  7
+  0 | abc1 |  3 |  8
+  0 | abc1 |  4 |  9
+  0 | abc2 |  0 | 10
+  0 | abc2 |  1 | 11
+  0 | abc2 |  2 | 12
+  0 | abc2 |  3 | 13
+  0 | abc2 |  4 | 14
+  0 | abc3 |  0 | 15
+  0 | abc3 |  1 | 16
+  0 | abc3 |  2 | 17
+  0 | abc3 |  3 | 18
+  0 | abc3 |  4 | 19
+  0 | abc4 |  0 | 20
+  0 | abc4 |  1 | 21
+  0 | abc4 |  2 | 22
+  0 | abc4 |  3 | 23
+  0 | abc4 |  4 | 24
+  1 | abc0 |  0 | 25
+  1 | abc0 |  1 | 26
+  1 | abc0 |  2 | 27
+  1 | abc0 |  3 | 28
+  1 | abc0 |  4 | 29
+  1 | abc1 |  0 | 30
+  1 | abc1 |  1 | 31
+  1 | abc1 |  2 | 32
+  1 | abc1 |  3 | 33
+  1 | abc1 |  4 | 34
+  1 | abc2 |  0 | 35
+  1 | abc2 |  1 | 36
+  1 | abc2 |  2 | 37
+  1 | abc2 |  3 | 38
+  1 | abc2 |  4 | 39
+  1 | abc3 |  0 | 40
+  1 | abc3 |  1 | 41
+  1 | abc3 |  2 | 42
+  1 | abc3 |  3 | 43
+  1 | abc3 |  4 | 44
+  1 | abc4 |  0 | 45
+  1 | abc4 |  1 | 46
+  1 | abc4 |  2 | 47
+  1 | abc4 |  3 | 48
+  1 | abc4 |  4 | 49
+  2 | abc0 |  0 | 50
+  2 | abc0 |  1 | 51
+  2 | abc0 |  2 | 52
+  2 | abc0 |  3 | 53
+  2 | abc0 |  4 | 54
+  2 | abc1 |  0 | 55
+  2 | abc1 |  1 | 56
+  2 | abc1 |  2 | 57
+  2 | abc1 |  3 | 58
+  2 | abc1 |  4 | 59
+  2 | abc2 |  0 | 60
+  2 | abc2 |  1 | 61
+  2 | abc2 |  2 | 62
+  2 | abc2 |  3 | 63
+  2 | abc2 |  4 | 64
+  2 | abc3 |  0 | 65
+  2 | abc3 |  1 | 66
+(66 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) <= (3,'abb3'::text,2);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=74 loops=1)
+   Index Cond: (ROW(r1, r2, r3) <= ROW(3, 'abb3'::text, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) <= (3,'abb3'::text,2);
+ r1 |  r2  | r3 | v  
+----+------+----+----
+  0 | abc0 |  1 |  1
+  0 | abc0 |  2 |  2
+  0 | abc0 |  3 |  3
+  0 | abc0 |  4 |  4
+  0 | abc1 |  0 |  5
+  0 | abc1 |  1 |  6
+  0 | abc1 |  2 |  7
+  0 | abc1 |  3 |  8
+  0 | abc1 |  4 |  9
+  0 | abc2 |  0 | 10
+  0 | abc2 |  1 | 11
+  0 | abc2 |  2 | 12
+  0 | abc2 |  3 | 13
+  0 | abc2 |  4 | 14
+  0 | abc3 |  0 | 15
+  0 | abc3 |  1 | 16
+  0 | abc3 |  2 | 17
+  0 | abc3 |  3 | 18
+  0 | abc3 |  4 | 19
+  0 | abc4 |  0 | 20
+  0 | abc4 |  1 | 21
+  0 | abc4 |  2 | 22
+  0 | abc4 |  3 | 23
+  0 | abc4 |  4 | 24
+  1 | abc0 |  0 | 25
+  1 | abc0 |  1 | 26
+  1 | abc0 |  2 | 27
+  1 | abc0 |  3 | 28
+  1 | abc0 |  4 | 29
+  1 | abc1 |  0 | 30
+  1 | abc1 |  1 | 31
+  1 | abc1 |  2 | 32
+  1 | abc1 |  3 | 33
+  1 | abc1 |  4 | 34
+  1 | abc2 |  0 | 35
+  1 | abc2 |  1 | 36
+  1 | abc2 |  2 | 37
+  1 | abc2 |  3 | 38
+  1 | abc2 |  4 | 39
+  1 | abc3 |  0 | 40
+  1 | abc3 |  1 | 41
+  1 | abc3 |  2 | 42
+  1 | abc3 |  3 | 43
+  1 | abc3 |  4 | 44
+  1 | abc4 |  0 | 45
+  1 | abc4 |  1 | 46
+  1 | abc4 |  2 | 47
+  1 | abc4 |  3 | 48
+  1 | abc4 |  4 | 49
+  2 | abc0 |  0 | 50
+  2 | abc0 |  1 | 51
+  2 | abc0 |  2 | 52
+  2 | abc0 |  3 | 53
+  2 | abc0 |  4 | 54
+  2 | abc1 |  0 | 55
+  2 | abc1 |  1 | 56
+  2 | abc1 |  2 | 57
+  2 | abc1 |  3 | 58
+  2 | abc1 |  4 | 59
+  2 | abc2 |  0 | 60
+  2 | abc2 |  1 | 61
+  2 | abc2 |  2 | 62
+  2 | abc2 |  3 | 63
+  2 | abc2 |  4 | 64
+  2 | abc3 |  0 | 65
+  2 | abc3 |  1 | 66
+  2 | abc3 |  2 | 67
+  2 | abc3 |  3 | 68
+  2 | abc3 |  4 | 69
+  2 | abc4 |  0 | 70
+  2 | abc4 |  1 | 71
+  2 | abc4 |  2 | 72
+  2 | abc4 |  3 | 73
+  2 | abc4 |  4 | 74
+(74 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (3,'abc3'::text,2);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=34 loops=1)
+   Index Cond: (ROW(r1, r2, r3) >= ROW(3, 'abc3'::text, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (3,'abc3'::text,2);
+ r1 |  r2  | r3 |  v  
+----+------+----+-----
+  3 | abc3 |  2 |  92
+  3 | abc3 |  3 |  93
+  3 | abc3 |  4 |  94
+  3 | abc4 |  0 |  95
+  3 | abc4 |  1 |  96
+  3 | abc4 |  2 |  97
+  3 | abc4 |  3 |  98
+  3 | abc4 |  4 |  99
+  4 | abc0 |  0 | 100
+  4 | abc0 |  1 | 101
+  4 | abc0 |  2 | 102
+  4 | abc0 |  3 | 103
+  4 | abc0 |  4 | 104
+  4 | abc1 |  0 | 105
+  4 | abc1 |  1 | 106
+  4 | abc1 |  2 | 107
+  4 | abc1 |  3 | 108
+  4 | abc1 |  4 | 109
+  4 | abc2 |  0 | 110
+  4 | abc2 |  1 | 111
+  4 | abc2 |  2 | 112
+  4 | abc2 |  3 | 113
+  4 | abc2 |  4 | 114
+  4 | abc3 |  0 | 115
+  4 | abc3 |  1 | 116
+  4 | abc3 |  2 | 117
+  4 | abc3 |  3 | 118
+  4 | abc3 |  4 | 119
+  4 | abc4 |  0 | 120
+  4 | abc4 |  1 | 121
+  4 | abc4 |  2 | 122
+  4 | abc4 |  3 | 123
+  4 | abc4 |  4 | 124
+  5 | abc0 |  0 | 125
+(34 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) > (3,'abc3'::text,2);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=33 loops=1)
+   Index Cond: (ROW(r1, r2, r3) > ROW(3, 'abc3'::text, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) > (3,'abc3'::text,2);
+ r1 |  r2  | r3 |  v  
+----+------+----+-----
+  3 | abc3 |  3 |  93
+  3 | abc3 |  4 |  94
+  3 | abc4 |  0 |  95
+  3 | abc4 |  1 |  96
+  3 | abc4 |  2 |  97
+  3 | abc4 |  3 |  98
+  3 | abc4 |  4 |  99
+  4 | abc0 |  0 | 100
+  4 | abc0 |  1 | 101
+  4 | abc0 |  2 | 102
+  4 | abc0 |  3 | 103
+  4 | abc0 |  4 | 104
+  4 | abc1 |  0 | 105
+  4 | abc1 |  1 | 106
+  4 | abc1 |  2 | 107
+  4 | abc1 |  3 | 108
+  4 | abc1 |  4 | 109
+  4 | abc2 |  0 | 110
+  4 | abc2 |  1 | 111
+  4 | abc2 |  2 | 112
+  4 | abc2 |  3 | 113
+  4 | abc2 |  4 | 114
+  4 | abc3 |  0 | 115
+  4 | abc3 |  1 | 116
+  4 | abc3 |  2 | 117
+  4 | abc3 |  3 | 118
+  4 | abc3 |  4 | 119
+  4 | abc4 |  0 | 120
+  4 | abc4 |  1 | 121
+  4 | abc4 |  2 | 122
+  4 | abc4 |  3 | 123
+  4 | abc4 |  4 | 124
+  5 | abc0 |  0 | 125
+(33 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,'abc4'::text,5) AND (r1, r2, r3) <= (2,'abc4'::text,5);
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=25 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 'abc4'::text, 5)) AND (ROW(r1, r2, r3) <= ROW(2, 'abc4'::text, 5)))
+(2 rows)
+
+SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,'abc4'::text,5) AND (r1, r2, r3) <= (2,'abc4'::text,5);
+ r1 |  r2  | r3 | v  
+----+------+----+----
+  2 | abc0 |  0 | 50
+  2 | abc0 |  1 | 51
+  2 | abc0 |  2 | 52
+  2 | abc0 |  3 | 53
+  2 | abc0 |  4 | 54
+  2 | abc1 |  0 | 55
+  2 | abc1 |  1 | 56
+  2 | abc1 |  2 | 57
+  2 | abc1 |  3 | 58
+  2 | abc1 |  4 | 59
+  2 | abc2 |  0 | 60
+  2 | abc2 |  1 | 61
+  2 | abc2 |  2 | 62
+  2 | abc2 |  3 | 63
+  2 | abc2 |  4 | 64
+  2 | abc3 |  0 | 65
+  2 | abc3 |  1 | 66
+  2 | abc3 |  2 | 67
+  2 | abc3 |  3 | 68
+  2 | abc3 |  4 | 69
+  2 | abc4 |  0 | 70
+  2 | abc4 |  1 | 71
+  2 | abc4 |  2 | 72
+  2 | abc4 |  3 | 73
+  2 | abc4 |  4 | 74
+(25 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,'abc2'::text,3) AND (r1, r2, r3) <= (1,'abc3'::text,2) AND r3 IN (3,2,6);
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=2 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 'abc2'::text, 3)) AND (ROW(r1, r2, r3) <= ROW(1, 'abc3'::text, 2)) AND (r3 = ANY ('{3,2,6}'::bigint[])))
+(2 rows)
+
+SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,'abc2'::text,3) AND (r1, r2, r3) <= (1,'abc3'::text,2) AND r3 IN (3,2,6);
+ r1 |  r2  | r3 | v  
+----+------+----+----
+  1 | abc2 |  3 | 38
+  1 | abc3 |  2 | 42
+(2 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,'ab'::text,5) AND (r1, r2, r3) <= (1,'abcd'::text,5) ORDER BY r1 ASC, r2 ASC, r3 ASC;
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=25 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) >= ROW(1, 'ab'::text, 5)) AND (ROW(r1, r2, r3) <= ROW(1, 'abcd'::text, 5)))
+(2 rows)
+
+SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,'ab'::text,5) AND (r1, r2, r3) <= (1,'abcd'::text,5) ORDER BY r1 ASC, r2 ASC, r3 ASC;
+ r1 |  r2  | r3 | v  
+----+------+----+----
+  1 | abc0 |  0 | 25
+  1 | abc0 |  1 | 26
+  1 | abc0 |  2 | 27
+  1 | abc0 |  3 | 28
+  1 | abc0 |  4 | 29
+  1 | abc1 |  0 | 30
+  1 | abc1 |  1 | 31
+  1 | abc1 |  2 | 32
+  1 | abc1 |  3 | 33
+  1 | abc1 |  4 | 34
+  1 | abc2 |  0 | 35
+  1 | abc2 |  1 | 36
+  1 | abc2 |  2 | 37
+  1 | abc2 |  3 | 38
+  1 | abc2 |  4 | 39
+  1 | abc3 |  0 | 40
+  1 | abc3 |  1 | 41
+  1 | abc3 |  2 | 42
+  1 | abc3 |  3 | 43
+  1 | abc3 |  4 | 44
+  1 | abc4 |  0 | 45
+  1 | abc4 |  1 | 46
+  1 | abc4 |  2 | 47
+  1 | abc4 |  3 | 48
+  1 | abc4 |  4 | 49
+(25 rows)
+
+DROP TABLE pk_range_int_text;
+-- make sure row comparisons don't operate on hash keys yet
+CREATE TABLE pk_hash_range_int (h int, r1 int, r2 int, r3 int, PRIMARY KEY(h hash, r1 asc, r2 asc, r3 asc));
+INSERT INTO pk_hash_range_int SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
+/*+ IndexScan(pk_hash_range_int) */ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_hash_range_int WHERE (r1, r2) <= (3, 2);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using pk_hash_range_int_pkey on pk_hash_range_int (actual rows=90 loops=1)
+   Index Cond: (ROW(r1, r2) <= ROW(3, 2))
+   Rows Removed by Index Recheck: 35
+(3 rows)
+
+/*+ IndexScan(pk_hash_range_int) */ SELECT * FROM pk_hash_range_int WHERE (r1, r2) <= (3, 2);
+ h | r1 | r2 | r3  
+---+----+----+-----
+ 5 |  0 |  0 | 125
+ 1 |  0 |  0 |  25
+ 1 |  0 |  1 |  26
+ 1 |  0 |  2 |  27
+ 1 |  0 |  3 |  28
+ 1 |  0 |  4 |  29
+ 1 |  1 |  0 |  30
+ 1 |  1 |  1 |  31
+ 1 |  1 |  2 |  32
+ 1 |  1 |  3 |  33
+ 1 |  1 |  4 |  34
+ 1 |  2 |  0 |  35
+ 1 |  2 |  1 |  36
+ 1 |  2 |  2 |  37
+ 1 |  2 |  3 |  38
+ 1 |  2 |  4 |  39
+ 1 |  3 |  0 |  40
+ 1 |  3 |  1 |  41
+ 1 |  3 |  2 |  42
+ 4 |  0 |  0 | 100
+ 4 |  0 |  1 | 101
+ 4 |  0 |  2 | 102
+ 4 |  0 |  3 | 103
+ 4 |  0 |  4 | 104
+ 4 |  1 |  0 | 105
+ 4 |  1 |  1 | 106
+ 4 |  1 |  2 | 107
+ 4 |  1 |  3 | 108
+ 4 |  1 |  4 | 109
+ 4 |  2 |  0 | 110
+ 4 |  2 |  1 | 111
+ 4 |  2 |  2 | 112
+ 4 |  2 |  3 | 113
+ 4 |  2 |  4 | 114
+ 4 |  3 |  0 | 115
+ 4 |  3 |  1 | 116
+ 4 |  3 |  2 | 117
+ 0 |  0 |  1 |   1
+ 0 |  0 |  2 |   2
+ 0 |  0 |  3 |   3
+ 0 |  0 |  4 |   4
+ 0 |  1 |  0 |   5
+ 0 |  1 |  1 |   6
+ 0 |  1 |  2 |   7
+ 0 |  1 |  3 |   8
+ 0 |  1 |  4 |   9
+ 0 |  2 |  0 |  10
+ 0 |  2 |  1 |  11
+ 0 |  2 |  2 |  12
+ 0 |  2 |  3 |  13
+ 0 |  2 |  4 |  14
+ 0 |  3 |  0 |  15
+ 0 |  3 |  1 |  16
+ 0 |  3 |  2 |  17
+ 2 |  0 |  0 |  50
+ 2 |  0 |  1 |  51
+ 2 |  0 |  2 |  52
+ 2 |  0 |  3 |  53
+ 2 |  0 |  4 |  54
+ 2 |  1 |  0 |  55
+ 2 |  1 |  1 |  56
+ 2 |  1 |  2 |  57
+ 2 |  1 |  3 |  58
+ 2 |  1 |  4 |  59
+ 2 |  2 |  0 |  60
+ 2 |  2 |  1 |  61
+ 2 |  2 |  2 |  62
+ 2 |  2 |  3 |  63
+ 2 |  2 |  4 |  64
+ 2 |  3 |  0 |  65
+ 2 |  3 |  1 |  66
+ 2 |  3 |  2 |  67
+ 3 |  0 |  0 |  75
+ 3 |  0 |  1 |  76
+ 3 |  0 |  2 |  77
+ 3 |  0 |  3 |  78
+ 3 |  0 |  4 |  79
+ 3 |  1 |  0 |  80
+ 3 |  1 |  1 |  81
+ 3 |  1 |  2 |  82
+ 3 |  1 |  3 |  83
+ 3 |  1 |  4 |  84
+ 3 |  2 |  0 |  85
+ 3 |  2 |  1 |  86
+ 3 |  2 |  2 |  87
+ 3 |  2 |  3 |  88
+ 3 |  2 |  4 |  89
+ 3 |  3 |  0 |  90
+ 3 |  3 |  1 |  91
+ 3 |  3 |  2 |  92
+(90 rows)
+
+DROP TABLE pk_hash_range_int;

@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -21,6 +22,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +31,8 @@ import lombok.extern.slf4j.Slf4j;
 public class RunYsqlUpgrade extends AbstractTaskBase {
 
   private static final String MIN_YSQL_UPGRADE_RELEASE = "2.8.0.0";
+  private static final String NO_YSQL_UPGRADE_RELEASE = "2.9.0.0";
+  private static final String NEXT_YSQL_UPGRADE_RELEASE = "2.11.0.0";
   private static final long TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
 
   private static final int MAX_ATTEMPTS = 10;
@@ -57,6 +61,11 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
   public void run() {
     if (!CommonUtils.isReleaseEqualOrAfter(
         MIN_YSQL_UPGRADE_RELEASE, taskParams().ybSoftwareVersion)) {
+      log.info("Skipping YSQL upgrade as current YB version is {}", taskParams().ybSoftwareVersion);
+      return;
+    }
+    if (CommonUtils.isReleaseBetween(
+        NO_YSQL_UPGRADE_RELEASE, NEXT_YSQL_UPGRADE_RELEASE, taskParams().ybSoftwareVersion)) {
       log.info("Skipping YSQL upgrade as current YB version is {}", taskParams().ybSoftwareVersion);
       return;
     }
@@ -104,14 +113,14 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
               DELAY_BETWEEN_ATTEMPTS_SEC,
               numAttempts,
               (response.message != null) ? response.message : "error");
-          Thread.sleep(DELAY_BETWEEN_ATTEMPTS_SEC * 1000);
+          waitFor(Duration.ofSeconds(DELAY_BETWEEN_ATTEMPTS_SEC));
           timeout *= 1.2;
         }
       }
 
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      throw new RuntimeException(e);
+      Throwables.propagate(e);
     }
   }
 }

@@ -23,6 +23,7 @@ import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigGetResp;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
@@ -40,6 +41,7 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -94,7 +96,8 @@ public class XClusterConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfigCreateFormData createFormData = parseCreateFormData();
     Universe.getValidUniverseOrBadRequest(createFormData.sourceUniverseUUID, customer);
-    Universe.getValidUniverseOrBadRequest(createFormData.targetUniverseUUID, customer);
+    Universe targetUniverse =
+        Universe.getValidUniverseOrBadRequest(createFormData.targetUniverseUUID, customer);
     checkConfigDoesNotAlreadyExist(
         createFormData.name, createFormData.sourceUniverseUUID, createFormData.targetUniverseUUID);
 
@@ -108,15 +111,22 @@ public class XClusterConfigController extends AuthenticatedController {
     UUID taskUUID = commissioner.submit(TaskType.CreateXClusterConfig, taskParams);
     CustomerTask.create(
         customer,
-        xClusterConfig.uuid,
+        targetUniverse.universeUUID,
         taskUUID,
         CustomerTask.TargetType.XClusterConfig,
-        CustomerTask.TaskType.CreateXClusterConfig,
+        CustomerTask.TaskType.Create,
         xClusterConfig.name);
 
     log.info("Submitted create XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
 
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.XClusterConfig,
+            Objects.toString(xClusterConfig.uuid, null),
+            Audit.ActionType.Create,
+            Json.toJson(createFormData),
+            taskUUID);
     return new YBPTask(taskUUID, xClusterConfig.uuid).asResult();
   }
 
@@ -219,20 +229,29 @@ public class XClusterConfigController extends AuthenticatedController {
       }
     }
 
+    Universe targetUniverse =
+        Universe.getValidUniverseOrBadRequest(xClusterConfig.targetUniverseUUID, customer);
     // Submit task to edit xCluster config
     XClusterConfigTaskParams params = new XClusterConfigTaskParams(xClusterConfig, editFormData);
     UUID taskUUID = commissioner.submit(TaskType.EditXClusterConfig, params);
     CustomerTask.create(
         customer,
-        xClusterConfig.uuid,
+        targetUniverse.universeUUID,
         taskUUID,
         CustomerTask.TargetType.XClusterConfig,
-        CustomerTask.TaskType.EditXClusterConfig,
+        CustomerTask.TaskType.Edit,
         xClusterConfig.name);
 
     log.info("Submitted edit XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
 
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.XClusterConfig,
+            xclusterConfigUUID.toString(),
+            Audit.ActionType.Edit,
+            Json.toJson(editFormData),
+            taskUUID);
     return new YBPTask(taskUUID, xClusterConfig.uuid).asResult();
   }
 
@@ -252,21 +271,29 @@ public class XClusterConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
+    Universe targetUniverse =
+        Universe.getValidUniverseOrBadRequest(xClusterConfig.targetUniverseUUID, customer);
 
     // Submit task to delete xCluster config
     XClusterConfigTaskParams params = new XClusterConfigTaskParams(xClusterConfig);
     UUID taskUUID = commissioner.submit(TaskType.DeleteXClusterConfig, params);
     CustomerTask.create(
         customer,
-        xclusterConfigUUID,
+        targetUniverse.universeUUID,
         taskUUID,
         CustomerTask.TargetType.XClusterConfig,
-        CustomerTask.TaskType.DeleteXClusterConfig,
+        CustomerTask.TaskType.Delete,
         xClusterConfig.name);
 
     log.info("Submitted delete XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
 
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.XClusterConfig,
+            xclusterConfigUUID.toString(),
+            Audit.ActionType.Delete,
+            taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -293,14 +320,20 @@ public class XClusterConfigController extends AuthenticatedController {
         customer,
         targetUniverseUUID,
         taskUUID,
-        TargetType.Universe,
-        CustomerTask.TaskType.SyncXClusterConfig,
+        TargetType.XClusterConfig,
+        CustomerTask.TaskType.Sync,
         targetUniverse.name);
 
     log.info(
         "Submitted sync XClusterConfig for universe({}), task {}", targetUniverseUUID, taskUUID);
 
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            targetUniverseUUID.toString(),
+            Audit.ActionType.SyncXClusterConfig,
+            taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 

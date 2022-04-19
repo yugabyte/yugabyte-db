@@ -3,10 +3,14 @@
 package com.yugabyte.yw.commissioner;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -21,6 +25,7 @@ import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
@@ -33,14 +38,18 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -411,11 +420,112 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTaskInfos.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertEquals(1, subTasksByPosition.size());
-    Set<TaskInfo.State> subTaskStates =
-        subTasksByPosition.get(0).stream().map(TaskInfo::getTaskState).collect(Collectors.toSet());
-    assertEquals(2, subTaskStates.size());
-    assertTrue(subTaskStates.contains(TaskInfo.State.Created));
+    assertEquals(2, subTasksByPosition.size());
+    List<TaskInfo.State> subTaskStates =
+        subTasksByPosition.get(0).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
+    assertEquals(1, subTaskStates.size());
+    assertEquals(TaskInfo.State.Created, subTaskStates.get(0));
+    subTaskStates =
+        subTasksByPosition.get(1).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
+    assertEquals(1, subTaskStates.size());
     assertTrue(subTaskStates.contains(TaskInfo.State.Success));
+  }
+
+  @Test
+  public void testShutdown() throws InterruptedException {
+    ITask task = mockTaskCommon(false);
+    CountDownLatch latch1 = new CountDownLatch(1);
+    CountDownLatch latch2 = new CountDownLatch(1);
+    AtomicBoolean executed = new AtomicBoolean();
+    ExecutorService executor = Executors.newFixedThreadPool(1);
+    doAnswer(
+            inv -> {
+              try {
+                latch1.countDown();
+                latch2.await();
+                executed.set(true);
+              } catch (InterruptedException e) {
+                throw new CancellationException(e.getMessage());
+              }
+              return null;
+            })
+        .when(task)
+        .run();
+
+    // CompletableFuture.supplyAsync(() -> TaskExecutor.this.shutdown(Duration.ofMinutes(5))));
+    RunnableTask taskRunner1 = taskExecutor.createRunnableTask(task);
+    UUID taskUUID = taskExecutor.submit(taskRunner1, executor);
+    // Wait for the task to be running.
+    latch1.await();
+    // Submit executor service shutdown to mimic shutdown hook.
+    CompletableFuture.supplyAsync(
+        () -> MoreExecutors.shutdownAndAwaitTermination(executor, 2, TimeUnit.SECONDS));
+    // Submit task executor shutdown to mimic shutdown hook.
+    CompletableFuture.supplyAsync(() -> taskExecutor.shutdown(Duration.ofSeconds(2)));
+    // Wait for the task to be cancelled.
+    waitForTask(taskUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    // Aborted due to shutdown.
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    RunnableTask taskRunner2 = taskExecutor.createRunnableTask(task);
+    // This should get rejected as the executor is already shutdown.
+    assertThrows(
+        IllegalStateException.class,
+        () -> {
+          taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1));
+        });
+  }
+
+  @Test
+  public void testRunnableTaskCallstack() {
+    ITask task = mockTaskCommon(false);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    String[] callstack = taskRunner.getCreatorCallstack();
+    assertThat(
+        callstack[0],
+        containsString("com.yugabyte.yw.commissioner.TaskExecutor.createRunnableTask"));
+    assertThat(callstack.length, lessThanOrEqualTo(16));
+  }
+
+  @Test
+  public void testRunnableTaskWaitFor() throws InterruptedException {
+    ITask task = mockTaskCommon(true);
+    ITask subTask = mockTaskCommon(true);
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
+
+    doAnswer(
+            inv -> {
+              latch.countDown();
+              while (true) {
+                taskExecutor.getRunnableTask(taskUUIDRef.get()).waitFor(Duration.ofMillis(200));
+              }
+            })
+        .when(subTask)
+        .run();
+
+    doAnswer(
+            inv -> {
+              RunnableTask runnable = taskExecutor.getRunnableTask(taskUUIDRef.get());
+              // Invoke subTask from the parent task.
+              SubTaskGroup subTasksGroup = taskExecutor.createSubTaskGroup("test");
+              subTasksGroup.addSubTask(subTask);
+              runnable.addSubTaskGroup(subTasksGroup);
+              runnable.runSubTasks();
+              return null;
+            })
+        .when(task)
+        .run();
+
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
+    taskUUIDRef.set(taskUUID);
+    latch.await();
+    taskExecutor.abort(taskUUID);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    verify(subTask).setUserTaskUUID(eq(taskUUID));
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    JsonNode errNode = taskInfo.getSubTasks().get(0).getTaskDetails().get("errorString");
+    assertThat(errNode.toString(), containsString("is aborted while waiting"));
   }
 }

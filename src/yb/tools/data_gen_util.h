@@ -42,7 +42,6 @@ namespace yb {
 class QLValuePB;
 class QLWriteRequestPB;
 class Random;
-class YBPartialRow;
 
 namespace client {
 class YBSchema;

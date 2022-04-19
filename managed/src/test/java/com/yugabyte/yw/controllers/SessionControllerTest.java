@@ -135,7 +135,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -193,7 +193,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
   }
@@ -259,7 +259,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
   }
@@ -279,7 +279,7 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNotNull(json.get("apiToken"));
     assertNotNull(json.get("customerUUID"));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -319,12 +319,15 @@ public class SessionControllerTest {
     registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
 
-    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    Result result =
+        route(fakeRequest("POST", "/api/register?generateApiToken=true").bodyJson(registerJson));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
+    assertNotNull(json.get("apiToken"));
     Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
+    assertAuditEntry(1, c1.uuid);
 
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "foo2@bar.com");
@@ -334,7 +337,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
-    assertAuditEntry(1, c1.uuid);
+    assertAuditEntry(2, c1.uuid);
     assertNotNull(alertDestinationService.getDefaultDestination(c1.uuid));
   }
 
@@ -554,12 +557,13 @@ public class SessionControllerTest {
     loginJson.put("password", "password");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
+    assertAuditEntry(1, customer.uuid);
 
     assertEquals(OK, result.status());
     String authToken = json.get("authToken").asText();
     result = route(fakeRequest("GET", "/api/logout").header("X-AUTH-TOKEN", authToken));
     assertEquals(OK, result.status());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -579,7 +583,7 @@ public class SessionControllerTest {
     json = Json.parse(contentAsString(result));
     String authToken2 = json.get("authToken").asText();
     assertEquals(authToken1, authToken2);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(2, customer.uuid);
   }
 
   @Test
@@ -591,6 +595,8 @@ public class SessionControllerTest {
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    assertAuditEntry(1, customer.uuid);
+
     JsonNode json = Json.parse(contentAsString(result));
     String authToken = json.get("authToken").asText();
     String custUuid = json.get("customerUUID").asText();
@@ -604,7 +610,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("apiToken"));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(2, customer.uuid);
   }
 
   @Test
@@ -635,7 +641,7 @@ public class SessionControllerTest {
     json = Json.parse(contentAsString(result));
     String apiToken2 = json.get("apiToken").asText();
     assertNotEquals(apiToken1, apiToken2);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(3, customer.uuid);
   }
 
   @Test

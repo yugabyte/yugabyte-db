@@ -247,3 +247,14 @@ DROP ROLE regress_test_def_replication;
 DROP ROLE regress_test_replication;
 DROP ROLE regress_test_def_bypassrls;
 DROP ROLE regress_test_bypassrls;
+-- verify yb_db_admin role can change bypassrls attribute
+CREATE ROLE regress_test_user1;
+SET SESSION ROLE yb_db_admin;
+ALTER ROLE regress_test_user1 WITH BYPASSRLS;
+CREATE ROLE regress_test_user2 WITH BYPASSRLS;
+ALTER ROLE regress_test_user2 WITH NOBYPASSRLS;
+-- clean up
+SET SESSION ROLE yugabyte;
+DROP ROLE regress_test_user1;
+DROP ROLE regress_test_user2;
+

@@ -6,10 +6,10 @@
     {{ $title := (index $path 1) }}
     {{ range $index,$value := .Site.Menus }}
       {{ if eq $index $title }}
-        {{ if eq $index "latest" }}
-          {{ $context.Scratch.Set "currentVersionTitle" "v2.11 (latest)" }}
+        {{ if eq $index "preview" }}
+          {{ $context.Scratch.Set "currentVersionTitle" "v2.13 (preview)" }}
         {{ else if eq $index "stable" }}
-          {{ $context.Scratch.Set "currentVersionTitle" "v2.8 (stable)" }}
+          {{ $context.Scratch.Set "currentVersionTitle" "v2.12 (stable)" }}
         {{ else }}
           {{ $context.Scratch.Set "currentVersionTitle" $index }}
         {{ end }}
@@ -27,13 +27,14 @@
     </button>
 
     <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-        <a class="dropdown-item" href="/latest/"><strong>v2.11 (latest)</strong></a>
-        <a class="dropdown-item" href="/stable/"><strong>v2.8 (stable)</strong></a>
+        <a class="dropdown-item" href="/preview/"><strong>v2.13 (preview)</strong></a>
+        <a class="dropdown-item" href="/stable/"><strong>v2.12 (stable)</strong></a>
         {{ range sort $versions "Name" "desc" }}
             {{ if hasPrefix .Name "v"}}
               <a class="dropdown-item" href="/{{.Name}}/"><strong>{{ .Name }}</strong> (earlier version)</a>
             {{ end }}
         {{ end }}
+        <a class="dropdown-item" href="https://docs-archive.yugabyte.com/" target="_blank">Unsupported versions</a>
     </div>
   </div>
 {{ end }}

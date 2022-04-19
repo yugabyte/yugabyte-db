@@ -3,6 +3,7 @@ import { isEmptyArray, isNonEmptyArray, isNonEmptyObject } from '../../../../uti
 import { YBLoading } from '../../../common/indicators';
 import { TaskListTable, TaskProgressContainer } from '../../../tasks';
 import { TASK_SHORT_TIMEOUT } from '../../../tasks/constants';
+import { YUGABYTE_TITLE } from '../../../../config';
 
 export class UniverseTaskList extends Component {
   componentDidMount() {
@@ -60,7 +61,7 @@ export class UniverseTaskList extends Component {
     }
     if (isNonEmptyArray(universeTaskHistoryArray)) {
       const errorPlatformMessage = (
-        <div className="oss-unavailable-warning">Only available on Yugabyte Platform.</div>
+        <div className="oss-unavailable-warning">Only available on {YUGABYTE_TITLE}.</div>
       );
       universeTaskHistory = (
         <TaskListTable

@@ -26,7 +26,6 @@ import com.azure.storage.blob.models.ListBlobsOptions;
 @Slf4j
 public class AZUtil {
   public static final String AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
-  public static final String AZURE_STORAGE_BACKUP_LOCATION = "BACKUP_LOCATION";
   private static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
 
   public static String[] getSplitLocationValue(String backupLocation, Boolean isConfigLocation) {
@@ -36,14 +35,14 @@ public class AZUtil {
     return split;
   }
 
-  public static void deleteKeyIfExists(JsonNode credentials, String backupLocation)
+  public static void deleteKeyIfExists(JsonNode configData, String backupLocation)
       throws Exception {
     String[] splitLocation = getSplitLocationValue(backupLocation, false);
     String azureUrl = "https://" + splitLocation[0];
     String container = splitLocation[1];
     String blob = splitLocation[2];
     String keyLocation = blob.substring(0, blob.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
-    String sasToken = credentials.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
+    String sasToken = configData.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
     try {
       BlobContainerClient blobContainerClient =
           createBlobContainerClient(azureUrl, sasToken, container);
@@ -63,21 +62,26 @@ public class AZUtil {
     }
   }
 
-  public static boolean canCredentialListObjects(JsonNode credentials) {
-    String configLocation = credentials.get(AZURE_STORAGE_BACKUP_LOCATION).asText();
-    String[] splitLocation = getSplitLocationValue(configLocation, true);
-    String azureUrl = "https://" + splitLocation[0];
-    String container = splitLocation[1];
-    String sasToken = credentials.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
-    try {
-      BlobContainerClient blobContainerClient =
-          createBlobContainerClient(azureUrl, sasToken, container);
-      ListBlobsOptions blobsOptions = new ListBlobsOptions().setMaxResultsPerPage(1);
-      PagedIterable<BlobItem> pagedIterable =
-          blobContainerClient.listBlobs(blobsOptions, Duration.ofMinutes(5));
-    } catch (Exception e) {
-      log.error("Cannot list objects with credentials", e);
-      return false;
+  public static boolean canCredentialListObjects(JsonNode configData, List<String> locations) {
+    for (String configLocation : locations) {
+      String[] splitLocation = getSplitLocationValue(configLocation, true);
+      String azureUrl = "https://" + splitLocation[0];
+      String container = splitLocation[1];
+      String sasToken = configData.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
+      try {
+        BlobContainerClient blobContainerClient =
+            createBlobContainerClient(azureUrl, sasToken, container);
+        ListBlobsOptions blobsOptions = new ListBlobsOptions().setMaxResultsPerPage(1);
+        PagedIterable<BlobItem> pagedIterable =
+            blobContainerClient.listBlobs(blobsOptions, Duration.ofMinutes(5));
+      } catch (Exception e) {
+        log.error(
+            String.format(
+                "Credential cannot list objects in the specified backup location %s",
+                configLocation),
+            e);
+        return false;
+      }
     }
     return true;
   }
@@ -93,7 +97,7 @@ public class AZUtil {
     return blobContainerClient;
   }
 
-  public static void deleteStorage(JsonNode credentials, List<String> backupLocations)
+  public static void deleteStorage(JsonNode configData, List<String> backupLocations)
       throws Exception {
     for (String backupLocation : backupLocations) {
       try {
@@ -101,7 +105,7 @@ public class AZUtil {
         String azureUrl = "https://" + splitLocation[0];
         String container = splitLocation[1];
         String blob = splitLocation[2];
-        String sasToken = credentials.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
+        String sasToken = configData.get(AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
         BlobContainerClient blobContainerClient =
             createBlobContainerClient(azureUrl, sasToken, container);
         ListBlobsOptions blobsOptions = new ListBlobsOptions().setPrefix(blob);

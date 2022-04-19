@@ -27,6 +27,12 @@ const colourStyles = {
     padding: hasValue ? '5px 0px 5px 8px' : '0',
     width: 'auto'
   }),
+  singleValue: (styles) => ({
+    ...styles,
+    backgroundColor: '#E5E5E9',
+    borderRadius: '6px',
+    padding: '5px 8px'
+  }),
   multiValue: (styles) => ({
     ...styles,
     backgroundColor: '#E5E5E9',
@@ -144,12 +150,12 @@ const animatedComponents = makeAnimated({
 });
 
 export const YBMultiSelectRedesiged = (props) => {
-  const { options, value, onChange, placeholder, name, className } = props;
+  const { options, value, onChange, placeholder, name, className, isMulti = true } = props;
   return (
     <Select
       className={className}
       classNamePrefix="select"
-      isMulti
+      isMulti={isMulti}
       name={name}
       placeholder={placeholder}
       options={options}

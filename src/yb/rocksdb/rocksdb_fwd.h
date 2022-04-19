@@ -16,8 +16,12 @@
 #ifndef YB_ROCKSDB_ROCKSDB_FWD_H
 #define YB_ROCKSDB_ROCKSDB_FWD_H
 
+#include <memory>
+
 namespace rocksdb {
 
+class CompactionContext;
+class CompactionFeed;
 class DB;
 class Env;
 class MemTable;
@@ -26,9 +30,12 @@ class UserFrontiers;
 class WriteBatch;
 
 struct BlockBasedTableOptions;
+struct CompactionContextOptions;
 struct Options;
 struct TableBuilderOptions;
 struct TableProperties;
+
+using CompactionContextPtr = std::unique_ptr<CompactionContext>;
 
 } // namespace rocksdb
 

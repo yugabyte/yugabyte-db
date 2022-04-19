@@ -195,7 +195,8 @@ Result<client::YBTransactionPtr> TestWorkload::State::MayBeStartNewTransaction(
     client::YBSession* session, const TestWorkloadOptions& options) {
   client::YBTransactionPtr txn;
   if (options.is_transactional()) {
-    txn = VERIFY_RESULT(transaction_pool_->TakeAndInit(options.isolation_level));
+    txn = VERIFY_RESULT(transaction_pool_->TakeAndInit(
+        options.isolation_level, TransactionRpcDeadline()));
     session->SetTransaction(txn);
   }
   return txn;
@@ -325,7 +326,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
       session->Apply(op);
     }
 
-    const auto flush_status = session->FlushAndGetOpsErrors();
+    const auto flush_status = session->TEST_FlushAndGetOpsErrors();
     if (!flush_status.status.ok()) {
       VLOG(1) << "Flush error: " << AsString(flush_status.status);
       for (const auto& error : flush_status.errors) {
@@ -420,7 +421,7 @@ void TestWorkload::State::ReadThread(const TestWorkloadOptions& options) {
     }
     QLAddInt32HashValue(req, key);
     session->Apply(op);
-    const auto flush_status = session->FlushAndGetOpsErrors();
+    const auto flush_status = session->TEST_FlushAndGetOpsErrors();
     const auto& s = flush_status.status;
     if (s.ok()) {
       if (op->response().status() == QLResponsePB::YQL_STATUS_OK) {

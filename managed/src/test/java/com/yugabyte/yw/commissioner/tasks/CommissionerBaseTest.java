@@ -21,6 +21,8 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
+import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
+import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -85,6 +87,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected NodeUniverseManager mockNodeUniverseManager;
   protected TaskExecutor taskExecutor;
   protected EncryptionAtRestManager mockEARManager;
+  protected SupportBundleComponent mockSupportBundleComponent;
+  protected SupportBundleComponentFactory mockSupportBundleComponentFactory;
 
   @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
 
@@ -149,6 +153,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     mockEARManager = mock(EncryptionAtRestManager.class);
+    mockSupportBundleComponent = mock(SupportBundleComponent.class);
+    mockSupportBundleComponentFactory = mock(SupportBundleComponentFactory.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -173,6 +179,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
                 .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies))
+                .overrides(
+                    bind(SupportBundleComponent.class).toInstance(mockSupportBundleComponent))
+                .overrides(
+                    bind(SupportBundleComponentFactory.class)
+                        .toInstance(mockSupportBundleComponentFactory))
                 .overrides(bind(YcqlQueryExecutor.class).toInstance(mockYcqlQueryExecutor))
                 .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor))
                 .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
@@ -209,8 +220,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       // request will succeeded.
       try {
         TaskInfo taskInfo = TaskInfo.get(taskUUID);
-        if (taskInfo.getTaskState() == TaskInfo.State.Success
-            || taskInfo.getTaskState() == TaskInfo.State.Failure) {
+        if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           // Also, ensure task details are set before returning.
           if (taskInfo.getTaskDetails() != null) {
             return taskInfo;

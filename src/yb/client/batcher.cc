@@ -365,10 +365,11 @@ std::map<PartitionKey, Status> Batcher::CollectOpsErrors() {
         const Schema& schema = GetSchema(op.yb_op->table()->schema());
         const PartitionSchema& partition_schema = op.yb_op->table()->partition_schema();
         const auto msg = Format(
-            "Row $0 not in partition $1, partition key: $2",
+            "Row $0 not in partition $1, partition key: $2, tablet: $3",
             op.yb_op->ToString(),
             partition_schema.PartitionDebugString(partition, schema),
-            Slice(partition_key).ToDebugHexString());
+            Slice(partition_key).ToDebugHexString(),
+            op.tablet->tablet_id());
         LOG_WITH_PREFIX(DFATAL) << msg;
         op.error = STATUS(InternalError, msg);
       }
@@ -485,6 +486,16 @@ void Batcher::ExecuteOperations(Initial initial) {
         std::bind(&Batcher::TransactionReady, shared_from_this(), _1))) {
       return;
     }
+  } else if (force_consistent_read_ &&
+             ops_info_.groups.size() > 1 &&
+             read_point_ &&
+             !read_point_->GetReadTime()) {
+    // Read time is not set but consistent read from multiple tablets without
+    // transaction is required. Use current time as a read time.
+    // Note: read_point_ is null in case of initdb. Nothing to do in this case.
+    read_point_->SetCurrentReadTime();
+    VLOG_WITH_PREFIX_AND_FUNC(3) << "Set current read time as a read time: "
+                                 << read_point_->GetReadTime();
   }
 
   if (state_ != BatcherState::kTransactionPrepare) {

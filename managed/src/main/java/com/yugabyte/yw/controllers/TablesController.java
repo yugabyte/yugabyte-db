@@ -7,8 +7,11 @@ import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static play.mvc.Http.Status.CONFLICT;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -18,7 +21,9 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -28,8 +33,10 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
@@ -38,8 +45,11 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -49,6 +59,8 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
+
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -57,6 +69,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.Builder;
+import lombok.extern.jackson.Jacksonized;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
@@ -83,16 +97,20 @@ public class TablesController extends AuthenticatedController {
 
   private final CustomerConfigService customerConfigService;
 
+  private final NodeUniverseManager nodeUniverseManager;
+
   @Inject
   public TablesController(
       Commissioner commissioner,
       YBClientService service,
       MetricQueryHelper metricQueryHelper,
-      CustomerConfigService customerConfigService) {
+      CustomerConfigService customerConfigService,
+      NodeUniverseManager nodeUniverseManager) {
     this.commissioner = commissioner;
     this.ybService = service;
     this.metricQueryHelper = metricQueryHelper;
     this.customerConfigService = customerConfigService;
+    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   @ApiOperation(
@@ -143,7 +161,14 @@ public class TablesController extends AuthenticatedController {
         tableDetails.keyspace,
         tableDetails.tableName);
 
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Table,
+            null,
+            Audit.ActionType.Create,
+            Json.toJson(formData.rawData()),
+            taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -209,7 +234,9 @@ public class TablesController extends AuthenticatedController {
         taskParams.tableUUID,
         taskParams.getFullName());
 
-    auditService().createAuditEntry(ctx(), request(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Table, tableUUID.toString(), Audit.ActionType.Drop, taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -463,7 +490,13 @@ public class TablesController extends AuthenticatedController {
           "Submitted universe backup to be scheduled {}, schedule uuid = {}.",
           universeUUID,
           scheduleUUID);
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Universe,
+              universeUUID.toString(),
+              Audit.ActionType.CreateMultiTableBackup,
+              Json.toJson(formData.rawData()));
       return PlatformResults.withData(schedule);
     } else {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
@@ -476,75 +509,16 @@ public class TablesController extends AuthenticatedController {
           CustomerTask.TaskType.Create,
           universe.name);
       LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.name);
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Universe,
+              universeUUID.toString(),
+              Audit.ActionType.CreateMultiTableBackup,
+              Json.toJson(formData.rawData()),
+              taskUUID);
       return new YBPTask(taskUUID).asResult();
     }
-  }
-
-  @ApiOperation(value = "Create a backup", nickname = "createbackup", response = YBPTask.class)
-  @ApiImplicitParams({
-    @ApiImplicitParam(
-        name = "Backup",
-        value = "Backup data to be created",
-        required = true,
-        dataType = "com.yugabyte.yw.forms.BackupRequestParams",
-        paramType = "body")
-  })
-  // Rename this to createBackup on completion
-  public Result createBackupYb(UUID customerUUID) {
-    // Validate customer UUID
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-
-    Form<BackupRequestParams> formData =
-        formFactory.getFormDataOrBadRequest(BackupRequestParams.class);
-    BackupRequestParams taskParams = formData.get();
-
-    // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
-    taskParams.customerUUID = customerUUID;
-
-    if (taskParams.keyspaceTableList != null) {
-      for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {
-        if (keyspaceTable.tableUUIDList == null) {
-          keyspaceTable.tableUUIDList = new ArrayList<UUID>();
-        }
-        validateTables(
-            keyspaceTable.tableUUIDList, universe, keyspaceTable.keyspace, taskParams.backupType);
-      }
-    } else {
-      validateTables(null, universe, null, taskParams.backupType);
-    }
-
-    if (taskParams.storageConfigUUID == null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
-    }
-    CustomerConfig customerConfig =
-        customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
-    if (!customerConfig.getState().equals(ConfigState.Active)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
-    }
-    if (universe.getUniverseDetails().updateInProgress
-        || universe.getUniverseDetails().backupInProgress) {
-      throw new PlatformServiceException(
-          CONFLICT,
-          String.format(
-              "Cannot run Backup task since the universe %s is currently in a locked state.",
-              taskParams.universeUUID.toString()));
-    }
-    UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
-    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.name, taskUUID);
-    CustomerTask.create(
-        customer,
-        taskParams.universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Backup,
-        CustomerTask.TaskType.Create,
-        universe.name);
-    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.name);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
-    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(
@@ -603,7 +577,13 @@ public class TablesController extends AuthenticatedController {
           tableUUID,
           taskParams.getTableName(),
           scheduleUUID);
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Table,
+              tableUUID.toString(),
+              Audit.ActionType.CreateSingleTableBackup,
+              Json.toJson(formData.rawData()));
       return PlatformResults.withData(schedule);
     } else {
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
@@ -625,77 +605,16 @@ public class TablesController extends AuthenticatedController {
           tableUUID,
           taskParams.getTableNames(),
           taskParams.getTableName());
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Table,
+              tableUUID.toString(),
+              Audit.ActionType.CreateSingleTableBackup,
+              Json.toJson(formData.rawData()),
+              taskUUID);
       return new YBPTask(taskUUID).asResult();
     }
-  }
-
-  @ApiOperation(
-      value = "Create Backup Schedule",
-      response = Schedule.class,
-      nickname = "createbackupSchedule")
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          name = "backup",
-          value = "Parameters of the backup to be restored",
-          paramType = "body",
-          dataType = "com.yugabyte.yw.forms.BackupRequestParams",
-          required = true))
-  public Result createBackupSchedule(UUID customerUUID) {
-    Customer.getOrBadRequest(customerUUID);
-    Form<BackupRequestParams> formData =
-        formFactory.getFormDataOrBadRequest(BackupRequestParams.class);
-    BackupRequestParams taskParams = formData.get();
-    if (taskParams.storageConfigUUID == null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
-    }
-    if (taskParams.schedulingFrequency == 0L && taskParams.cronExpression == null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Provide Cron Expression or Scheduling frequency");
-    } else if (taskParams.schedulingFrequency != 0L && taskParams.cronExpression != null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot provide both Cron Expression and Scheduling frequency");
-    } else if (taskParams.schedulingFrequency != 0L) {
-      BackupUtil.validateBackupFrequency(taskParams.schedulingFrequency);
-    } else if (taskParams.cronExpression != null) {
-      BackupUtil.validateBackupCronExpression(taskParams.cronExpression);
-    }
-
-    CustomerConfig customerConfig =
-        customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
-    if (!customerConfig.getState().equals(ConfigState.Active)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
-    }
-    // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
-    taskParams.customerUUID = customerUUID;
-
-    if (taskParams.keyspaceTableList != null) {
-      for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {
-        if (keyspaceTable.tableUUIDList == null) {
-          keyspaceTable.tableUUIDList = new ArrayList<UUID>();
-        }
-        validateTables(
-            keyspaceTable.tableUUIDList, universe, keyspaceTable.keyspace, taskParams.backupType);
-      }
-    } else {
-      validateTables(null, universe, null, taskParams.backupType);
-    }
-
-    Schedule schedule =
-        Schedule.create(
-            customerUUID,
-            taskParams,
-            TaskType.CreateBackup,
-            taskParams.schedulingFrequency,
-            taskParams.cronExpression);
-    UUID scheduleUUID = schedule.getScheduleUUID();
-    LOG.info(
-        "Created backup schedule for customer {}, schedule uuid = {}.", customerUUID, scheduleUUID);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return PlatformResults.withData(schedule);
   }
 
   /**
@@ -767,7 +686,14 @@ public class TablesController extends AuthenticatedController {
         taskParams.getTableName(),
         taskParams.getTableName());
 
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Table,
+            tableUUID.toString(),
+            Audit.ActionType.BulkImport,
+            Json.toJson(formData.rawData()),
+            taskUUID);
     return new YBPTask(taskUUID, tableUUID).asResult();
   }
 
@@ -888,5 +814,138 @@ public class TablesController extends AuthenticatedController {
       result.put(tableID, entry.values.get(0).getRight());
     }
     return result;
+  }
+
+  @ApiOperation(
+      value = "List all tablespaces",
+      nickname = "getAllTableSpaces",
+      notes = "Get a list of all tablespaces of a given universe",
+      response = TableSpaceInfo.class,
+      responseContainer = "List")
+  public Result listTableSpaces(UUID customerUUID, UUID universeUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    final String masterAddresses = universe.getMasterAddresses(true);
+    if (masterAddresses.isEmpty()) {
+      String errMsg = "Expected error. Masters are not currently queryable.";
+      LOG.warn(errMsg);
+      return ok(errMsg);
+    }
+
+    LOG.info("Fetching table spaces...");
+    NodeDetails randomTServer = null;
+    try {
+      randomTServer = CommonUtils.getARandomLiveTServer(universe);
+    } catch (IllegalStateException ise) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cluster may not have been initialized yet. Please try later");
+    }
+    final String fetchTablespaceQuery =
+        "select jsonb_agg(t) from (select spcname, spcoptions from pg_catalog.pg_tablespace) as t";
+    ShellResponse shellResponse =
+        nodeUniverseManager.runYsqlCommand(
+            randomTServer, universe, "postgres", fetchTablespaceQuery);
+    if (!shellResponse.isSuccess()) {
+      LOG.warn(
+          "Attempt to fetch tablespace info via node {} failed, response {}:{}",
+          randomTServer.nodeName,
+          shellResponse.code,
+          shellResponse.message);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching TableSpace information");
+    }
+    String jsonData = CommonUtils.extractJsonisedSqlResponse(shellResponse);
+    List<TableSpaceInfo> tableSpaceInfoRespList = new ArrayList<>();
+    if (jsonData == null || jsonData.isEmpty()) {
+      PlatformResults.withData(tableSpaceInfoRespList);
+    }
+
+    LOG.debug("jsonData {}", jsonData);
+    try {
+      ObjectMapper objectMapper = new ObjectMapper();
+      List<TableSpaceQueryResponse> tablespaceList =
+          objectMapper.readValue(jsonData, new TypeReference<List<TableSpaceQueryResponse>>() {});
+      tableSpaceInfoRespList =
+          tablespaceList
+              .stream()
+              .filter(x -> !x.tableSpaceName.startsWith("pg_"))
+              .map(x -> parseToTableSpaceInfoResp(x))
+              .collect(Collectors.toList());
+      return PlatformResults.withData(tableSpaceInfoRespList);
+    } catch (IOException ioe) {
+      LOG.error("Unable to parse fetchTablespaceQuery response {}", jsonData, ioe);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching TableSpace information");
+    }
+  }
+
+  private TableSpaceInfo parseToTableSpaceInfoResp(TableSpaceQueryResponse tablespace) {
+    TableSpaceInfo.TableSpaceInfoBuilder builder = TableSpaceInfo.builder();
+    builder.name(tablespace.tableSpaceName);
+    try {
+      ObjectMapper objectMapper = new ObjectMapper();
+      for (String optionStr : tablespace.tableSpaceOptions) {
+        if (optionStr.startsWith("replica_placement=")) {
+          optionStr = optionStr.replaceFirst("replica_placement=", "");
+          TableSpaceOptions option = objectMapper.readValue(optionStr, TableSpaceOptions.class);
+          builder.numReplicas(option.numReplicas).placementBlocks(option.placementBlocks);
+        }
+      }
+      return builder.build();
+    } catch (IOException ioe) {
+      LOG.error(
+          "Unable to parse options fron fetchTablespaceQuery response {}",
+          tablespace.tableSpaceOptions,
+          ioe);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching TableSpace information");
+    }
+  }
+
+  @ApiModel(description = "Tablespace information response")
+  @Jacksonized
+  @Builder
+  static class TableSpaceInfo {
+
+    @ApiModelProperty(value = "Tablespace Name")
+    public String name;
+
+    @ApiModelProperty(value = "numReplicas")
+    public int numReplicas;
+
+    @ApiModelProperty(value = "placements")
+    public List<PlacementBlock> placementBlocks;
+  }
+
+  static class PlacementBlock {
+    @ApiModelProperty(value = "Cloud")
+    public String cloud;
+
+    @ApiModelProperty(value = "Region")
+    public String region;
+
+    @ApiModelProperty(value = "Zone")
+    public String zone;
+
+    @ApiModelProperty(value = "Minimum replicas")
+    @JsonAlias("min_num_replicas")
+    public int minNumReplicas;
+  }
+
+  private static class TableSpaceQueryResponse {
+    @JsonProperty("spcname")
+    public String tableSpaceName;
+
+    @JsonProperty("spcoptions")
+    public List<String> tableSpaceOptions;
+  }
+
+  static class TableSpaceOptions {
+    @JsonProperty("num_replicas")
+    public int numReplicas;
+
+    @JsonProperty("placement_blocks")
+    public List<PlacementBlock> placementBlocks;
   }
 }

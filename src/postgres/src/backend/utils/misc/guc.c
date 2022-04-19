@@ -1991,6 +1991,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_binary_restore", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enter a special mode designed specifically for YSQL binary restore."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_binary_restore,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_system_catalogs_creation", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Relaxes some internal sanity checks for system catalogs to "
 						 "allow creating them."),
@@ -3322,6 +3333,27 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"ysql_session_max_batch_size", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the maximum batch size for writes that YSQL can buffer before flushing to tablet servers."),
+			gettext_noop("If this is 0, YSQL will use the gflag ysql_session_max_batch_size. If non-zero, this session variable will supersede the value of the gflag."),
+			0
+		},
+		&ysql_session_max_batch_size,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ysql_max_in_flight_ops", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Maximum number of in-flight operations allowed from YSQL to tablet servers"),
+			NULL,
+		},
+		&ysql_max_in_flight_ops,
+		10000, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_follower_read_staleness_ms", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the staleness (in ms) to be used for performing follower reads."),
 			NULL,
@@ -4540,6 +4572,15 @@ static const char *const map_old_guc_names[] = {
 	"sort_mem", "work_mem",
 	"vacuum_mem", "maintenance_work_mem",
 	NULL
+};
+
+/*
+ * Contains list of GUC variables that both fall under PGC_SUSET context
+ * and can be modified by the yb_db_admin role. This is needed to allow
+ * yb_db_admin to modify PG_SUSET variables without being a superuser itself.
+ */
+static const char *const YbDbAdminVariables[] = {
+	"session_replication_role",
 };
 
 
@@ -8165,6 +8206,21 @@ void
 ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 {
 	GucAction	action = stmt->is_local ? GUC_ACTION_LOCAL : GUC_ACTION_SET;
+	bool 		YbDbAdminCanSet = false;
+
+	if (IsYbDbAdminUser(GetUserId()))
+	{
+		for (size_t i = 0;
+			 i < sizeof(YbDbAdminVariables) / sizeof(YbDbAdminVariables[0]);
+			 i++)
+		{
+			if (strcmp(YbDbAdminVariables[i], stmt->name) == 0)
+			{
+				YbDbAdminCanSet = true;
+				break;
+			}
+		}
+	}
 
 	/*
 	 * Workers synchronize these parameters at the start of the parallel
@@ -8183,7 +8239,8 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 				WarnNoTransactionBlock(isTopLevel, "SET LOCAL");
 			(void) set_config_option(stmt->name,
 									 ExtractSetVariableArgs(stmt),
-									 (superuser() ? PGC_SUSET : PGC_USERSET),
+									 (superuser() || YbDbAdminCanSet
+									  ? PGC_SUSET : PGC_USERSET),
 									 PGC_S_SESSION,
 									 action, true, 0, false);
 			check_reserved_prefixes(stmt->name);
@@ -8270,7 +8327,8 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 
 			(void) set_config_option(stmt->name,
 									 NULL,
-									 (superuser() ? PGC_SUSET : PGC_USERSET),
+									 (superuser() || YbDbAdminCanSet
+									  ? PGC_SUSET : PGC_USERSET),
 									 PGC_S_SESSION,
 									 action, true, 0, false);
 

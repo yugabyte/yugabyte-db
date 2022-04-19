@@ -14,16 +14,16 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authentication/ysql-authentication" class="nav-link active">
+    <a href="/preview/secure/authentication/ysql-authentication" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 </ul>
 
-The ldap authentication method is similar to the password method, except that it uses LDAP to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database (and have appropriate permissions). 
+The ldap authentication method is similar to the password method, except that it uses LDAP to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database (and have appropriate permissions).
 
-LDAP Authentication can be enabled in the YugabyteDB cluster by setting the LDAP configuration with <code>[--ysql_hba_conf](/latest/reference/configuration/yb-tserver/#ysql-hba-conf)</code> flag. YugabyteDB supports two modes for LDAP authentication: 
+LDAP Authentication can be enabled in the YugabyteDB cluster by setting the LDAP configuration with <code>[--ysql_hba_conf](/preview/reference/configuration/yb-tserver/#ysql-hba-conf)</code> flag. YugabyteDB supports two modes for LDAP authentication:
 
 * <strong>simple-bind</strong> mode
 *  <strong>search+bind</strong> mode
@@ -32,7 +32,7 @@ These are described below.
 
 ## Simple Bind Mode
 
-In **simple-bind** mode, YB-TServer will bind to the Distinguished Name (“DN”) constructed with “prefix username suffix” format. Here is an example for Simple bind mode 
+In **simple-bind** mode, YB-TServer will bind to the Distinguished Name (“DN”) constructed with “prefix username suffix” format. Here is an example for Simple bind mode
 
 
 ```
@@ -53,7 +53,7 @@ The configurations supported for simple bind mode.
    </td>
   </tr>
   <tr>
-   <td><strong>ldapport</strong> 
+   <td><strong>ldapport</strong>
    </td>
    <td>Port number on LDAP server to connect to. If no port is specified, LDAP default port 389 will be used.
    </td>
@@ -67,7 +67,7 @@ The configurations supported for simple bind mode.
   <tr>
    <td><strong>ldaptls</strong>
    </td>
-   <td>Set to 1 to make the connection between PostgreSQL and the LDAP server use TLS encryption. 
+   <td>Set to 1 to make the connection between PostgreSQL and the LDAP server use TLS encryption.
    </td>
   </tr>
   <tr>
@@ -112,7 +112,7 @@ The configurations supported for search + bind mode
    </td>
   </tr>
   <tr>
-   <td><strong>ldapport</strong> 
+   <td><strong>ldapport</strong>
    </td>
    <td>Port number on LDAP server to connect to. If no port is specified, LDAP default port 389 will be used.
    </td>
@@ -126,13 +126,13 @@ The configurations supported for search + bind mode
   <tr>
    <td><strong>ldaptls</strong>
    </td>
-   <td>Set to 1 to make the connection between PostgreSQL and the LDAP server use TLS encryption. 
+   <td>Set to 1 to make the connection between PostgreSQL and the LDAP server use TLS encryption.
    </td>
   </tr>
   <tr>
    <td><strong>ldapbasedn</strong>
    </td>
-   <td>Specifies the base directory to begin the user name search 
+   <td>Specifies the base directory to begin the user name search
    </td>
   </tr>
   <tr>
@@ -185,7 +185,7 @@ To use LDAP password authentication on a new YugabyteDB cluster, follow these st
     {{< /note >}}
 
 
-    For Convenience we use two host based authentication (HBA) rules. 
+    For Convenience we use two host based authentication (HBA) rules.
 
     *   The first HBA rule` host all yugabyte 127.0.0.1/0 password` allows access from the localhost (127.0.0.1) to the admin user (yugabyte) with password authentication. This allows the administrator to log in with the yugabyte user for setting up the roles (and permissions) for the LDAP users.
     *   The second HBA rule configures LDAP authentication for all other user/host pairs. We use simple bind with a uid-based username (ldapprefix) and a suffix defining the domain component (dc).
@@ -238,7 +238,7 @@ To use LDAP password authentication on a new YugabyteDB cluster, follow these st
 
 
 ```
-  We are creating a ROLE for username riemann supported by the test LDAP server. 
+  We are creating a ROLE for username riemann supported by the test LDAP server.
 
   yugabyte=# CREATE ROLE riemann WITH LOGIN;
   yugabyte=# GRANT ALL ON DATABASE yugabyte T0 riemann;
@@ -249,7 +249,7 @@ To use LDAP password authentication on a new YugabyteDB cluster, follow these st
 
 6. Connect using LDAP authentication
 
-    Connect ysqlsh using `riemann` LDAP user and password specified in the [Online LDAP Test Server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) page. 
+    Connect ysqlsh using `riemann` LDAP user and password specified in the [Online LDAP Test Server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) page.
 
 
     ```

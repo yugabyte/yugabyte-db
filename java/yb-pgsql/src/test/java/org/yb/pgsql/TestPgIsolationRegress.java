@@ -14,6 +14,7 @@
 package org.yb.pgsql;
 
 import java.util.Collections;
+import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -21,6 +22,18 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgIsolationRegress extends BasePgSQLTest {
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("yb_enable_read_committed_isolation", "true");
+    return flagMap;
+  }
+
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return 1600;
+  }
 
   private void runIsolationRegressTest() throws Exception {
     runPgRegressTest(

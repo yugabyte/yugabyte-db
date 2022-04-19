@@ -72,7 +72,7 @@ void AddIntent(
     const SliceParts& value,
     rocksdb::DirectWriteHandler* handler,
     Slice reverse_value_prefix = Slice()) {
-  char reverse_key_prefix[1] = { ValueTypeAsChar::kTransactionId };
+  char reverse_key_prefix[1] = { KeyEntryTypeAsChar::kTransactionId };
   DocHybridTimeWordBuffer doc_ht_buffer;
   auto doc_ht_slice = InvertEncodedDocHT(key.parts[N - 1], &doc_ht_buffer);
 
@@ -96,9 +96,9 @@ template <size_t N>
 void PutApplyState(
     const Slice& transaction_id_slice, HybridTime commit_ht, IntraTxnWriteId write_id,
     const std::array<Slice, N>& value_parts, rocksdb::DirectWriteHandler* handler) {
-  char transaction_apply_state_value_type = ValueTypeAsChar::kTransactionApplyState;
-  char group_end_value_type = ValueTypeAsChar::kGroupEnd;
-  char hybrid_time_value_type = ValueTypeAsChar::kHybridTime;
+  char transaction_apply_state_value_type = KeyEntryTypeAsChar::kTransactionApplyState;
+  char group_end_value_type = KeyEntryTypeAsChar::kGroupEnd;
+  char hybrid_time_value_type = KeyEntryTypeAsChar::kHybridTime;
   DocHybridTime doc_hybrid_time(commit_ht, write_id);
   char doc_hybrid_time_buffer[kMaxBytesPerEncodedHybridTime];
   char* doc_hybrid_time_buffer_end = doc_hybrid_time.EncodedInDocDbFormat(
@@ -133,7 +133,7 @@ Status NonTransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
     CHECK(!kv_pair.key().empty());
     CHECK(!kv_pair.value().empty());
 
-    if (kv_pair.key()[0] == ValueTypeAsChar::kExternalTransactionId) {
+    if (kv_pair.key()[0] == KeyEntryTypeAsChar::kExternalTransactionId) {
       continue;
     }
 
@@ -206,7 +206,7 @@ CHECKED_STATUS TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) 
   handler_ = handler;
 
   if (metadata_to_store_) {
-    auto txn_value_type = ValueTypeAsChar::kTransactionId;
+    auto txn_value_type = KeyEntryTypeAsChar::kTransactionId;
     std::array<Slice, 2> key = {
       Slice(&txn_value_type, 1),
       transaction_id_.AsSlice(),
@@ -256,12 +256,12 @@ CHECKED_STATUS TransactionalWriter::operator()(
     return Status::OK();
   }
 
-  const auto transaction_value_type = ValueTypeAsChar::kTransactionId;
-  const auto write_id_value_type = ValueTypeAsChar::kWriteId;
-  const auto row_lock_value_type = ValueTypeAsChar::kRowLock;
+  const auto transaction_value_type = ValueEntryTypeAsChar::kTransactionId;
+  const auto write_id_value_type = ValueEntryTypeAsChar::kWriteId;
+  const auto row_lock_value_type = KeyEntryTypeAsChar::kRowLock;
   IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(intra_txn_write_id_);
 
-  const auto subtransaction_value_type = ValueTypeAsChar::kSubTransactionId;
+  const auto subtransaction_value_type = KeyEntryTypeAsChar::kSubTransactionId;
   SubTransactionId big_endian_subtxn_id;
   Slice subtransaction_marker;
   Slice subtransaction_id;
@@ -289,7 +289,7 @@ CHECKED_STATUS TransactionalWriter::operator()(
 
   ++intra_txn_write_id_;
 
-  char intent_type[2] = { ValueTypeAsChar::kIntentTypeSet,
+  char intent_type[2] = { KeyEntryTypeAsChar::kIntentTypeSet,
                           static_cast<char>(strong_intent_types_.ToUIntPtr()) };
 
   DocHybridTimeBuffer doc_ht_buffer;
@@ -311,7 +311,7 @@ CHECKED_STATUS TransactionalWriter::operator()(
 }
 
 CHECKED_STATUS TransactionalWriter::Finish() {
-  char transaction_id_value_type = ValueTypeAsChar::kTransactionId;
+  char transaction_id_value_type = ValueEntryTypeAsChar::kTransactionId;
 
   DocHybridTimeBuffer doc_ht_buffer;
 
@@ -342,7 +342,7 @@ CHECKED_STATUS TransactionalWriter::AddWeakIntent(
     const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
     const std::array<Slice, 2>& value,
     DocHybridTimeBuffer* doc_ht_buffer) {
-  char intent_type[2] = { ValueTypeAsChar::kIntentTypeSet,
+  char intent_type[2] = { KeyEntryTypeAsChar::kIntentTypeSet,
                           static_cast<char>(intent_and_types.second.ToUIntPtr()) };
   constexpr size_t kNumKeyParts = 3;
   std::array<Slice, kNumKeyParts> key = {{
@@ -357,7 +357,7 @@ CHECKED_STATUS TransactionalWriter::AddWeakIntent(
 }
 
 DocHybridTimeBuffer::DocHybridTimeBuffer() {
-  buffer_[0] = ValueTypeAsChar::kHybridTime;
+  buffer_[0] = KeyEntryTypeAsChar::kHybridTime;
 }
 
 IntentsWriterContext::IntentsWriterContext(const TransactionId& transaction_id)
@@ -369,42 +369,40 @@ IntentsWriter::IntentsWriter(const Slice& start_key,
                              rocksdb::DB* intents_db,
                              IntentsWriterContext* context)
     : start_key_(start_key), intents_db_(intents_db), context_(*context) {
+  AppendTransactionKeyPrefix(context_.transaction_id(), &txn_reverse_index_prefix_);
+  txn_reverse_index_prefix_.AppendKeyEntryType(KeyEntryType::kMaxByte);
+  reverse_index_upperbound_ = txn_reverse_index_prefix_.AsSlice();
+  reverse_index_iter_ = CreateRocksDBIterator(
+      intents_db_, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
+      rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound_);
 }
 
 CHECKED_STATUS IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
-  KeyBytes txn_reverse_index_prefix;
-  AppendTransactionKeyPrefix(context_.transaction_id(), &txn_reverse_index_prefix);
-  txn_reverse_index_prefix.AppendValueType(ValueType::kMaxByte);
-  Slice key_prefix = txn_reverse_index_prefix.AsSlice();
+  Slice key_prefix = txn_reverse_index_prefix_.AsSlice();
   key_prefix.remove_suffix(1);
-  const Slice reverse_index_upperbound = txn_reverse_index_prefix.AsSlice();
-
-  auto reverse_index_iter = CreateRocksDBIterator(
-      intents_db_, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound);
 
   DocHybridTimeBuffer doc_ht_buffer;
 
-  reverse_index_iter.Seek(start_key_.empty() ? key_prefix : start_key_);
+  reverse_index_iter_.Seek(start_key_.empty() ? key_prefix : start_key_);
 
   context_.Start(
-      reverse_index_iter.Valid() ? boost::make_optional(reverse_index_iter.key()) : boost::none);
+      reverse_index_iter_.Valid() ? boost::make_optional(reverse_index_iter_.key()) : boost::none);
 
-  while (reverse_index_iter.Valid()) {
-    const Slice key_slice(reverse_index_iter.key());
+  while (reverse_index_iter_.Valid()) {
+    const Slice key_slice(reverse_index_iter_.key());
 
     if (!key_slice.starts_with(key_prefix)) {
       break;
     }
 
-    auto reverse_index_value = reverse_index_iter.value();
+    auto reverse_index_value = reverse_index_iter_.value();
 
     bool metadata = key_slice.size() == 1 + TransactionId::StaticSize();
     // At this point, txn_reverse_index_prefix is a prefix of key_slice. If key_slice is equal to
     // txn_reverse_index_prefix in size, then they are identical, and we are seeked to transaction
     // metadata. Otherwise, we're seeked to an intent entry in the index which we may process.
     if (!metadata) {
-      if (!reverse_index_value.empty() && reverse_index_value[0] == ValueTypeAsChar::kBitSet) {
+      if (!reverse_index_value.empty() && reverse_index_value[0] == KeyEntryTypeAsChar::kBitSet) {
         CHECK(!FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record);
         reverse_index_value.remove_prefix(1);
         RETURN_NOT_OK(OneWayBitmap::Skip(&reverse_index_value));
@@ -415,7 +413,7 @@ CHECKED_STATUS IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       return Status::OK();
     }
 
-    reverse_index_iter.Next();
+    reverse_index_iter_.Next();
   }
 
   context_.Complete(handler);
@@ -455,7 +453,7 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
   pb.set_commit_ht(commit_ht_.ToUint64());
   faststring encoded_pb;
   pb_util::SerializeToString(pb, &encoded_pb);
-  char string_value_type = ValueTypeAsChar::kString;
+  char string_value_type = ValueEntryTypeAsChar::kString;
   std::array<Slice, 2> value_parts = {{
     Slice(&string_value_type, 1),
     Slice(encoded_pb.data(), encoded_pb.size())
@@ -520,7 +518,7 @@ Result<bool> ApplyIntentsContext::Entry(
     write_id_ = decoded_value.write_id;
 
     // Intents for row locks should be ignored (i.e. should not be written as regular records).
-    if (decoded_value.body.starts_with(ValueTypeAsChar::kRowLock)) {
+    if (decoded_value.body.starts_with(KeyEntryTypeAsChar::kRowLock)) {
       return false;
     }
 
@@ -562,7 +560,7 @@ Result<bool> ApplyIntentsContext::Entry(
 
 void ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
   if (apply_state_) {
-    char tombstone_value_type = ValueTypeAsChar::kTombstone;
+    char tombstone_value_type = ValueEntryTypeAsChar::kTombstone;
     std::array<Slice, 1> value_parts = {{Slice(&tombstone_value_type, 1)}};
     PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
   }

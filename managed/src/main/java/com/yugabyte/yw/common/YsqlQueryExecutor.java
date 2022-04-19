@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.common;
 
 import static play.libs.Json.newObject;
@@ -33,6 +35,7 @@ public class YsqlQueryExecutor {
   private static final String DEFAULT_DB_USER = Util.DEFAULT_YSQL_USERNAME;
   private static final String DEFAULT_DB_PASSWORD = Util.DEFAULT_YSQL_PASSWORD;
   private static final String DB_ADMIN_ROLE_NAME = Util.DEFAULT_YSQL_ADMIN_ROLE_NAME;
+  private static final String PRECREATED_DB_ADMIN = "yb_db_admin";
 
   private static final String DEL_PG_ROLES_CMD_1 =
       "SET YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED=ON; "
@@ -42,9 +45,10 @@ public class YsqlQueryExecutor {
           + "('pg_execute_server_program', 'pg_read_server_files', "
           + "'pg_write_server_files' )); ";
   private static final String DEL_PG_ROLES_CMD_2 =
-      "DROP ROLE pg_execute_server_program, pg_read_server_files, pg_write_server_files; "
-          + " UPDATE  pg_yb_catalog_version "
-          + " SET current_version = current_version + 1 WHERE db_oid = 1;";
+      "SET YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED=ON; "
+          + "DROP ROLE pg_execute_server_program, pg_read_server_files, pg_write_server_files; "
+          + "UPDATE pg_yb_catalog_version "
+          + "SET current_version = current_version + 1 WHERE db_oid = 1;";
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
@@ -189,6 +193,21 @@ public class YsqlQueryExecutor {
 
         ysqlResponse = runQueryUtil(universe, data, DEL_PG_ROLES_CMD_2);
         LOG.info("Delete pg roles 2 result: {}", ysqlResponse.toString());
+
+        versionMatch =
+            universe
+                .getVersions()
+                .stream()
+                .allMatch(v -> Util.compareYbVersions(v, "2.12.2.0-b31") >= 0);
+        if (versionMatch) {
+          ysqlResponse =
+              runQueryUtil(
+                  universe,
+                  data,
+                  String.format(
+                      "GRANT \"%s\" TO \"%s\" WITH ADMIN OPTION",
+                      PRECREATED_DB_ADMIN, DB_ADMIN_ROLE_NAME));
+        }
       }
     }
 

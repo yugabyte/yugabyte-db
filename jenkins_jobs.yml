@@ -7,7 +7,7 @@ jobs:
     release_artifact: false
 
   - os: centos7
-    compiler: clang7
+    compiler: clang12
     build_type: tsan
     release_artifact: false
 
@@ -22,20 +22,20 @@ jobs:
     release_artifact: true
 
   - os: alma8
-    compiler: clang11
+    compiler: clang12
     build_type: release
     architecture: aarch64
     release_artifact: true
 
   - os: alma8
-    compiler: clang11
+    compiler: clang12
     build_type: debug
     architecture: aarch64
     release_artifact: false
 
   - os: alma8
     compiler: gcc9
-    build_type: debug
+    build_type: fastdebug
     release_artifact: false
 
   - os: mac11.6

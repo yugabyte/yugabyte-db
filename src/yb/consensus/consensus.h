@@ -252,6 +252,10 @@ class Consensus {
                                       const StdStatusCallback& client_cb,
                                       boost::optional<tserver::TabletServerErrorPB::Code>* error);
 
+  virtual Status UnsafeChangeConfig(
+      const UnsafeChangeConfigRequestPB& req,
+      boost::optional<tserver::TabletServerErrorPB::Code>* error_code) = 0;
+
   // Returns the current Raft role of this instance.
   virtual PeerRole role() const = 0;
 
@@ -304,6 +308,8 @@ class Consensus {
   virtual yb::OpId GetLastReceivedOpId() = 0;
 
   virtual yb::OpId GetLastCommittedOpId() = 0;
+
+  virtual yb::OpId GetLastCDCedOpId() = 0;
 
   virtual yb::OpId GetLastAppliedOpId() = 0;
 

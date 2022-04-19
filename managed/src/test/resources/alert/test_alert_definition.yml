@@ -1,5 +1,6 @@
 groups:
   - name: yugaware
+    interval: 2m
     rules:
       - alert: alertConfiguration
         expr: query > 1

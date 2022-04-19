@@ -28,6 +28,13 @@ import { isEmptyObject } from '../../../utils/ObjectUtils';
 import pluralize from 'pluralize';
 import { RollingUpgradeFormContainer } from '../../../components/common/forms';
 
+const SUBMIT_ACTIONS = {
+  None: 'None',
+  SmartResize: 'SmartResize',
+  Update: 'Update',
+  FullMove: 'FullMove'
+};
+
 const initialState = {
   instanceTypeSelected: '',
   nodeSetViaAZList: false,
@@ -132,14 +139,18 @@ class UniverseForm extends Component {
       } = this.props;
       const readOnlyCluster = universeDetails && getReadOnlyCluster(universeDetails.clusters);
       if (isNonEmptyObject(readOnlyCluster)) {
-        this.editReadReplica();
+        this.editReadReplica().then(() => {
+          this.transitionToDefaultRoute();
+        });
       } else {
-        this.addReadReplica();
+        this.addReadReplica().then(() => {
+          this.transitionToDefaultRoute();
+        });
       }
-      this.transitionToDefaultRoute();
     } else {
-      this.editUniverse();
-      this.transitionToDefaultRoute();
+      this.editUniverse().then(() => {
+        this.transitionToDefaultRoute();
+      });
     }
   };
 
@@ -163,7 +174,6 @@ class UniverseForm extends Component {
           numVolumes: formValues[clusterType].numVolumes,
           diskIops: formValues[clusterType].diskIops,
           throughput: formValues[clusterType].throughput,
-          mountPoints: formValues[clusterType].mountPoints,
           storageType: formValues[clusterType].storageType,
           storageClass: 'standard'
         },
@@ -183,6 +193,9 @@ class UniverseForm extends Component {
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt
       };
+      if (isDefinedNotNull(formValues[clusterType].mountPoints)) {
+        intent.deviceInfo['mountPoints'] = formValues[clusterType].mountPoints;
+      }
       if (isNonEmptyArray(formValues[clusterType]?.gFlags)) {
         const masterArr = [];
         const tServerArr = [];
@@ -249,7 +262,7 @@ class UniverseForm extends Component {
         }
       }
     } = this.props;
-    this.props.submitEditUniverse(this.getFormPayload(), universeUUID);
+    return this.props.submitEditUniverse(this.getFormPayload(), universeUUID);
   };
 
   addReadReplica = () => {
@@ -260,7 +273,7 @@ class UniverseForm extends Component {
         }
       }
     } = this.props;
-    this.props.submitAddUniverseReadReplica(this.getFormPayload(), universeUUID);
+    return this.props.submitAddUniverseReadReplica(this.getFormPayload(), universeUUID);
   };
 
   editReadReplica = () => {
@@ -271,7 +284,7 @@ class UniverseForm extends Component {
         }
       }
     } = this.props;
-    this.props.submitEditUniverseReadReplica(this.getFormPayload(), universeUUID);
+    return this.props.submitEditUniverseReadReplica(this.getFormPayload(), universeUUID);
   };
 
   UNSAFE_componentWillMount() {
@@ -422,10 +435,13 @@ class UniverseForm extends Component {
           numVolumes: formValues[clusterType].numVolumes,
           diskIops: formValues[clusterType].diskIops,
           throughput: formValues[clusterType].throughput,
-          mountPoints: formValues[clusterType].mountPoints,
-          storageType: formValues[clusterType].storageType
+          storageType: formValues[clusterType].storageType,
+          storageClass: 'standard'
         }
       };
+      if (isDefinedNotNull(formValues[clusterType].mountPoints)) {
+        clusterIntent.deviceInfo['mountPoints'] = formValues[clusterType].mountPoints;
+      }
       const currentProvider = self.getCurrentProvider(formValues[clusterType].provider).code;
       if (clusterType === 'primary') {
         const masterArr = [],
@@ -732,6 +748,56 @@ class UniverseForm extends Component {
       }
     }
 
+    // check nodes if all live nodes is going to be removed (full move)
+    const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess()
+      ? universeConfigTemplate.data.nodeDetailsSet.filter(
+          (node) =>
+            node.nodeName &&
+            (type === 'Async'
+              ? node.nodeName.includes('readonly')
+              : !node.nodeName.includes('readonly'))
+        )
+      : [];
+
+    const resizePossible =
+      getPromiseState(universeConfigTemplate).isSuccess() &&
+      this.state.currentView === 'Primary' &&
+      universeConfigTemplate.data.nodesResizeAvailable;
+
+    const existingNodeRemains =
+      existingPrimaryNodes.length &&
+      existingPrimaryNodes.filter((node) => node.state !== 'ToBeRemoved').length;
+    const hasAddedNodes =
+      getPromiseState(universeConfigTemplate).isSuccess() &&
+      universeConfigTemplate.data.nodeDetailsSet.filter((node) => node.state === 'ToBeAdded')
+        .length;
+    const hasRemovedNodes =
+      existingPrimaryNodes.length &&
+      existingPrimaryNodes.filter((node) => node.state === 'ToBeRemoved').length;
+
+    let submitAction = SUBMIT_ACTIONS.None;
+    if (existingNodeRemains && !hasAddedNodes && !hasRemovedNodes) {
+      // just resizing volume
+      if (resizePossible) {
+        submitAction = SUBMIT_ACTIONS.SmartResize;
+      } else {
+        submitAction = SUBMIT_ACTIONS.Update;
+      }
+    } else if (
+      existingNodeRemains ||
+      (this.state.currentView === 'Primary' && type === 'Create') ||
+      (this.state.currentView === 'Async' && !readOnlyCluster)
+    ) {
+      submitAction = SUBMIT_ACTIONS.Update;
+    } else if (getPromiseState(universeConfigTemplate).isSuccess()) {
+      submitAction = SUBMIT_ACTIONS.FullMove;
+    }
+
+    const validateVolumeSizeUnchanged =
+      type === 'Edit' &&
+      this.state.currentView === 'Primary' &&
+      submitAction === SUBMIT_ACTIONS.Update;
+
     const clusterProps = {
       universe,
       getRegionListItems,
@@ -745,6 +811,7 @@ class UniverseForm extends Component {
       submitConfigureUniverse,
       type,
       fetchUniverseResources,
+      validateVolumeSizeUnchanged,
       accessKeys: this.props.accessKeys,
       updateFormField: this.updateFormField,
       setPlacementStatus: this.props.setPlacementStatus,
@@ -770,16 +837,6 @@ class UniverseForm extends Component {
       clusterForm = <ReadOnlyClusterFields {...clusterProps} />;
     }
 
-    // check nodes if all live nodes is going to be removed (full move)
-    const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess()
-      ? universeConfigTemplate.data.nodeDetailsSet.filter(
-          (node) =>
-            node.nodeName &&
-            (type === 'Async'
-              ? node.nodeName.includes('readonly')
-              : !node.nodeName.includes('readonly'))
-        )
-      : [];
     const formChangedOrInvalid = hasFieldChanged || disableSubmit;
     let submitControl = (
       <YBButton
@@ -790,46 +847,23 @@ class UniverseForm extends Component {
     );
 
     let overrideIntentParams = {};
-    const resizePossible =
-      getPromiseState(universeConfigTemplate).isSuccess() &&
-      this.state.currentView === 'Primary' &&
-      universeConfigTemplate.data.nodesResizeAvailable;
-
-    const existingNodeRemains =
-      existingPrimaryNodes.length &&
-      existingPrimaryNodes.filter((node) => node.state !== 'ToBeRemoved').length;
-    const hasAddedNodes =
-      getPromiseState(universeConfigTemplate).isSuccess() &&
-      universeConfigTemplate.data.nodeDetailsSet.filter((node) => node.state === 'ToBeAdded')
-        .length;
-    const hasRemovedNodes =
-      existingPrimaryNodes.length &&
-      existingPrimaryNodes.filter((node) => node.state === 'ToBeRemoved').length;
-
-    if (existingNodeRemains && !hasAddedNodes && !hasRemovedNodes) {
-      // just resizing volume
-      if (resizePossible) {
-        const newCluster =
-          this.state.currentView === 'Primary'
-            ? getPrimaryCluster(universeConfigTemplate.data.clusters)
-            : getReadOnlyCluster(universeConfigTemplate.data.clusters);
-        overrideIntentParams = {
-          volumeSize: newCluster.userIntent.deviceInfo.volumeSize
-        };
-        submitControl = (
-          <YBButton
-            btnClass="btn btn-orange universe-form-submit-btn"
-            btnText={submitTextLabel}
-            onClick={showUpgradeNodesModal}
-            disabled={formChangedOrInvalid || updateInProgress}
-          />
-        );
-      }
-    } else if (
-      existingNodeRemains ||
-      (this.state.currentView === 'Primary' && type === 'Create') ||
-      (this.state.currentView === 'Async' && !readOnlyCluster)
-    ) {
+    if (submitAction === SUBMIT_ACTIONS.SmartResize) {
+      const newCluster =
+        this.state.currentView === 'Primary'
+          ? getPrimaryCluster(universeConfigTemplate.data.clusters)
+          : getReadOnlyCluster(universeConfigTemplate.data.clusters);
+      overrideIntentParams = {
+        volumeSize: newCluster.userIntent.deviceInfo.volumeSize
+      };
+      submitControl = (
+        <YBButton
+          btnClass="btn btn-orange universe-form-submit-btn"
+          btnText={submitTextLabel}
+          onClick={showUpgradeNodesModal}
+          disabled={formChangedOrInvalid || updateInProgress}
+        />
+      );
+    } else if (submitAction === SUBMIT_ACTIONS.Update) {
       submitControl = (
         <YBButton
           btnClass="btn btn-orange universe-form-submit-btn"
@@ -838,7 +872,7 @@ class UniverseForm extends Component {
           disabled={formChangedOrInvalid || updateInProgress}
         />
       );
-    } else if (getPromiseState(universeConfigTemplate).isSuccess()) {
+    } else if (submitAction === SUBMIT_ACTIONS.FullMove) {
       const generateAZConfig = (nodes) => {
         const regionMap = {};
         nodes.forEach((node) => {

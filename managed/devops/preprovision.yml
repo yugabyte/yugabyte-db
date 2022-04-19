@@ -59,6 +59,7 @@
         apt:
           name: python-minimal
           state: present
+        when: ansible_distribution_major_version == "18"
       when: ansible_distribution == "Ubuntu"
       tags: yb-prebuilt-ami
     # have to save this in another var since it won't play well with overriding
@@ -99,8 +100,9 @@
         name: policycoreutils-python
         state: present
       when: >
-        'policycoreutils-python' not in ansible_facts.packages and
-        ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7'
+        'policycoreutils-python' not in ansible_facts.packages and custom_ssh_port != '22' and
+        ((ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7') or
+        (ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '7'))
       tags: yb-prebuilt-ami
     - name: Accept target in firewalld on Oracle Linux
       raw: sudo firewall-cmd --set-target=ACCEPT --permanent && sudo systemctl restart firewalld
@@ -110,7 +112,8 @@
     - name: clean dnf
       shell:
         cmd: sudo dnf clean all
-      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'
+      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8' and
+            custom_ssh_port != '22'
       tags: yb-prebuilt-ami
     - name: install latest version of selinux-policy
       shell:
@@ -118,5 +121,6 @@
       register: result
       until: result.rc == 0
       retries: 10
-      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'
+      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8' and
+            custom_ssh_port != '22'
       tags: yb-prebuilt-ami
