@@ -158,7 +158,7 @@ libraryDependencies ++= Seq(
   "com.typesafe.play" %% "play-json" % "2.6.14",
   "org.asynchttpclient" % "async-http-client" % "2.2.1",
   "commons-validator" % "commons-validator" % "1.7",
-  "com.h2database" % "h2" % "2.1.210" % Test,
+  "com.h2database" % "h2" % "2.1.212" % Test,
   "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
   "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test,
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
