@@ -27,7 +27,12 @@ public class MetricSettings {
   @ApiModelProperty(
       value = "Way of metrics aggregation over time and across nodes",
       required = true)
-  MetricAggregation aggregation;
+  MetricAggregation aggregation = MetricAggregation.DEFAULT;
+
+  @ApiModelProperty(
+      value = "Query result for 'top' nodes separately. 0 means aggregate over all nodes",
+      required = true)
+  int splitTopNodes;
 
   public static MetricSettings defaultSettings(String metricName) {
     return new MetricSettings().setMetric(metricName).setAggregation(MetricAggregation.DEFAULT);
@@ -38,6 +43,9 @@ public class MetricSettings {
   }
 
   public MetricSettings cloneWithName(String metricName) {
-    return new MetricSettings().setMetric(metricName).setAggregation(aggregation);
+    return new MetricSettings()
+        .setMetric(metricName)
+        .setAggregation(aggregation)
+        .setSplitTopNodes(splitTopNodes);
   }
 }

@@ -68,6 +68,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.collections.CollectionUtils;
@@ -358,6 +359,28 @@ public class CustomerController extends AuthenticatedController {
     Form<MetricQueryParams> formData = formFactory.getFormDataOrBadRequest(MetricQueryParams.class);
     MetricQueryParams metricQueryParams = formData.get();
 
+    if (CollectionUtils.isEmpty(metricQueryParams.getMetrics())
+        && CollectionUtils.isEmpty(metricQueryParams.getMetricsWithSettings())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Either metrics or metricsWithSettings should not be empty");
+    }
+
+    Map<String, MetricSettings> metricSettingsMap = new LinkedHashMap<>();
+    if (CollectionUtils.isNotEmpty(metricQueryParams.getMetrics())) {
+      metricQueryParams
+          .getMetrics()
+          .stream()
+          .map(MetricSettings::defaultSettings)
+          .forEach(
+              metricSettings -> metricSettingsMap.put(metricSettings.getMetric(), metricSettings));
+    }
+    if (CollectionUtils.isNotEmpty(metricQueryParams.getMetricsWithSettings())) {
+      metricQueryParams
+          .getMetricsWithSettings()
+          .forEach(
+              metricSettings -> metricSettingsMap.put(metricSettings.getMetric(), metricSettings));
+    }
+
     Map<String, String> params = new HashMap<>(formData.rawData());
     HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
     // Given we have a limitation on not being able to rename the pod labels in
@@ -365,7 +388,7 @@ public class CustomerController extends AuthenticatedController {
     // container or not, and use pod_name vs exported_instance accordingly.
     // Expect for container metrics, all the metrics would with node_prefix and exported_instance.
     boolean hasContainerMetric =
-        metricQueryParams.getMetrics().stream().anyMatch(s -> s.startsWith("container"));
+        metricSettingsMap.keySet().stream().anyMatch(s -> s.startsWith("container"));
     String universeFilterLabel = hasContainerMetric ? "namespace" : "node_prefix";
     String nodeFilterLabel = hasContainerMetric ? "pod_name" : "exported_instance";
     String containerLabel = "container_name";
@@ -411,7 +434,8 @@ public class CustomerController extends AuthenticatedController {
           filterJson.put(nodeFilterLabel, params.remove("nodeName"));
         }
 
-        filterOverrides.putAll(getFilterOverrides(customer, nodePrefix, metricQueryParams));
+        filterOverrides.putAll(
+            getFilterOverrides(customer, nodePrefix, metricSettingsMap.keySet()));
       }
     }
     if (params.containsKey("tableName")) {
@@ -425,22 +449,6 @@ public class CustomerController extends AuthenticatedController {
     }
     params.put("filters", Json.stringify(filterJson));
     JsonNode response;
-    Map<String, MetricSettings> metricSettingsMap = new LinkedHashMap<>();
-    if (CollectionUtils.isNotEmpty(metricQueryParams.getMetrics())) {
-      metricQueryParams
-          .getMetrics()
-          .stream()
-          .map(MetricSettings::defaultSettings)
-          .forEach(
-              metricSettings -> metricSettingsMap.put(metricSettings.getMetric(), metricSettings));
-    }
-    if (CollectionUtils.isNotEmpty(metricQueryParams.getMetricsWithSettings())) {
-      metricQueryParams
-          .getMetricsWithSettings()
-          .forEach(
-              metricSettings -> metricSettingsMap.put(metricSettings.getMetric(), metricSettings));
-      ;
-    }
     response =
         metricQueryHelper.query(
             new ArrayList<>(metricSettingsMap.values()),
@@ -522,12 +530,12 @@ public class CustomerController extends AuthenticatedController {
   }
 
   private HashMap<String, HashMap<String, String>> getFilterOverrides(
-      Customer customer, String nodePrefix, MetricQueryParams mqParams) {
+      Customer customer, String nodePrefix, Set<String> metricNames) {
 
     HashMap<String, HashMap<String, String>> filterOverrides = new HashMap<>();
     // For a disk usage metric query, the mount point has to be modified to match the actual
     // mount point for an onprem universe.
-    if (mqParams.getMetrics().contains("disk_usage")) {
+    if (metricNames.contains("disk_usage")) {
       List<Universe> universes =
           customer
               .getUniverses()

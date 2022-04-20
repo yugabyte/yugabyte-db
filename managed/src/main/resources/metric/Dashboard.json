@@ -880,12 +880,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "cpu_stime",
-      "expr" : "max_over_time(cpu_stime_irate{export_type=\"master_export\", node_prefix=~\"$dbcluster\"}[300s]) / 1000",
+      "expr" : "max_over_time({export_type=\"master_export\", saved_name=\"cpu_stime_irate\", node_prefix=~\"$dbcluster\"}[300s]) by (saved_name) / 1000",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "cpu_utime",
-      "expr" : "max_over_time(cpu_utime_irate{export_type=\"master_export\", node_prefix=~\"$dbcluster\"}[300s]) / 1000",
+      "expr" : "max_over_time({export_type=\"master_export\", saved_name=\"cpu_utime_irate\", node_prefix=~\"$dbcluster\"}[300s]) by (saved_name) / 1000",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -5659,12 +5659,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "cpu_stime",
-      "expr" : "max(max_over_time(cpu_stime_irate{export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"}[300s])) / 1000",
+      "expr" : "max(max_over_time({export_type=\"tserver_export\", saved_name=\"cpu_stime_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1000",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "cpu_utime",
-      "expr" : "max(max_over_time(cpu_utime_irate{export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"}[300s])) / 1000",
+      "expr" : "max(max_over_time({export_type=\"tserver_export\", saved_name=\"cpu_utime_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1000",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -5857,13 +5857,13 @@
     "id" : 88,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Outbound queue time",
-      "expr" : "(avg(rate(handler_latency_outbound_call_queue_time_sum{export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(handler_latency_outbound_call_queue_time_count{export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"}[300s])))",
+      "legendFormat" : "Incoming queue time",
+      "expr" : "(avg(rate(rpc_incoming_queue_time_sum{export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(rpc_incoming_queue_time_count{export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"}[300s])))",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "Incoming queue time",
-      "expr" : "(avg(rate(rpc_incoming_queue_time_sum{export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(rpc_incoming_queue_time_count{export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"}[300s])))",
+      "legendFormat" : "Outbound queue time",
+      "expr" : "(avg(rate(handler_latency_outbound_call_queue_time_sum{export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(handler_latency_outbound_call_queue_time_count{export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"}[300s])))",
       "refId" : "B"
     }, {
       "hide" : false,
@@ -6143,18 +6143,18 @@
     "id" : 91,
     "targets" : [ {
       "hide" : false,
+      "legendFormat" : "Sync",
+      "expr" : "(avg(rate(log_sync_latency_sum{node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(log_sync_latency_count{node_prefix=~\"$dbcluster\"}[300s])))",
+      "refId" : "A"
+    }, {
+      "hide" : false,
       "legendFormat" : "Commit",
       "expr" : "(avg(rate(log_group_commit_latency_sum{node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(log_group_commit_latency_count{node_prefix=~\"$dbcluster\"}[300s])))",
-      "refId" : "A"
+      "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Append",
       "expr" : "(avg(rate(log_append_latency_sum{node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(log_append_latency_count{node_prefix=~\"$dbcluster\"}[300s])))",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Sync",
-      "expr" : "(avg(rate(log_sync_latency_sum{node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(log_sync_latency_count{node_prefix=~\"$dbcluster\"}[300s])))",
       "refId" : "C"
     } ],
     "gridPos" : {
@@ -6823,7 +6823,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
-      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"tserver_export\", server_type=\"yb_tserver\", service_type=\"TabletServerService\", service_method=~\"Read|Write\", node_prefix=~\"$dbcluster\"}[300s])) by (service_method, node_prefix)",
+      "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=\"tserver_export\", server_type=\"yb_tserver\", service_type=\"TabletServerService\", service_method=~\"Read|Write\", node_prefix=~\"$dbcluster\"}[300s])) by (service_method,  node_prefix)",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -7484,13 +7484,13 @@
     "id" : 8,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Outbound queue time",
-      "expr" : "(avg(rate(handler_latency_outbound_call_queue_time_sum{export_type=\"cql_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(handler_latency_outbound_call_queue_time_count{export_type=\"cql_export\", node_prefix=~\"$dbcluster\"}[300s])))",
+      "legendFormat" : "Incoming queue time",
+      "expr" : "(avg(rate(rpc_incoming_queue_time_sum{export_type=\"cql_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(rpc_incoming_queue_time_count{export_type=\"cql_export\", node_prefix=~\"$dbcluster\"}[300s])))",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "Incoming queue time",
-      "expr" : "(avg(rate(rpc_incoming_queue_time_sum{export_type=\"cql_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(rpc_incoming_queue_time_count{export_type=\"cql_export\", node_prefix=~\"$dbcluster\"}[300s])))",
+      "legendFormat" : "Outbound queue time",
+      "expr" : "(avg(rate(handler_latency_outbound_call_queue_time_sum{export_type=\"cql_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(handler_latency_outbound_call_queue_time_count{export_type=\"cql_export\", node_prefix=~\"$dbcluster\"}[300s])))",
       "refId" : "B"
     }, {
       "hide" : false,
@@ -8162,7 +8162,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
-      "expr" : "(avg(rate(rpc_latency_sum{export_type=~\"cql_export|tserver_export\", service_type=~\"read|write\", service_method=~\"local|remote\", node_prefix=~\"$dbcluster\"}[300s])) by (service_method,service_type)) / (avg(rate(rpc_latency_count{export_type=~\"cql_export|tserver_export\", service_type=~\"read|write\", service_method=~\"local|remote\", node_prefix=~\"$dbcluster\"}[300s])) by (service_method,service_type))",
+      "expr" : "(avg(rate(rpc_latency_sum{export_type=~\"cql_export|tserver_export\", service_type=~\"read|write\", service_method=~\"local|remote\", node_prefix=~\"$dbcluster\"}[300s])) by (service_type, service_method)) / (avg(rate(rpc_latency_count{export_type=~\"cql_export|tserver_export\", service_type=~\"read|write\", service_method=~\"local|remote\", node_prefix=~\"$dbcluster\"}[300s])) by (service_type, service_method))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -8254,7 +8254,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
-      "expr" : "avg(avg_over_time(rpc_irate_rps{export_type=~\"cql_export|tserver_export\", service_type=~\"read|write\", service_method=~\"local|remote\", node_prefix=~\"$dbcluster\"}[300s])) by (service_method,service_type)",
+      "expr" : "avg(avg_over_time(rpc_irate_rps{export_type=~\"cql_export|tserver_export\", service_type=~\"read|write\", service_method=~\"local|remote\", node_prefix=~\"$dbcluster\"}[300s])) by (service_type, service_method)",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -9483,18 +9483,18 @@
     "id" : 63,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Outbound queue time",
-      "expr" : "(avg(rate(handler_latency_outbound_call_queue_time_sum{export_type=\"redis_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(handler_latency_outbound_call_queue_time_count{export_type=\"redis_export\", node_prefix=~\"$dbcluster\"}[300s])))",
-      "refId" : "A"
-    }, {
-      "hide" : false,
       "legendFormat" : "Incoming Queue",
       "expr" : "(avg(rate(rpc_incoming_queue_time_sum{export_type=\"redis_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(rpc_incoming_queue_time_count{export_type=\"redis_export\", node_prefix=~\"$dbcluster\"}[300s])))",
-      "refId" : "B"
+      "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Outbound transfer time",
       "expr" : "(avg(rate(handler_latency_outbound_transfer_sum{export_type=\"redis_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(handler_latency_outbound_transfer_count{export_type=\"redis_export\", node_prefix=~\"$dbcluster\"}[300s])))",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Outbound queue time",
+      "expr" : "(avg(rate(handler_latency_outbound_call_queue_time_sum{export_type=\"redis_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (avg(rate(handler_latency_outbound_call_queue_time_count{export_type=\"redis_export\", node_prefix=~\"$dbcluster\"}[300s])))",
       "refId" : "C"
     } ],
     "gridPos" : {
@@ -10609,7 +10609,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
-      "expr" : "(avg(rate(rpc_latency_sum{export_type=\"redis_export\", service_type=~\"read|write\", service_method=~\"local|remote\", node_prefix=~\"$dbcluster\"}[300s])) by (service_method,service_type)) / (avg(rate(rpc_latency_count{export_type=\"redis_export\", service_type=~\"read|write\", service_method=~\"local|remote\", node_prefix=~\"$dbcluster\"}[300s])) by (service_method,service_type))",
+      "expr" : "(avg(rate(rpc_latency_sum{export_type=\"redis_export\", service_type=~\"read|write\", service_method=~\"local|remote\", node_prefix=~\"$dbcluster\"}[300s])) by (service_type, service_method)) / (avg(rate(rpc_latency_count{export_type=\"redis_export\", service_type=~\"read|write\", service_method=~\"local|remote\", node_prefix=~\"$dbcluster\"}[300s])) by (service_type, service_method))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -10701,7 +10701,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
-      "expr" : "avg(avg_over_time(rpc_irate_rps{export_type=\"redis_export\", service_type=~\"read|write\", service_method=~\"local|remote\", node_prefix=~\"$dbcluster\"}[300s])) by (service_method,service_type)",
+      "expr" : "avg(avg_over_time(rpc_irate_rps{export_type=\"redis_export\", service_type=~\"read|write\", service_method=~\"local|remote\", node_prefix=~\"$dbcluster\"}[300s])) by (service_type, service_method)",
       "refId" : "A"
     } ],
     "gridPos" : {

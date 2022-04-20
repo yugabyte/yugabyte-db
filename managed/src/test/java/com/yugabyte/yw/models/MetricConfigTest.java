@@ -13,8 +13,14 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.metrics.MetricLabelFilter;
+import com.yugabyte.yw.metrics.MetricLabelFilters;
+import com.yugabyte.yw.metrics.MetricQueryContext;
+import com.yugabyte.yw.metrics.MetricQueryExecutor;
 import com.yugabyte.yw.metrics.MetricSettings;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -125,8 +131,7 @@ public class MetricConfigTest extends FakeDBApplication {
               equalTo(
                   metricConfig.getQuery(
                       MetricSettings.defaultSettings(e.getKey()),
-                      new HashMap<>(),
-                      DEFAULT_RANGE_SECS))));
+                      MetricQueryContext.builder().queryRangeSecs(DEFAULT_RANGE_SECS).build()))));
     }
   }
 
@@ -137,9 +142,9 @@ public class MetricConfigTest extends FakeDBApplication {
             "{\"metric\": \"rpc_latency_count\", \"function\": \"irate|sum\","
                 + "\"range\": true,"
                 + "\"filters\": {\"export_type\": \"tserver_export\","
-                + "\"service_type\": \"TabletServerService\"},"
+                + "\"service_type\": \"TabletServerService\","
                 + "\"service_method\": \"Read|Write\"},"
-                + " \"group_by\": \"service_method\"}");
+                + "\"group_by\": \"service_method\"}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
     String query = metricConfig.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
@@ -149,7 +154,98 @@ public class MetricConfigTest extends FakeDBApplication {
             notNullValue(),
             equalTo(
                 "sum(irate(rpc_latency_count{export_type=\"tserver_export\", "
-                    + "service_type=\"TabletServerService\"}[60s]))")));
+                    + "service_type=\"TabletServerService\", service_method=~\"Read|Write\"}[60s]))"
+                    + " by (service_method)")));
+  }
+
+  @Test
+  public void testTopKQuery() {
+    JsonNode configJson =
+        Json.parse(
+            "{\"metric\": \"rpc_latency.avg\", \"function\": \"irate|sum\","
+                + "\"range\": true,"
+                + "\"filters\": {\"export_type\": \"tserver_export\","
+                + "\"service_type\": \"TabletServerService\","
+                + "\"service_method\": \"Read|Write\"},"
+                + "\"group_by\": \"service_method\"}");
+    MetricConfig metricConfig = MetricConfig.create("metric", configJson);
+    metricConfig.save();
+    String query =
+        metricConfig.getSingleMetricQuery(
+            MetricSettings.defaultSettings("rpc_latency.avg").setSplitTopNodes(2),
+            MetricQueryContext.builder()
+                .topKQuery(true)
+                .additionalGroupBy(ImmutableSet.of(MetricQueryExecutor.EXPORTED_INSTANCE))
+                .queryRangeSecs(DEFAULT_RANGE_SECS)
+                .build());
+    assertThat(
+        query,
+        allOf(
+            notNullValue(),
+            equalTo(
+                "topk(2, (sum(irate(rpc_latency_sum{export_type=\"tserver_export\", "
+                    + "service_type=\"TabletServerService\", service_method=~\"Read|Write\"}[60s]))"
+                    + " by (service_method, exported_instance)) / (sum(irate(rpc_latency_count"
+                    + "{export_type=\"tserver_export\", service_type=\"TabletServerService\", "
+                    + "service_method=~\"Read|Write\"}[60s])) by"
+                    + " (service_method, exported_instance))) by (service_method)")));
+  }
+
+  @Test
+  public void testOrFilterQuery() {
+    JsonNode configJson =
+        Json.parse(
+            "{\"metric\": \"rpc_latency.avg\", \"function\": \"irate|sum\","
+                + "\"range\": true,"
+                + "\"filters\": {\"export_type\": \"tserver_export\","
+                + "\"service_type\": \"TabletServerService\","
+                + "\"service_method\": \"Read|Write\"},"
+                + "\"group_by\": \"service_method\"}");
+    MetricConfig metricConfig = MetricConfig.create("metric", configJson);
+    metricConfig.save();
+    MetricLabelFilters readFilters =
+        MetricLabelFilters.builder()
+            .filters(
+                ImmutableList.of(
+                    new MetricLabelFilter("service_method", "Read"),
+                    new MetricLabelFilter(
+                        MetricQueryExecutor.EXPORTED_INSTANCE, "instance1|instance2")))
+            .build();
+    MetricLabelFilters writeFilters =
+        MetricLabelFilters.builder()
+            .filters(
+                ImmutableList.of(
+                    new MetricLabelFilter("service_method", "Write"),
+                    new MetricLabelFilter(
+                        MetricQueryExecutor.EXPORTED_INSTANCE, "instance3|instance4")))
+            .build();
+    String query =
+        metricConfig.getSingleMetricQuery(
+            MetricSettings.defaultSettings("rpc_latency.avg").setSplitTopNodes(2),
+            MetricQueryContext.builder()
+                .metricOrFilters(
+                    ImmutableMap.of("rpc_latency.avg", ImmutableList.of(readFilters, writeFilters)))
+                .additionalGroupBy(ImmutableSet.of(MetricQueryExecutor.EXPORTED_INSTANCE))
+                .queryRangeSecs(DEFAULT_RANGE_SECS)
+                .build());
+    assertThat(
+        query,
+        allOf(
+            notNullValue(),
+            equalTo(
+                "((sum(irate(rpc_latency_sum{export_type=\"tserver_export\", "
+                    + "service_type=\"TabletServerService\", service_method=\"Read\", "
+                    + "exported_instance=~\"instance1|instance2\"}[60s])) by "
+                    + "(service_method, exported_instance)) / (sum(irate(rpc_latency_count"
+                    + "{export_type=\"tserver_export\", service_type=\"TabletServerService\", "
+                    + "service_method=\"Read\", exported_instance=~\"instance1|instance2\"}[60s]))"
+                    + " by (service_method, exported_instance))) or ((sum(irate(rpc_latency_sum"
+                    + "{export_type=\"tserver_export\", service_type=\"TabletServerService\", "
+                    + "service_method=\"Write\", exported_instance=~\"instance3|instance4\"}[60s]))"
+                    + " by (service_method, exported_instance)) / (sum(irate(rpc_latency_count"
+                    + "{export_type=\"tserver_export\", service_type=\"TabletServerService\", "
+                    + "service_method=\"Write\", exported_instance=~\"instance3|instance4\"}[60s]))"
+                    + " by (service_method, exported_instance)))")));
   }
 
   @Test
@@ -169,8 +265,7 @@ public class MetricConfigTest extends FakeDBApplication {
               equalTo(
                   metricConfig.getQuery(
                       MetricSettings.defaultSettings(e.getKey()),
-                      new HashMap<>(),
-                      DEFAULT_RANGE_SECS))));
+                      MetricQueryContext.builder().queryRangeSecs(DEFAULT_RANGE_SECS).build()))));
     }
   }
 

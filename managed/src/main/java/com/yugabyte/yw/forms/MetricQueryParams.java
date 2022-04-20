@@ -10,8 +10,7 @@ import play.data.validation.Constraints;
 
 @ApiModel(description = "Metrics request data")
 public class MetricQueryParams {
-  @Constraints.Required()
-  @ApiModelProperty(value = "Metrics", required = true)
+  @ApiModelProperty(value = "Metrics")
   private List<String> metrics;
 
   @Constraints.Required()

@@ -221,15 +221,23 @@ class GraphPanel extends Component {
   queryMetricsType = (graphFilter) => {
     const { startMoment, endMoment, nodeName, nodePrefix } = graphFilter;
     const { type } = this.props;
+    const splitTopNodes = (isNonEmptyString(nodeName) && nodeName == 'top') ? 1 : 0;
+    const metricsWithSettings = panelTypes[type].metrics.map((metric) =>
+     {
+        return {
+          metric: metric,
+          splitTopNodes: splitTopNodes
+        }
+     })
     const params = {
-      metrics: panelTypes[type].metrics,
+      metricsWithSettings: metricsWithSettings,
       start: startMoment.format('X'),
       end: endMoment.format('X')
     };
     if (isNonEmptyString(nodePrefix) && nodePrefix !== 'all') {
       params.nodePrefix = nodePrefix;
     }
-    if (isNonEmptyString(nodeName) && nodeName !== 'all') {
+    if (isNonEmptyString(nodeName) && nodeName !== 'all' && nodeName != 'top') {
       params.nodeName = nodeName;
     }
     // In case of universe metrics , nodePrefix comes from component itself
