@@ -125,7 +125,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   virtual int64_t GetRF() { return 3; }
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
-
+  MonoDelta split_completion_timeout_sec_ = std::chrono::seconds(40) * kTimeMultiplier;
 };
 // Let compiler know about these explicit specializations since below subclasses inherit from them.
 extern template class TabletSplitITestBase<MiniCluster>;
@@ -197,7 +197,6 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
       size_t num_rows, size_t num_replicas_online = 0, size_t num_active_tablets = 2);
 
  protected:
-  MonoDelta split_completion_timeout_ = std::chrono::seconds(40) * kTimeMultiplier;
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
 
