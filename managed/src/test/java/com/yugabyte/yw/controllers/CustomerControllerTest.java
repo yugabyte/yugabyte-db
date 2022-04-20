@@ -491,7 +491,7 @@ public class CustomerControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCustomerMetricsWithInvalidParams()
+  public void testCustomerMetricsWithMissingStart()
       throws InterruptedException, ExecutionException, TimeoutException {
     String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
@@ -506,8 +506,27 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertEquals(BAD_REQUEST, result.status());
     assertThat(
         contentAsString(result), is(containsString("\"start\":[\"This field is required\"]")));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCustomerMetricsWithMissingMetrics()
+      throws InterruptedException, ExecutionException, TimeoutException {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("start", 100500);
+
+    Result result =
+        routeWithYWErrHandler(
+            fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
+                .cookie(validCookie)
+                .bodyJson(params));
+
+    assertEquals(BAD_REQUEST, result.status());
     assertThat(
-        contentAsString(result), is(containsString("\"metrics\":[\"This field is required\"]")));
+        contentAsString(result),
+        is(containsString("Either metrics or metricsWithSettings should not be empty")));
     assertAuditEntry(0, customer.uuid);
   }
 

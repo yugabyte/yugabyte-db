@@ -2,6 +2,12 @@ package com.yugabyte.yw.metrics;
 
 import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.models.MetricConfig;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -12,18 +18,9 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
-
-import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.models.MetricConfig;
-
+import lombok.extern.slf4j.Slf4j;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
-
-import lombok.extern.slf4j.Slf4j;
 import play.Environment;
 import play.libs.Json;
 
@@ -52,7 +49,6 @@ public class MetricGrafanaGen {
       grafanaFile.createNewFile();
       ObjectWriter fileWriter = mapper.writer(new DefaultPrettyPrinter("\n"));
       fileWriter.writeValue(grafanaFile, grafanaJson);
-
     } catch (IOException e) {
       log.error("Error in writing to Dashboards file: {}", e);
       throw new RuntimeException(e);
