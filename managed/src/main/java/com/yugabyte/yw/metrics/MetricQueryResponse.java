@@ -60,7 +60,6 @@ public class MetricQueryResponse {
       MetricGraphData metricGraphData = new MetricGraphData();
       ObjectNode metricInfo = (ObjectNode) objNode.get("metric");
 
-      String instanceName = StringUtils.EMPTY;
       if (metricInfo.has(EXPORTED_INSTANCE)) {
         metricGraphData.instanceName = metricInfo.get(EXPORTED_INSTANCE).asText();
         metricInfo.remove(EXPORTED_INSTANCE);
@@ -78,8 +77,8 @@ public class MetricQueryResponse {
         // passed in.
         //
         // https://www.robustperception.io/whats-in-a-__name__
-        if (StringUtils.isNotBlank(instanceName)) {
-          metricGraphData.name = instanceName;
+        if (StringUtils.isNotBlank(metricGraphData.instanceName)) {
+          metricGraphData.name = metricGraphData.instanceName;
         } else {
           metricGraphData.name = metricName;
         }
@@ -98,7 +97,7 @@ public class MetricQueryResponse {
               validLabels = false;
               boolean useInstanceName = layout.yaxis.alias.containsKey("useInstanceName");
               if (useInstanceName) {
-                metricGraphData.name = instanceName;
+                metricGraphData.name = metricGraphData.instanceName;
               }
               // Java conversion from Iterator to Iterable...
               for (JsonNode metricEntry : (Iterable<JsonNode>) metricInfo::elements) {
