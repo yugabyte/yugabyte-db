@@ -1003,7 +1003,7 @@ tserver_consensus_rpcs_per_sec:
     export_type: "tserver_export"
     server_type: "yb_consensus"
     service_type: "ConsensusService"
-    service_method: "UpdateConsensus|RequestConsensusVote"
+    service_method: "MultiRaftUpdateConsensus|UpdateConsensus|RequestConsensusVote"
   group_by: "service_method"
   panel_group: "Tablet Server"
   layout:
@@ -1012,6 +1012,7 @@ tserver_consensus_rpcs_per_sec:
       type: "date"
     yaxis:
       alias:
+        "MultiRaftUpdateConsensus": "MultiRaftUpdateConsensus"
         "UpdateConsensus": "UpdateConsensus"
         "RequestConsensusVote": "RequestConsensusVote"
 
@@ -1056,7 +1057,7 @@ tserver_consensus_rpcs_latency:
     export_type: "tserver_export"
     server_type: "yb_consensus"
     service_type: "ConsensusService"
-    service_method: "UpdateConsensus|RequestConsensusVote"
+    service_method: "MultiRaftUpdateConsensus|UpdateConsensus|RequestConsensusVote"
   group_by: "service_method"
   panel_group: "Tablet Server"
   layout:
@@ -2185,6 +2186,23 @@ master_consensus_update:
   panel_group: "Master"
   layout:
     title: "UpdateConsensus / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_multiraft_consensus_update:
+  metric: "rpc_latency_count"
+  function: "rate"
+  range : true
+  filters:
+    export_type: "master_export"
+    service_type: "ConsensusService"
+    service_method: "MultiRaftUpdateConsensus"
+  panel_group: "Master"
+  layout:
+    title: "MultiRaftUpdateConsensus / sec"
     xaxis:
       type: "date"
     yaxis:
