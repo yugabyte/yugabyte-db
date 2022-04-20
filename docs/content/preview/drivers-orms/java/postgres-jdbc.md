@@ -1,6 +1,6 @@
 ---
-title: Create database connection
-linkTitle: Create database connection
+title: Create database connections
+linkTitle: Create database connections
 description: JDBC drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -11,7 +11,7 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform. YugabyteDB supports the cluster- and topology-aware YugabyteDB Smart JDBC Driver, and this driver is recommended for building Java applications with YugabyteDB. Yugabyte also provides full support for the [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/).
+For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform. YugabyteDB supports the cluster- and topology-aware YugabyteDB Smart JDBC Driver, which is recommended for building Java applications with YugabyteDB. Yugabyte also provides full support for the [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 

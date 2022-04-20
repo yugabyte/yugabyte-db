@@ -14,9 +14,9 @@ menu:
     weight: 570
 ---
 
-The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL, with the intent of supporting most PostgreSQL functionality. Client applications can make use of the [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) for reading and writing data in to YugabyteDB database. List of all the compatible PostgreSQl Drivers with YSQL can be reviewed in the compatibility matrix below.
+The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL, with the intent of supporting most PostgreSQL functionality. Client applications can use the [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) to read and write data into YugabyteDB databases. YSQL-compatible PostgreSQL drivers are listed in the compatibility matrix below.
 
-In addition to the compatible upstream PostgreSQL Drivers, YugabyteDB **smart drivers** extends the PostgreSQL Drivers to enable clients applications to connect to YugabyteDB clusters without the need for external load balancers. YugabyteDB smart drivers have the following features:
+In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also supports **smart drivers**, which extend the PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers. YugabyteDB smart drivers have the following features:
 
 - **Cluster-aware**. Drivers know about all the data nodes in a YugabyteDB cluster, eliminating the need for an external load balancer.
 - [Topology-aware](/preview/deploy/multi-dc/). For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
@@ -32,7 +32,7 @@ The following libraries are officially supported by YugabyteDB.
 | Driver/ORM  (* Recommended) | Support Level | Example apps |
 | :-------------------------- | :------------ | :----------- |
 | [YugabyteDB JDBC Smart Driver*](java/yugabyte-jdbc) [Recommended] | Full | [CRUD Example](java/yugabyte-jdbc/) |
-| [Postgres JDBC Driver](java/postgres-jdbc/) | Full | [CRUD Example](java/postgres-jdbc/) |
+| [PostgreSQL JDBC Driver](java/postgres-jdbc/) | Full | [CRUD Example](java/postgres-jdbc/) |
 | [Hibernate](java/hibernate/) | Full | [CRUD Example](java/hibernate/#step-1-add-the-hibernate-orm-dependency) |
 | [Spring Data YugabyteDB](/preview/integrations/spring-framework/sdyb/) | Full | [CRUD Example](/preview/integrations/spring-framework/sdyb/#examples) |
 | Spring Data JPA | Full | [CRUD Example](/preview/quick-start/build-apps/java/ysql-spring-data/) |
@@ -76,7 +76,7 @@ The following libraries are officially supported by YugabyteDB.
 | Driver/ORM (* Recommended) | Support Level | Example apps |
 | :------------------------- | :------------ | :----------- |
 | [Yugabyte Psycopg2*](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD Example](python/yugabyte-psycopg2/) |
-| [Postgres Psycopg2](python/postgres-psycopg2/) | Full | [CRUD Example](python/postgres-psycopg2/) |
+| [PostgreSQL Psycopg2](python/postgres-psycopg2/) | Full | [CRUD Example](python/postgres-psycopg2/) |
 | aiopg | Full | [Quick Start](/preview/quick-start/build-apps/python/ysql-aiopg/) |
 | [Django](python/django/) | Full | [CRUD Example](python/django/) |
 | [SQLAlchemy](python/sqlalchemy/) | Full | [CRUD Example](python/sqlalchemy/) |
