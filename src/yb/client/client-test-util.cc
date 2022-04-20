@@ -84,7 +84,7 @@ void LogSessionErrorsAndDie(const FlushStatus& flush_status) {
 
 void FlushSessionOrDie(const std::shared_ptr<YBSession>& session,
                        const std::vector<std::shared_ptr<YBqlOp>>& ops) {
-  auto flush_status = session->FlushAndGetOpsErrors();
+  auto flush_status = session->TEST_FlushAndGetOpsErrors();
   if (PREDICT_FALSE(!flush_status.status.ok())) {
     LogSessionErrorsAndDie(flush_status);
   }

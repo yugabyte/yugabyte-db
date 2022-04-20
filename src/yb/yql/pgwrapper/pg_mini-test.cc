@@ -1465,6 +1465,34 @@ TEST_F_EX(PgMiniTest,
   TestDuplicateNonUniqueIndexInsert();
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentSingleRowUpdate)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, counter INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 0)"));
+  const size_t thread_count = 10;
+  const size_t increment_per_thread = 5;
+  {
+    CountDownLatch latch(thread_count);
+    TestThreadHolder thread_holder;
+    for (size_t i = 0; i < thread_count; ++i) {
+      thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &latch] {
+        auto thread_conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(thread_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+        latch.CountDown();
+        latch.Wait();
+        for (size_t j = 0; j < increment_per_thread; ++j) {
+          ASSERT_OK(thread_conn.Execute("UPDATE t SET counter = counter + 1 WHERE k = 1"));
+        }
+      });
+    }
+  }
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT counter FROM t WHERE k = 1"));
+  ASSERT_EQ(1, PQnfields(res.get()));
+  ASSERT_EQ(1, PQntuples(res.get()));
+  auto counter = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  ASSERT_EQ(thread_count * increment_per_thread, counter);
+}
+
 // ------------------------------------------------------------------------------------------------
 // A test performing manual transaction control on system tables.
 // ------------------------------------------------------------------------------------------------

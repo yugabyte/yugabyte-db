@@ -265,7 +265,7 @@ void YBTableTestBase::PutKeyValue(YBSession* session, string key, string value) 
   auto insert = table_.NewInsertOp();
   QLAddStringHashValue(insert->mutable_request(), key);
   table_.AddStringColumnValue(insert->mutable_request(), "v", value);
-  ASSERT_OK(session->ApplyAndFlush(insert));
+  ASSERT_OK(session->TEST_ApplyAndFlush(insert));
 }
 
 void YBTableTestBase::PutKeyValue(string key, string value) {

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
@@ -40,7 +41,7 @@ public class BackupTableParams extends TableManagerParams {
   public ActionType actionType;
 
   @ApiModelProperty(value = "Full Table type backup")
-  public boolean isFullBackup = false;
+  public Boolean isFullBackup = false;
 
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
@@ -122,15 +123,28 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Type of backup storage config")
   public StorageConfigType storageConfigType = null;
 
+  @ApiModelProperty(value = "Time unit for backup expiry time")
+  public TimeUnit expiryTimeUnit = TimeUnit.DAYS;
+
   @JsonIgnore
   public Set<String> getTableNames() {
     Set<String> tableNames = new HashSet<>();
     if (tableUUIDList != null && !tableUUIDList.isEmpty()) {
-      tableNames.addAll(tableNameList);
+      if (tableNameList != null) {
+        tableNames.addAll(tableNameList);
+      }
     } else if (getTableName() != null) {
       tableNames.add(getTableName());
     }
 
     return tableNames;
+  }
+
+  public boolean isFullBackup() {
+    return isFullBackup;
+  }
+
+  public void setFullBackup(boolean isFullBackup) {
+    this.isFullBackup = isFullBackup;
   }
 }
