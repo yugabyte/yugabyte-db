@@ -2,7 +2,7 @@ CREATE EXTENSION pg_stat_monitor;
 SELECT pg_stat_monitor_version();
  pg_stat_monitor_version 
 -------------------------
- 1.0.0-rc.2
+ 1.0.0
 (1 row)
 
 DROP EXTENSION pg_stat_monitor;
