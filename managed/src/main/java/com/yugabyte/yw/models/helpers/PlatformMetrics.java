@@ -41,6 +41,8 @@ public enum PlatformMetrics {
   HEALTH_CHECK_N2N_CERT("TServer expired Node to Node certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_C2N_CA_CERT("TServer expired Client to Node CA certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_C2N_CERT("TServer expired Client to Node certificate nodes count", Unit.COUNT),
+  HEALTH_CHECK_CLIENT_CA_CERT("TServer expired Client CA certificate nodes count", Unit.COUNT),
+  HEALTH_CHECK_CLIENT_CERT("TServer expired Client certificate nodes count", Unit.COUNT),
 
   // Health check node metrics
   HEALTH_CHECK_MASTER_BOOT_TIME_SEC("Master process boot time in seconds from epoch", Unit.SECOND),
@@ -57,6 +59,9 @@ public enum PlatformMetrics {
       "Remaining Client to Node CA certificate validity days", Unit.DAY),
   HEALTH_CHECK_C2N_CERT_VALIDITY_DAYS(
       "Remaining Client to Node certificate validity days", Unit.DAY),
+  HEALTH_CHECK_CLIENT_CA_CERT_VALIDITY_DAYS(
+      "Remaining Client CA certificate validity days", Unit.DAY),
+  HEALTH_CHECK_CLIENT_CERT_VALIDITY_DAYS("Remaining Client certificate validity days", Unit.DAY),
   HEALTH_CHECK_USED_FD_PCT("Percentage of used on the node file descriptors ", Unit.PERCENT),
 
   // Tasks

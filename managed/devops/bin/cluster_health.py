@@ -36,10 +36,15 @@ YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
 YB_PROCESS_LOG_PATH_FORMAT = os.path.join(YB_HOME_DIR, "{}/logs/")
 VM_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
+VM_ROOT_C2N_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-client-tls-config/ca.crt")
+
+VM_CLIENT_CA_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, ".yugabytedb/root.crt")
+VM_CLIENT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, ".yugabytedb/yugabytedb.crt")
 
 K8S_CERTS_PATH = "/opt/certs/yugabyte/"
-K8S_CLIENT_CERTS_PATH = "/root/.yugabytedb/"
 K8S_CERT_FILE_PATH = os.path.join(K8S_CERTS_PATH, "ca.crt")
+
+K8S_CLIENT_CERTS_PATH = "/root/.yugabytedb/"
 K8S_CLIENT_CA_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "root.crt")
 K8S_CLIENT_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "yugabytedb.crt")
 
@@ -354,10 +359,11 @@ class NodeChecker():
         return e.fill_and_return_entry(msgs, found_error)
 
     def get_certificate_expiration_date(self, cert_path):
-        remote_cmd = 'openssl x509 -enddate -noout -in {} 2>/dev/null'.format(cert_path)
+        remote_cmd = 'if [ -f {} ]; then openssl x509 -enddate -noout -in {} 2>/dev/null;' \
+                     ' else echo \"File not found\"; fi;'.format(cert_path, cert_path)
         return self._remote_check_output(remote_cmd)
 
-    def check_certificate_expiration(self, cert_name, cert_path):
+    def check_certificate_expiration(self, cert_name, cert_path, fail_if_not_found):
         logging.info("Checking {} certificate on node {}".format(cert_name, self.node))
         e = self._new_entry(cert_name + " Cert Expiry Days")
         ssl_installed = self.additional_info.get("ssl_installed:" + self.node)
@@ -367,6 +373,10 @@ class NodeChecker():
         output = self.get_certificate_expiration_date(cert_path)
         if has_errors(output):
             return e.fill_and_return_entry([output], True)
+
+        if output == 'File not found':
+            return e.fill_and_return_entry(
+                ["Certificate file {} not found".format(cert_path)], fail_if_not_found)
 
         try:
             ssl_date_fmt = r'%b %d %H:%M:%S %Y %Z'
@@ -407,44 +417,69 @@ class NodeChecker():
                             "yugabyte-tls-config/node.{}.crt".format(self.node))
 
     def get_client_to_node_ca_certificate_path(self):
+        if self.root_and_client_root_ca_same:
+            return self.get_node_to_node_ca_certificate_path()
+        # Our helm chart do not support separate c2n certificate right now -
+        # hence no special logic for k8s
+
+        return VM_ROOT_C2N_CERT_FILE_PATH
+
+    def get_client_to_node_certificate_path(self):
+        if self.root_and_client_root_ca_same:
+            return self.get_node_to_node_certificate_path()
+        # Our helm chart do not support separate c2n certificate right now -
+        # hence no special logic for k8s
+
+        return os.path.join(
+            YB_HOME_DIR, "yugabyte-client-tls-config/node.{}.crt".format(self.node))
+
+    def get_client_ca_certificate_path(self):
         if self.is_k8s:
             return K8S_CLIENT_CA_CERT_FILE_PATH
 
-        remote_cmd = 'if [ -f "{0}" ]; then echo "{0}";'.format(
-            os.path.join(YB_HOME_DIR, "yugabyte-client-tls-config/ca.crt"))
+        return VM_CLIENT_CA_CERT_FILE_PATH
 
-        for name in 'root', 'ca':
-            remote_cmd += ' elif [ -f "{0}" ]; then echo "{0}";'.format(
-                os.path.join(YB_HOME_DIR, ".yugabytedb/{}.crt".format(name)))
-
-        remote_cmd += ' fi;'
-        return self._remote_check_output(remote_cmd).strip()
-
-    def get_client_to_node_certificate_path(self):
+    def get_client_certificate_path(self):
         if self.is_k8s:
             return K8S_CLIENT_CERT_FILE_PATH
 
-        cert_path = os.path.join(
-            YB_HOME_DIR, "yugabyte-client-tls-config/node.{}.crt".format(self.node))
-        remote_cmd = 'if [ -f "{0}" ]; then echo "{0}"; elif [ -f "{1}" ]; then echo "{1}"; fi'. \
-            format(cert_path, os.path.join(YB_HOME_DIR, ".yugabytedb/yugabytedb.crt"))
-        return self._remote_check_output(remote_cmd).strip()
+        return VM_CLIENT_CERT_FILE_PATH
 
     def check_node_to_node_ca_certificate_expiration(self):
         return self.check_certificate_expiration("Node To Node CA",
-                                                 self.get_node_to_node_ca_certificate_path())
+                                                 self.get_node_to_node_ca_certificate_path(),
+                                                 True  # fail_if_not_found
+                                                 )
 
     def check_node_to_node_certificate_expiration(self):
         return self.check_certificate_expiration("Node To Node",
-                                                 self.get_node_to_node_certificate_path())
+                                                 self.get_node_to_node_certificate_path(),
+                                                 True  # fail_if_not_found
+                                                 )
 
     def check_client_to_node_ca_certificate_expiration(self):
         return self.check_certificate_expiration("Client To Node CA",
-                                                 self.get_client_to_node_ca_certificate_path())
+                                                 self.get_client_to_node_ca_certificate_path(),
+                                                 True  # fail_if_not_found
+                                                 )
 
     def check_client_to_node_certificate_expiration(self):
         return self.check_certificate_expiration("Client To Node",
-                                                 self.get_client_to_node_certificate_path())
+                                                 self.get_client_to_node_certificate_path(),
+                                                 True  # fail_if_not_found
+                                                 )
+
+    def check_client_ca_certificate_expiration(self):
+        return self.check_certificate_expiration("Client",
+                                                 self.get_client_ca_certificate_path(),
+                                                 False  # fail_if_not_found
+                                                 )
+
+    def check_client_certificate_expiration(self):
+        return self.check_certificate_expiration("Client",
+                                                 self.get_client_certificate_path(),
+                                                 False  # fail_if_not_found
+                                                 )
 
     def check_yb_version(self, ip_address, process, port, expected):
         logging.info("Checking YB Version on node {} process {}".format(self.node, process))
@@ -1076,9 +1111,13 @@ def main():
                     coordinator.add_check(checker, "check_node_to_node_ca_certificate_expiration")
                     coordinator.add_check(checker, "check_node_to_node_certificate_expiration")
                 if c.enable_tls_client:
-                    coordinator.add_check(
-                        checker, "check_client_to_node_ca_certificate_expiration")
-                    coordinator.add_check(checker, "check_client_to_node_certificate_expiration")
+                    coordinator.add_check(checker, "check_client_ca_certificate_expiration")
+                    coordinator.add_check(checker, "check_client_certificate_expiration")
+                    if not c.root_and_client_root_ca_same:
+                        coordinator.add_check(
+                            checker, "check_client_to_node_ca_certificate_expiration")
+                        coordinator.add_check(
+                            checker, "check_client_to_node_certificate_expiration")
 
         entries = coordinator.run()
         for e in entries:
