@@ -73,6 +73,7 @@ export const panelTypes = {
       'master_ts_heartbeats',
       'tserver_rpc_queue_size_master',
       'master_consensus_update',
+      'master_multiraft_consensus_update',
       'master_table_ops',
       'master_cpu_util_secs',
       'master_yb_rpc_connections'
