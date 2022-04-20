@@ -3,7 +3,7 @@ Syntax:
   {{< yb-version version="<alias or series>" [format="<format>"] >}}
 
 Aliases:
-  * "latest"
+  * "preview"
   * "stable"
   * Anything else you define in the "alias" field in currentVersions.json
 
@@ -12,8 +12,8 @@ Formats:
   * short: the 3-position version ("2.13.0")
   * build: the full version and build ("2.13.0.1-b2")
   * series: the 2-position release series ("v2.13")
-  * displayName: the release series name and latest/stable
-                 ("v2.13 (Latest)", "v2.12 (Stable)")
+  * displayName: the release series name and preview/stable
+                 ("v2.13 (Preview)", "v2.12 (Stable)")
 */}}
 
 {{- $version := .Get "version" -}}
@@ -21,8 +21,8 @@ Formats:
 
 {{ range .Site.Data.currentVersions.docVersions }}
 
-  {{- if eq $version "latest" -}}
-    {{- if eq .alias "latest" -}}
+  {{- if eq $version "preview" -}}
+    {{- if eq .alias "preview" -}}
       {{- if eq $format "build" -}}
         {{ .appVersion }}
       {{- else if eq $format "short" -}}

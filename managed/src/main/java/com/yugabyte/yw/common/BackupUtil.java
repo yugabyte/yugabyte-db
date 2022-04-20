@@ -147,6 +147,7 @@ public class BackupUtil {
             .completionTime(backup.getCompletionTime())
             .onDemand(onDemand)
             .sse(backup.getBackupInfo().sse)
+            .isFullBackup(backup.getBackupInfo().isFullBackup)
             .universeName(backup.universeName)
             .backupUUID(backup.backupUUID)
             .taskUUID(backup.taskUUID)

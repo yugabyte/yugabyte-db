@@ -199,6 +199,11 @@ void CatalogManagerBgTasks::Run() {
         s = catalog_manager_->CleanUpDeletedCDCStreams(streams);
       }
 
+      // Do a failed universe clean up
+      if (s.ok()) {
+        s = catalog_manager_->ClearFailedUniverse();
+      }
+
       // Ensure the master sys catalog tablet follows the cluster's affinity specification.
       if (FLAGS_sys_catalog_respect_affinity_task) {
         s = catalog_manager_->SysCatalogRespectLeaderAffinity();

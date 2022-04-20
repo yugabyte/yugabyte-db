@@ -15,10 +15,16 @@
 
 #include "yb/yql/pggate/pg_dml_read.h"
 
-#include "yb/client/yb_op.h"
+#include <algorithm>
+#include <functional>
+#include <memory>
+#include <utility>
+
+#include <boost/unordered_map.hpp>
 
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/ql_datatype.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 
@@ -26,11 +32,19 @@
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
 
-#include "yb/util/status_format.h"
+#include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/slice.h"
+
+#include "yb/yql/pggate/pg_column.h"
+#include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_select_index.h"
+#include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_tools.h"
-#include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace pggate {
@@ -45,7 +59,7 @@ auto Find(const boost::unordered_map<Key, Value>& map, const CompatibleKey& key)
 class DocKeyBuilder {
  public:
   CHECKED_STATUS Prepare(
-      const std::vector<docdb::PrimitiveValue>& hashed_components,
+      const std::vector<docdb::KeyEntryValue>& hashed_components,
       const LWQLValuePB*const* hashed_values,
       const PartitionSchema& partition_schema) {
     if (hashed_components.empty()) {
@@ -61,7 +75,7 @@ class DocKeyBuilder {
     return Status::OK();
   }
 
-  docdb::DocKey operator()(const vector<docdb::PrimitiveValue>& range_components) const {
+  docdb::DocKey operator()(const vector<docdb::KeyEntryValue>& range_components) const {
     if (!hashed_components_) {
       return docdb::DocKey(range_components);
     }
@@ -70,7 +84,7 @@ class DocKeyBuilder {
 
  private:
   uint16_t hash_;
-  const vector<docdb::PrimitiveValue>* hashed_components_ = nullptr;
+  const vector<docdb::KeyEntryValue>* hashed_components_ = nullptr;
 };
 
 } // namespace
@@ -466,7 +480,7 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
 
 Result<docdb::DocKey> PgDmlRead::EncodeRowKeyForBound(
     YBCPgStatement handle, size_t n_col_values, PgExpr **col_values, bool for_lower_bound) {
-  std::vector<docdb::PrimitiveValue> hashed_components;
+  std::vector<docdb::KeyEntryValue> hashed_components;
   hashed_components.reserve(bind_->num_hash_key_columns());
   size_t i = 0;
   auto hashed_values = arena().AllocateArray<LWQLValuePB*>(bind_->num_hash_key_columns());
@@ -474,7 +488,7 @@ Result<docdb::DocKey> PgDmlRead::EncodeRowKeyForBound(
     auto &col = bind_.columns()[i];
 
     hashed_values[i] = VERIFY_RESULT(col_values[i]->Eval());
-    auto docdbval = docdb::PrimitiveValue::FromQLValuePB(
+    auto docdbval = docdb::KeyEntryValue::FromQLValuePB(
         *hashed_values[i], col.desc().sorting_type());
     hashed_components.push_back(std::move(docdbval));
   }
@@ -483,7 +497,7 @@ Result<docdb::DocKey> PgDmlRead::EncodeRowKeyForBound(
   RETURN_NOT_OK(dockey_builder.Prepare(
       hashed_components, hashed_values, bind_->partition_schema()));
 
-  std::vector<docdb::PrimitiveValue> range_components;
+  std::vector<docdb::KeyEntryValue> range_components;
   n_col_values = std::max(std::min(n_col_values, bind_->num_key_columns()),
                           bind_->num_hash_key_columns());
   range_components.reserve(n_col_values - bind_->num_hash_key_columns());
@@ -491,12 +505,12 @@ Result<docdb::DocKey> PgDmlRead::EncodeRowKeyForBound(
     auto& col = bind_.columns()[i];
 
     if (col_values[i] == nullptr) {
-      range_components.push_back(docdb::PrimitiveValue(
-          for_lower_bound ? docdb::ValueType::kLowest : docdb::ValueType::kHighest));
+      range_components.emplace_back(
+          for_lower_bound ? docdb::KeyEntryType::kLowest : docdb::KeyEntryType::kHighest);
     } else {
       auto value = VERIFY_RESULT(col_values[i]->Eval());
       range_components.push_back(
-          docdb::PrimitiveValue::FromQLValuePB(*value, col.desc().sorting_type()));
+          docdb::KeyEntryValue::FromQLValuePB(*value, col.desc().sorting_type()));
     }
   }
 
@@ -598,7 +612,7 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec
 // other key components are set must be checked by caller code.
 Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   auto hashed_values = arena().AllocateArray<LWQLValuePB*>(bind_->num_hash_key_columns());
-  vector<docdb::PrimitiveValue> hashed_components, range_components;
+  vector<docdb::KeyEntryValue> hashed_components, range_components;
   hashed_components.reserve(bind_->num_hash_key_columns());
   range_components.reserve(bind_->num_key_columns() - bind_->num_hash_key_columns());
   for (size_t i = 0; i < bind_->num_hash_key_columns(); ++i) {
@@ -642,21 +656,19 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   return STATUS(IllegalState, "Can't build ybctids, bad preconditions");
 }
 
-// Function checks that one and only one range key component has IN clause
-// and all other key components are set.
-bool PgDmlRead::CanBuildYbctidsFromPrimaryBinds() {
+bool PgDmlRead::IsAllPrimaryKeysBound(size_t num_range_components_in_expected) {
   if (!bind_) {
     return false;
   }
 
-  size_t range_components_in_clause_count = 0;
+  int64_t range_components_in_clause_remain = num_range_components_in_expected;
 
   for (size_t i = 0; i < bind_->num_key_columns(); ++i) {
     auto& col = bind_.ColumnForIndex(i);
     auto* expr = col.bind_pb();
     // For IN clause expr->has_condition() returns 'true'.
     if (expr->has_condition()) {
-      if ((i < bind_->num_hash_key_columns()) || (++range_components_in_clause_count > 1)) {
+      if ((i < bind_->num_hash_key_columns()) || (--range_components_in_clause_remain < 0)) {
         // unsupported IN clause
         return false;
       }
@@ -665,7 +677,13 @@ bool PgDmlRead::CanBuildYbctidsFromPrimaryBinds() {
       return false;
     }
   }
-  return range_components_in_clause_count == 1;
+  return range_components_in_clause_remain == 0;
+}
+
+// Function checks that one and only one range key component has IN clause
+// and all other key components are set.
+bool PgDmlRead::CanBuildYbctidsFromPrimaryBinds() {
+  return IsAllPrimaryKeysBound(1 /* num_range_components_in_expected */);
 }
 
 // Moves IN operator bound for range key component into 'condition_expr' field
@@ -701,16 +719,16 @@ Result<LWQLValuePB*> PgDmlRead::GetBoundValue(
   return it->second->Eval();
 }
 
-Result<docdb::PrimitiveValue> PgDmlRead::BuildKeyColumnValue(
+Result<docdb::KeyEntryValue> PgDmlRead::BuildKeyColumnValue(
     const PgColumn& col, const LWPgsqlExpressionPB& src, LWQLValuePB** dest) {
   *dest = VERIFY_RESULT(GetBoundValue(col, src));
   if (*dest) {
-    return docdb::PrimitiveValue::FromQLValuePB(**dest, col.desc().sorting_type());
+    return docdb::KeyEntryValue::FromQLValuePB(**dest, col.desc().sorting_type());
   }
-  return docdb::PrimitiveValue::kTombstone;
+  return docdb::KeyEntryValue();
 }
 
-Result<docdb::PrimitiveValue> PgDmlRead::BuildKeyColumnValue(
+Result<docdb::KeyEntryValue> PgDmlRead::BuildKeyColumnValue(
     const PgColumn& col, const LWPgsqlExpressionPB& src) {
   LWQLValuePB* temp_value;
   return BuildKeyColumnValue(col, src, &temp_value);
@@ -736,6 +754,22 @@ Status PgDmlRead::BindHashCode(bool start_valid, bool start_inclusive,
     read_req_->mutable_upper_bound()->set_is_inclusive(end_inclusive);
   }
   return Status::OK();
+}
+
+void PgDmlRead::UpgradeDocOp(PgDocOp::SharedPtr doc_op) {
+  CHECK(!original_doc_op_) << "DocOp can be upgraded only once";
+  CHECK(doc_op_) << "No DocOp object for upgrade";
+  original_doc_op_.swap(doc_op_);
+  doc_op_.swap(doc_op);
+}
+
+bool PgDmlRead::IsReadFromYsqlCatalog() const {
+  return target_->schema().table_properties().is_ysql_catalog_table();
+}
+
+bool PgDmlRead::IsIndexOrderedScan() const {
+  return secondary_index_query_ &&
+      !secondary_index_query_->IsAllPrimaryKeysBound(0 /* num_range_components_in_expected */);
 }
 
 }  // namespace pggate

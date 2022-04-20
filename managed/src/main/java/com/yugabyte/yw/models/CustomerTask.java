@@ -65,7 +65,7 @@ public class CustomerTask extends Model {
     KMSConfiguration(false),
 
     @EnumValue("XCluster Configuration")
-    XClusterConfig(false);
+    XClusterConfig(true);
 
     private final boolean universeTarget;
 
@@ -111,6 +111,12 @@ public class CustomerTask extends Model {
 
     @EnumValue("Release")
     Release,
+
+    @EnumValue("Edit")
+    Edit,
+
+    @EnumValue("Synchronize")
+    Sync,
 
     @EnumValue("RestartUniverse")
     RestartUniverse,
@@ -191,18 +197,29 @@ public class CustomerTask extends Model {
     @EnumValue("CreateAlertDefinitions")
     CreateAlertDefinitions,
 
+    @EnumValue("ManageAlertDefinitions")
+    ManageAlertDefinitions,
+
     @EnumValue("ExternalScript")
     ExternalScript,
 
+    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Create} instead. */
+    @Deprecated
     @EnumValue("CreateXClusterConfig")
     CreateXClusterConfig,
 
+    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Edit} instead. */
+    @Deprecated
     @EnumValue("EditXClusterConfig")
     EditXClusterConfig,
 
+    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Delete} instead. */
+    @Deprecated
     @EnumValue("DeleteXClusterConfig")
     DeleteXClusterConfig,
 
+    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Sync} instead. */
+    @Deprecated
     @EnumValue("SyncXClusterConfig")
     SyncXClusterConfig,
 
@@ -210,7 +227,10 @@ public class CustomerTask extends Model {
     PrecheckNode,
 
     @EnumValue("Abort")
-    Abort;
+    Abort,
+
+    @EnumValue("CreateSupportBundle")
+    CreateSupportBundle;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -236,6 +256,10 @@ public class CustomerTask extends Model {
           return completed ? "Updated " : "Updating ";
         case Delete:
           return completed ? "Deleted " : "Deleting ";
+        case Edit:
+          return completed ? "Edited " : "Editing ";
+        case Sync:
+          return completed ? "Synchronized " : "Synchronizing ";
         case RestartUniverse:
           return completed ? "Restarted " : "Restarting ";
         case SoftwareUpgrade:
@@ -285,6 +309,8 @@ public class CustomerTask extends Model {
           return completed ? "Started Master process on " : "Starting Master process on ";
         case CreateAlertDefinitions:
           return completed ? "Created alert definitions " : "Creating alert definitions ";
+        case ManageAlertDefinitions:
+          return completed ? "Managed alert definitions " : "Managing alert definitions ";
         case ExternalScript:
           return completed ? "Script execution completed " : "Script execution is running";
         case CreateXClusterConfig:
@@ -299,6 +325,8 @@ public class CustomerTask extends Model {
           return completed ? "Performed preflight check on " : "Performing preflight check on ";
         case Abort:
           return completed ? "Task aborted " : "Aborting task ";
+        case CreateSupportBundle:
+          return completed ? "Created Support Bundle in " : "Creating Support Bundle in ";
         default:
           return null;
       }

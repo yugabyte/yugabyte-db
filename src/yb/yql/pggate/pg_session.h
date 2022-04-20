@@ -274,6 +274,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
+  void ResetHasWriteOperationsInDdlMode();
+  bool HasWriteOperationsInDdlMode() const;
+
  private:
   Result<PerformFuture> FlushOperations(
       BufferableOperations ops, bool transactional);
@@ -282,8 +285,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<PerformFuture> Perform(
       BufferableOperations ops, UseCatalogSession use_catalog_session);
-
-  void UpdateInTxnLimit(uint64_t* read_time);
 
   PgClient& pg_client_;
 
@@ -309,12 +310,12 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Should write operations be buffered?
   bool buffering_enabled_ = false;
+  BufferingSettings buffering_settings_;
   PgOperationBuffer buffer_;
-
-  HybridTime in_txn_limit_;
 
   const tserver::TServerSharedObject* const tserver_shared_object_;
   const YBCPgCallbacks& pg_callbacks_;
+  bool has_write_ops_in_ddl_mode_ = false;
 };
 
 }  // namespace pggate

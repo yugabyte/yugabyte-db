@@ -48,11 +48,20 @@ import play.libs.Json;
 public class SwamperHelper {
   public static final Logger LOG = LoggerFactory.getLogger(SwamperHelper.class);
 
+  private static final String UUID_PATTERN =
+      "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+
   @VisibleForTesting static final String ALERT_CONFIG_FILE_PREFIX = "yugaware.ad.";
+  @VisibleForTesting static final String ALERT_CONFIG_FILE_PREFIX_PATTERN = "yugaware\\.ad\\.";
+  @VisibleForTesting static final String RECORDING_RULES_FILE = "yugaware.recording-rules.yml";
   private static final Pattern ALERT_CONFIG_FILE_PATTERN =
-      Pattern.compile(
-          "^yugaware\\.ad\\.[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
-              + "-[0-9a-fA-F]{12}\\.yml$");
+      Pattern.compile("^yugaware\\.ad\\." + UUID_PATTERN + "\\.yml$");
+
+  @VisibleForTesting static final String TARGET_FILE_NODE_PREFIX = "node.";
+  @VisibleForTesting static final String TARGET_FILE_YUGABYTE_PREFIX = "yugabyte.";
+  @VisibleForTesting static final String TARGET_FILE_PREFIX_PATTERN = "(node|yugabyte)\\.";
+  private static final Pattern TARGET_FILE_PATTERN =
+      Pattern.compile("^(node|yugabyte)\\." + UUID_PATTERN + ".json$");
 
   /*
      Sample targets file
@@ -142,16 +151,15 @@ public class SwamperHelper {
     return target;
   }
 
-  private String getSwamperFile(UUID universeUUID, String prefix) {
-    String swamperFile = appConfig.getString("yb.swamper.targetPath");
-    if (StringUtils.isEmpty(swamperFile)) {
-      return null;
-    }
-    File swamperTargetDirectory = new File(swamperFile);
+  private File getSwamperTargetDirectory() {
+    return getOrCreateDirectory("yb.swamper.targetPath");
+  }
 
-    if (swamperTargetDirectory.isDirectory() || swamperTargetDirectory.mkdirs()) {
-      return String.format(
-          "%s/%s.%s.json", swamperTargetDirectory, prefix, universeUUID.toString());
+  private String getSwamperFile(UUID universeUUID, String prefix) {
+    File swamperTargetDirectory = getSwamperTargetDirectory();
+
+    if (swamperTargetDirectory != null) {
+      return String.format("%s/%s%s.json", swamperTargetDirectory, prefix, universeUUID.toString());
     }
     return null;
   }
@@ -161,7 +169,7 @@ public class SwamperHelper {
 
     // Write out the node specific file.
     ArrayNode nodeTargets = Json.newArray();
-    String swamperFile = getSwamperFile(universeUUID, "node");
+    String swamperFile = getSwamperFile(universeUUID, TARGET_FILE_NODE_PREFIX);
     if (swamperFile == null) {
       return;
     }
@@ -180,7 +188,7 @@ public class SwamperHelper {
 
     // Write out the yugabyte specific file.
     ArrayNode ybTargets = Json.newArray();
-    swamperFile = getSwamperFile(universeUUID, "yugabyte");
+    swamperFile = getSwamperFile(universeUUID, TARGET_FILE_YUGABYTE_PREFIX);
     for (TargetType t : TargetType.values()) {
       if (t != TargetType.NODE_EXPORT && t != TargetType.INVALID_EXPORT) {
         universe
@@ -214,34 +222,44 @@ public class SwamperHelper {
 
   public void removeUniverseTargetJson(UUID universeUUID) {
     // TODO: make these constants / enums.
-    removeUniverseTargetJson(universeUUID, "node");
-    removeUniverseTargetJson(universeUUID, "yugabyte");
+    removeUniverseTargetJson(universeUUID, TARGET_FILE_NODE_PREFIX);
+    removeUniverseTargetJson(universeUUID, TARGET_FILE_YUGABYTE_PREFIX);
   }
 
   private File getSwamperRuleDirectory() {
-    String rulesFile = appConfig.getString("yb.swamper.rulesPath");
-    if (StringUtils.isEmpty(rulesFile)) {
-      return null;
-    }
-    File swamperRulesDirectory = new File(rulesFile);
+    return getOrCreateDirectory("yb.swamper.rulesPath");
+  }
 
-    if (swamperRulesDirectory.isDirectory() || swamperRulesDirectory.mkdirs()) {
-      return swamperRulesDirectory;
+  private String getAlertRuleFile(UUID ruleUUID) {
+    return getRulesFile(String.format("%s%s.yml", ALERT_CONFIG_FILE_PREFIX, ruleUUID.toString()));
+  }
+
+  private String getRulesFile(String filename) {
+    File swamperRulesDirectory = getSwamperRuleDirectory();
+    if (swamperRulesDirectory != null) {
+      return String.format("%s/%s", swamperRulesDirectory, filename);
     }
     return null;
   }
 
-  private String getSwamperRuleFile(UUID ruleUUID) {
-    File swamperRulesDirectory = getSwamperRuleDirectory();
-    if (swamperRulesDirectory != null) {
-      return String.format(
-          "%s/%s%s.yml", swamperRulesDirectory, ALERT_CONFIG_FILE_PREFIX, ruleUUID.toString());
+  public void writeRecordingRules() {
+    String rulesFile = getRulesFile(RECORDING_RULES_FILE);
+    if (rulesFile == null) {
+      return;
     }
-    return null;
+
+    String fileContent;
+    try (InputStream templateStream = environment.resourceAsStream("metric/recording_rules.yml")) {
+      fileContent = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to read alert definition header template", e);
+    }
+
+    writeFile(rulesFile, fileContent);
   }
 
   public void writeAlertDefinition(AlertConfiguration configuration, AlertDefinition definition) {
-    String swamperFile = getSwamperRuleFile(definition.getUuid());
+    String swamperFile = getAlertRuleFile(definition.getUuid());
     if (swamperFile == null) {
       return;
     }
@@ -279,7 +297,7 @@ public class SwamperHelper {
   }
 
   public void removeAlertDefinition(UUID definitionUUID) {
-    String swamperFile = getSwamperRuleFile(definitionUUID);
+    String swamperFile = getAlertRuleFile(definitionUUID);
     if (swamperFile != null) {
       File file = new File(swamperFile);
 
@@ -291,19 +309,40 @@ public class SwamperHelper {
   }
 
   public List<UUID> getAlertDefinitionConfigUuids() {
-    File swamperRulesDir = getSwamperRuleDirectory();
-    if (swamperRulesDir == null) {
+    return extractUuids(
+        getSwamperRuleDirectory(), ALERT_CONFIG_FILE_PATTERN, ALERT_CONFIG_FILE_PREFIX_PATTERN);
+  }
+
+  public List<UUID> getTargetUniverseUuids() {
+    return extractUuids(
+        getSwamperTargetDirectory(), TARGET_FILE_PATTERN, TARGET_FILE_PREFIX_PATTERN);
+  }
+
+  private List<UUID> extractUuids(File directory, Pattern pattern, String prefix) {
+    if (directory == null) {
       return Collections.emptyList();
     }
-    String[] configFiles =
-        swamperRulesDir.list(new PatternFilenameFilter(ALERT_CONFIG_FILE_PATTERN));
-    if (configFiles == null) {
-      throw new RuntimeException("Failed to list alert rules config files");
+    String[] targetFiles = directory.list(new PatternFilenameFilter(pattern));
+    if (targetFiles == null) {
+      throw new RuntimeException("Failed to list files in " + directory);
     }
-    return Arrays.stream(configFiles)
+    return Arrays.stream(targetFiles)
         .map(FilenameUtils::removeExtension)
-        .map(filename -> filename.replaceAll(ALERT_CONFIG_FILE_PREFIX, ""))
+        .map(filename -> filename.replaceAll(prefix, ""))
         .map(UUID::fromString)
         .collect(Collectors.toList());
+  }
+
+  private File getOrCreateDirectory(String configParam) {
+    String directoryPath = appConfig.getString(configParam);
+    if (StringUtils.isEmpty(directoryPath)) {
+      return null;
+    }
+    File directory = new File(directoryPath);
+
+    if (directory.isDirectory() || directory.mkdirs()) {
+      return directory;
+    }
+    return null;
   }
 }

@@ -27,6 +27,7 @@ import io.swagger.annotations.SwaggerDefinition;
 import play.libs.Json;
 import play.mvc.Controller;
 import play.mvc.Http;
+import play.mvc.With;
 
 /**
  * This class contains dependencies, which can be used by most of the Platform controllers. An
@@ -35,8 +36,8 @@ import play.mvc.Http;
 @SwaggerDefinition(
     info =
         @Info(
-            title = "Yugabyte Platform API",
-            description = "Yugabyte Platform API",
+            title = "YugabyteDB Anywhere API",
+            description = "YugabyteDB Anywhere API",
             version = "v1",
             contact = @Contact(name = "Yugabyte", url = "http://docs.yugabyte.com"),
             license =
@@ -48,7 +49,7 @@ import play.mvc.Http;
     schemes = {SwaggerDefinition.Scheme.HTTP, SwaggerDefinition.Scheme.HTTPS},
     externalDocs =
         @ExternalDocs(
-            value = "About Yugabyte Platform",
+            value = "About YugabyteDB Anywhere",
             url = "https://docs.yugabyte.com/latest/yugabyte-platform/"),
     securityDefinition =
         @SecurityDefinition(
@@ -59,6 +60,7 @@ import play.mvc.Http;
                   in = ApiKeyAuthDefinition.ApiKeyLocation.HEADER,
                   description = "API token passed as header")
             }))
+@With(AuditAction.class)
 public abstract class AbstractPlatformController extends Controller {
 
   protected static final String LICENSE_1_0_0_NAME = "Polyform Free Trial License 1.0.0";

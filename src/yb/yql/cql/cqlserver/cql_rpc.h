@@ -108,7 +108,7 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
 class CQLInboundCall : public rpc::InboundCall {
  public:
   explicit CQLInboundCall(rpc::ConnectionPtr conn,
-                          CallProcessedListener call_processed_listener,
+                          CallProcessedListener* call_processed_listener,
                           ql::QLSession::SharedPtr ql_session);
 
   // Takes ownership of call_data content.
@@ -159,6 +159,8 @@ class CQLInboundCall : public rpc::InboundCall {
     // TODO - who is tracking request_ memory usage ?
     return DynamicMemoryUsageOf(response_msg_buf_);
   }
+
+  rpc::ThreadPoolTask* BindTask(rpc::InboundCallHandler* handler) override;
 
  private:
   RefCntBuffer response_msg_buf_;

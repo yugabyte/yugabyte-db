@@ -202,6 +202,10 @@ public class BackupsController extends AuthenticatedController {
       backupUtil.validateTables(null, universe, null, taskParams.backupType);
     }
 
+    if (taskParams.timeBeforeDelete != 0L && taskParams.expiryTimeUnit == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Please provide time unit for backup expiry");
+    }
+
     if (taskParams.storageConfigUUID == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
@@ -255,6 +259,16 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
     }
+    if (taskParams.scheduleName == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Provide a name for the schedule");
+    } else {
+      if (Schedule.getScheduleByUniverseWithName(
+              taskParams.scheduleName, taskParams.universeUUID, customerUUID)
+          != null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Schedule with name " + taskParams.scheduleName + " already exist");
+      }
+    }
     if (taskParams.schedulingFrequency == 0L && taskParams.cronExpression == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Provide Cron Expression or Scheduling frequency");
@@ -263,6 +277,10 @@ public class BackupsController extends AuthenticatedController {
           BAD_REQUEST, "Cannot provide both Cron Expression and Scheduling frequency");
     } else if (taskParams.schedulingFrequency != 0L) {
       BackupUtil.validateBackupFrequency(taskParams.schedulingFrequency);
+      if (taskParams.frequencyTimeUnit == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Please provide time unit for scheduler frequency");
+      }
     } else if (taskParams.cronExpression != null) {
       BackupUtil.validateBackupCronExpression(taskParams.cronExpression);
     }
@@ -293,10 +311,13 @@ public class BackupsController extends AuthenticatedController {
     Schedule schedule =
         Schedule.create(
             customerUUID,
+            taskParams.universeUUID,
             taskParams,
             TaskType.CreateBackup,
             taskParams.schedulingFrequency,
-            taskParams.cronExpression);
+            taskParams.cronExpression,
+            taskParams.frequencyTimeUnit,
+            taskParams.scheduleName);
     UUID scheduleUUID = schedule.getScheduleUUID();
     LOG.info(
         "Created backup schedule for customer {}, schedule uuid = {}.", customerUUID, scheduleUUID);
@@ -583,6 +604,15 @@ public class BackupsController extends AuthenticatedController {
         }
       }
     }
+    if (taskList.size() == 0) {
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Backup,
+              null,
+              Audit.ActionType.Delete,
+              request().body().asJson());
+    }
     return new YBPTasks(taskList).asResult();
   }
 
@@ -644,10 +674,13 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Please provide either a positive expiry time or storage config to edit backup");
-    }
-    if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
+    } else if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot edit a backup that is in progress state");
+    } else if (taskParams.timeBeforeDeleteFromPresentInMillis > 0L
+        && taskParams.expiryTimeUnit == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Please provide a time unit for backup expiry");
     }
     if (taskParams.storageConfigUUID != null) {
       updateBackupStorageConfig(customerUUID, backupUUID, taskParams);
@@ -656,6 +689,7 @@ public class BackupsController extends AuthenticatedController {
     }
     if (taskParams.timeBeforeDeleteFromPresentInMillis > 0L) {
       backup.updateExpiryTime(taskParams.timeBeforeDeleteFromPresentInMillis);
+      backup.updateExpiryTimeUnit(taskParams.expiryTimeUnit);
       LOG.info(
           "Updated Backup {} expiry time before delete to {} ms",
           backupUUID,

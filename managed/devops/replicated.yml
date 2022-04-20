@@ -141,6 +141,7 @@ components:
                       monitor: 'swamper'
               rule_files:
                 - '/opt/yugabyte/prometheus/rules/yugaware.ad.*.yml'
+                - '/opt/yugabyte/prometheus/rules/yugaware.recording-rules.yml'
               scrape_configs:
                 - job_name: 'prometheus'
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
@@ -432,10 +433,11 @@ components:
                   server_name  {{repl ConfigOption "hostname" }};
                 {{repl end}}
 
-                proxy_http_version 1.1;
-                proxy_set_header X-Real-IP  $remote_addr;
-                proxy_set_header X-Forwarded-For $remote_addr;
-                proxy_set_header Host $host;
+                  proxy_http_version 1.1;
+                  proxy_set_header X-Real-IP  $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_set_header Host $host;
 
                 location / {
                   proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};

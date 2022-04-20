@@ -56,7 +56,7 @@ YQLVirtualTable::~YQLVirtualTable() = default;
 CHECKED_STATUS YQLVirtualTable::GetIterator(
     const QLReadRequestPB& request,
     const Schema& projection,
-    const Schema& schema,
+      std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,

@@ -37,6 +37,7 @@ option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
+import "yb/docdb/docdb.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/util/opid.proto";
 
@@ -67,6 +68,8 @@ message TableInfoPB {
 
   // Deleted column IDs with timestamps so that memory can be cleaned up.
   repeated DeletedColumnPB deleted_cols = 9;
+
+  repeated docdb.SchemaPackingPB old_schema_packings = 11;
 }
 
 // KV-store meta data. Single KV-store is backed by one or two RocksDB instances, depending on
@@ -185,6 +188,8 @@ message RaftGroupReplicaSuperBlockPB {
   // Picked at master while enabling writes after restoration.
   optional fixed64 restoration_hybrid_time = 32;
 
+  // SPLIT_OP ID designated for this tablet (so child tablets will have this unset until they've
+  // been split themselves).
   optional OpIdPB split_op_id = 29;
   repeated bytes split_child_tablet_ids = 30;
 

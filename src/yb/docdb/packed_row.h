@@ -17,9 +17,14 @@
 #include <unordered_map>
 
 #include <boost/functional/hash.hpp>
+#include <boost/optional.hpp>
+
+#include <google/protobuf/repeated_field.h>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
+
+#include "yb/docdb/docdb.fwd.h"
 
 #include "yb/util/byte_buffer.h"
 #include "yb/util/kv_util.h"
@@ -77,14 +82,20 @@ struct ColumnPackingData {
   // Whether column is nullable.
   bool nullable;
 
+  static ColumnPackingData FromPB(const ColumnPackingPB& pb);
+  void ToPB(ColumnPackingPB* out) const;
+
   bool varlen() const {
     return size == 0;
   }
+
+  std::string ToString() const;
 };
 
 class SchemaPacking {
  public:
   explicit SchemaPacking(const Schema& schema);
+  explicit SchemaPacking(const SchemaPackingPB& pb);
 
   size_t columns() const {
     return columns_.size();
@@ -103,8 +114,11 @@ class SchemaPacking {
     return varlen_columns_count_;
   }
 
-  Result<Slice> GetValue(size_t idx, const Slice& packed) const;
-  Result<Slice> GetValue(ColumnId column, const Slice& packed) const;
+  Slice GetValue(size_t idx, const Slice& packed) const;
+  boost::optional<Slice> GetValue(ColumnId column, const Slice& packed) const;
+  void ToPB(SchemaPackingPB* out) const;
+
+  std::string ToString() const;
 
  private:
   std::vector<ColumnPackingData> columns_;
@@ -112,15 +126,51 @@ class SchemaPacking {
   size_t varlen_columns_count_;
 };
 
+class SchemaPackingStorage {
+ public:
+  SchemaPackingStorage();
+
+  Result<const SchemaPacking&> GetPacking(uint32_t schema_version) const;
+  Result<const SchemaPacking&> GetPacking(Slice* packed_row) const;
+
+  void AddSchema(uint32_t version, const Schema& schema);
+
+  CHECKED_STATUS LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
+  void ToPB(uint32_t skip_schema_version, google::protobuf::RepeatedPtrField<SchemaPackingPB>* out);
+
+ private:
+  std::unordered_map<uint32_t, SchemaPacking> version_to_schema_packing_;
+};
+
 class RowPacker {
  public:
   RowPacker(uint32_t version, std::reference_wrapper<const SchemaPacking> packing);
+  explicit RowPacker(const std::pair<uint32_t, const SchemaPacking&>& pair)
+      : RowPacker(pair.first, pair.second) {
+  }
 
-  CHECKED_STATUS AddValue(ColumnId column, const QLValuePB& value, SortingType sorting_type);
+  bool Empty() const {
+    return idx_ == 0;
+  }
 
-  Result<const ValueBuffer&> Complete();
+  bool Finished() const {
+    return idx_ == packing_.columns();
+  }
+
+  void Restart();
+
+  ColumnId NextColumnId() const;
+  Result<const ColumnPackingData&> NextColumnData() const;
+
+  Status AddValue(ColumnId column, const QLValuePB& value);
+  Status AddValue(ColumnId column, const Slice& value);
+
+  Result<Slice> Complete();
 
  private:
+  template <class Value>
+  Status DoAddValue(ColumnId column, const Value& value);
+
   const SchemaPacking& packing_;
   size_t idx_ = 0;
   size_t prefix_end_;

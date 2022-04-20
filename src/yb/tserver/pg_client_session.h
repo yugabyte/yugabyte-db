@@ -16,26 +16,30 @@
 
 #include <stdint.h>
 
+#include <array>
 #include <functional>
-#include <mutex>
-#include <set>
+#include <memory>
 #include <string>
 #include <type_traits>
-#include <unordered_set>
 #include <utility>
+#include <vector>
 
+#include <boost/optional.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/range/iterator_range.hpp>
 
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/entity_ids.h"
+#include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.pb.h"
+
+#include "yb/util/locks.h"
 
 namespace yb {
 namespace tserver {
@@ -62,12 +66,18 @@ namespace tserver {
     /**/
 
 using PgClientSessionOperations = std::vector<std::shared_ptr<client::YBPgsqlOp>>;
-class PgClientSessionLocker;
 
 YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence));
 
-class PgClientSession {
+class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
  public:
+  struct UsedReadTime {
+    simple_spinlock lock;
+    ReadHybridTime value;
+  };
+
+  using UsedReadTimePtr = std::weak_ptr<UsedReadTime>;
+
   PgClientSession(
       client::YBClient* client, const scoped_refptr<ClockBase>& clock,
       std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
@@ -87,8 +97,6 @@ class PgClientSession {
   BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_METHOD_DECLARE, ~, PG_CLIENT_SESSION_METHODS);
 
  private:
-  friend class PgClientSessionLocker;
-
   std::string LogPrefix();
 
   Result<const TransactionMetadata*> GetDdlTransactionMetadata(
@@ -98,7 +106,8 @@ class PgClientSession {
   Result<client::YBTransactionPtr> RestartTransaction(
       client::YBSession* session, client::YBTransaction* transaction);
 
-  Result<client::YBSession*> SetupSession(const PgPerformRequestPB& req, CoarseTimePoint deadline);
+  Result<std::pair<client::YBSession*, UsedReadTimePtr>> SetupSession(
+      const PgPerformRequestPB& req, CoarseTimePoint deadline);
   CHECKED_STATUS ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
       PgPerformResponsePB* resp, rpc::RpcContext* context);
@@ -108,6 +117,12 @@ class PgClientSession {
   client::YBSessionPtr& EnsureSession(PgClientSessionKind kind);
   client::YBSessionPtr& Session(PgClientSessionKind kind);
   client::YBTransactionPtr& Transaction(PgClientSessionKind kind);
+  Status CheckPlainSessionReadTime();
+
+  struct SessionData {
+    client::YBSessionPtr session;
+    client::YBTransactionPtr transaction;
+  };
 
   client::YBClient& client_;
   scoped_refptr<ClockBase> clock_;
@@ -115,33 +130,11 @@ class PgClientSession {
   PgTableCache& table_cache_;
   const uint64_t id_;
 
-  std::mutex mutex_;
-  struct SessionData {
-    client::YBSessionPtr session;
-    client::YBTransactionPtr transaction;
-  };
   std::array<SessionData, kPgClientSessionKindMapSize> sessions_;
   uint64_t txn_serial_no_ = 0;
   boost::optional<uint64_t> saved_priority_;
   TransactionMetadata ddl_txn_metadata_;
-};
-
-class PgClientSessionLocker {
- public:
-  explicit PgClientSessionLocker(PgClientSession* session)
-      : session_(session), lock_(session->mutex_) {}
-
-  PgClientSession* operator->() const {
-    return session_;
-  }
-
-  void Unlock() {
-    lock_.unlock();
-  }
-
- private:
-  PgClientSession* session_;
-  std::unique_lock<std::mutex> lock_;
+  UsedReadTime plain_session_used_read_time_;
 };
 
 }  // namespace tserver

@@ -82,6 +82,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
+    userIntent.provider = defaultProvider.uuid.toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.uuid);
@@ -313,7 +314,6 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
                       ClusterType.PRIMARY,
                       cluster.userIntent,
                       cluster.userIntent.replicationFactor,
-                      true,
                       region.uuid);
               if (isDefaultRegion) {
                 cluster.placementInfo.cloudList.get(0).defaultRegion = region.uuid;

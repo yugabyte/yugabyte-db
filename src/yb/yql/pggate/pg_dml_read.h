@@ -15,12 +15,20 @@
 #ifndef YB_YQL_PGGATE_PG_DML_READ_H_
 #define YB_YQL_PGGATE_PG_DML_READ_H_
 
-#include <list>
+#include <vector>
+
+#include "yb/common/pgsql_protocol.fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/gutil/ref_counted.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_dml.h"
+#include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_statement.h"
 
 namespace yb {
 namespace pggate {
@@ -89,6 +97,14 @@ class PgDmlRead : public PgDml {
     DCHECK_NOTNULL(read_req_)->set_ysql_catalog_version(catalog_cache_version);
   }
 
+  void UpgradeDocOp(PgDocOp::SharedPtr doc_op);
+
+  const LWPgsqlReadRequestPB* read_req() const { return read_req_.get(); }
+
+  bool IsReadFromYsqlCatalog() const;
+
+  bool IsIndexOrderedScan() const;
+
  protected:
   // Allocate column protobuf.
   LWPgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
@@ -120,6 +136,7 @@ class PgDmlRead : public PgDml {
   // Indicates that current operation reads concrete row by specifying row's DocKey.
   bool IsConcreteRowRead() const;
   CHECKED_STATUS ProcessEmptyPrimaryBinds();
+  bool IsAllPrimaryKeysBound(size_t num_range_components_in_expected);
   bool CanBuildYbctidsFromPrimaryBinds();
   Result<std::vector<std::string>> BuildYbctidsFromPrimaryBinds();
   CHECKED_STATUS SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
@@ -128,10 +145,14 @@ class PgDmlRead : public PgDml {
   CHECKED_STATUS MoveBoundKeyInOperator(PgColumn* col, const LWPgsqlConditionPB& in_operator);
   Result<LWQLValuePB*> GetBoundValue(
       const PgColumn& col, const LWPgsqlExpressionPB& src) const;
-  Result<docdb::PrimitiveValue> BuildKeyColumnValue(
+  Result<docdb::KeyEntryValue> BuildKeyColumnValue(
       const PgColumn& col, const LWPgsqlExpressionPB& src, LWQLValuePB** dest);
-  Result<docdb::PrimitiveValue> BuildKeyColumnValue(
+  Result<docdb::KeyEntryValue> BuildKeyColumnValue(
       const PgColumn& col, const LWPgsqlExpressionPB& src);
+
+  // Holds original doc_op_ object after call of the UpgradeDocOp method.
+  // Required to prevent structures related to request from being freed.
+  PgDocOp::SharedPtr original_doc_op_;
 };
 
 }  // namespace pggate

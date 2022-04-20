@@ -234,6 +234,10 @@ public class Universe extends Model {
         find.query().where().eq("customer_id", customer.getCustomerId()).findIds());
   }
 
+  public static Set<UUID> getAllUUIDs() {
+    return ImmutableSet.copyOf(find.query().where().findIds());
+  }
+
   public static Set<Universe> getAllWithoutResources(Customer customer) {
     List<Universe> rawList =
         find.query().where().eq("customer_id", customer.getCustomerId()).findList();
@@ -449,6 +453,22 @@ public class Universe extends Model {
    */
   public List<NodeDetails> getTServers() {
     return getServers(ServerType.TSERVER);
+  }
+
+  /**
+   * Return the list of TServers in the primary cluster for this universe. E.g. the TServers in a
+   * read replica will not be included.
+   *
+   * @return a list of TServers nodes
+   */
+  public List<NodeDetails> getTServersInPrimaryCluster() {
+    List<NodeDetails> servers = getServers(ServerType.TSERVER);
+    Collection<NodeDetails> primaryNodes =
+        getNodesInCluster(getUniverseDetails().getPrimaryCluster().uuid);
+    return servers
+        .stream()
+        .filter(server -> primaryNodes.contains(server))
+        .collect(Collectors.toList());
   }
 
   /**

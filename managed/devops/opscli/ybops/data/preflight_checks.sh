@@ -41,8 +41,8 @@ preflight_provision_check() {
   fi
 
   # Check for yugabyte in AllowUsers in /etc/ssh/sshd_config
-  if sudo grep -q "AllowUsers" /etc/ssh/sshd_config; then
-    sudo egrep -q 'AllowUsers.* yugabyte( |@|$)' /etc/ssh/sshd_config
+  if echo $YB_SUDO_PASS | sudo -S grep -q "AllowUsers" /etc/ssh/sshd_config; then
+    echo $YB_SUDO_PASS | sudo -S egrep -q 'AllowUsers.* yugabyte( |@|$)' /etc/ssh/sshd_config
     update_result_json_with_rc "AllowUsers has yugabyte" "$?"
   fi
 
@@ -71,15 +71,16 @@ preflight_provision_check() {
   check_filepath "PAM Limits" $ulimit_filepath true
 
   # Check NTP synchronization
-  if [[ ! $skip_ntp_check ]]; then
+  if [[ "$skip_ntp_check" = false ]]; then
     ntp_status=$(timedatectl status)
     ntp_check=true
     enabled_regex='(NTP enabled: |NTP service: |Network time on: )([^'$'\n'']*)'
     if [[ $ntp_status =~ $enabled_regex ]]; then
-      enabled_status="${BASH_REMATCH[2]}"
+      enabled_status="${BASH_REMATCH[2]// /}"
       if [[ "$enabled_status" != "yes" ]] && [[ "$enabled_status" != "active" ]]; then
         # Oracle8 has the line NTP service: n/a instead. Don't fail if this line exists
-        if [[ ! ("${BASH_REMATCH[1]}" == "NTP service: " && "${BASH_REMATCH[2]}" == "n/a") ]]; then
+        if [[ ! ("${BASH_REMATCH[1]}" == "NTP service: " \
+              && "${BASH_REMATCH[2]// /}" == "n/a") ]]; then
           ntp_check=false
         fi
       fi
@@ -91,7 +92,7 @@ preflight_provision_check() {
     fi
     synchro_regex='(NTP synchronized: |System clock synchronized: )([^'$'\n'']*)'
     if [[ $ntp_status =~ $synchro_regex ]]; then
-      synchro_status="${BASH_REMATCH[2]}"
+      synchro_status="${BASH_REMATCH[2]// /}"
       if [[ "$synchro_status" != "yes" ]]; then
         ntp_check=false
       fi
@@ -125,7 +126,7 @@ preflight_provision_check() {
   IFS="," read -ra ports_to_check_arr <<< "$ports_to_check"
   for port in "${ports_to_check_arr[@]}"; do
     check_passed=true
-    if sudo netstat -tulpn | grep ":$port\s"; then
+    if echo $YB_SUDO_PASS | sudo -S netstat -tulpn | grep ":$port\s"; then
       check_passed=false
     fi
     update_result_json "Port $port is available" "$check_passed"
@@ -167,18 +168,10 @@ check_filepath() {
   path="$2"
   check_parent="$3" # If true, will check parent directory is writable if given path doesn't exist.
 
-  # Use sudo command for provision.
   if [[ "$check_type" == "provision" ]]; then
-    # To reduce sudo footprint, use a format similar to what ansible would execute
-    # (e.g. /bin/sh -c */usr/bin/env python *)
-    if $check_parent; then
-      echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env python -c \"import os; \
-        filepath = '$path' if os.path.exists('$path') else os.path.dirname('$path'); \
-        exit(1) if not os.access(filepath, os.W_OK) else exit();\""
-    else
-      echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env python -c \"import os; \
-        exit(1) if not os.access('$path', os.W_OK) else exit();\""
-    fi
+    # Use sudo command for provision.
+    echo $YB_SUDO_PASS | sudo -S test -w "$path" || \
+    ($check_parent && echo $YB_SUDO_PASS | sudo -S test -w $(dirname "$path"))
   else
     test -w "$path" || ($check_parent && test -w $(dirname "$path"))
   fi
@@ -189,15 +182,13 @@ check_filepath() {
 check_free_space() {
   path="$1"
   required_mb="$2"
-  echo "checking free space in $1"
-  SPACE_STR=$(echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env python -c \"import os; \
-            filepath = '$path' if os.path.exists('$path') else os.path.dirname('$path'); \
-            st = os.statvfs(filepath); \
-            cur_space = int(st.f_bavail * st.f_frsize / 1024 / 1024); \
-            error_str = '(currently available {})'.format(cur_space); \
-            exit(error_str) if cur_space < $required_mb else exit();\"" 2>&1 > /dev/null)
+  # check parent if path does not exist
+  if [ ! -w "$path" ]; then
+    path=$(dirname "$path")
+  fi
+  test $(echo $YB_SUDO_PASS | sudo -S df -m $path | awk 'FNR == 2 {print $4}') -gt $required_mb
 
-  update_result_json_with_rc "$path has free space of $required_mb MB $SPACE_STR" "$?"
+  update_result_json_with_rc "$1 has free space of $required_mb MB $SPACE_STR" "$?"
 }
 
 update_result_json() {
@@ -229,6 +220,8 @@ Options:
     Skip internet access check.
   --install_node_exporter
     Check if node exporter files are accessible.
+  --skip_ntp_check
+    Skip check for time synchronization.
   --mount_points MOUNT_POINTS
     Commas separated list of mount paths to check permissions of.
   --yb_home_dir HOME_DIR

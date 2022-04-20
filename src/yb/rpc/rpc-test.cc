@@ -52,6 +52,7 @@
 #include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rpc/compressed_stream.h"
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
@@ -270,6 +271,13 @@ TEST_F(TestRpc, TestCallToBadServer) {
     LOG(INFO) << "Status: " << s.ToString();
     ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << s.ToString();
   }
+}
+
+TEST_F(TestRpc, StatusNetworkError) {
+  auto status = STATUS_EC_FORMAT(NetworkError, NetworkError(NetworkErrorCode::kConnectFailed),
+                   "Connect error $0", "for test");
+  // Ensuring that we don't fail with unknown category during status.ToString().
+  LOG(INFO) << status.ToString();
 }
 
 // Test that RPC calls can be failed with an error status on the server.
@@ -1102,8 +1110,9 @@ class TestRpcSecure : public RpcTestBase {
  public:
   void SetUp() override {
     RpcTestBase::SetUp();
-    secure_context_ = std::make_unique<SecureContext>();
-    EXPECT_OK(secure_context_->TEST_GenerateKeys(1024, "127.0.0.1"));
+    secure_context_ = std::make_unique<SecureContext>(
+        RequireClientCertificate::kFalse, UseClientCertificate::kFalse);
+    EXPECT_OK(secure_context_->TEST_GenerateKeys(1024, "127.0.0.1", MatchingCertKeyPair::kTrue));
   }
 
  protected:
@@ -1129,6 +1138,10 @@ class TestRpcSecure : public RpcTestBase {
     }, f);
   }
 };
+
+TEST_F(TestRpcSecure, TestKeyCertificateMismatch) {
+  ASSERT_NOK(secure_context_->TEST_GenerateKeys(1024, "127.0.0.1", MatchingCertKeyPair::kFalse));
+}
 
 void TestSimple(CalculatorServiceProxy* proxy) {
   RpcController controller;

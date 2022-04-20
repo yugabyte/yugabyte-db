@@ -76,12 +76,14 @@ public class PauseUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.PauseServer,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.ManageAlertDefinitions,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<JsonNode> PAUSE_UNIVERSE_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
           Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));

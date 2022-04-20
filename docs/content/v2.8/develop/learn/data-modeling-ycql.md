@@ -15,14 +15,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/data-modeling-ysql" class="nav-link">
+    <a href="/preview/develop/learn/data-modeling-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/develop/learn/data-modeling-ycql" class="nav-link active">
+    <a href="/preview/develop/learn/data-modeling-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -85,11 +85,11 @@ Note the following about the `books` table:
 
 When creating a table, the primary key of the table must be specified in addition to the table name. The primary key uniquely identifies each row in the table, therefore no two rows can have the same key.
 
-There are two types of primary keys, and they are described below.
+There are two components of primary keys, and they are described below.
 
 ### Partition key columns (required)
 
-Such tables have *simple primary keys*. One or more columns of a table can be made the partition key columns. The values of the partition key columns are used to compute an internal hash value. This hash value determines the tablet (or partition) in which the row will be stored. This has two implications:
+One or more columns of a table are made the partition key columns. The values of the partition key columns are used to compute an internal hash value. This hash value determines the tablet (or partition) in which the row will be stored. This has two implications:
 
 - Each unique set of partition key values is hashed and distributed across nodes randomly to ensure uniform utilization of the cluster.
 
@@ -107,7 +107,7 @@ In the case of the `users` table, you can make `user_id` column the only primary
 
 The clustering columns specify the order in which the column data is sorted and stored on disk for a given unique partition key value. More than one clustering column can be specified, and the columns are sorted in the order they are declared in the clustering column. It is also possible to control the sort order (ascending or descending sort) for these columns. Note that the sort order respects the data type.
 
-In a table that has both partition keys and clustering keys, it is possible for two rows to have the same partition key value and therefore they end up on the same node. However, those rows must have different clustering key values in order to satisfy the primary key requirements.
+In a table that has both partition keys and clustering keys, it is possible for two rows to have the same partition key value and therefore they end up on the same node. However, those rows must have different clustering key values in order to satisfy the primary key requirements. Tables without clustering key columns are said to have *simple primary keys*. 
 
 In the case of the `books` table, `author` is a good partition key and `book_title` is a good clustering key. Such a data model would allow easily listing all the books for a given author, as well as look up details of a specific book. This would cause the data to be stored as follows.
 

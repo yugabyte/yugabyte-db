@@ -35,22 +35,21 @@ public class PreflightNodeCheck extends NodeTaskBase {
     Params taskParams = taskParams();
     log.info("Running preflight checks for node {}.", taskParams.nodeName);
     ShellResponse response =
-        getNodeManager().nodeCommand(NodeManager.NodeCommandType.Precheck, taskParams);
-    if (response.code == 0) {
-      JsonNode responseJson = Json.parse(response.message);
-      for (JsonNode nodeContent : responseJson) {
-        if (!nodeContent.isBoolean() || !nodeContent.asBoolean()) {
-          String errString =
-              "Failed preflight checks for node " + taskParams.nodeName + ":\n" + response.message;
-          log.error(errString);
-          if (!taskParams.reserveNodes) {
-            NodeInstance node = NodeInstance.getByName(taskParams.nodeName);
-            node.clearNodeDetails();
-          }
-          throw new RuntimeException(errString);
+        getNodeManager()
+            .nodeCommand(NodeManager.NodeCommandType.Precheck, taskParams)
+            .processErrors();
+    JsonNode responseJson = Json.parse(response.message);
+    for (JsonNode nodeContent : responseJson) {
+      if (!nodeContent.isBoolean() || !nodeContent.asBoolean()) {
+        String errString =
+            "Failed preflight checks for node " + taskParams.nodeName + ":\n" + response.message;
+        log.error(errString);
+        if (!taskParams.reserveNodes) {
+          NodeInstance node = NodeInstance.getByName(taskParams.nodeName);
+          node.clearNodeDetails();
         }
+        throw new RuntimeException(errString);
       }
     }
-    // TODO Non-zero is not handled in the existing pre-flight check.
   }
 }

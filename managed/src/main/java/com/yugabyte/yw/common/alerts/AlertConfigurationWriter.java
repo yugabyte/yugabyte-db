@@ -54,6 +54,7 @@ public class AlertConfigurationWriter {
 
   private final AtomicBoolean running = new AtomicBoolean(false);
   private final AtomicBoolean requiresReload = new AtomicBoolean(true);
+  private final AtomicBoolean requiresRecordingRulesWrite = new AtomicBoolean(true);
 
   private final ActorSystem actorSystem;
 
@@ -125,7 +126,10 @@ public class AlertConfigurationWriter {
           definition != null
               ? alertConfigurationService.get(definition.getConfigurationUUID())
               : null;
-      if (definition == null || configuration == null || !configuration.isActive()) {
+      if (definition == null
+          || !definition.isActive()
+          || configuration == null
+          || !configuration.isActive()) {
         swamperHelper.removeAlertDefinition(definitionUuid);
         requiresReload.set(true);
         return SyncResult.REMOVED;
@@ -153,6 +157,7 @@ public class AlertConfigurationWriter {
     }
     try {
       applyMaintenanceWindows();
+      writeRecordingRules();
       syncDefinitions();
     } finally {
       running.set(false);
@@ -230,6 +235,20 @@ public class AlertConfigurationWriter {
       metricService.setFailureStatusMetric(
           buildMetricTemplate(PlatformMetrics.ALERT_MAINTENANCE_WINDOW_PROCESSOR_STATUS));
       log.error("Error processing maintenance windows:", e);
+    }
+  }
+
+  private void writeRecordingRules() {
+    try {
+      if (requiresRecordingRulesWrite.get()) {
+        swamperHelper.writeRecordingRules();
+        if (metricQueryHelper.isPrometheusManagementEnabled()) {
+          metricQueryHelper.postManagementCommand(MetricQueryHelper.MANAGEMENT_COMMAND_RELOAD);
+        }
+        requiresRecordingRulesWrite.compareAndSet(true, false);
+      }
+    } catch (Exception e) {
+      log.error("Error syncing metric recording rules", e);
     }
   }
 

@@ -217,7 +217,7 @@ CHECKED_STATUS SetRangePartitionBounds(const Schema& schema,
                                        const std::string& last_partition,
                                        Req* request,
                                        std::string* key_upper_bound) {
-  vector<docdb::PrimitiveValue> range_components, range_components_end;
+  vector<docdb::KeyEntryValue> range_components, range_components_end;
   RETURN_NOT_OK(GetRangePartitionBounds(
       schema, *request, &range_components, &range_components_end));
   if (range_components.empty() && range_components_end.empty()) {
@@ -287,12 +287,12 @@ CHECKED_STATUS InitRangePartitionKey(
 }
 
 template <class Col>
-Result<std::vector<docdb::PrimitiveValue>> GetRangeComponents(
+Result<std::vector<docdb::KeyEntryValue>> GetRangeComponents(
     const Schema& schema, const Col& range_cols, bool lower_bound) {
   size_t i = 0;
   auto it = range_cols.begin();
   auto num_range_key_columns = schema.num_range_key_columns();
-  std::vector<docdb::PrimitiveValue> result;
+  std::vector<docdb::KeyEntryValue> result;
   for (const auto& col_id : schema.column_ids()) {
     if (!schema.is_range_column(col_id)) {
       continue;
@@ -301,9 +301,10 @@ Result<std::vector<docdb::PrimitiveValue>> GetRangeComponents(
     const ColumnSchema& column_schema = VERIFY_RESULT(schema.column_by_id(col_id));
     if (i >= static_cast<size_t>(range_cols.size()) ||
         it->value().value_case() == QLValuePB::VALUE_NOT_SET) {
-      result.emplace_back(lower_bound ? docdb::ValueType::kLowest : docdb::ValueType::kHighest);
+      result.emplace_back(
+          lower_bound ? docdb::KeyEntryType::kLowest : docdb::KeyEntryType::kHighest);
     } else {
-      result.push_back(docdb::PrimitiveValue::FromQLValuePB(
+      result.push_back(docdb::KeyEntryValue::FromQLValuePB(
           it->value(), column_schema.sorting_type()));
     }
 
@@ -313,7 +314,7 @@ Result<std::vector<docdb::PrimitiveValue>> GetRangeComponents(
     }
 
     if (!lower_bound) {
-      result.emplace_back(docdb::ValueType::kHighest);
+      result.emplace_back(docdb::KeyEntryType::kHighest);
     }
   }
   return result;
@@ -375,8 +376,8 @@ CHECKED_STATUS InitWritePartitionKey(
 template <class Req>
 Status DoGetRangePartitionBounds(const Schema& schema,
                                  const Req& request,
-                                 vector<docdb::PrimitiveValue>* lower_bound,
-                                 vector<docdb::PrimitiveValue>* upper_bound) {
+                                 vector<docdb::KeyEntryValue>* lower_bound,
+                                 vector<docdb::KeyEntryValue>* upper_bound) {
   SCHECK(!schema.num_hash_key_columns(), IllegalState,
          "Cannot set range partition key for hash partitioned table");
   const auto& range_cols = request.range_column_values();
@@ -422,10 +423,6 @@ void YBOperation::ResetTable(std::shared_ptr<YBTable> new_table) {
   table_ = new_table;
   // tablet_ can no longer be valid.
   tablet_.reset();
-}
-
-bool YBOperation::IsTransactional() const {
-  return table_->schema().table_properties().is_transactional();
 }
 
 bool YBOperation::IsYsqlCatalogOp() const {
@@ -909,10 +906,6 @@ void YBPgsqlWriteOp::SetHashCode(const uint16_t hash_code) {
   request_->set_hash_code(hash_code);
 }
 
-bool YBPgsqlWriteOp::IsTransactional() const {
-  return !is_single_row_txn_ && table_->schema().table_properties().is_transactional();
-}
-
 CHECKED_STATUS YBPgsqlWriteOp::GetPartitionKey(std::string* partition_key) const {
   if (!request_holder_) {
     return YBPgsqlOp::GetPartitionKey(partition_key);
@@ -1108,15 +1101,15 @@ CHECKED_STATUS InitPartitionKey(
 
 Status GetRangePartitionBounds(const Schema& schema,
                                const PgsqlReadRequestPB& request,
-                               vector<docdb::PrimitiveValue>* lower_bound,
-                               vector<docdb::PrimitiveValue>* upper_bound) {
+                               vector<docdb::KeyEntryValue>* lower_bound,
+                               vector<docdb::KeyEntryValue>* upper_bound) {
   return DoGetRangePartitionBounds(schema, request, lower_bound, upper_bound);
 }
 
 Status GetRangePartitionBounds(const Schema& schema,
                                const LWPgsqlReadRequestPB& request,
-                               vector<docdb::PrimitiveValue>* lower_bound,
-                               vector<docdb::PrimitiveValue>* upper_bound) {
+                               vector<docdb::KeyEntryValue>* lower_bound,
+                               vector<docdb::KeyEntryValue>* upper_bound) {
   return DoGetRangePartitionBounds(schema, request, lower_bound, upper_bound);
 }
 

@@ -36,7 +36,7 @@ const MonoDelta ValueControlFields::kResetTtl = MonoDelta::FromNanoseconds(0);
 const int64_t ValueControlFields::kInvalidUserTimestamp = common::kInvalidUserTimestamp;
 
 template <typename T>
-bool DecodeType(ValueType expected_value_type, const T& default_value, Slice* slice, T* val) {
+bool DecodeType(KeyEntryType expected_value_type, const T& default_value, Slice* slice, T* val) {
   if (!slice->TryConsumeByte(static_cast<char>(expected_value_type))) {
     *val = default_value;
     return false;
@@ -48,7 +48,7 @@ bool DecodeType(ValueType expected_value_type, const T& default_value, Slice* sl
 namespace {
 
 Result<uint64_t> DecodeMergeFlags(Slice* slice) {
-  if (slice->TryConsumeByte(ValueTypeAsChar::kMergeFlags)) {
+  if (slice->TryConsumeByte(KeyEntryTypeAsChar::kMergeFlags)) {
     return util::FastDecodeUnsignedVarInt(slice);
   } else {
     return 0;
@@ -56,7 +56,7 @@ Result<uint64_t> DecodeMergeFlags(Slice* slice) {
 }
 
 Result<DocHybridTime> DecodeIntentDocHT(Slice* slice) {
-  if (slice->TryConsumeByte(ValueTypeAsChar::kHybridTime)) {
+  if (slice->TryConsumeByte(KeyEntryTypeAsChar::kHybridTime)) {
     return DocHybridTime::DecodeFrom(slice);
   } else {
     return DocHybridTime::kInvalid;
@@ -64,7 +64,7 @@ Result<DocHybridTime> DecodeIntentDocHT(Slice* slice) {
 }
 
 Result<MonoDelta> DecodeTTL(Slice* slice) {
-  if (slice->TryConsumeByte(ValueTypeAsChar::kTtl)) {
+  if (slice->TryConsumeByte(KeyEntryTypeAsChar::kTtl)) {
     return MonoDelta::FromMilliseconds(VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(slice)));
   } else {
     return ValueControlFields::kMaxTtl;
@@ -72,7 +72,7 @@ Result<MonoDelta> DecodeTTL(Slice* slice) {
 }
 
 Result<UserTimeMicros> DecodeUserTimestamp(Slice* slice) {
-  if (slice->TryConsumeByte(ValueTypeAsChar::kUserTimestamp)) {
+  if (slice->TryConsumeByte(KeyEntryTypeAsChar::kUserTimestamp)) {
     static constexpr int kBytesPerInt64 = sizeof(int64_t);
     if (slice->size() < kBytesPerInt64) {
       return STATUS(Corruption, Substitute(
@@ -122,23 +122,32 @@ Result<ValueControlFields> ValueControlFields::Decode(Slice* slice) {
   return result;
 }
 
+template <class Out>
+void DoAppendEncoded(const ValueControlFields& fields, Out* out) {
+  if (fields.merge_flags) {
+    out->push_back(KeyEntryTypeAsChar::kMergeFlags);
+    util::FastAppendUnsignedVarInt(fields.merge_flags, out);
+  }
+  if (fields.intent_doc_ht.is_valid()) {
+    out->push_back(KeyEntryTypeAsChar::kHybridTime);
+    fields.intent_doc_ht.AppendEncodedInDocDbFormat(out);
+  }
+  if (!fields.ttl.Equals(ValueControlFields::kMaxTtl)) {
+    out->push_back(KeyEntryTypeAsChar::kTtl);
+    util::FastAppendSignedVarIntToBuffer(fields.ttl.ToMilliseconds(), out);
+  }
+  if (fields.user_timestamp != ValueControlFields::kInvalidUserTimestamp) {
+    out->push_back(KeyEntryTypeAsChar::kUserTimestamp);
+    util::AppendBigEndianUInt64(fields.user_timestamp, out);
+  }
+}
+
 void ValueControlFields::AppendEncoded(std::string* out) const {
-  if (merge_flags) {
-    out->push_back(ValueTypeAsChar::kMergeFlags);
-    util::FastAppendUnsignedVarIntToStr(merge_flags, out);
-  }
-  if (intent_doc_ht.is_valid()) {
-    out->push_back(ValueTypeAsChar::kHybridTime);
-    intent_doc_ht.AppendEncodedInDocDbFormat(out);
-  }
-  if (!ttl.Equals(kMaxTtl)) {
-    out->push_back(ValueTypeAsChar::kTtl);
-    util::FastAppendSignedVarIntToBuffer(ttl.ToMilliseconds(), out);
-  }
-  if (user_timestamp != kInvalidUserTimestamp) {
-    out->push_back(ValueTypeAsChar::kUserTimestamp);
-    util::AppendBigEndianUInt64(user_timestamp, out);
-  }
+  DoAppendEncoded(*this, out);
+}
+
+void ValueControlFields::AppendEncoded(ValueBuffer* out) const {
+  DoAppendEncoded(*this, out);
 }
 
 std::string ValueControlFields::ToString() const {
@@ -156,6 +165,15 @@ std::string ValueControlFields::ToString() const {
     result += Format("; user timestamp: $0", user_timestamp);
   }
   return result;
+}
+
+Status Value::Decode(const Slice& rocksdb_value, const ValueControlFields& control_fields) {
+  Slice slice = rocksdb_value;
+  control_fields_ = control_fields;
+  RETURN_NOT_OK_PREPEND(
+      primitive_value_.DecodeFromValue(slice),
+      Format("Failed to decode value in $0", rocksdb_value.ToDebugHexString()));
+  return Status::OK();
 }
 
 Status Value::Decode(const Slice& rocksdb_value) {
@@ -181,11 +199,11 @@ std::string Value::DebugSliceToString(const Slice& encoded_value) {
   return value.ToString();
 }
 
-Result<ValueType> Value::DecodePrimitiveValueType(
+Result<ValueEntryType> Value::DecodePrimitiveValueType(
     const Slice& rocksdb_value) {
   auto slice_copy = rocksdb_value;
   RETURN_NOT_OK(ValueControlFields::Decode(&slice_copy));
-  return DecodeValueType(slice_copy);
+  return DecodeValueEntryType(slice_copy);
 }
 
 const Value& Value::Tombstone() {
@@ -194,12 +212,12 @@ const Value& Value::Tombstone() {
 }
 
 const string& Value::EncodedTombstone() {
-  static const string kEncodedTombstone(1, ValueTypeAsChar::kTombstone);
+  static const string kEncodedTombstone(1, ValueEntryTypeAsChar::kTombstone);
   return kEncodedTombstone;
 }
 
 Result<bool> Value::IsTombstoned(const Slice& slice) {
-  return VERIFY_RESULT(DecodePrimitiveValueType(slice)) == ValueType::kTombstone;
+  return VERIFY_RESULT(DecodePrimitiveValueType(slice)) == ValueEntryType::kTombstone;
 }
 
 }  // namespace docdb

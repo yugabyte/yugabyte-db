@@ -7,8 +7,11 @@ import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static play.mvc.Http.Status.CONFLICT;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -18,7 +21,9 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -28,6 +33,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Audit;
@@ -39,8 +45,11 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -50,6 +59,8 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
+
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -58,6 +69,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.Builder;
+import lombok.extern.jackson.Jacksonized;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
@@ -84,16 +97,20 @@ public class TablesController extends AuthenticatedController {
 
   private final CustomerConfigService customerConfigService;
 
+  private final NodeUniverseManager nodeUniverseManager;
+
   @Inject
   public TablesController(
       Commissioner commissioner,
       YBClientService service,
       MetricQueryHelper metricQueryHelper,
-      CustomerConfigService customerConfigService) {
+      CustomerConfigService customerConfigService,
+      NodeUniverseManager nodeUniverseManager) {
     this.commissioner = commissioner;
     this.ybService = service;
     this.metricQueryHelper = metricQueryHelper;
     this.customerConfigService = customerConfigService;
+    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   @ApiOperation(
@@ -797,5 +814,138 @@ public class TablesController extends AuthenticatedController {
       result.put(tableID, entry.values.get(0).getRight());
     }
     return result;
+  }
+
+  @ApiOperation(
+      value = "List all tablespaces",
+      nickname = "getAllTableSpaces",
+      notes = "Get a list of all tablespaces of a given universe",
+      response = TableSpaceInfo.class,
+      responseContainer = "List")
+  public Result listTableSpaces(UUID customerUUID, UUID universeUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    final String masterAddresses = universe.getMasterAddresses(true);
+    if (masterAddresses.isEmpty()) {
+      String errMsg = "Expected error. Masters are not currently queryable.";
+      LOG.warn(errMsg);
+      return ok(errMsg);
+    }
+
+    LOG.info("Fetching table spaces...");
+    NodeDetails randomTServer = null;
+    try {
+      randomTServer = CommonUtils.getARandomLiveTServer(universe);
+    } catch (IllegalStateException ise) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cluster may not have been initialized yet. Please try later");
+    }
+    final String fetchTablespaceQuery =
+        "select jsonb_agg(t) from (select spcname, spcoptions from pg_catalog.pg_tablespace) as t";
+    ShellResponse shellResponse =
+        nodeUniverseManager.runYsqlCommand(
+            randomTServer, universe, "postgres", fetchTablespaceQuery);
+    if (!shellResponse.isSuccess()) {
+      LOG.warn(
+          "Attempt to fetch tablespace info via node {} failed, response {}:{}",
+          randomTServer.nodeName,
+          shellResponse.code,
+          shellResponse.message);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching TableSpace information");
+    }
+    String jsonData = CommonUtils.extractJsonisedSqlResponse(shellResponse);
+    List<TableSpaceInfo> tableSpaceInfoRespList = new ArrayList<>();
+    if (jsonData == null || jsonData.isEmpty()) {
+      PlatformResults.withData(tableSpaceInfoRespList);
+    }
+
+    LOG.debug("jsonData {}", jsonData);
+    try {
+      ObjectMapper objectMapper = new ObjectMapper();
+      List<TableSpaceQueryResponse> tablespaceList =
+          objectMapper.readValue(jsonData, new TypeReference<List<TableSpaceQueryResponse>>() {});
+      tableSpaceInfoRespList =
+          tablespaceList
+              .stream()
+              .filter(x -> !x.tableSpaceName.startsWith("pg_"))
+              .map(x -> parseToTableSpaceInfoResp(x))
+              .collect(Collectors.toList());
+      return PlatformResults.withData(tableSpaceInfoRespList);
+    } catch (IOException ioe) {
+      LOG.error("Unable to parse fetchTablespaceQuery response {}", jsonData, ioe);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching TableSpace information");
+    }
+  }
+
+  private TableSpaceInfo parseToTableSpaceInfoResp(TableSpaceQueryResponse tablespace) {
+    TableSpaceInfo.TableSpaceInfoBuilder builder = TableSpaceInfo.builder();
+    builder.name(tablespace.tableSpaceName);
+    try {
+      ObjectMapper objectMapper = new ObjectMapper();
+      for (String optionStr : tablespace.tableSpaceOptions) {
+        if (optionStr.startsWith("replica_placement=")) {
+          optionStr = optionStr.replaceFirst("replica_placement=", "");
+          TableSpaceOptions option = objectMapper.readValue(optionStr, TableSpaceOptions.class);
+          builder.numReplicas(option.numReplicas).placementBlocks(option.placementBlocks);
+        }
+      }
+      return builder.build();
+    } catch (IOException ioe) {
+      LOG.error(
+          "Unable to parse options fron fetchTablespaceQuery response {}",
+          tablespace.tableSpaceOptions,
+          ioe);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching TableSpace information");
+    }
+  }
+
+  @ApiModel(description = "Tablespace information response")
+  @Jacksonized
+  @Builder
+  static class TableSpaceInfo {
+
+    @ApiModelProperty(value = "Tablespace Name")
+    public String name;
+
+    @ApiModelProperty(value = "numReplicas")
+    public int numReplicas;
+
+    @ApiModelProperty(value = "placements")
+    public List<PlacementBlock> placementBlocks;
+  }
+
+  static class PlacementBlock {
+    @ApiModelProperty(value = "Cloud")
+    public String cloud;
+
+    @ApiModelProperty(value = "Region")
+    public String region;
+
+    @ApiModelProperty(value = "Zone")
+    public String zone;
+
+    @ApiModelProperty(value = "Minimum replicas")
+    @JsonAlias("min_num_replicas")
+    public int minNumReplicas;
+  }
+
+  private static class TableSpaceQueryResponse {
+    @JsonProperty("spcname")
+    public String tableSpaceName;
+
+    @JsonProperty("spcoptions")
+    public List<String> tableSpaceOptions;
+  }
+
+  static class TableSpaceOptions {
+    @JsonProperty("num_replicas")
+    public int numReplicas;
+
+    @JsonProperty("placement_blocks")
+    public List<PlacementBlock> placementBlocks;
   }
 }

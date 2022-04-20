@@ -44,6 +44,8 @@ class TabletServer : public yb::tserver::TabletServer {
 
   CDCConsumer* GetCDCConsumer();
 
+  CHECKED_STATUS ReloadKeysAndCertificates() override;
+
  protected:
   CHECKED_STATUS RegisterServices() override;
   CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;

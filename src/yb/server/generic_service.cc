@@ -196,5 +196,19 @@ void GenericServiceImpl::Ping(
   rpc.RespondSuccess();
 }
 
+void GenericServiceImpl::ReloadCertificates(
+    const ReloadCertificatesRequestPB* req, ReloadCertificatesResponsePB* resp,
+    rpc::RpcContext rpc) {
+  const auto status = server_->ReloadKeysAndCertificates();
+  if (!status.ok()) {
+    LOG(ERROR) << "Reloading certificates failed: " << status;
+    rpc.RespondFailure(status);
+    return;
+  }
+
+  LOG(INFO) << "Reloading certificates was successful";
+  rpc.RespondSuccess();
+}
+
 } // namespace server
 } // namespace yb

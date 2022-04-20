@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+#include <boost/circular_buffer.hpp>
+
 #include "yb/common/constants.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_expr.h"
@@ -37,26 +39,26 @@
 
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/pggate_flags.h"
 
 namespace yb {
 namespace pggate {
+
 namespace {
 
-docdb::PrimitiveValue NullValue(SortingType sorting) {
+docdb::KeyEntryValue NullValue(SortingType sorting) {
   using SortingType = SortingType;
 
-  return docdb::PrimitiveValue(
+  return docdb::KeyEntryValue(
       sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
-          ? docdb::ValueType::kNullHigh
-          : docdb::ValueType::kNullLow);
+          ? docdb::KeyEntryType::kNullHigh
+          : docdb::KeyEntryType::kNullLow);
 }
 
-std::vector<docdb::PrimitiveValue> InitKeyColumnPrimitiveValues(
+std::vector<docdb::KeyEntryValue> InitKeyColumnPrimitiveValues(
     const ArenaList<LWPgsqlExpressionPB> &column_values,
     const Schema &schema,
     size_t start_idx) {
-  std::vector<docdb::PrimitiveValue> result;
+  std::vector<docdb::KeyEntryValue> result;
   size_t column_idx = start_idx;
   for (const auto& column_value : column_values) {
     const auto sorting_type = schema.column(column_idx).sorting_type();
@@ -65,7 +67,7 @@ std::vector<docdb::PrimitiveValue> InitKeyColumnPrimitiveValues(
       result.push_back(
           IsNull(value)
           ? NullValue(sorting_type)
-          : docdb::PrimitiveValue::FromQLValuePB(value, sorting_type));
+          : docdb::KeyEntryValue::FromQLValuePB(value, sorting_type));
     } else {
       // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
       // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
@@ -76,7 +78,7 @@ std::vector<docdb::PrimitiveValue> InitKeyColumnPrimitiveValues(
       LWExprResult expr_result(&column_value.arena());
       auto s = executor.EvalExpr(column_value, nullptr, expr_result.Writer());
 
-      result.push_back(docdb::PrimitiveValue::FromQLValuePB(expr_result.Value(), sorting_type));
+      result.push_back(docdb::KeyEntryValue::FromQLValuePB(expr_result.Value(), sorting_type));
     }
     ++column_idx;
   }
@@ -140,6 +142,32 @@ inline bool IsTableUsedByRequest(const LWPgsqlReadRequestPB& request, const Slic
       (request.has_index_request() && IsTableUsedByRequest(request.index_request(), table_id));
 }
 
+using RowKeys = std::unordered_set<RowIdentifier, boost::hash<RowIdentifier>>;
+
+struct InFlightOperation {
+  RowKeys keys;
+  PerformFuture future;
+
+  explicit InFlightOperation(PerformFuture future_) : future(std::move(future_)) {
+  }
+};
+
+using InFlightOps = boost::circular_buffer_space_optimized<InFlightOperation,
+                                                           std::allocator<InFlightOperation>>;
+
+void EnsureCapacity(InFlightOps* in_flight_ops, BufferingSettings buffering_settings) {
+  size_t capacity = in_flight_ops->capacity();
+  size_t num_buffers_needed =
+    (buffering_settings.max_in_flight_operations / buffering_settings.max_batch_size) + 1;
+  // Change the capacity of the buffer if needed. This will only be different when
+  // buffering_settings_ is changed in StartOperationsBuffering(), or right after construction
+  // of the buffer. As such, we don't have to worry about set_capacity() dropping any
+  // InFlightOperations, since there are guaranteed to be none.
+  if (capacity < num_buffers_needed) {
+    in_flight_ops->set_capacity(num_buffers_needed);
+  }
+}
+
 } // namespace
 
 void BufferableOperations::Add(PgsqlOpPtr op, const PgObjectId& relation) {
@@ -172,8 +200,9 @@ size_t BufferableOperations::size() const {
 
 class PgOperationBuffer::Impl {
  public:
-  explicit Impl(const Flusher& flusher)
-      : flusher_(flusher) {
+  Impl(const Flusher& flusher, const BufferingSettings& buffering_settings)
+      : flusher_(flusher),
+        buffering_settings_(buffering_settings) {
   }
 
   CHECKED_STATUS Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional) {
@@ -186,19 +215,28 @@ class PgOperationBuffer::Impl {
     if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
       RETURN_NOT_OK(Flush());
       keys_.insert(row_id);
+    } else {
+      // Prevent conflicts on in-flight operations which use current row_id.
+      for (auto i = in_flight_ops_.begin(); i != in_flight_ops_.end(); ++i) {
+        if (i->keys.find(row_id) != i->keys.end()) {
+          RETURN_NOT_OK(EnsureCompleted(++i));
+          break;
+        }
+      }
     }
     auto& target = (transactional ? txn_ops_ : ops_);
     if (target.empty()) {
-      target.Reserve(FLAGS_ysql_session_max_batch_size);
+      target.Reserve(buffering_settings_.max_batch_size);
     }
     target.Add(std::move(op), table.id());
-    return keys_.size() >= FLAGS_ysql_session_max_batch_size ? Flush() : Status::OK();
+    return keys_.size() >= buffering_settings_.max_batch_size
+      ? SendBuffer()
+      : Status::OK();
   }
 
   CHECKED_STATUS Flush() {
-    return DoFlush(make_lw_function([this](BufferableOperations ops, bool txn) {
-      return ResultToStatus(VERIFY_RESULT(flusher_(std::move(ops), txn)).Get());
-    }));
+    RETURN_NOT_OK(SendBuffer());
+    return EnsureCompleted(in_flight_ops_.end());
   }
 
   Result<BufferableOperations> FlushTake(
@@ -207,20 +245,21 @@ class PgOperationBuffer::Impl {
     if (IsFullFlushRequired(table, op)) {
       RETURN_NOT_OK(Flush());
     } else {
-      RETURN_NOT_OK(DoFlush(make_lw_function(
-          [this, transactional, &result](BufferableOperations ops, bool txn) -> Status {
+      RETURN_NOT_OK(SendBuffer(make_lw_function(
+          [transactional, &result](BufferableOperations ops, bool txn) {
             if (txn == transactional) {
               ops.Swap(&result);
-              return Status::OK();
+              return true;
             }
-            return ResultToStatus(VERIFY_RESULT(flusher_(std::move(ops), txn)).Get());
+            return false;
           })));
+      RETURN_NOT_OK(EnsureCompleted(in_flight_ops_.end()));
     }
     return result;
   }
 
   size_t Size() const {
-    return keys_.size();
+    return keys_.size() + InFlightOpsCount();
   }
 
   void Clear() {
@@ -228,25 +267,83 @@ class PgOperationBuffer::Impl {
     ops_.Clear();
     txn_ops_.Clear();
     keys_.clear();
+    in_flight_ops_.clear();
   }
 
  private:
-  using SyncFlusher = LWFunction<Status(BufferableOperations, bool)>;
-
-  CHECKED_STATUS DoFlush(const SyncFlusher& flusher) {
-    BufferableOperations ops;
-    BufferableOperations txn_ops;
-    ops_.Swap(&ops);
-    txn_ops_.Swap(&txn_ops);
-    keys_.clear();
-
-    if (!ops.empty()) {
-      RETURN_NOT_OK(flusher(std::move(ops), false /* transactional */));
+  size_t InFlightOpsCount() const {
+    size_t ops_count = 0;
+    for (const auto& op : in_flight_ops_) {
+      ops_count += op.keys.size();
     }
-    if (!txn_ops.empty()) {
-      RETURN_NOT_OK(flusher(std::move(txn_ops), true /* transactional */));
+    return ops_count;
+  }
+
+  CHECKED_STATUS EnsureCompleted(const InFlightOps::iterator& end) {
+    // Extract the InFlightOperations we are processing and erase them from in_flight_ops_.
+    std::vector<InFlightOperation> extracted_ops;
+    extracted_ops.reserve(end - in_flight_ops_.begin());
+    for (auto i = in_flight_ops_.begin(); i != end; ++i) {
+      extracted_ops.push_back(std::move(*i));
+    }
+    in_flight_ops_.erase(in_flight_ops_.begin(), end);
+    for (auto i = extracted_ops.begin(); i != extracted_ops.end(); ++i) {
+      RETURN_NOT_OK(i->future.Get());
     }
     return Status::OK();
+  }
+
+  using SendInterceptor = LWFunction<bool(BufferableOperations, bool)>;
+
+  CHECKED_STATUS SendBuffer() {
+    return SendBufferImpl(nullptr /* interceptor */);
+  }
+
+  CHECKED_STATUS SendBuffer(const SendInterceptor& interceptor) {
+    return SendBufferImpl(&interceptor);
+  }
+
+  CHECKED_STATUS SendBufferImpl(const SendInterceptor* interceptor) {
+    if (keys_.empty()) {
+      return Status::OK();
+    }
+    BufferableOperations ops;
+    BufferableOperations txn_ops;
+    RowKeys keys;
+    ops_.Swap(&ops);
+    txn_ops_.Swap(&txn_ops);
+    keys_.swap(keys);
+
+    const auto ops_count = keys.size();
+    bool ops_sent = VERIFY_RESULT(SendOperations(
+      interceptor, std::move(txn_ops), true /* transactional */, ops_count));
+    ops_sent = VERIFY_RESULT(SendOperations(
+      interceptor, std::move(ops),
+      false /* transactional */, ops_sent ? 0 : ops_count)) || ops_sent;
+    if (ops_sent) {
+      in_flight_ops_.back().keys = std::move(keys);
+    }
+    return Status::OK();
+  }
+
+  Result<bool> SendOperations(const SendInterceptor* interceptor,
+                              BufferableOperations ops,
+                              bool transactional,
+                              size_t ops_count) {
+    if (!ops.empty() && !(interceptor && (*interceptor)(std::move(ops), transactional))) {
+      EnsureCapacity(&in_flight_ops_, buffering_settings_);
+      size_t kMaxInFlightOperations = buffering_settings_.max_in_flight_operations;
+      for (int64_t space_required = (InFlightOpsCount() + ops_count) - kMaxInFlightOperations;
+           space_required > 0;) {
+        auto it = in_flight_ops_.begin();
+        space_required -= it->keys.size();
+        RETURN_NOT_OK(EnsureCompleted(++it));
+      }
+      in_flight_ops_.push_back(
+        InFlightOperation(VERIFY_RESULT(flusher_(std::move(ops), transactional))));
+      return true;
+    }
+    return false;
   }
 
   bool IsFullFlushRequired(const PgTableDesc& table, const PgsqlOp& op) const {
@@ -267,13 +364,16 @@ class PgOperationBuffer::Impl {
   }
 
   const Flusher flusher_;
+  const BufferingSettings& buffering_settings_;
   BufferableOperations ops_;
   BufferableOperations txn_ops_;
-  std::unordered_set<RowIdentifier, boost::hash<RowIdentifier>> keys_;
+  RowKeys keys_;
+  InFlightOps in_flight_ops_;
 };
 
-PgOperationBuffer::PgOperationBuffer(const Flusher& flusher)
-    : impl_(new Impl(flusher)) {
+PgOperationBuffer::PgOperationBuffer(const Flusher& flusher,
+                                     const BufferingSettings& buffering_settings)
+    : impl_(new Impl(flusher, buffering_settings)) {
 }
 
 PgOperationBuffer::~PgOperationBuffer() = default;

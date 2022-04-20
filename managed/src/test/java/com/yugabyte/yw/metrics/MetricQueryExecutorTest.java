@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.MetricConfig;
@@ -37,6 +38,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
   @Mock YBMetricQueryComponent mockYBMetricQueryComponent;
 
   private MetricConfig validMetric;
+  private MetricConfig validRangeMetric;
 
   @Before
   public void setUp() {
@@ -50,6 +52,16 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
                 + "\"xaxis\": { \"type\": \"date\" }}}");
     validMetric = MetricConfig.create("valid_metric", configJson);
     validMetric.save();
+
+    JsonNode rangeConfigJson =
+        Json.parse(
+            "{\"metric\": \"our_valid_range_metric\", "
+                + "\"function\": \"avg_over_time|avg\", \"range\": true,"
+                + "\"filters\": {\"filter\": \"awesome\"},"
+                + "\"layout\": {\"title\": \"Awesome Metric\", "
+                + "\"xaxis\": { \"type\": \"date\" }}}");
+    validRangeMetric = MetricConfig.create("valid_range_metric", rangeConfigJson);
+    validRangeMetric.save();
   }
 
   @Test
@@ -107,15 +119,93 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
   }
 
   @Test
-  public void testWithInvalidMetric() throws Exception {
+  public void testWithValidRangeMetric() {
     HashMap<String, String> params = new HashMap<>();
     params.put("start", "1479281737");
-    params.put("queryKey", "invalid_metric");
+    params.put("queryKey", "valid_range_metric");
+    MetricQueryExecutor qe =
+        new MetricQueryExecutor(
+            mockAppConfig,
+            mockApiHelper,
+            params,
+            new HashMap<>(),
+            mockYBMetricQueryComponent,
+            new MetricSettings()
+                .setMetric("valid_range_metric")
+                .setAggregation(MetricAggregation.MAX),
+            false);
+
+    JsonNode result = qe.call();
+    ArrayNode directUrls = (ArrayNode) result.get("directURLs");
+    assertEquals(directUrls.size(), 1);
+    assertEquals(
+        directUrls.get(0).asText(),
+        "foo://bar/graph?g0.expr=max%28max_over_time%28"
+            + "our_valid_range_metric%7Bfilter%3D%22awesome%22%7D%5B0s%5D%29%29&g0.tab=0"
+            + "&g0.range_input=3600s&g0.end_input=");
+  }
+
+  @Test
+  public void testTopNodesQuery() {
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", "1479281737");
+    params.put("end", "1479381737");
+    params.put("step", "60");
+    params.put("range", "3600");
+    params.put("queryKey", "valid_range_metric");
+    MetricQueryExecutor qe =
+        new MetricQueryExecutor(
+            mockAppConfig,
+            mockApiHelper,
+            params,
+            new HashMap<>(),
+            mockYBMetricQueryComponent,
+            new MetricSettings()
+                .setMetric("valid_range_metric")
+                .setAggregation(MetricAggregation.MAX)
+                .setSplitTopNodes(2),
+            false);
 
     JsonNode responseJson =
         Json.parse(
             "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n"
-                + " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]}]}}");
+                + " {\"cpu\":\"system\",\"exported_instance\":\"instance1\"},"
+                + "\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n"
+                + " {\"cpu\":\"system\",\"exported_instance\":\"instance2\"},"
+                + "\"value\":[1479278137,\"0.04329469299783263\"]}]}}");
+
+    when(mockApiHelper.getRequest(eq("foo://bar/query"), anyMap(), anyMap()))
+        .thenReturn(Json.toJson(responseJson));
+
+    when(mockApiHelper.getRequest(eq("foo://bar/query_range"), anyMap(), anyMap()))
+        .thenReturn(Json.toJson(responseJson));
+
+    JsonNode result = qe.call();
+    ArrayNode topNodesQueryUrls = (ArrayNode) result.get("topNodesQueryURLs");
+    assertEquals(topNodesQueryUrls.size(), 1);
+    assertEquals(
+        topNodesQueryUrls.get(0).asText(),
+        "foo://bar/graph?g0.expr=topk%282%2C+max%28max_over_time%28our_valid_range_metric"
+            + "%7Bfilter%3D%22awesome%22%7D%5B3600s%5D%29%29+by+%28exported_instance%29%29&"
+            + "g0.tab=0&g0.range_input=100000s&g0.end_input=2016-11-17 11:22:17");
+    ArrayNode directUrls = (ArrayNode) result.get("directURLs");
+    assertEquals(directUrls.size(), 1);
+    assertEquals(
+        directUrls.get(0).asText(),
+        "foo://bar/graph?g0.expr=%28max%28max_over_time%28our_valid_range_metric"
+            + "%7Bfilter%3D%22awesome%22%2C+cpu%3D%22system%22%2C+exported_instance%3D%"
+            + "22instance1%22%7D%5B60s%5D%29%29+by+%28exported_instance%29%29+or+%28max"
+            + "%28max_over_time%28our_valid_range_metric%7Bfilter%3D%22awesome%22%2C+"
+            + "cpu%3D%22system%22%2C+exported_instance%3D%22instance2%22%7D%5B60s%5D%29%29+"
+            + "by+%28exported_instance%29%29&g0.tab=0&g0.range_input=100000s&g0."
+            + "end_input=2016-11-17 11:22:17");
+  }
+
+  @Test
+  public void testWithInvalidMetric() throws Exception {
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", "1479281737");
+    params.put("queryKey", "invalid_metric");
 
     MetricQueryExecutor qe =
         new MetricQueryExecutor(

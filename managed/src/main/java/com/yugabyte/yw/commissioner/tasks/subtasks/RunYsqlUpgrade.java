@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -21,6 +22,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -100,7 +102,7 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
                 leaderMasterNode, universe, "upgrade_ysql", timeout);
 
         if (numAttempts == MAX_ATTEMPTS) {
-          processShellResponse(response);
+          response.processErrors();
         } else {
           if (response.code == ERROR_CODE_SUCCESS) {
             log.info("Successfully performed YSQL upgrade");
@@ -111,14 +113,14 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
               DELAY_BETWEEN_ATTEMPTS_SEC,
               numAttempts,
               (response.message != null) ? response.message : "error");
-          Thread.sleep(DELAY_BETWEEN_ATTEMPTS_SEC * 1000);
+          waitFor(Duration.ofSeconds(DELAY_BETWEEN_ATTEMPTS_SEC));
           timeout *= 1.2;
         }
       }
 
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      throw new RuntimeException(e);
+      Throwables.propagate(e);
     }
   }
 }
