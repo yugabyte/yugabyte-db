@@ -942,6 +942,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
       // Pre-initialize stuff while connection is still available
       for (Object el : elems) {
+        // TODO(alex): Store as List to begin with?
         if (el instanceof PgArray)
           ((PgArray) el).getArray();
       }
@@ -1275,7 +1276,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       unexpected.removeAll(expected);
       List<T> missing = new ArrayList<>(expected);
       missing.removeAll(actual);
-      fail(errorPrefix + "Collection length mismatch: expected<" + expected.size()
+      fail(errorPrefix + " Collection length mismatch: expected<" + expected.size()
           + "> but was:<" + actual.size() + ">"
           + "\nUnexpected rows: " + unexpected
           + "\nMissing rows:    " + missing);
