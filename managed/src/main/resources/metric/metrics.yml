@@ -2210,12 +2210,14 @@ master_table_ops:
         "handler_latency_yb_master_MasterService_CreateTable_count": "Create Table"
 
 master_cpu_util_secs:
-  metric: "cpu_utime_irate|cpu_stime_irate"
+  metric: ""
   function: "max_over_time"
   range : true
   operator: "/ 1000"
   filters:
     export_type: "master_export"
+    saved_name: "cpu_utime_irate|cpu_stime_irate"
+  group_by: "saved_name"
   panel_group: "Master"
   layout:
     title: "CPU Util Secs / Sec"
@@ -2228,12 +2230,14 @@ master_cpu_util_secs:
         "cpu_stime_irate": "cpu_stime"
 
 tserver_cpu_util_secs:
-  metric: "cpu_utime_irate|cpu_stime_irate"
+  metric: ""
   function: "max_over_time|max"
   range : true
   operator: "/ 1000"
   filters:
     export_type: "tserver_export"
+    saved_name: "cpu_utime_irate|cpu_stime_irate"
+  group_by: "saved_name"
   panel_group: "Tablet Server"
   layout:
     title: "CPU Util Secs / Sec"
