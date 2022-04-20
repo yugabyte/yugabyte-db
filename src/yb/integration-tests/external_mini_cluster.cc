@@ -728,7 +728,7 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
 
 // We look for the exact master match. Since it is possible to stop/restart master on
 // a given host/port, we do not want a stale master pointer input to match a newer master.
-int ExternalMiniCluster::GetIndexOfMaster(ExternalMaster* master) const {
+int ExternalMiniCluster::GetIndexOfMaster(const ExternalMaster* master) const {
   for (size_t i = 0; i < masters_.size(); i++) {
     if (masters_[i].get() == master) {
       return narrow_cast<int>(i);
@@ -737,7 +737,7 @@ int ExternalMiniCluster::GetIndexOfMaster(ExternalMaster* master) const {
   return -1;
 }
 
-Status ExternalMiniCluster::PingMaster(ExternalMaster* master) const {
+Status ExternalMiniCluster::PingMaster(const ExternalMaster* master) const {
   int index = GetIndexOfMaster(master);
   server::PingRequestPB req;
   server::PingResponsePB resp;

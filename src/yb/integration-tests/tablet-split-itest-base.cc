@@ -440,7 +440,7 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
     return num_peers_running == num_replicas_online * expected_total_tablets &&
            num_peers_split == num_replicas_online * expected_split_tablets &&
            num_peers_leader_ready == expected_total_tablets;
-  }, split_completion_timeout_, "Wait for tablet split to be completed");
+  }, split_completion_timeout_sec_, "Wait for tablet split to be completed");
   if (!s.ok()) {
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet();
