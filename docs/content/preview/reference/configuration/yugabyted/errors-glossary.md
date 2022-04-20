@@ -1,12 +1,11 @@
 ---
-title: yugabyted Errors and Warnings
-linkTitle: Errors and Warnings
+title: yugabyted errors and warnings
+linkTitle: Errors and warnings
 description: yugabyted CLI errors and warnings
-section: REFERENCE
 menu:
   preview:
     identifier: yugabyted-errors-warnings
-    parent: configuration
+    parent: yugabyted
     weight: 2455
 isTocNested: true
 showAsideToc: true
@@ -24,9 +23,9 @@ This page explains errors and warnings that you may see while running a Yugabyte
 
 ## Open files ulimits value set low
 
-YugabyteDB needs to create a large number of files for writing data, logs, and a variety of other information onto the disk. Operating Systems (OS) may not be configured to allow a user process to open a large number of files.
+YugabyteDB needs to create a large number of files for writing data, logs, and a variety of other information onto the disk. Your operating system (OS) may not be configured to allow a user process to open a large number of files.
 
-We recommend setting the soft and hard limits to 1048576.
+Set the soft and hard limits to 1048576.
 
 Refer to [Install YugabyteDB](../../../../quick-start/install/macos/) for more prerequisites.
 
