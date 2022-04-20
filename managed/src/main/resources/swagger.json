@@ -3687,7 +3687,7 @@
           "type" : "integer"
         }
       },
-      "required" : [ "metrics", "start" ],
+      "required" : [ "start" ],
       "type" : "object"
     },
     "MetricSettings" : {
@@ -3701,9 +3701,14 @@
         "metric" : {
           "description" : "Metric name",
           "type" : "string"
+        },
+        "splitTopNodes" : {
+          "description" : "Query result for 'top' nodes separately. 0 means aggregate over all nodes",
+          "format" : "int32",
+          "type" : "integer"
         }
       },
-      "required" : [ "aggregation", "metric" ],
+      "required" : [ "aggregation", "metric", "splitTopNodes" ],
       "type" : "object"
     },
     "MultiTableBackupRequestParams" : {

@@ -101,6 +101,8 @@ public class MetricQueryHelper {
       timeDifference = endTime - Long.parseLong(startTime);
     }
 
+    params.put("range", Long.toString(timeDifference));
+
     String step = params.get("step");
     if (step == null) {
       if (timeDifference <= STEP_SIZE) {
