@@ -29,7 +29,7 @@ showAsideToc: true
 
 Export and import of the YCQL data is performed by various commands of the `ycqlsh` script. For details on how to use the script to connect to a YugabyteDB cluster, as well as the full list of available parameters, refer to the [ycqlsh reference](../../../admin/ycqlsh/).
 
-### Export Schema
+## Export Schema
 
 To export the schema, use the `DESCRIBE` command (you can also use `DESC`, which is its shorter alias).
 
@@ -52,7 +52,7 @@ ycqlsh -e "DESC SCHEMA" > <file>
 Where:
 - `<file>` – the path to the resulting CQL script file
 
-### Export Data
+## Export Data
 
 To export the data, use the `COPY TO` command. It will query all rows of the specified table and write into a CSV (comma-separated values) file.
 
@@ -80,7 +80,7 @@ The command also supports multiple options. The following table outlines some of
 | MAXREQUESTS | Maximum number of requests each worker can process in parallel. | 6 |
 | MAXOUTPUTSIZE | Maximum size of the output file, measured in number of lines. When set, the output file is split into segments when the value is exceeded. Use `-1` for no maximum. | -1 |
 
-### Import Schema
+## Import Schema
 
 To import the schema, use the SOURCE command as shown below:
 
@@ -91,7 +91,7 @@ ycqlsh -e "SOURCE '<file>'"
 Where:
 - `<file>` – the path to the CQL script file to import the schema from
 
-### Import Data
+## Import Data
 
 After the schema is imported, you can import the actual data by using the `COPY FROM` command that loads the data from one or more CSV files.
 
