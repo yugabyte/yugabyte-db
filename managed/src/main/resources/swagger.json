@@ -3666,6 +3666,13 @@
           },
           "type" : "array"
         },
+        "metricsWithSettings" : {
+          "description" : "List of metrics with custom settings",
+          "items" : {
+            "$ref" : "#/definitions/MetricSettings"
+          },
+          "type" : "array"
+        },
         "nodeName" : {
           "description" : "Node name",
           "type" : "string"
@@ -3680,7 +3687,28 @@
           "type" : "integer"
         }
       },
-      "required" : [ "metrics", "start" ],
+      "required" : [ "start" ],
+      "type" : "object"
+    },
+    "MetricSettings" : {
+      "description" : "Settings, selected for particular metric",
+      "properties" : {
+        "aggregation" : {
+          "description" : "Way of metrics aggregation over time and across nodes",
+          "enum" : [ "DEFAULT", "MIN", "MAX", "AVG", "SUM" ],
+          "type" : "string"
+        },
+        "metric" : {
+          "description" : "Metric name",
+          "type" : "string"
+        },
+        "splitTopNodes" : {
+          "description" : "Query result for 'top' nodes separately. 0 means aggregate over all nodes",
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "aggregation", "metric", "splitTopNodes" ],
       "type" : "object"
     },
     "MultiTableBackupRequestParams" : {
