@@ -165,5 +165,5 @@ To learn more about the driver, refer to the [architecture documentation of Smar
 
 ## Next steps
 
-- Learn how to build Java applications using [Hibernate ORM](hibernate/).
+- Learn how to build Java applications using [Hibernate ORM](../hibernate/).
 - Learn more about configuring YugabyteDB JDBC Driver load balancing options in [YugabyteDB JDBC reference section](/preview/reference/drivers/java/yugabyte-jdbc-reference/#load-balancing).
