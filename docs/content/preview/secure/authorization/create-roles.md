@@ -1,8 +1,8 @@
 ---
-title: Manage Users and Roles in YSQL
-linkTitle: Manage Users and Roles
-description: Manage Users and Roles in YSQL
-headcontent: Manage Users and Roles
+title: Manage users and roles in YSQL
+linkTitle: Manage users and roles
+description: Manage users and roles in YSQL
+headcontent: Manage users and roles
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:

@@ -1,9 +1,9 @@
 ---
-title: Manage Users and Roles in YCQL
-headerTitle: Manage Users and Roles
-linkTitle: Manage Users and Roles
-description: Manage Users and Roles in YCQL
-headcontent: Manage Users and Roles
+title: Manage users and roles in YCQL
+headerTitle: Manage users and roles
+linkTitle: Manage users and roles
+description: Manage users and roles in YCQL
+headcontent: Manage users and roles
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -36,13 +36,13 @@ showAsideToc: true
 
 Create a role with a password. You can do this with the [CREATE ROLE](../../../api/ycql/ddl_create_role/) command.
 
-As an example, let us create a role `engineering` for an engineering team in an organization. Note that you add the `IF NOT EXISTS` clause in case the role already exists.
+For example, to create a role `engineering` for an engineering team in an organization do the following (add the `IF NOT EXISTS` clause in case the role already exists):
 
 ```sql
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS engineering;
 ```
 
-Roles that have `LOGIN` permissions are users. As an example, you can create a user `john` as follows:
+Roles that have `LOGIN` permissions are users. For example, create a user `john` as follows:
 
 ```sql
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
