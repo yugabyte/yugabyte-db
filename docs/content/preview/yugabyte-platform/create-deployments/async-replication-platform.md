@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB Anywhere allows you to use its UI or [API](https://api-docs.yugabyte.com/docs/yugabyte-platform/YXBpOjE4OTQ3NTE1-yugabyte-platform-ap-is) to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#set-up-bidirectional-replication) (multi-master) asynchronous replication between two data centers.
+YugabyteDB Anywhere allows you to use its UI or [API](https://api-docs.yugabyte.com/docs/yugabyte-platform/) to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#set-up-bidirectional-replication) (multi-master) asynchronous replication between two data centers.
 
 Within the concept of replication, universes are divided into the following categories:
 
