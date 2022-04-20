@@ -64,11 +64,11 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   private static final int PG_OUTPUT_BUFFER_SIZE_BYTES = 1024;
 
   /**
-   * Size of long strings to provoke read restart errors. This should be significantly larger than
-   * {@link #PG_OUTPUT_BUFFER_SIZE_BYTES} to force buffer flushes - thus preventing YSQL from doing
-   * a transparent restart.
+   * Size of long strings to provoke read restart errors. This should be comparable to
+   * {@link #PG_OUTPUT_BUFFER_SIZE_BYTES} so as to force buffer flushes - thus preventing YSQL from
+   * doing a transparent restart.
    */
-  private static final int LONG_STRING_LENGTH = PG_OUTPUT_BUFFER_SIZE_BYTES * 100;
+  private static final int LONG_STRING_LENGTH = PG_OUTPUT_BUFFER_SIZE_BYTES;
 
   /** Maximum value to insert in a table column {@code i} (minimum is 0) */
   private static final int MAX_INT_TO_INSERT = 5;
@@ -823,7 +823,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         ConnectionBuilder cb,
         String valueToInsert,
         boolean expectRestartErrors) {
-      super(cb, valueToInsert, 500 /* numInserts */);
+      super(cb, valueToInsert, 250 /* numInserts */);
       this.expectRestartErrors = expectRestartErrors;
     }
 
@@ -913,7 +913,11 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
             " selectsWithSnapshotIsolation=" + selectsWithSnapshotIsolation +
             " selectsWithSerializable=" + selectsWithSerializable);
 
-        assertTrue(expectRestartErrors || selectsRestartRequired == 0);
+        assertTrue(
+          "expectRestartErrors=" + expectRestartErrors +
+            ", selectsRestartRequired=" + selectsRestartRequired,
+          (expectRestartErrors && selectsRestartRequired > 0) ||
+          (!expectRestartErrors && selectsRestartRequired == 0));
         assertTrue(expectRestartErrors || selectsWithConflictError == 0);
 
         if (onlyEmptyResults) {
