@@ -625,6 +625,42 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     }
   }
 
+  /**
+   * CREATE OR REPLACE VIEW should filter out upgrade-specific reloptions on both CREATE and REPLACE
+   * paths.
+   */
+  @Test
+  public void viewReloptionsAreFilteredOnReplace() throws Exception {
+    String viewName = "replaceable_system_view";
+
+    try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
+         Statement stmt = conn.createStatement()) {
+      setSystemRelsModificationGuc(stmt, true);
+
+      String createViewSql = "CREATE OR REPLACE VIEW pg_catalog." + viewName + " WITH ("
+          + "  security_barrier = true"
+          + ", use_initdb_acl = true"
+          + ") AS SELECT 1";
+
+      String getReloptionsSql = "SELECT reloptions FROM pg_class"
+          + " WHERE oid = 'pg_catalog." + viewName + "'::regclass";
+
+      // CREATE part.
+      LOG.info("Executing '{}'", createViewSql);
+      stmt.execute(createViewSql);
+
+      assertQuery(stmt, getReloptionsSql,
+          new Row(Arrays.asList("security_barrier=true")));
+
+      // REPLACE part.
+      LOG.info("Executing '{}' again", createViewSql);
+      stmt.execute(createViewSql);
+
+      assertQuery(stmt, getReloptionsSql,
+          new Row(Arrays.asList("security_barrier=true")));
+    }
+  }
+
   @Test
   public void insertOnConflictWithOidsWorks() throws Exception {
     try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
@@ -769,8 +805,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * <p>
    * If you see this test failing, please make sure you've added a new YSQL migration as described
    * in {@code src/yb/yql/pgwrapper/ysql_migrations/README.md}.
-   * <p>
-   * After that's done, fix this test by updating values to new ones.
    */
   @Test
   public void migratingIsEquivalentToReinitdb() throws Exception {
@@ -1247,7 +1281,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   private void assertMigrationsWorked(
       SysCatalogSnapshot freshSnapshot,
       SysCatalogSnapshot migratedSnapshot) {
-    assertCollectionSizes("Migrated table set differs from the fresh one! ",
+    assertCollectionSizes("Migrated table set differs from the fresh one!",
         freshSnapshot.catalog.keySet(), migratedSnapshot.catalog.keySet());
 
     {
@@ -1429,7 +1463,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
      * In pg_node_tree string-wrapping structure:
      * <ul>
      * <li>Replace auto-generated OIDs with resolved names.
-     * <li>Replace values for :location and :stmt_len with placeholders.
+     * <li>Replace values for :location, :stmt_location and :stmt_len with placeholders.
      * </ul>
      * Format the result as a plain string. We don't care about minor formatting losses as long as
      * it's consistent.
@@ -1447,6 +1481,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
             }
           } else if (nodeTreeParts[i].equals(":location")) {
             nodeTreeParts[i + 1] = "<location>";
+          } else if (nodeTreeParts[i].equals(":stmt_location")) {
+            nodeTreeParts[i + 1] = "<stmt_location>";
           } else if (nodeTreeParts[i].equals(":stmt_len")) {
             nodeTreeParts[i + 1] = "<stmt_len>";
           }
