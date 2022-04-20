@@ -12857,6 +12857,8 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 									 defList, NULL, validnsps, false,
 									 operation == AT_ResetRelOptions);
 
+	newOptions = ybExcludeNonPersistentReloptions(newOptions);
+
 	/* Validate */
 	switch (rel->rd_rel->relkind)
 	{

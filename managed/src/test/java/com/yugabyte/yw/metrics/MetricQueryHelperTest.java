@@ -71,7 +71,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     } catch (PlatformServiceException re) {
       assertEquals(BAD_REQUEST, re.getResult().status());
       assertEquals(
-          "Empty metricKeys data provided.",
+          "Empty metricsWithSettings data provided.",
           Json.parse(contentAsString(re.getResult())).get("error").asText());
     }
   }

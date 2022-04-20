@@ -53,6 +53,7 @@ public class SwamperHelper {
 
   @VisibleForTesting static final String ALERT_CONFIG_FILE_PREFIX = "yugaware.ad.";
   @VisibleForTesting static final String ALERT_CONFIG_FILE_PREFIX_PATTERN = "yugaware\\.ad\\.";
+  @VisibleForTesting static final String RECORDING_RULES_FILE = "yugaware.recording-rules.yml";
   private static final Pattern ALERT_CONFIG_FILE_PATTERN =
       Pattern.compile("^yugaware\\.ad\\." + UUID_PATTERN + "\\.yml$");
 
@@ -229,17 +230,36 @@ public class SwamperHelper {
     return getOrCreateDirectory("yb.swamper.rulesPath");
   }
 
-  private String getSwamperRuleFile(UUID ruleUUID) {
+  private String getAlertRuleFile(UUID ruleUUID) {
+    return getRulesFile(String.format("%s%s.yml", ALERT_CONFIG_FILE_PREFIX, ruleUUID.toString()));
+  }
+
+  private String getRulesFile(String filename) {
     File swamperRulesDirectory = getSwamperRuleDirectory();
     if (swamperRulesDirectory != null) {
-      return String.format(
-          "%s/%s%s.yml", swamperRulesDirectory, ALERT_CONFIG_FILE_PREFIX, ruleUUID.toString());
+      return String.format("%s/%s", swamperRulesDirectory, filename);
     }
     return null;
   }
 
+  public void writeRecordingRules() {
+    String rulesFile = getRulesFile(RECORDING_RULES_FILE);
+    if (rulesFile == null) {
+      return;
+    }
+
+    String fileContent;
+    try (InputStream templateStream = environment.resourceAsStream("metric/recording_rules.yml")) {
+      fileContent = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to read alert definition header template", e);
+    }
+
+    writeFile(rulesFile, fileContent);
+  }
+
   public void writeAlertDefinition(AlertConfiguration configuration, AlertDefinition definition) {
-    String swamperFile = getSwamperRuleFile(definition.getUuid());
+    String swamperFile = getAlertRuleFile(definition.getUuid());
     if (swamperFile == null) {
       return;
     }
@@ -277,7 +297,7 @@ public class SwamperHelper {
   }
 
   public void removeAlertDefinition(UUID definitionUUID) {
-    String swamperFile = getSwamperRuleFile(definitionUUID);
+    String swamperFile = getAlertRuleFile(definitionUUID);
     if (swamperFile != null) {
       File file = new File(swamperFile);
 

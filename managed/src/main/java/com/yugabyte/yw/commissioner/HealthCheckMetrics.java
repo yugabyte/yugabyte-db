@@ -49,6 +49,8 @@ public class HealthCheckMetrics {
   private static final String NODE_TO_NODE_CERT_CHECK = "Node To Node Cert Expiry Days";
   private static final String CLIENT_TO_NODE_CA_CERT_CHECK = "Client To Node CA Cert Expiry Days";
   private static final String CLIENT_TO_NODE_CERT_CHECK = "Client To Node Cert Expiry Days";
+  private static final String CLIENT_CA_CERT_CHECK = "Client CA Cert Expiry Days";
+  private static final String CLIENT_CERT_CHECK = "Client Cert Expiry Days";
 
   public static final List<PlatformMetrics> HEALTH_CHECK_METRICS_WITHOUT_STATUS =
       ImmutableList.<PlatformMetrics>builder()
@@ -151,6 +153,10 @@ public class HealthCheckMetrics {
         return PlatformMetrics.HEALTH_CHECK_C2N_CA_CERT;
       case CLIENT_TO_NODE_CERT_CHECK:
         return PlatformMetrics.HEALTH_CHECK_C2N_CERT;
+      case CLIENT_CA_CERT_CHECK:
+        return PlatformMetrics.HEALTH_CHECK_CLIENT_CA_CERT;
+      case CLIENT_CERT_CHECK:
+        return PlatformMetrics.HEALTH_CHECK_CLIENT_CERT;
       default:
         return null;
     }
@@ -234,6 +240,20 @@ public class HealthCheckMetrics {
         return Collections.singletonList(
             buildNodeMetric(
                 PlatformMetrics.HEALTH_CHECK_C2N_CERT_VALIDITY_DAYS,
+                universe,
+                nodeName,
+                metricValue));
+      case CLIENT_CA_CERT_CHECK:
+        return Collections.singletonList(
+            buildNodeMetric(
+                PlatformMetrics.HEALTH_CHECK_CLIENT_CA_CERT_VALIDITY_DAYS,
+                universe,
+                nodeName,
+                metricValue));
+      case CLIENT_CERT_CHECK:
+        return Collections.singletonList(
+            buildNodeMetric(
+                PlatformMetrics.HEALTH_CHECK_CLIENT_CERT_VALIDITY_DAYS,
                 universe,
                 nodeName,
                 metricValue));
