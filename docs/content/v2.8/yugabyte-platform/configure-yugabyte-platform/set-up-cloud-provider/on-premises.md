@@ -447,11 +447,12 @@ Note that the instructions here are for the 0.13.0 version. The same instruction
       #ExecStartPre=/bin/sh -c  " mkdir -p '/var/run/prometheus' '/var/log/prometheus' "
       #ExecStartPre=/bin/sh -c  " chown -R prometheus '/var/run/prometheus' '/var/log/prometheus' "
       #PIDFile=/var/run/prometheus/node_exporter.pid
+      ```
 
 
       User=prometheus
       Group=prometheus
-
+    
       ExecStart=/opt/prometheus/node_exporter-0.13.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
       ```
 
@@ -496,7 +497,7 @@ Platform supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud S
 * Download azcopy_linux_amd64_10.13.0.tar.gz using this command:
 
     ```sh
-    $ wget https://azcopyvnext.azureedge.net/release20200410/azcopy_linux_amd64_10.13.0.tar.gz
+    $ wget https://azcopyvnext.azureedge.net/release20211027/azcopy_linux_amd64_10.13.0.tar.gz
     ```
 
 * For airgapped installs, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the Platform node.

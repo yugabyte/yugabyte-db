@@ -69,9 +69,13 @@ You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB
 
 ## Configure the on-premises provider
 
-Configuring the on-premises provided consists of a number of steps.
+Configuring the on-premises provider consists of a number of steps.
 
-### Complete the provider information {#on-premise-provider-info}
+### Complete the provider information
+
+You start by completing the fields of the **Provider Info** form shown in the following illustration: 
+
+### {#on-premise-provider-info}
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-1.png)
 
@@ -463,13 +467,13 @@ On each node, perform the following as a user with sudo access:
 
 ##### Install backup utilities
 
-YugabyteDB Anywhere supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud Storage, and NFS.
+YugabyteDB Anywhere supports backing up YugabyteDB to Amazon S3, Azure Storage, Google Cloud Storage, and Network File System (NFS). For more information, see [Configure backup storage](../../../back-up-restore-universes/configure-backup-storage/).
 
-You can install the backup utility for the backup storage you plan to use as follows:
+You can install the backup utility for the backup storage you plan to use, as follows:
 
-- NFS - Install rsync. YugabyteDB Anywhere uses rsync to do NFS backups which you installed in an earlier step.
+- NFS: Install rsync, which YugabyteDB Anywhere uses to perform NFS backups installed during one of the previous steps.
 
-- AWS S3 - Install s3cmd. YugabyteDB Anywhere relies on s3cmd to support copying backups to AWS S3. You have the following installation options:
+- Amazon S3: Install s3cmd, on which YugabyteDB Anywhere relies to support copying backups to Amazon S3. You have the following installation options:
   - For a regular installation, execute the following:
 
       ```sh
@@ -484,11 +488,11 @@ You can install the backup utility for the backup storage you plan to use as fol
       sudo ln -s /usr/local/s3cmd-2.0.1/s3cmd /usr/local/bin/s3cmd
       ```
 
-- Azure Storage - Install azcopy using one of the following options:
+- Azure Storage: Install azcopy using one of the following options:
   - Download `azcopy_linux_amd64_10.13.0.tar.gz` using the following command:
 
       ```sh
-      wget https://azcopyvnext.azureedge.net/release20200410/azcopy_linux_amd64_10.13.0.tar.gz
+      wget https://azcopyvnext.azureedge.net/release20211027/azcopy_linux_amd64_10.13.0.tar.gz
       ```
 
   - For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the YugabyteDB Anywhere node, as follows:
@@ -498,14 +502,14 @@ You can install the backup utility for the backup storage you plan to use as fol
       sudo tar xfz path-to-azcopy_linux_amd64_10.13.0.tar.gz -C /usr/local/bin azcopy_linux_amd64_10.13.0/azcopy --strip-components 1
       ```
 
-- Google Cloud Storage - Install gsutil using one of the following options:
+- Google Cloud Storage: Install gsutil using one of the following options:
   - Download `gsutil_4.60.tar.gz` using the following command:
 
       ```sh
       wget https://storage.googleapis.com/pub/gsutil_4.60.tar.gz
       ```
 
-  - For airgapped installs, copy `/opt/third-party/gsutil_4.60.tar.gz` from the YugabyteDB Anywhere node, as follows:
+  - For airgapped installations, copy `/opt/third-party/gsutil_4.60.tar.gz` from the YugabyteDB Anywhere node, as follows:
 
       ```sh
       cd /usr/local
@@ -532,7 +536,7 @@ If you are not using either file, no changes are required.
 
 YugabyteDB Anywhere supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs or systemd services.
 
-**Sudo is required to set up these services!**
+**Sudo is required to set up these services**
 
 If YugabyteDB Anywhere will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab. If you're using the cron.allow file to manage crontab access, add the yugabyte user to this file. If you're using the cron.deny file, remove the yugabyte user from this file.
 
