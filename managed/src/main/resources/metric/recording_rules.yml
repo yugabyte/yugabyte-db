@@ -1,0 +1,246 @@
+groups:
+  - name: yugaware_recording
+    rules:
+      - record: rpc_irate_rps
+        expr: 'irate(rpc_latency_count[1m])'
+        labels:
+          saved_name: rpc_irate
+
+      - record: node_cpu_usage
+        expr: 'irate(node_cpu_seconds_total[1m])'
+        labels:
+          saved_name: node_cpu_usage
+
+      - record: node_cpu_usage_avg
+        expr: 'avg without (cpu) (irate(node_cpu_seconds_total[1m]))'
+        labels:
+          saved_name: node_cpu_usage
+
+      - record: node_disk_reads_irate
+        expr: 'sum without (device) (irate(node_disk_reads_completed_total[1m]))'
+        labels:
+          saved_name: node_disk_reads_irate
+
+      - record: node_disk_writes_irate
+        expr: 'sum without (device) (irate(node_disk_writes_completed_total[1m]))'
+        labels:
+          saved_name: node_disk_writes_irate
+
+      - record: node_disk_read_bytes_irate
+        expr: 'sum without (device) (irate(node_disk_read_bytes_total[1m]))'
+        labels:
+          saved_name: node_disk_read_bytes_irate
+
+      - record: node_disk_write_bytes_irate
+        expr: 'sum without (device) (irate(node_disk_written_bytes_total[1m]))'
+        labels:
+          saved_name: node_disk_write_bytes_irate
+
+      - record: container_cpu_usage
+        expr: 'irate(container_cpu_usage_seconds_total[1m]) /
+          on (container_name, pod_name, namespace) kube_pod_container_resource_requests_cpu_cores'
+        labels:
+          saved_name: container_cpu_usage
+
+      - record: node_network_receive_bytes_irate
+        expr: 'sum without (device) (irate(node_network_receive_bytes_total{device=~"[^l].*"}[1m]))'
+        labels:
+          saved_name: node_network_receive_bytes_irate
+
+      - record: node_network_transmit_bytes_irate
+        expr: 'sum without (device)
+          (irate(node_network_transmit_bytes_total{device=~"[^l].*"}[1m]))'
+        labels:
+          saved_name: node_network_transmit_bytes_irate
+
+      - record: node_network_receive_packets_irate
+        expr: 'sum without (device)
+          (irate(node_network_receive_packets_total{device=~"[^l].*"}[1m]))'
+        labels:
+          saved_name: node_network_receive_packets_irate
+
+      - record: node_network_transmit_packets_irate
+        expr: 'sum without (device)
+          (irate(node_network_transmit_packets_total{device=~"[^l].*"}[1m]))'
+        labels:
+          saved_name: node_network_transmit_packets_irate
+
+      - record: node_network_receive_errs_irate
+        expr: 'sum without (device) (irate(node_network_receive_errs_total{device=~"[^l].*"}[1m]))'
+        labels:
+          saved_name: node_network_receive_errs_irate
+
+      - record: node_network_transmit_errs_irate
+        expr: 'sum without (device) (irate(node_network_transmit_errs_total{device=~"[^l].*"}[1m]))'
+        labels:
+          saved_name: node_network_transmit_errs_irate
+
+      - record: involuntary_context_switches_irate
+        expr: 'irate(involuntary_context_switches[1m])'
+        labels:
+          saved_name: involuntary_context_switches_irate
+
+      - record: voluntary_context_switches_irate
+        expr: 'irate(voluntary_context_switches[1m])'
+        labels:
+          saved_name: voluntary_context_switches_irate
+
+      - record: spinlock_contention_time_irate
+        expr: 'irate(spinlock_contention_time[1m])'
+        labels:
+          saved_name: spinlock_contention_time_irate
+
+      - record: log_bytes_logged_irate
+        expr: 'sum without (saved_name, table_id, table_name) (irate(log_bytes_logged[1m]))'
+        labels:
+          saved_name: log_bytes_logged_irate
+
+      - record: log_reader_bytes_read_irate
+        expr: 'sum without (saved_name, table_id, table_name) (irate(log_reader_bytes_read[1m]))'
+        labels:
+          saved_name: log_reader_bytes_read_irate
+
+      - record: log_group_commit_irate
+        expr: 'sum without (saved_name, table_id, table_name)
+          (irate(log_group_commit_latency_count[1m]))'
+        labels:
+          saved_name: log_group_commit_irate
+
+      - record: log_append_irate
+        expr: 'sum without (saved_name, table_id, table_name) (irate(log_append_latency_count[1m]))'
+        labels:
+          saved_name: log_append_irate
+
+      - record: log_sync_irate
+        expr: 'sum without (saved_name, table_id, table_name) (irate(log_sync_latency_count[1m]))'
+        labels:
+          saved_name: log_sync_irate
+
+      - record: glog_info_messages_irate
+        expr: 'irate(glog_info_messages[1m])'
+        labels:
+          saved_name: glog_info_messages_irate
+
+      - record: glog_warning_messages_irate
+        expr: 'irate(glog_warning_messages[1m])'
+        labels:
+          saved_name: glog_warning_messages_irate
+
+      - record: glog_error_messages_irate
+        expr: 'irate(glog_error_messages[1m])'
+        labels:
+          saved_name: glog_error_messages_irate
+
+      - record: glog_error_messages_irate
+        expr: 'irate(glog_error_messages[1m])'
+        labels:
+          saved_name: glog_error_messages_irate
+
+      - record: glog_error_messages_irate
+        expr: 'irate(glog_error_messages[1m])'
+        labels:
+          saved_name: glog_error_messages_irate
+
+      - record: rocksdb_number_db_seek_irate
+        expr: 'sum without (saved_name, table_id, table_name) (irate(rocksdb_number_db_seek[1m]))'
+        labels:
+          saved_name: rocksdb_number_db_seek_irate
+
+      - record: rocksdb_number_db_next_irate
+        expr: 'sum without (saved_name, table_id, table_name) (irate(rocksdb_number_db_next[1m]))'
+        labels:
+          saved_name: rocksdb_number_db_next_irate
+
+      - record: rocksdb_bloom_filter_checked_irate
+        expr: 'sum without (saved_name, table_id, table_name)
+          (irate(rocksdb_bloom_filter_checked[1m]))'
+        labels:
+          saved_name: rocksdb_bloom_filter_checked_irate
+
+      - record: rocksdb_bloom_filter_useful_irate
+        expr: 'sum without (saved_name, table_id, table_name)
+          (irate(rocksdb_bloom_filter_useful[1m]))'
+        labels:
+          saved_name: rocksdb_bloom_filter_useful_irate
+
+      - record: rocksdb_block_cache_hit_irate
+        expr: 'sum without (saved_name, table_id, table_name)
+          (irate(rocksdb_block_cache_hit[1m]))'
+        labels:
+          saved_name: rocksdb_block_cache_hit_irate
+
+      - record: rocksdb_block_cache_miss_irate
+        expr: 'sum without (saved_name, table_id, table_name) (irate(rocksdb_block_cache_miss[1m]))'
+        labels:
+          saved_name: rocksdb_block_cache_miss_irate
+
+      - record: rocksdb_block_cache_add_irate
+        expr: 'sum without (saved_name, table_id, table_name) (irate(rocksdb_block_cache_add[1m]))'
+        labels:
+          saved_name: rocksdb_block_cache_add_irate
+
+      - record: rocksdb_block_cache_single_touch_add_irate
+        expr: 'sum without (saved_name, table_id, table_name)
+          (irate(rocksdb_block_cache_single_touch_add[1m]))'
+        labels:
+          saved_name: rocksdb_block_cache_single_touch_add_irate
+
+      - record: rocksdb_block_cache_multi_touch_add_irate
+        expr: 'sum without (saved_name, table_id, table_name)
+          (irate(rocksdb_block_cache_multi_touch_add[1m]))'
+        labels:
+          saved_name: rocksdb_block_cache_multi_touch_add_irate
+
+      - record: rocksdb_stall_micros_irate
+        expr: 'sum without (saved_name, table_id, table_name) (irate(rocksdb_stall_micros[1m]))'
+        labels:
+          saved_name: rocksdb_stall_micros_irate
+
+      - record: majority_sst_files_rejections_irate
+        expr: 'sum without (saved_name, table_id, table_name)
+          (irate(majority_sst_files_rejections[1m]))'
+        labels:
+          saved_name: majority_sst_files_rejections_irate
+
+      - record: rocksdb_flush_write_bytes_irate
+        expr: 'sum without (saved_name, table_id, table_name)
+          (irate(rocksdb_flush_write_bytes[1m]))'
+        labels:
+          saved_name: rocksdb_flush_write_bytes_irate
+
+      - record: rocksdb_compact_read_bytes_irate
+        expr: 'sum without (saved_name, table_id, table_name)
+          (irate(rocksdb_compact_read_bytes[1m]))'
+        labels:
+          saved_name: rocksdb_compact_read_bytes_irate
+
+      - record: rocksdb_compact_write_bytes_irate
+        expr: 'sum without (saved_name, table_id, table_name)
+          (irate(rocksdb_compact_write_bytes[1m]))'
+        labels:
+          saved_name: rocksdb_compact_write_bytes_irate
+
+      - record: transaction_conflicts_irate
+        expr: 'sum without (saved_name, table_id, table_name) (irate(transaction_conflicts[1m]))'
+        labels:
+          saved_name: transaction_conflicts_irate
+
+      - record: expired_transactions_irate
+        expr: 'sum without (saved_name, table_id, table_name) (irate(expired_transactions[1m]))'
+        labels:
+          saved_name: expired_transactions_irate
+
+      - record: rpc_inbound_calls_created_irate
+        expr: 'irate(rpc_inbound_calls_created[1m])'
+        labels:
+          saved_name: rpc_inbound_calls_created_irate
+
+      - record: cpu_utime_irate
+        expr: 'irate(cpu_utime[1m])'
+        labels:
+          saved_name: cpu_utime_irate
+
+      - record: cpu_stime_irate
+        expr: 'irate(cpu_stime[1m])'
+        labels:
+          saved_name: cpu_stime_irate

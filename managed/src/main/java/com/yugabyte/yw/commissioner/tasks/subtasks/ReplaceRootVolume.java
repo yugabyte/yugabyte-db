@@ -41,8 +41,8 @@ public class ReplaceRootVolume extends NodeTaskBase {
 
     // this won't be saved in taskDetails!
     taskParams().replacementDisk = bootDisks.remove(0);
-    ShellResponse response =
-        getNodeManager().nodeCommand(NodeManager.NodeCommandType.Replace_Root_Volume, taskParams());
-    processShellResponse(response);
+    getNodeManager()
+        .nodeCommand(NodeManager.NodeCommandType.Replace_Root_Volume, taskParams())
+        .processErrors();
   }
 }

@@ -23,10 +23,10 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,7 +51,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -65,7 +67,6 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -109,8 +110,6 @@ import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import play.libs.Json;
-
-import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 
 @RunWith(JUnitParamsRunner.class)
 public class NodeManagerTest extends FakeDBApplication {
@@ -646,7 +645,7 @@ public class NodeManagerTest extends FakeDBApplication {
     String clientToNodeString = String.valueOf(configureParams.enableClientToNodeEncrypt);
     String allowInsecureString = String.valueOf(configureParams.allowInsecure);
     String ybHomeDir = configureParams.getProvider().getYbHome();
-    ;
+
     String certsDir = ybHomeDir + "/yugabyte-tls-config";
     String certsForClientDir = ybHomeDir + "/yugabyte-client-tls-config";
 
@@ -2107,7 +2106,9 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEnableYSQLNodeCommand() {
+  @Parameters({"true, false", "false, true", "true, true"})
+  @TestCaseName("{method}(enabledYSQL:{0},enabledYCQL:{1}) [{index}]")
+  public void testEnableYSQLNodeCommand(boolean ysqlEnabled, boolean ycqlEnabled) {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -2117,7 +2118,8 @@ public class NodeManagerTest extends FakeDBApplication {
               createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
-      params.enableYSQL = true;
+      params.enableYSQL = ysqlEnabled;
+      params.enableYCQL = ycqlEnabled;
       params.deviceInfo = new DeviceInfo();
       params.deviceInfo.numVolumes = 1;
       if (t.cloudType == CloudType.onprem) {
@@ -2168,7 +2170,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @Test
   public void testCustomCertNodeCommand() throws IOException, NoSuchAlgorithmException {
     Customer customer = ModelFactory.testCustomer();
-    Provider provider = ModelFactory.newProvider(customer, Common.CloudType.onprem);
+    ModelFactory.newProvider(customer, Common.CloudType.onprem);
     for (TestData t : testData) {
       if (t.cloudType == Common.CloudType.onprem) {
         t.privateKey = null;
@@ -3354,7 +3356,7 @@ public class NodeManagerTest extends FakeDBApplication {
         createPrecheckCommandForCerts(
             cert.uuid,
             null,
-            (params) -> {
+            params -> {
               Universe.saveDetails(
                   params.universeUUID,
                   universe -> {
@@ -3415,7 +3417,7 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   private List<String> createPrecheckCommandForCerts(UUID certificateUUID1, UUID certificateUUID2) {
-    return createPrecheckCommandForCerts(certificateUUID1, certificateUUID2, (x) -> {});
+    return createPrecheckCommandForCerts(certificateUUID1, certificateUUID2, x -> {});
   }
 
   private List<String> createPrecheckCommandForCerts(

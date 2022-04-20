@@ -9,6 +9,7 @@ script_name="filtered_logs.sh"
 script_name_regex="filtered_logs"
 grep_regex_file="$output_file-regex"
 temp_file="$output_file-temp"
+log_line_start_pat="YW [0-9]{4}-[0-9]{2}-[0-9]{2} "
 
 # temporary files to stores log lines
 echo "$script_name - log_dir: $log_dir"
@@ -30,8 +31,14 @@ find "$log_dir" -type f -print0 | xargs -0 ls -t | while read -r file_path; do
   fi
 
   echo "$script_name - Currently reading log file: $file_path"
-  zgrep -Ei "$grep_regex" "$file_path" | zgrep -Eiv "$script_name_regex" \
-    | tail -n "$lines_remaining" > "$grep_regex_file"
+  CAT="cat"
+  if [[ $file_path == *.gz ]]; then
+    CAT="zcat"
+  fi
+  $CAT "$file_path" | \
+      awk "BEGIN{IGNORECASE=1}/^${log_line_start_pat}.*${grep_regex}/{flag=1;print;next}/^${log_line_start_pat}/{flag=0}flag" | \
+      grep -Eiv "$script_name_regex" | \
+      tail -n "$lines_remaining" > "$grep_regex_file"
   cat "$grep_regex_file" "$output_file" > "$temp_file"
   mv "$temp_file" "$output_file"
 done
