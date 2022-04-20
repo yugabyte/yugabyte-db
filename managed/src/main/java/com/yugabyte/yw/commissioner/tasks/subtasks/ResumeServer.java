@@ -49,9 +49,9 @@ public class ResumeServer extends NodeTaskBase {
   @Override
   public void run() {
     try {
-      ShellResponse response =
-          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Resume, taskParams());
-      processShellResponse(response);
+      getNodeManager()
+          .nodeCommand(NodeManager.NodeCommandType.Resume, taskParams())
+          .processErrors();
       setNodeState(NodeDetails.NodeState.Live);
       resumeUniverse(taskParams().nodeName);
     } catch (Exception e) {

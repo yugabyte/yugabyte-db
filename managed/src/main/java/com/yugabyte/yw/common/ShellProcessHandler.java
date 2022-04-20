@@ -74,16 +74,29 @@ public class ShellProcessHandler {
       Map<String, String> extraEnvVars,
       boolean logCmdOutput,
       String description) {
-    return run(command, extraEnvVars, logCmdOutput, description, null, null);
+    return run(command, extraEnvVars, logCmdOutput, description, null, null, 0 /*timeoutSecs*/);
   }
 
+  /**
+   * *
+   *
+   * @param command - command to run with list of args
+   * @param extraEnvVars - env vars for this command
+   * @param logCmdOutput - whether to log stdout&stderr to application.log or not
+   * @param description - human readable description for logging
+   * @param uuid - used to track this execution, can be null
+   * @param sensitiveData - Args that will be added to the cmd but will be redacted in logs
+   * @param timeoutSecs - Abort the command forcibly if it takes longer than this
+   * @return
+   */
   public ShellResponse run(
       List<String> command,
       Map<String, String> extraEnvVars,
       boolean logCmdOutput,
       String description,
       UUID uuid,
-      Map<String, String> sensitiveData) {
+      Map<String, String> sensitiveData,
+      int timeoutSecs) {
 
     List<String> redactedCommand = new ArrayList<>(command);
 
@@ -137,13 +150,16 @@ public class ShellProcessHandler {
           tempOutputFile.getAbsolutePath(),
           tempErrorFile.getAbsolutePath());
 
+      long endTimeSecs = 0;
+      if (timeoutSecs > 0) {
+        endTimeSecs = (System.currentTimeMillis() / 1000) + timeoutSecs;
+      }
       process = pb.start();
       if (uuid != null) {
         Util.setPID(uuid, process);
       }
-      // TimeUnit.MINUTES.sleep(5);
-      waitForProcessExit(process, tempOutputFile, tempErrorFile);
-      // We will only read last 20MB of process stdout and stderr file.
+      waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeSecs);
+      // We will only read last 20MB of process stderr file.
       // stdout has `data` so we wont limit that.
       try (BufferedReader outputStream = getLastNReader(tempOutputFile, Long.MAX_VALUE);
           BufferedReader errorStream = getLastNReader(tempErrorFile, getMaxLogMsgSize())) {
@@ -266,7 +282,8 @@ public class ShellProcessHandler {
   }
 
   public ShellResponse run(List<String> command, Map<String, String> extraEnvVars, UUID uuid) {
-    return run(command, extraEnvVars, true /*logCommandOutput*/, null, uuid, null);
+    return run(
+        command, extraEnvVars, true /*logCommandOutput*/, null, uuid, null, 0 /*timeoutSecs*/);
   }
 
   public ShellResponse run(
@@ -279,10 +296,18 @@ public class ShellProcessHandler {
       Map<String, String> extraEnvVars,
       String description,
       Map<String, String> sensitiveData) {
-    return run(command, extraEnvVars, true /*logCommandOutput*/, description, null, sensitiveData);
+    return run(
+        command,
+        extraEnvVars,
+        true /*logCommandOutput*/,
+        description,
+        null,
+        sensitiveData,
+        0 /*timeoutSecs*/);
   }
 
-  private static void waitForProcessExit(Process process, File outFile, File errFile)
+  private static void waitForProcessExit(
+      Process process, String description, File outFile, File errFile, long endTimeSecs)
       throws IOException, InterruptedException {
     try (FileInputStream outputInputStream = new FileInputStream(outFile);
         InputStreamReader outputReader = new InputStreamReader(outputInputStream);
@@ -291,8 +316,15 @@ public class ShellProcessHandler {
         BufferedReader outputStream = new BufferedReader(outputReader);
         BufferedReader errorStream = new BufferedReader(errReader)) {
       while (!process.waitFor(1, TimeUnit.SECONDS)) {
-        tailStream(outputStream);
-        tailStream(errorStream);
+        // read a limited number of lines so that we don't
+        // get stuck infinitely without getting to the time check
+        tailStream(outputStream, 1000 /*maxLines*/);
+        tailStream(errorStream, 1000 /*maxLines*/);
+        if (endTimeSecs > 0 && ((System.currentTimeMillis() / 1000) >= endTimeSecs)) {
+          LOG.warn("Aborting command {} forcibly because it took too long", description);
+          process.destroyForcibly();
+          break;
+        }
       }
       // check for any remaining lines
       tailStream(outputStream);
@@ -301,14 +333,23 @@ public class ShellProcessHandler {
   }
 
   private static void tailStream(BufferedReader br) throws IOException {
+    tailStream(br, 0 /*maxLines*/);
+  }
+
+  private static void tailStream(BufferedReader br, long maxLines) throws IOException {
 
     String line;
+    long count = 0;
     // Note: technically, this readLine can pick up incomplete lines as we race
     // with the process output being appended to this file but for the purposes
     // of logging, it is ok to log partial lines.
     while ((line = br.readLine()) != null) {
       if (line.contains("[app]")) {
         LOG.info(line);
+      }
+      count++;
+      if (maxLines > 0 && count >= maxLines) {
+        return;
       }
     }
   }
