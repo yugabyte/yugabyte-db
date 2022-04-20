@@ -112,6 +112,8 @@ extern bool YBIsCollationEnabled();
  */
 extern int YBGetMaxClockSkewUsec();
 
+extern int YBGetYsqlOutputBufferSize();
+
 /**
  * Test only constant. When set to true initdb imports default collation
  * from the OS environment. As a result the default collation will be
