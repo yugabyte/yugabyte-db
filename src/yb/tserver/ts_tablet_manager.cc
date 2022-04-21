@@ -92,6 +92,7 @@
 
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/env.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
@@ -173,6 +174,9 @@ DEFINE_test_flag(bool, force_single_tablet_failure, false,
 
 DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
                  "Inject delay into TSTabletManager::ApplyTabletSplit.");
+
+DEFINE_test_flag(bool, pause_apply_tablet_split, false,
+                 "Pause TSTabletManager::ApplyTabletSplit.");
 
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
@@ -817,7 +821,9 @@ void TSTabletManager::CreatePeerAndOpenTablet(
   }
 }
 
-Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log::Log* raft_log) {
+Status TSTabletManager::ApplyTabletSplit(
+    tablet::SplitOperation* operation, log::Log* raft_log,
+    boost::optional<RaftConfigPB> committed_raft_config) {
   if (PREDICT_FALSE(FLAGS_TEST_crash_before_apply_tablet_split_op)) {
     LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_apply_tablet_split_op";
   }
@@ -851,10 +857,14 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log:
   auto tablet_peer = VERIFY_RESULT(LookupTablet(tablet_id));
   auto* raft_consensus = tablet_peer->raft_consensus();
   if (raft_log == nullptr) {
-    raft_log = raft_consensus->log().get();
+    raft_log = DCHECK_NOTNULL(raft_consensus)->log().get();
+  }
+  if (!committed_raft_config) {
+    committed_raft_config = DCHECK_NOTNULL(raft_consensus)->CommittedConfigUnlocked();
   }
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_in_split_before_log_flushed);
+  TEST_PAUSE_IF_FLAG(TEST_pause_apply_tablet_split);
 
   RETURN_NOT_OK(raft_log->FlushIndex());
 
@@ -895,15 +905,11 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log:
 
   std::unique_ptr<ConsensusMetadata> cmeta;
   RETURN_NOT_OK(ConsensusMetadata::Create(
-      fs_manager_, tablet_id, fs_manager_->uuid(), raft_consensus->CommittedConfigUnlocked(),
+      fs_manager_, tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
       split_op_id.term, &cmeta));
   if (request->has_split_parent_leader_uuid()) {
     cmeta->set_leader_uuid(request->split_parent_leader_uuid());
-    LOG_WITH_PREFIX(INFO) << "Using consensus state: "
-                          << cmeta
-                                 ->ToConsensusStatePB(
-                                     consensus::ConsensusConfigType::CONSENSUS_CONFIG_COMMITTED)
-                                 .ShortDebugString();
+    LOG_WITH_PREFIX(INFO) << "Using Raft config: " << committed_raft_config->ShortDebugString();
   }
   cmeta->set_split_parent_tablet_id(tablet_id);
 
@@ -1770,7 +1776,7 @@ void TSTabletManager::MarkTabletBeingRemoteBootstrapped(
   MaybeDoChecksForTests(table_id);
   LOG(INFO) << "Concurrent remote bootstrap sessions: "
             << tablets_being_remote_bootstrapped_.size()
-            << "Concurrent remote bootstrap sessions for table " << table_id
+            << ", Concurrent remote bootstrap sessions for table " << table_id
             << ": " << tablets_being_remote_bootstrapped_per_table_[table_id].size();
 }
 
