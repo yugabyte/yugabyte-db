@@ -5331,7 +5331,7 @@ ATSimplePermissions(Relation rel, int allowed_targets)
 		ATWrongRelkindError(rel, allowed_targets);
 
 	/* Permissions checks */
-	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))
+	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()) && !IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(rel->rd_rel->relkind),
 					   RelationGetRelationName(rel));
 
@@ -12857,6 +12857,8 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 									 defList, NULL, validnsps, false,
 									 operation == AT_ResetRelOptions);
 
+	newOptions = ybExcludeNonPersistentReloptions(newOptions);
+
 	/* Validate */
 	switch (rel->rd_rel->relkind)
 	{
@@ -15648,7 +15650,7 @@ RangeVarCallbackOwnsRelation(const RangeVar *relation,
 	if (!HeapTupleIsValid(tuple))	/* should not happen */
 		elog(ERROR, "cache lookup failed for relation %u", relId);
 
-	if (!pg_class_ownercheck(relId, GetUserId()))
+	if (!pg_class_ownercheck(relId, GetUserId()) && !IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(get_rel_relkind(relId)),
 					   relation->relname);
 

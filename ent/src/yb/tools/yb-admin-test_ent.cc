@@ -13,6 +13,8 @@
 
 // Tests for the EE yb-admin command-line tool.
 
+#include <gflags/gflags.h>
+
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
@@ -35,6 +37,7 @@
 
 #include "yb/util/date_time.h"
 #include "yb/util/env_util.h"
+#include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
@@ -42,6 +45,10 @@
 
 DECLARE_string(certs_dir);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
+DECLARE_int64(rpc_throttle_threshold_bytes);
+DECLARE_bool(parallelize_bootstrap_producer);
+DECLARE_bool(check_bootstrap_required);
 
 namespace yb {
 namespace tools {
@@ -651,18 +658,23 @@ TEST_F(AdminCliTest, TestFailedRestoration) {
 // Configures two clusters with clients for the producer and consumer side of xcluster replication.
 class XClusterAdminCliTest : public AdminCliTest {
  public:
+  virtual int num_tablet_servers() {
+    return 3;
+  }
+
   void SetUp() override {
     // Setup the default cluster as the consumer cluster.
     AdminCliTest::SetUp();
     // Only create a table on the consumer, producer table may differ in tests.
     CreateTable(Transactional::kTrue);
+    FLAGS_check_bootstrap_required = false;
 
     // Create the producer cluster.
-    opts.num_tablet_servers = 3;
+    opts.num_tablet_servers = num_tablet_servers();
     opts.cluster_id = kProducerClusterId;
     producer_cluster_ = std::make_unique<MiniCluster>(opts);
     ASSERT_OK(producer_cluster_->StartSync());
-    ASSERT_OK(producer_cluster_->WaitForTabletServerCount(3));
+    ASSERT_OK(producer_cluster_->WaitForTabletServerCount(num_tablet_servers()));
     producer_cluster_client_ = ASSERT_RESULT(producer_cluster_->CreateClient());
   }
 
@@ -1104,7 +1116,6 @@ TEST_F(XClusterAdminCliTest, TestRenameUniverseReplication) {
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", collision_id));
 }
 
-
 class XClusterAlterUniverseAdminCliTest : public XClusterAdminCliTest {
  public:
   void SetUp() override {
@@ -1320,6 +1331,79 @@ TEST_F(XClusterAdminCliTest, TestFailedSetupUniverseWithDeletion) {
                                 producer_cluster_->GetMasterAddresses(),
                                 producer_cluster_table->id()));
   std::this_thread::sleep_for(5s);
+}
+
+class XClusterAdminCliTest_Large : public XClusterAdminCliTest {
+ public:
+  int num_tablet_servers() override {
+    return 5;
+  }
+};
+
+TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
+  // Skip this test in TSAN since the test will time out waiting
+  // for table creation to finish.
+  YB_SKIP_TEST_IN_TSAN();
+
+  const int table_count = 10;
+  const int tablet_count = 5;
+  const int expected_runtime_seconds = 15 * kTimeMultiplier;
+  const std::string keyspace = "my_keyspace";
+  std::vector<client::TableHandle> tables;
+
+  for (int i = 0; i < table_count; i++) {
+    client::TableHandle th;
+    tables.push_back(th);
+
+    // Build the table.
+    client::YBSchemaBuilder builder;
+    builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
+    builder.AddColumn(kValueColumn)->Type(INT32);
+
+    TableProperties table_properties;
+    table_properties.SetTransactional(true);
+    builder.SetTableProperties(table_properties);
+
+    const YBTableName table_name(YQL_DATABASE_CQL, keyspace,
+      Format("bootstrap_producer_performance_test_table_$0", i));
+    ASSERT_OK(producer_cluster_client_.get()->CreateNamespaceIfNotExists(
+      table_name.namespace_name(),
+      table_name.namespace_type()));
+
+    ASSERT_OK(tables.at(i).Create(
+      table_name, tablet_count, producer_cluster_client_.get(), &builder));
+  }
+
+  std::string table_ids = tables.at(0)->id();
+  for (size_t i = 1; i < tables.size(); ++i) {
+    table_ids += "," + tables.at(i)->id();
+  }
+
+  // Wait for load balancer to be idle until we call bootstrap_cdc_producer.
+  // This prevents TABLET_DATA_TOMBSTONED errors when we make rpc calls.
+  // Todo: need to improve bootstrap behaviour with load balancer.
+  ASSERT_OK(WaitFor(
+    [this, table_ids]() -> Result<bool> {
+      return producer_cluster_client_->IsLoadBalancerIdle();
+    },
+    MonoDelta::FromSeconds(120 * kTimeMultiplier),
+    "Waiting for load balancer to be idle"));
+
+  // Add delays to all rpc calls to simulate live environment.
+  FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = 5;
+  FLAGS_rpc_throttle_threshold_bytes = 0;
+  // Enable parallelized version of BootstrapProducer.
+  FLAGS_parallelize_bootstrap_producer = true;
+
+  // Check that bootstrap_cdc_producer returns within time limit.
+  ASSERT_OK(WaitFor(
+    [this, table_ids]() -> Result<bool> {
+      auto res = RunAdminToolCommand(producer_cluster_.get(),
+        "bootstrap_cdc_producer", table_ids);
+      return res.ok();
+    },
+    MonoDelta::FromSeconds(expected_runtime_seconds),
+    "Waiting for bootstrap_cdc_producer to complete"));
 }
 
 }  // namespace tools

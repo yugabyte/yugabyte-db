@@ -13,8 +13,7 @@
 
 #include "yb/tserver/pg_client_service.h"
 
-#include <shared_mutex>
-
+#include <mutex>
 #include <queue>
 
 #include <boost/multi_index/hashed_index.hpp>
@@ -66,6 +65,44 @@ void Respond(const Status& status, Resp* resp, rpc::RpcContext* context) {
   }
   context->RespondSuccess();
 }
+
+template<class T>
+class Locker;
+
+template<class T>
+class Lockable : public T {
+ public:
+  template <class... Args>
+  explicit Lockable(Args&&... args)
+      : T(std::forward<Args>(args)...) {
+  }
+
+ private:
+  friend class Locker<T>;
+  std::mutex mutex_;
+};
+
+template<class T>
+class Locker {
+ public:
+  using LockablePtr = std::shared_ptr<Lockable<T>>;
+
+  explicit Locker(const LockablePtr& lockable)
+      : lockable_(lockable), lock_(lockable->mutex_) {
+  }
+
+  T* operator->() const {
+    return lockable_.get();
+  }
+
+ private:
+  LockablePtr lockable_;
+  std::unique_lock<std::mutex> lock_;
+};
+
+using LockablePgClientSession = Lockable<PgClientSession>;
+using PgClientSessionLocker = Locker<PgClientSession>;
+using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
 
 } // namespace
 
@@ -147,7 +184,7 @@ class PgClientServiceImpl::Impl {
     }
 
     auto session_id = ++session_serial_no_;
-    auto session = std::make_shared<PgClientSession>(
+    auto session = std::make_shared<LockablePgClientSession>(
             &client(), clock_, transaction_pool_provider_, &table_cache_, session_id);
     resp->set_session_id(session_id);
 
@@ -268,6 +305,13 @@ class PgClientServiceImpl::Impl {
       pb->mutable_cloud_info()->set_placement_region(block.region());
       pb->mutable_cloud_info()->set_placement_zone(block.zone());
       pb->set_min_num_replicas(block.min_num_replicas());
+
+      if (block.leader_preference() == 1) {
+        auto new_ci = replication_info.add_affinitized_leaders();
+        new_ci->set_placement_cloud(block.cloud());
+        new_ci->set_placement_region(block.region());
+        new_ci->set_placement_zone(block.zone());
+      }
     }
     live_replicas->set_num_replicas(req.num_replicas());
 
@@ -300,7 +344,7 @@ class PgClientServiceImpl::Impl {
     return GetSession(req.session_id());
   }
 
-  Result<PgClientSession&> DoGetSession(uint64_t session_id) {
+  Result<LockablePgClientSessionPtr> DoGetSession(uint64_t session_id) {
     SharedLock<rw_spinlock> lock(mutex_);
     DCHECK_NE(session_id, 0);
     auto it = sessions_.find(session_id);
@@ -308,11 +352,11 @@ class PgClientServiceImpl::Impl {
       return STATUS_FORMAT(InvalidArgument, "Unknown session: $0", session_id);
     }
     const_cast<SessionsEntry&>(*it).Touch();
-    return *it->value();
+    return it->value();
   }
 
   Result<PgClientSessionLocker> GetSession(uint64_t session_id) {
-    return PgClientSessionLocker(&VERIFY_RESULT_REF(DoGetSession(session_id)));
+    return PgClientSessionLocker(VERIFY_RESULT(DoGetSession(session_id)));
   }
 
   void ScheduleCheckExpiredSessions(CoarseTimePoint now) REQUIRES(mutex_) {
@@ -363,7 +407,7 @@ class PgClientServiceImpl::Impl {
 
   class ExpirationTag;
 
-  using SessionsEntry = Expirable<std::shared_ptr<PgClientSession>>;
+  using SessionsEntry = Expirable<LockablePgClientSessionPtr>;
   boost::multi_index_container<
       SessionsEntry,
       boost::multi_index::indexed_by<

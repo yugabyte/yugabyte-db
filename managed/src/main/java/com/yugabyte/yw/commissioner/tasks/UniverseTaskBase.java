@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
@@ -13,7 +14,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -76,13 +77,13 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
@@ -102,8 +103,6 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -128,30 +127,14 @@ import play.libs.Json;
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
 
+  enum VersionCheckMode {
+    NEVER,
+    ALWAYS,
+    HA_ONLY
+  }
+
   // Flag to indicate if we have locked the universe.
   private boolean universeLocked = false;
-
-  // This is a map from task classes names to the task types.
-  private static Map<String, TaskType> taskClassnameToTaskTypeMap;
-
-  static {
-    // Initialize the map which holds task class names to their task types.
-    Map<String, TaskType> typeMap = new HashMap<String, TaskType>();
-
-    for (TaskType taskType : TaskType.filteredValues()) {
-      String className = "com.yugabyte.yw.commissioner.tasks." + taskType.toString();
-      try {
-        if (Class.forName(className).asSubclass(ITask.class) != null) {
-          typeMap.put(className, taskType);
-        }
-        log.debug("Found class {} for task type {}", className, taskType);
-      } catch (ClassNotFoundException e) {
-        log.error("Could not find class for task type " + taskType, e);
-      }
-    }
-    taskClassnameToTaskTypeMap = Collections.unmodifiableMap(typeMap);
-    log.debug("Done preparing tasks types map.");
-  }
 
   @Inject
   protected UniverseTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -217,7 +200,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean isForceUpdate,
       boolean isResumeOrDelete,
       Consumer<Universe> callback) {
-    TaskType owner = taskClassnameToTaskTypeMap.get(this.getClass().getCanonicalName());
+    TaskType owner = TaskExecutor.getTaskType(getClass());
     if (owner == null) {
       log.trace("TaskType not found for class " + this.getClass().getCanonicalName());
     }
@@ -861,7 +844,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes set of nodes to be updated.
    * @param nodeState State into which these nodes will be transitioned.
-   * @return
    */
   public SubTaskGroup createSetNodeStateTasks(
       Collection<NodeDetails> nodes, NodeDetails.NodeState nodeState) {
@@ -1071,11 +1053,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Create a task to create a table.
    *
+   * @param tableType type of the table.
    * @param tableName name of the table.
    * @param tableDetails table options and related details.
+   * @param ifNotExist create only if it does not exist.
+   * @return
    */
   public SubTaskGroup createTableTask(
-      TableType tableType, String tableName, TableDetails tableDetails) {
+      TableType tableType, String tableName, TableDetails tableDetails, boolean ifNotExist) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateTable", executor);
     CreateTable task = createTask(CreateTable.class);
     CreateTable.Params params = new CreateTable.Params();
@@ -1083,6 +1068,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.tableType = tableType;
     params.tableName = tableName;
     params.tableDetails = tableDetails;
+    params.ifNotExist = ifNotExist;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1419,7 +1405,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Creates a task list to stop the masters of the cluster and adds it to the task queue.
    *
    * @param nodes set of nodes to be stopped as master
-   * @return
    */
   public SubTaskGroup createStopMasterTasks(Collection<NodeDetails> nodes) {
     return createStopServerTasks(nodes, "master", false);
@@ -1429,7 +1414,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Creates a task list to stop the tservers of the cluster and adds it to the task queue.
    *
    * @param nodes set of nodes to be stopped as master
-   * @return
    */
   public SubTaskGroup createStopServerTasks(
       Collection<NodeDetails> nodes, String serverType, boolean isForceDelete) {
@@ -1595,7 +1579,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.universeUUID = taskParams().universeUUID;
     // Set the blacklist nodes if any are passed in.
     if (blacklistNodes != null && !blacklistNodes.isEmpty()) {
-      Set<String> blacklistNodeNames = new HashSet<String>();
+      Set<String> blacklistNodeNames = new HashSet<>();
       for (NodeDetails node : blacklistNodes) {
         blacklistNodeNames.add(node.nodeName);
       }
@@ -1707,7 +1691,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param addNodes The nodes that have to be added to the blacklist.
    * @param removeNodes The nodes that have to be removed from the blacklist.
    * @param isLeaderBlacklist true if we are leader blacklisting the node
-   * @return
    */
   public SubTaskGroup createModifyBlackListTask(
       Collection<NodeDetails> addNodes,
@@ -1775,9 +1758,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public Optional<Boolean> instanceExists(
       NodeTaskParams taskParams, Map<String, String> expectedTags) {
     NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
-    ShellResponse response = nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams);
-    processShellResponse(response);
-    if (response == null || Strings.isNullOrEmpty(response.message)) {
+    ShellResponse response =
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams).processErrors();
+    if (Strings.isNullOrEmpty(response.message)) {
       // Instance does not exist.
       return Optional.empty();
     }
@@ -1919,7 +1902,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  public void updateBackupState(boolean state) {
+  // Update the Universe's 'backupInProgress' flag to new state.
+  private void updateBackupState(boolean state) {
     UniverseUpdater updater =
         new UniverseUpdater() {
           @Override
@@ -1929,7 +1913,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             universe.setUniverseDetails(universeDetails);
           }
         };
-    saveUniverseDetails(updater);
+    if (state) {
+      // New state is to set backupInProgress to true.
+      // This method increments universe version if HA is enabled.
+      saveUniverseDetails(updater);
+    } else {
+      // New state is to set backupInProgress to false.
+      // This method simply updates the backupInProgress without changing the universe version.
+      // This is called at the end of backup to release the universe for other tasks.
+      Universe.saveDetails(taskParams().universeUUID, updater, false);
+    }
+  }
+
+  // Update the Universe's 'backupInProgress' flag to new state.
+  // It throws exception if the universe is already being locked by another task.
+  public void lockedUpdateBackupState(boolean newState) {
+    checkNotNull(taskParams().universeUUID, "Universe UUID must be set.");
+    if (Universe.getOrBadRequest(taskParams().universeUUID).getUniverseDetails().backupInProgress
+        == newState) {
+      if (newState) {
+        throw new IllegalStateException("A backup for this universe is already in progress.");
+      } else {
+        return;
+      }
+    }
+    updateBackupState(newState);
   }
 
   /**
@@ -1941,7 +1949,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected boolean shouldIncrementVersion() {
 
-    if (!HighAvailabilityConfig.get().isPresent()) {
+    final VersionCheckMode mode =
+        runtimeConfigFactory
+            .forUniverse(getUniverse())
+            .getEnum(VersionCheckMode.class, "yb.universe_version_check_mode");
+    if (mode == VersionCheckMode.NEVER) {
+      return false;
+    }
+
+    if (mode == VersionCheckMode.HA_ONLY && !HighAvailabilityConfig.get().isPresent()) {
       return false;
     }
 
@@ -2021,9 +2037,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *     this case for now. When we get to a point where manual yb-admin operations are never
    *     needed, we can consider flagging this case. For now, we will let the universe version on
    *     Platform and the cluster config version on the master diverge.
+   * @param mode
    */
-  private static void checkUniverseVersion(UUID universeUUID) {
-    if (!HighAvailabilityConfig.get().isPresent()) {
+  private static void checkUniverseVersion(UUID universeUUID, VersionCheckMode mode) {
+    if (mode == VersionCheckMode.NEVER) {
+      return;
+    }
+
+    if (mode == VersionCheckMode.HA_ONLY && !HighAvailabilityConfig.get().isPresent()) {
       log.debug("Skipping cluster config version check for universe {}", universeUUID);
       return;
     }
@@ -2034,7 +2055,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void checkUniverseVersion() {
-    UniverseTaskBase.checkUniverseVersion(taskParams().universeUUID);
+    UniverseTaskBase.checkUniverseVersion(
+        taskParams().universeUUID,
+        runtimeConfigFactory
+            .forUniverse(getUniverse())
+            .getEnum(VersionCheckMode.class, "yb.universe_version_check_mode"));
   }
 
   /** Increment the cluster config version */

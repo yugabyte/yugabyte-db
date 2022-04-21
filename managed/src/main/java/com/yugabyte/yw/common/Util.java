@@ -7,6 +7,7 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -605,20 +606,6 @@ public class Util {
     return formatter.format(new Date(unixTimestampMs));
   }
 
-  // Update the Universe's 'backupInProgress' flag to new state in synchronized manner to avoid
-  // race condition.
-  public static synchronized void lockedUpdateBackupState(
-      UUID universeUUID, UniverseTaskBase backupTask, boolean newState) {
-    if (Universe.getOrBadRequest(universeUUID).getUniverseDetails().backupInProgress == newState) {
-      if (newState) {
-        throw new RuntimeException("A backup for this universe is already in progress.");
-      } else {
-        return;
-      }
-    }
-    backupTask.updateBackupState(newState);
-  }
-
   public static String getHostname() {
     try {
       return InetAddress.getLocalHost().getHostName();
@@ -696,5 +683,14 @@ public class Util {
       LOG.warn("Name {} is longer than {}, truncated to {}.", name, firstPartLength, sanitizedName);
     }
     return String.format("%s-%s", sanitizedName, hashString(name));
+  }
+
+  public static boolean canConvertJsonNode(JsonNode jsonNode, Class<?> toValueType) {
+    try {
+      new ObjectMapper().treeToValue(jsonNode, toValueType);
+    } catch (JsonProcessingException e) {
+      return false;
+    }
+    return true;
   }
 }

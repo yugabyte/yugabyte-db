@@ -15,7 +15,11 @@ import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedResponse;
 import io.ebean.ExpressionList;
@@ -39,6 +43,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.Random;
+import java.util.Scanner;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -615,5 +621,44 @@ public class CommonUtils {
       rVal += "(" + s.getFileName() + ":" + s.getLineNumber() + ")\n";
     }
     return rVal;
+  }
+
+  public static NodeDetails getARandomLiveTServer(Universe universe) {
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    List<NodeDetails> tserverLiveNodes =
+        universe
+            .getUniverseDetails()
+            .getNodesInCluster(primaryCluster.uuid)
+            .stream()
+            .filter(nodeDetails -> nodeDetails.isTserver)
+            .filter(nodeDetails -> nodeDetails.state == NodeState.Live)
+            .collect(Collectors.toList());
+    if (tserverLiveNodes.isEmpty()) {
+      throw new IllegalStateException(
+          "No live TServers found for Universe UUID: " + universe.universeUUID);
+    }
+    return tserverLiveNodes.get(new Random().nextInt(tserverLiveNodes.size()));
+  }
+
+  /**
+   * This method extracts the json from shell response where the shell executes a SQL Query that
+   * aggregates the response as JSON e.g. select jsonb_agg() The resultant shell output has json
+   * response on line number 3
+   */
+  public static String extractJsonisedSqlResponse(ShellResponse shellResponse) {
+    String data = null;
+    if (shellResponse.message != null && !shellResponse.message.isEmpty()) {
+      Scanner scanner = new Scanner(shellResponse.message);
+      int i = 0;
+      while (scanner.hasNextLine()) {
+        data = new String(scanner.nextLine());
+        if (i++ == 3) {
+          break;
+        }
+      }
+      scanner.close();
+    }
+    return data;
   }
 }

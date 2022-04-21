@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TableDetails;
@@ -34,6 +35,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.YBClient;
@@ -86,28 +88,14 @@ public class CreateTable extends AbstractTaskBase {
     }
     TableDetails tableDetails = taskParams().tableDetails;
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    UniverseDefinitionTaskParams.Cluster primaryCluster =
-        universe.getUniverseDetails().getPrimaryCluster();
 
     String createTableStatement = tableDetails.getPgSqlCreateTableString(taskParams().ifNotExist);
-    List<NodeDetails> tserverLiveNodes =
-        universe
-            .getUniverseDetails()
-            .getNodesInCluster(primaryCluster.uuid)
-            .stream()
-            .filter(nodeDetails -> nodeDetails.isTserver)
-            .filter(nodeDetails -> nodeDetails.state == NodeState.Live)
-            .collect(Collectors.toList());
-    if (tserverLiveNodes.isEmpty()) {
-      throw new IllegalStateException(
-          "No live TServers for a table creation op in " + taskParams().universeUUID);
-    }
+
     boolean tableCreated = false;
-    Random random = new Random();
     int attempt = 0;
     Instant timeout = Instant.now().plusSeconds(MAX_TIMEOUT_SEC);
     while (Instant.now().isBefore(timeout) || attempt < 2) {
-      NodeDetails randomTServer = tserverLiveNodes.get(random.nextInt(tserverLiveNodes.size()));
+      NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
       ShellResponse response =
           nodeUniverseManager.runYsqlCommand(
               randomTServer, universe, tableDetails.keyspace, createTableStatement);
@@ -192,7 +180,7 @@ public class CreateTable extends AbstractTaskBase {
       if (StringUtils.isEmpty(taskParams().tableName)) {
         taskParams().tableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
       }
-      YBTable table = client.createRedisTable(taskParams().tableName);
+      YBTable table = client.createRedisTable(taskParams().tableName, taskParams().ifNotExist);
       log.info("Created table '{}' of type {}.", table.getName(), table.getTableType());
     } finally {
       ybService.closeClient(client, masterAddresses);

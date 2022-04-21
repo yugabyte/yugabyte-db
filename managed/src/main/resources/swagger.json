@@ -1119,6 +1119,11 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "expiryTimeUnit" : {
+          "description" : "Time unit for backup expiry time",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
         "scheduleUUID" : {
           "description" : "Schedule UUID, if this backup is part of a schedule",
           "format" : "uuid",
@@ -1324,6 +1329,11 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "expiryTimeUnit" : {
+          "description" : "Time unit for backup expiry time",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
@@ -1331,6 +1341,11 @@
         "firstTry" : {
           "description" : "Whether this task has been tried before",
           "type" : "boolean"
+        },
+        "frequencyTimeUnit" : {
+          "description" : "Time unit for user input schedule frequency",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
         },
         "ignoreErrors" : {
           "description" : "Should table backup errors be ignored",
@@ -1626,6 +1641,11 @@
           "description" : "Expected universe version",
           "format" : "int32",
           "type" : "integer"
+        },
+        "expiryTimeUnit" : {
+          "description" : "Time unit for backup expiry time",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
         },
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
@@ -2904,6 +2924,11 @@
     "EditBackupParams" : {
       "description" : "Edit backup parameters",
       "properties" : {
+        "expiryTimeUnit" : {
+          "description" : "Time unit for backup expiry",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
         "storageConfigUUID" : {
           "description" : "New backup Storage config",
           "format" : "uuid",
@@ -2928,6 +2953,11 @@
           "description" : "Frequency of the schedule",
           "format" : "int64",
           "type" : "integer"
+        },
+        "frequencyTimeUnit" : {
+          "description" : "Time Unit for frequency",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
         },
         "status" : {
           "description" : "State of the schedule",
@@ -3432,6 +3462,14 @@
           },
           "type" : "array"
         },
+        "tableUUIDList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
         "tablesList" : {
           "items" : {
             "type" : "string"
@@ -3440,7 +3478,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tablesList" ],
+      "required" : [ "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
       "type" : "object"
     },
     "LogData" : {
@@ -3628,6 +3666,13 @@
           },
           "type" : "array"
         },
+        "metricsWithSettings" : {
+          "description" : "List of metrics with custom settings",
+          "items" : {
+            "$ref" : "#/definitions/MetricSettings"
+          },
+          "type" : "array"
+        },
         "nodeName" : {
           "description" : "Node name",
           "type" : "string"
@@ -3642,7 +3687,28 @@
           "type" : "integer"
         }
       },
-      "required" : [ "metrics", "start" ],
+      "required" : [ "start" ],
+      "type" : "object"
+    },
+    "MetricSettings" : {
+      "description" : "Settings, selected for particular metric",
+      "properties" : {
+        "aggregation" : {
+          "description" : "Way of metrics aggregation over time and across nodes",
+          "enum" : [ "DEFAULT", "MIN", "MAX", "AVG", "SUM" ],
+          "type" : "string"
+        },
+        "metric" : {
+          "description" : "Metric name",
+          "type" : "string"
+        },
+        "splitTopNodes" : {
+          "description" : "Query result for 'top' nodes separately. 0 means aggregate over all nodes",
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "aggregation", "metric", "splitTopNodes" ],
       "type" : "object"
     },
     "MultiTableBackupRequestParams" : {
@@ -3721,6 +3787,11 @@
           "description" : "Expected universe version",
           "format" : "int32",
           "type" : "integer"
+        },
+        "expiryTimeUnit" : {
+          "description" : "Time unit for backup expiry time",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
         },
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
@@ -4332,6 +4403,28 @@
         },
         "uuid" : {
           "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "PlacementBlock" : {
+      "properties" : {
+        "cloud" : {
+          "description" : "Cloud",
+          "type" : "string"
+        },
+        "minNumReplicas" : {
+          "description" : "Minimum replicas",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "region" : {
+          "description" : "Region",
+          "type" : "string"
+        },
+        "zone" : {
+          "description" : "Zone",
           "type" : "string"
         }
       },
@@ -5067,9 +5160,14 @@
           "type" : "integer"
         },
         "frequency" : {
-          "description" : "Frequency of the schedule, in minutes",
+          "description" : "Frequency of the schedule, in milli seconds",
           "format" : "int64",
           "type" : "integer"
+        },
+        "frequencyTimeUnit" : {
+          "description" : "Time unit of frequency",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
         },
         "runningState" : {
           "description" : "Running state of the schedule",
@@ -5809,6 +5907,28 @@
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "TableSpaceInfo" : {
+      "description" : "Tablespace information response",
+      "properties" : {
+        "name" : {
+          "description" : "Tablespace Name",
+          "type" : "string"
+        },
+        "numReplicas" : {
+          "description" : "numReplicas",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "placementBlocks" : {
+          "description" : "placements",
+          "items" : {
+            "$ref" : "#/definitions/PlacementBlock"
+          },
+          "type" : "array"
         }
       },
       "type" : "object"
@@ -13125,6 +13245,41 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Create a single-table backup",
+        "tags" : [ "Table management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/tablespaces" : {
+      "get" : {
+        "description" : "Get a list of all tablespaces of a given universe",
+        "operationId" : "getAllTableSpaces",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/TableSpaceInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all tablespaces",
         "tags" : [ "Table management" ]
       }
     },

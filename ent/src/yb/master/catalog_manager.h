@@ -16,6 +16,7 @@
 #include "../../../../src/yb/master/catalog_manager.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/snapshot_coordinator_context.h"
+#include "yb/cdc/cdc_service.proxy.h"
 
 namespace yb {
 
@@ -401,6 +402,17 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Maps producer universe id to the corresponding cdc stream for that table.
   typedef std::unordered_map<std::string, CDCStreamId> XClusterConsumerTableStreamInfoMap;
+
+  std::shared_ptr<cdc::CDCServiceProxy> GetCDCServiceProxy(
+      client::internal::RemoteTabletServer* ts);
+
+  Result<client::internal::RemoteTabletServer*> GetLeaderTServer(
+      client::internal::RemoteTabletPtr tablet);
+
+  CHECKED_STATUS IsBootstrapRequired(scoped_refptr<UniverseReplicationInfo> universe,
+                                     const TableId& producer_table,
+                                     const std::unordered_map<TableId, std::string>&
+                                     table_bootstrap_ids);
 
   // Gets the set of CDC stream info for an xCluster consumer table.
   XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTable(const TableId& table_id)

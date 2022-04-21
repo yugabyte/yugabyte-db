@@ -260,8 +260,6 @@ class ClusterLoadBalancer {
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
-  virtual void GetAllAffinitizedZones(AffinitizedZonesSet* affinitized_zones) const;
-
   // Go through sorted_load_ and figure out which tablet to rebalance and from which TS that is
   // serving it to which other TS.
   //
@@ -319,8 +317,12 @@ class ClusterLoadBalancer {
   Result<TabletInfos> GetTabletsForTable(const TableId& table_uuid) const
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
-  // Populates pb with the placement info in tablet's config at cluster placement_uuid_.
-  Status PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb);
+  // Populates pb with the replication_info in tablet's config at cluster placement_uuid_.
+  Status PopulateReplicationInfo(
+      const scoped_refptr<TableInfo>& table, const ReplicationInfoPB& replication_info);
+
+  virtual void GetAllAffinitizedZones(
+      const ReplicationInfoPB& replication_info, AffinitizedZonesSet* affinitized_zones) const;
 
   // Returns the read only placement info from placement_uuid_.
   const PlacementInfoPB& GetReadOnlyPlacementFromUuid(
@@ -402,7 +404,8 @@ class ClusterLoadBalancer {
   bool can_perform_global_operations_ = false;
 
   // Record load balancer activity for tables and tservers.
-  void RecordActivity(uint32_t master_errors) REQUIRES_SHARED(catalog_manager_->mutex_);
+  void RecordActivity(bool tasks_added_in_this_run, uint32_t master_errors)
+      REQUIRES_SHARED(catalog_manager_->mutex_);
 
   typedef rw_spinlock LockType;
   mutable LockType mutex_;

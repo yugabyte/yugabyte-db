@@ -97,7 +97,41 @@ To create a new partition that contains only the rows that don't match the speci
 CREATE TABLE order_changes_default PARTITION OF order_changes DEFAULT;
 ```
 
-Optionally, you can create an index on the key columns and other indexes for every partition, as follows:
+Optionally, you can create indexes on a partitioned table as follows:
+
+```sql
+yugabyte=# CREATE INDEX ON order_changes (change_date);
+```
+
+This automatically creates indexes on each partition, as demonstrated by the following output:
+
+```output
+yugabyte=# \d order_changes_2019_02
+        Table "public.order_changes_2019_02"
+   Column    | Type | Collation | Nullable | Default
+-------------+------+-----------+----------+---------
+ change_date | date |           |          |
+ type        | text |           |          |
+ description | text |           |          |
+Partition of: order_changes FOR VALUES FROM ('2019-02-01') TO ('2019-03-01')
+Indexes:
+    "order_changes_2019_02_change_date_idx" lsm (change_date HASH)
+
+...
+
+yugabyte=# \d order_changes_2021_01
+        Table "public.order_changes_2021_01"
+   Column    | Type | Collation | Nullable | Default
+-------------+------+-----------+----------+---------
+ change_date | date |           |          |
+ type        | text |           |          |
+ description | text |           |          |
+Partition of: order_changes FOR VALUES FROM ('2021-01-01') TO ('2021-02-01')
+Indexes:
+    "order_changes_2021_01_change_date_idx" lsm (change_date HASH)
+```
+
+Otherwise, you can create an index on the key columns and other indexes for every partition, as follows:
 
 ```sql
 CREATE INDEX ON order_changes_2019_02 (change_date);
@@ -107,6 +141,8 @@ CREATE INDEX ON order_changes_2020_11 (change_date);
 CREATE INDEX ON order_changes_2020_12 (change_date);
 CREATE INDEX ON order_changes_2021_01 (change_date);
 ```
+
+For the implications of creating an index on a partitioned table as opposed to creating indexes separately on each partition, see [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/).
 
 Partitioning is a flexible technique that allows you to remove old partitions and add new partitions for new data when required. You do this by changing the partition structure instead of the actual data.
 
@@ -125,46 +161,33 @@ CREATE TABLE order_changes_2021_02 PARTITION OF order_changes
 
 Note the following:
 
-- The primary key for a partitioned table should always contain the partition key. In the current release of YugabyteDB, it is recommended to set the primary key directly on partitions.
+- The primary key for a partitioned table should always contain the partition key.
 - If you choose to define row triggers, you do so on individual partitions instead of the partitioned table.
-- A partition table does not inherit tablespaces from its parent. A partition table by default is placed according to cluster configuration.
+- Creating a foreign key reference on a partitioned table is not supported.
+- A partition table inherits tablespaces from its parent.
 - You cannot mix temporary and permanent relations in the same partition hierarchy.
 - If you have a default partition in the partitioning hierarchy, you can add new partitions only if there is no data in the default partition that matches the partition constraint of the new partition.
 
-## Partition Pruning
+## Partition pruning and constraint exclusion
 
-YSQL allows you to optimize queries ran on partitioned tables by eliminating (pruning) partitions that are no longer needed.
-
-The following example shows a query that scans every partition of the `order_changes` table:
+Partition pruning and constraint exclusion are optimization techniques that allow the query planner to exclude unnecessary partitions from the execution. For example, consider the following query:
 
 ```sql
 SELECT count(*) FROM order_changes WHERE change_date >= DATE '2020-01-01';
 ```
 
-If you enable partition pruning on the preceding query by setting `enable_partition_pruning` to `on` (default), as shown in the following example, the query planner examines the definition of each partition and proves that the partition does not require scanning because it cannot contain data to satisfy the condition in the `WHERE` clause. This excludes the partition from the query plan.
+If the `order_changes` table is partitioned by `change_date`, there is a big chance that only a subset of partitions needs to be queried. When enabled, both partition pruning and constraint exclusion can provide significant performance improvements for such queries by filtering out partitions that do not satisfy the criteria.
+
+Even though partition pruning and constraint exclusion target the same goal, the underlying mechanisms are different. Specifically, constraint exclusion is applied during query planning, and therefore only works if the `WHERE` clause contains constants or externally supplied parameters. For example, a comparison against a non-immutable function such as `CURRENT_TIMESTAMP` cannot be optimized, since the planner cannot know which child table the function's value might fall into at run time. On the other hand, partition pruning is applied during query execution, and therefore can be more flexible. However, it is only used for `SELECT` queries. Updates can only benefit from constraint exclusion.
+
+Both optimizations are enabled by default, which is the recommended setting for the majority of cases. However, if you know for certain that one of your queries will have to scan all the partitions, you can consider disabling the optimizations for that query:
 
 ```sql
-SET enable_partition_pruning = on;
-SELECT count(*) FROM order_changes WHERE change_date >= DATE '2020-01-01';
+SET enable_partition_pruning = off;
+SET constraint_exclusion = off;
+SELECT count(*) FROM order_changes WHERE change_date >= DATE '2019-01-01';
 ```
 
-To disable partition pruning, set `enable_partition_pruning` to `off`.
+To re-enable partition pruning, set the `enable_partition_pruning` setting to `on`.
 
-## Constraint Exclusion
-
-You can improve performance of partitioned tables by using a query optimization technique called constraint exclusion, as follows:
-
-```sql
-SET constraint_exclusion = on;
-SELECT count(*) FROM order_changes WHERE change_date >= DATE '2021-01-01';
-```
-
-If you do not apply constraint exclusion, the preceding query would scan every partition of the `order_changes` table. If you add constraint exclusion, the query planner examines the constraints of each partition and attempts to prove that the partition does not require scanning because it cannot contain rows that meet the `WHERE` clause. If proven, the planner removes the partition from the query plan.
-
-`constraint_exclusion` is not enabled (set to `on`) nor disabled (set to `off`) by default; instead, it is set to `partition`, therefore making constraint exclusion applied to queries that are executed on partitioned tables. When constraint exclusion is enabled, the planner examines `CHECK` constraints in all queries regardless of their complexity.
-
-Note the following:
-
-- You should only apply constraint exclusion to queries whose `WHERE` clause contains constants.
-- For the query planner to be able to prove that partitions do not require visits, partitioning constraints need to be relatively simple.
-- Since every constraint on every partition of the partitioned table is examined during constraint exclusion, having a lot of partitions significantly increases query planning time.
+For constraint exclusion, the recommended (and default) setting is neither `off` nor `on`, but rather an intermediate value `partition`, which means that it’s applied only to queries that are executed on partitioned tables.

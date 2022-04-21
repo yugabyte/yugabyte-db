@@ -171,12 +171,6 @@ ONE_SHOT_TESTS = set([
 
 HASH_COMMENT_RE = re.compile('#.*$')
 
-# Number of failures of any particular task before giving up on the job. The total number of
-# failures spread across different tasks will not cause the job to fail; a particular task has to
-# fail this number of attempts. Should be greater than or equal to 1. Number of allowed retries =
-# this value - 1.
-SPARK_TASK_MAX_FAILURES = 100
-
 # Global variables. Some of these are used on the remote worker side.
 verbose = False
 g_spark_master_url_override = None
@@ -239,7 +233,6 @@ def init_spark_context(details: List[str] = []) -> None:
     global_conf = yb_dist_tests.get_global_conf()
     build_type = global_conf.build_type
     from pyspark import SparkContext  # type: ignore
-    SparkContext.setSystemProperty('spark.task.maxFailures', str(SPARK_TASK_MAX_FAILURES))
 
     spark_master_url = g_spark_master_url_override
     if spark_master_url is None:

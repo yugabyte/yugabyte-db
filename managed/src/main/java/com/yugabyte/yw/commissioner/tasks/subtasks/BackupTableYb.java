@@ -19,7 +19,6 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
@@ -53,8 +52,7 @@ public class BackupTableYb extends AbstractTaskBase {
         int backupIdx = 0;
         for (BackupTableParams backupParams : taskParams().backupList) {
           backupParams.backupUuid = taskParams().backupUuid;
-          ShellResponse response = tableManagerYb.createBackup(backupParams);
-          processShellResponse(response);
+          ShellResponse response = tableManagerYb.createBackup(backupParams).processErrors();
           JsonNode jsonNode = null;
           try {
             jsonNode = Json.parse(response.message);

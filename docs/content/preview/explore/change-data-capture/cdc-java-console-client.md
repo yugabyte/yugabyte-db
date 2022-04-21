@@ -17,7 +17,7 @@ The Java console client for CDC prints CDC changes to the console. This client i
 
 ## Set up YugabyteDB
 
-This can be done either locally using yugabyted or via Yugabyte Cloud. Refer to the [Quick Start](../../../quick-start/) guide to learn more.
+This can be done either locally using yugabyted or via YugabyteDB Managed. Refer to the [Quick Start](../../../quick-start/) guide to learn more.
 
 1. If you're testing locally, create a cluster using `yugabyted`.
 

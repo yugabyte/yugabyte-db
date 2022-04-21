@@ -5,7 +5,7 @@ linkTitle: Manage deployments
 description: Manage YugabyteDB universe deployments
 image: /images/section_icons/quick_start/sample_apps.png
 type: page
-section: YUGABYTE PLATFORM
+section: YUGABYTEDB ANYWHERE
 menu:
   preview:
     identifier: manage-deployments
@@ -14,11 +14,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Platform can create a YugabyteDB universe with many instances (virtual machines, pods, machines, and so on, provided by IaaS), logically grouped together to form one distributed database. Each universe includes one primary cluster and, optionally, any number of replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
+YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtual machines, pods, machines, and so on, provided by IaaS), logically grouped together to form one distributed database. Each universe includes one primary cluster and, optionally, any number of replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
 
 <div class="row">
-
 <!--
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="view-all-universes/">
       <div class="head">
@@ -26,7 +26,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (virtual 
         <div class="title">View all universes</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to view all YugabyteDB universes.
+        Use YugabyteDB Anywhere to view all YugabyteDB universes.
       </div>
     </a>
   </div>
@@ -38,7 +38,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (virtual 
         <div class="title">View universe details</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to view details about a universe.
+        Use YugabyteDB Anywhere to view details about a universe.
       </div>
     </a>
   </div>
@@ -87,7 +87,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (virtual 
         <div class="title">Enable high availability</div>
       </div>
       <div class="body">
-        Enable Yugabyte Platform's high-availability features.
+        Enable YugabyteDB Anywhere's high-availability features.
       </div>
     </a>
   </div>
@@ -111,7 +111,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (virtual 
         <div class="title">Edit a universe</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to edit a universe.
+        Use YugabyteDB Anywhere to edit a universe.
       </div>
     </a>
   </div>
@@ -135,7 +135,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (virtual 
         <div class="title">Configure instance tags</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to create and edit instance tags.
+        Use YugabyteDB Anywhere to create and edit instance tags.
       </div>
     </a>
   </div>

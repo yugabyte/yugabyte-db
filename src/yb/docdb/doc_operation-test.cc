@@ -821,8 +821,8 @@ class DocOperationScanTest : public DocOperationTest {
       ASSERT_OK(FlushRocksDbAndWait());
     }
 
-    DumpRocksDBToLog(rocksdb(), StorageDbType::kRegular);
-    DumpRocksDBToLog(intents_db(), StorageDbType::kIntents);
+    DumpRocksDBToLog(rocksdb(), docdb::SchemaPackingStorage(), StorageDbType::kRegular);
+    DumpRocksDBToLog(intents_db(), docdb::SchemaPackingStorage(), StorageDbType::kIntents);
   }
 
   void PerformScans(const bool is_forward_scan,

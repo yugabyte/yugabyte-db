@@ -55,9 +55,9 @@ Defining the `CONSTRAINT` clause and naming the foreign key is optional. If you 
 
 ## Examples
 
-- To run the examples below, follow these steps to create a local [cluster](/preview/quick-start/) or in [Yugabyte Cloud](/preview/yugabyte-cloud/cloud-connect/).
+- To run the examples below, follow these steps to create a local [cluster](/preview/quick-start/) or in [YugabyteDB Managed](/preview/yugabyte-cloud/cloud-connect/).
 
-- Use the [YSQL shell](/preview/admin/ysqlsh/) for local clusters, or [Connect using Cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, to create a database.
+- Use the [YSQL shell](/preview/admin/ysqlsh/) for local clusters, or [Connect using cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed, to create a database.
 
 The following example creates two tables:
 

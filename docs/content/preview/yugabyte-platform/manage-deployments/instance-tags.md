@@ -2,7 +2,7 @@
 title: Create and edit instance tags
 headerTitle: Create and edit instance tags
 linkTitle: Configure instance tags
-description: Use Yugabyte Platform to create and edit instance tags.
+description: Use YugabyteDB Anywhere to create and edit instance tags.
 aliases:
   - /preview/manage/enterprise-edition/instance-tags/
 menu:
@@ -14,60 +14,43 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The instances created on a cloud provider can be assigned special metadata to help manage, bill or audit the resources. On Amazon Web Services (AWS), they are referred to as
-[instance tags](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html). You can create and edit these on the **Universe** dashboard of the Yugabyte Platform console.
+The instances created on a cloud provider can be assigned special metadata to help manage, bill, or audit the resources.
 
-{{< note title="Note" >}}
+On Amazon Web Services (AWS), they are referred to as
+[instance tags](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html). In the context of YugabyteDB Anywhere, these tags are known as user tags.
 
-The option to set instance tags is currently available only for AWS.
-
-{{< /note >}}
-
-## 1. Create instance tags
-
-During the universe creation step, with an AWS cloud provider, use the Yugabyte Platform console to provide the option to input the instance tags as a map of keys and values as shown below.
+You can define instance tags when you create a new universe, as well as modify or delete tags of an existing universe. These tags are represented by key-value pairs under Instance **Configuration > User Tags** on the **Create Universe** or **Edit Universe** page, as per the following illustration:
 
 ![Create instance tags](/images/ee/inst-tags-1.png)
 
-User can provide these key-value pairs in any order.
+You can define the tags in any order.
 
-### Templated tags
-
-**Name** is the only key that can have `templated` tags, so it can be made of different parts filled in at run-time to determine node and instance names.
+**Name** is the only key that can have `templated` tags, so it can be made of different parts filled in at runtime to determine node and instance names, based on the following guidelines:
 
 - The parts of the template should be enclosed between `${` and `}`.
 - The reserved keywords that can be specified: `universe`, `instance-id`, `zone`, and `region`.
-- Templated tag value needs to have `instance-id` at the minimum.
-- Order of the parts of template do not matter.
+- Templated tag value must have `instance-id` at the minimum.
+- Order of the parts of template does not matter.
 
-### Check Cloud Provider instances*
-
-Browse to the cloud provider's instances page. In this example, since you are using AWS as the cloud provider, browse to **EC2 -> Running Instances**
-in the correct availability zone and search for instances that have `test-tags` in their name. You should see something as follows in the **Tags** tab of those instances.
+Now open the cloud provider's instances page. The following example uses AWS as the cloud provider, so you need to navigate to **EC2 > Running Instances** in the correct availability zone and search for instances that have `test-tags` in their name. You should see the following under **Tags** of those instances:
 
 ![Instances with tags](/images/ee/inst-tags-aws-1.png)
 
-{{< note title="Note" >}}
-
 `yb-server-type` and `launched-by` are reserved names.
 
-{{< /note >}}
+Now suppose you modified the existing user tags, as per the following illustration:
 
-## 2. Edit instance tags
+![Instances with tags](/images/ee/inst-tags-2.png)
 
-The map of instance tags can be changed using the edit universe operation. You can modify, insert, or delete existing instance tags as shown below:
-
-![Edit instance tags](/images/ee/inst-tags-2.png)
-
-These are changes, compared to the input during the create universe:
+The following changes have been made:
 
 - `Billing` was modified.
 - `MyInfo` was deleted.
 - `NewInfo` was added.
 - `Department` was not changed.
 
-Note that the **Name** key field cannot be edited.
+Note that you cannot change the **Name** key field.
 
-As before, you can confirm on the cloud provider list of instances that the tags have been updated correctly:
+Once again, you can confirm via the cloud provider list of instances that the tags have been updated correctly, as per the following illustration:
 
 ![Edited instances with tags](/images/ee/inst-tags-aws-2.png)

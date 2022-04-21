@@ -30,6 +30,7 @@
 #include "yb/cdc/cdc_service.h"
 
 #include "yb/client/client-internal.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -128,10 +129,21 @@ DEFINE_bool(allow_consecutive_restore, true,
             "Is it allowed to restore to a time before the last restoration was done.");
 TAG_FLAG(allow_consecutive_restore, runtime);
 
+DEFINE_bool(check_bootstrap_required, false,
+            "Is it necessary to check whether bootstrap is required for Universe Replication.");
+
+DEFINE_test_flag(bool, exit_unfinished_deleting, false,
+                 "Whether to exit part way through the deleting universe process.");
+
+DEFINE_test_flag(bool, exit_unfinished_merging, false,
+                 "Whether to exit part way through the merging universe process.");
+
 namespace yb {
 
 using rpc::RpcContext;
 using pb_util::ParseFromSlice;
+using client::internal::RemoteTabletServer;
+using client::internal::RemoteTabletPtr;
 
 namespace master {
 namespace enterprise {
@@ -340,7 +352,9 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       catalog_manager_->universe_replication_map_[ri->id()] = ri;
 
       // Add any failed universes to be cleared
-      if (l->pb.state() == SysUniverseReplicationEntryPB::FAILED) {
+      if (l->pb.state() == SysUniverseReplicationEntryPB::FAILED ||
+          l->pb.state() == SysUniverseReplicationEntryPB::DELETING ||
+          GStringPiece(l->pb.producer_id()).ends_with(".ALTER")) {
         catalog_manager_->universes_to_clear_.push_back(ri->id());
       }
 
@@ -1914,13 +1928,23 @@ Status CatalogManager::RestoreSysCatalog(
   docdb::DocWriteBatch write_batch(
       tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
 
+  // Restore the pg_catalog tables.
   if (FLAGS_enable_ysql) {
-    // Restore the pg_catalog tables.
+    // We also need to increment the catalog version by 1 so that
+    // postgres and tservers can refresh their catalog cache.
     const auto* meta = tablet->metadata();
-    const auto& pg_yb_catalog_version_schema =
-        VERIFY_RESULT(meta->GetTableInfo(kPgYbCatalogVersionTableId))->schema();
+    auto pg_yb_catalog_meta_result = meta->GetTableInfo(kPgYbCatalogVersionTableId);
+    std::shared_ptr<yb::tablet::TableInfo> pg_yb_catalog_meta = nullptr;
+    // If the catalog version table is not found then this is a cluster upgraded from < 2.4, so
+    // we need to use the SysYSQLCatalogConfigEntryPB. All other errors are fatal.
+    if (!pg_yb_catalog_meta_result.ok() && !pg_yb_catalog_meta_result.status().IsNotFound()) {
+      return pg_yb_catalog_meta_result.status();
+    } else if (pg_yb_catalog_meta_result.ok()) {
+      pg_yb_catalog_meta = *pg_yb_catalog_meta_result;
+    }
+    // Pass an empty schema to indicate that this is older version cluster.
     auto status = state.ProcessPgCatalogRestores(
-        pg_yb_catalog_version_schema, doc_db, tablet->doc_db(), &write_batch);
+        pg_yb_catalog_meta.get(), doc_db, tablet->doc_db(), &write_batch, doc_read_context());
 
     // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
     // status in case of validation failures so that it gets propagated back to the client before
@@ -2693,7 +2717,8 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
             req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
         session->Apply(op);
       }
-      RETURN_NOT_OK(session->Flush());
+      // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+      RETURN_NOT_OK(session->TEST_Flush());
     }
   } else {
     // Update and add table_id.
@@ -2882,7 +2907,8 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
     }
   }
   // Flush all the delete operations.
-  s = session->Flush();
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  s = session->TEST_Flush();
   if (!s.ok()) {
     LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
     return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
@@ -2977,6 +3003,7 @@ Status CatalogManager::GetCDCStream(const GetCDCStreamRequestPB* req,
     if (option.has_key() && option.key() == cdc::kIdType)
       id_type_option_value = option.value();
   }
+
   if (id_type_option_value == cdc::kNamespaceId) {
     stream_info->set_namespace_id(stream_lock->namespace_id());
   }
@@ -3045,7 +3072,8 @@ Status CatalogManager::ListCDCStreams(const ListCDCStreamsRequestPB* req,
       continue;
     }
 
-    if (filter_table && !entry.second->table_id().empty() &&
+    if (filter_table &&
+        entry.second->table_id().size() > 0 &&
         table->id() != entry.second->table_id().Get(0)) {
       continue; // Skip deleting/deleted streams and streams from other tables.
     }
@@ -3401,6 +3429,69 @@ Status CatalogManager::ValidateTableSchema(
   return Status::OK();
 }
 
+Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
+    client::internal::RemoteTabletPtr tablet) {
+  auto ts = tablet->LeaderTServer();
+  if (ts == nullptr) {
+    return STATUS(NotFound, "Tablet leader not found for tablet", tablet->tablet_id());
+  }
+  return ts;
+}
+
+Status CatalogManager::IsBootstrapRequired(scoped_refptr<UniverseReplicationInfo> universe,
+                                           const TableId& producer_table,
+                                           const std::unordered_map<TableId, std::string>&
+                                           table_bootstrap_ids) {
+  if (!FLAGS_check_bootstrap_required) {
+    return Status::OK();
+  }
+  {
+    auto lock = universe->LockForRead();
+    auto master_addresses = lock->pb.producer_master_addresses();
+    auto cdc_rpc = VERIFY_RESULT(universe->GetOrCreateCDCRpcTasks(master_addresses));
+
+    std::string bootstrap_id = (table_bootstrap_ids.count(producer_table) > 0) ?
+      table_bootstrap_ids.at(producer_table) : std::string();
+
+    auto ybclient = cdc_rpc->client();
+    auto table = VERIFY_RESULT(ybclient->OpenTable(producer_table));
+
+    auto future = ybclient->LookupAllTabletsFuture(table,
+        CoarseMonoClock::Now() + MonoDelta::FromSeconds(30));
+
+    auto tablets = VERIFY_RESULT(future.get());
+    std::unordered_map<RemoteTabletServer*,
+                      std::list<RemoteTabletPtr>> ts_to_tablet;
+
+    for (auto& tablet : tablets) {
+      auto ts = VERIFY_RESULT(GetLeaderTServer(tablet));
+      ts_to_tablet[ts].push_back(tablet);
+    }
+
+    for (auto& pair : ts_to_tablet) {
+      auto cdc_service = GetCDCServiceProxy(pair.first);
+
+      cdc::IsBootstrapRequiredRequestPB req;
+      cdc::IsBootstrapRequiredResponsePB resp;
+      if (!bootstrap_id.empty()) req.set_stream_id(bootstrap_id);
+      for (auto& tablet : pair.second) {
+        req.add_tablet_ids(tablet->tablet_id());
+      }
+      rpc::RpcController rpc;
+
+      // TO DO: Make this call Async to allow for parallelization
+      RETURN_NOT_OK(cdc_service->IsBootstrapRequired(req, &resp, &rpc));
+      if (resp.has_error() || resp.bootstrap_required()) {
+        return STATUS(InternalError, Substitute(
+          "Error Missing Data in Logs. Bootstrap is required for producer $0",
+          universe->id()));
+      }
+    }
+  }
+  return Status::OK();
+}
+
+
 Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
       scoped_refptr<UniverseReplicationInfo> universe,
       const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
@@ -3512,6 +3603,13 @@ void CatalogManager::GetTableSchemaCallback(
     LOG(ERROR) << "Found error while validating table schema for table " << info->table_id
                << ": " << status;
     return;
+  }
+
+  status = IsBootstrapRequired(universe, info->table_id, table_bootstrap_ids);
+  if (!status.ok()) {
+    MarkUniverseReplicationFailed(universe, s);
+    LOG(ERROR) << "Found error while checking if bootstrap is required for table " << info->table_id
+               << ": " << status;
   }
 
   status = AddValidatedTableAndCreateCdcStreams(universe,
@@ -3638,7 +3736,14 @@ void CatalogManager::GetTablegroupSchemaCallback(
     return;
   }
 
-  Status status = AddValidatedTableAndCreateCdcStreams(universe,
+  Status status = IsBootstrapRequired(universe, producer_tablegroup_id, table_bootstrap_ids);
+  if (!status.ok()) {
+    MarkUniverseReplicationFailed(universe, s);
+    LOG(ERROR) << "Found error while checking if bootstrap is required for table "
+               << producer_tablegroup_id << ": " << status;
+  }
+
+  status = AddValidatedTableAndCreateCdcStreams(universe,
                                                        table_bootstrap_ids,
                                                        producer_tablegroup_id,
                                                        consumer_tablegroup_id);
@@ -3735,7 +3840,16 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     return;
   }
 
-  Status status = AddValidatedTableAndCreateCdcStreams(universe,
+  Status status = IsBootstrapRequired(universe,
+                                      *producer_parent_table_ids.begin(),
+                                      table_bootstrap_ids);
+  if (!status.ok()) {
+    MarkUniverseReplicationFailed(universe, s);
+    LOG(ERROR) << "Found error while checking if bootstrap is required for table "
+               << *producer_parent_table_ids.begin() << ": " << status;
+  }
+
+  status = AddValidatedTableAndCreateCdcStreams(universe,
                                                        table_bootstrap_ids,
                                                        *producer_parent_table_ids.begin(),
                                                        *consumer_parent_table_ids.begin());
@@ -3963,21 +4077,47 @@ Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
     std::shared_ptr<client::YBSession> session = ybclient->NewSession();
 
     for (const auto& stream : streams) {
+      // First fetch the parent opid.
+      string parent_op_id = OpId(0, 0).ToString();
+
+      const auto read_op = cdc_table.NewReadOp();
+      auto* const read_req = read_op->mutable_request();
+      QLAddStringHashValue(read_req, split_tablet_ids.source);
+
+      auto cond = read_req->mutable_where_expr()->mutable_condition();
+      cond->set_op(QLOperator::QL_OP_AND);
+      QLAddStringCondition(
+          cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream->id());
+      read_req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
+      read_req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
+      cdc_table.AddColumns({master::kCdcCheckpoint}, read_req);
+
+      // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+      RETURN_NOT_OK(session->TEST_ReadSync(read_op));
+      auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
+      if (row_block->row_count() == 1) {
+        parent_op_id = row_block->row(0).column(0).string_value();
+      } else {
+        LOG(WARNING) << "Unable to find op_id in cdc_state table for tablet: "
+            << split_tablet_ids.source << ", stream: " << stream->id();
+      }
+
       for (const auto& child_tablet_id :
            {split_tablet_ids.children.first, split_tablet_ids.children.second}) {
         const auto insert_op = cdc_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
         auto* insert_req = insert_op->mutable_request();
+        auto* const condition = insert_req->mutable_if_expr()->mutable_condition();
+        condition->set_op(QL_OP_NOT_EXISTS);
         QLAddStringHashValue(insert_req, child_tablet_id);
         QLAddStringRangeValue(insert_req, stream->id());
-        // TODO(JHE) set the checkpoint to a different value? OpId of the SPLIT_OP itself perhaps?
-        cdc_table.AddStringColumnValue(insert_req, master::kCdcCheckpoint, OpId().ToString());
-        // TODO(JHE) what to set the time to?
-        // cdc_table.AddTimestampColumnValue(
-        //     insert_req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
+        cdc_table.AddStringColumnValue(insert_req, master::kCdcCheckpoint, parent_op_id);
+        cdc_table.AddTimestampColumnValue(
+            insert_req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
         session->Apply(insert_op);
       }
     }
-    RETURN_NOT_OK(session->Flush());
+    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+    RETURN_NOT_OK(session->TEST_Flush());
   }
 
   return Status::OK();
@@ -4062,10 +4202,15 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
       return;
     }
   }
-  // Merge Cluster Config for TServers.
+
   {
     auto cluster_config = ClusterConfig();
+    // Acquire Locks in order of Original Universe, Cluster Config, New Universe
+    auto original_lock = original_universe->LockForWrite();
+    auto alter_lock = universe->LockForWrite();
     auto cl = cluster_config->LockForWrite();
+
+    // Merge Cluster Config for TServers.
     auto pm = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
     auto original_producer_entry = pm->find(original_universe->id());
     auto alter_producer_entry = pm->find(universe->id());
@@ -4079,13 +4224,8 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
       LOG(WARNING) << "Could not find both universes in Cluster Config: " << universe->id();
     }
     cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
-    const Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config.get());
-    cl.CommitOrWarn(s, "updating cluster config in sys-catalog");
-  }
-  // Merge Master Config on Consumer. (no need for Producer changes, since it uses stream_id)
-  {
-    auto original_lock = original_universe->LockForWrite();
-    auto alter_lock = universe->LockForWrite();
+
+    // Merge Master Config on Consumer. (no need for Producer changes, since it uses stream_id)
     // Merge Table->StreamID mapping.
     auto at = alter_lock.mutable_data()->pb.mutable_tables();
     original_lock.mutable_data()->pb.mutable_tables()->MergeFrom(*at);
@@ -4098,13 +4238,33 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
     av->clear();
     alter_lock.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
 
-    vector<UniverseReplicationInfo*> universes{original_universe.get(), universe.get()};
-    const Status s = sys_catalog_->Upsert(leader_ready_term(), universes);
-    alter_lock.CommitOrWarn(s, "updating universe replication entries in sys-catalog");
-    if (s.ok()) {
-      original_lock.Commit();
+    if (PREDICT_FALSE(FLAGS_TEST_exit_unfinished_merging)) {
+      // Exit for texting services
+      return;
     }
+
+    {
+      // Need both these updates to be atomic.
+      auto w = sys_catalog_->NewWriter(leader_ready_term());
+      auto s = w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
+                         original_universe.get(),
+                         universe.get(),
+                         cluster_config.get());
+      s = CheckStatus(
+          sys_catalog_->SyncWrite(w.get()),
+          "Updating universe replication entries and cluster config in sys-catalog");
+    }
+      alter_lock.Commit();
+      cl.Commit();
+      original_lock.Commit();
   }
+
+  // Add universe to universes_to_clear_
+  {
+    SharedLock lock(mutex_);
+    universes_to_clear_.push_back(universe->id());
+  }
+
   // TODO: universe_replication_map_.erase(universe->id()) at a later time.
   //       TwoDCTest.AlterUniverseReplicationTables crashes due to undiagnosed race right now.
   LOG(INFO) << "Done with Merging " << universe->id() << " into " << original_universe->id();
@@ -4146,6 +4306,18 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
       return STATUS(NotFound, "Universe replication info does not exist",
                     req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
+  }
+
+  {
+    auto l = ri->LockForWrite();
+    l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETING);
+
+    RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
+      sys_catalog_->Upsert(leader_ready_term(), ri),
+      "Updating delete universe replication info into sys-catalog", resp));
+    TRACE("Wrote universe replication info to sys-catalog");
+
+    l.Commit();
   }
 
   auto l = ri->LockForWrite();
@@ -4211,6 +4383,11 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
 
       RETURN_NOT_OK(ReturnErrorOrAddWarning(s, req, resp));
     }
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_exit_unfinished_deleting)) {
+      // Exit for texting services
+      return Status::OK();
   }
 
   // Delete universe in the Universe Config.
@@ -4360,21 +4537,16 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     // 'set_master_addresses'
     // TODO: Verify the input. Setup an RPC Task, ListTables, ensure same.
 
-    // 1a. Persistent Config: Update the Universe Config for Master.
     {
+      // 1a. Persistent Config: Update the Universe Config for Master.
       auto l = original_ri->LockForWrite();
       l.mutable_data()->pb.mutable_producer_master_addresses()->CopyFrom(
           req->producer_master_addresses());
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), original_ri),
-          "updating universe replication info in sys-catalog"));
-      l.Commit();
-    }
-    // 1b. Persistent Config: Update the Consumer Registry (updates TServers)
-    {
+
+      // 1b. Persistent Config: Update the Consumer Registry (updates TServers)
       auto cluster_config = ClusterConfig();
-      auto l = cluster_config->LockForWrite();
-      auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+      auto cl = cluster_config->LockForWrite();
+      auto producer_map = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
       auto it = producer_map->find(req->producer_id());
       if (it == producer_map->end()) {
         LOG(WARNING) << "Valid Producer Universe not in Consumer Registry: " << req->producer_id();
@@ -4382,12 +4554,22 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
                       req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
       }
       (*it).second.mutable_master_addrs()->CopyFrom(req->producer_master_addresses());
-      l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
-          "updating cluster config in sys-catalog"));
+      cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
+
+      {
+        // Need both these updates to be atomic.
+        auto w = sys_catalog_->NewWriter(leader_ready_term());
+        RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
+                                original_ri.get(),
+                                cluster_config.get()));
+        RETURN_NOT_OK(CheckStatus(
+            sys_catalog_->SyncWrite(w.get()),
+            "Updating universe replication info and cluster config in sys-catalog"));
+      }
       l.Commit();
+      cl.Commit();
     }
+
     // 2. Memory Update: Change cdc_rpc_tasks (Master cache)
     {
       auto result = original_ri->GetOrCreateCDCRpcTasks(req->producer_master_addresses());
@@ -4411,9 +4593,13 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     }
 
     vector<CDCStreamId> streams_to_remove;
-    // 1. Update the Consumer Registry (removes from TServers).
+
     {
+      auto l = original_ri->LockForWrite();
       auto cluster_config = ClusterConfig();
+
+      // 1. Update the Consumer Registry (removes from TServers).
+
       auto cl = cluster_config->LockForWrite();
       auto pm = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
       auto producer_entry = pm->find(req->producer_id());
@@ -4442,14 +4628,9 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         }
       }
       cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
-          "updating cluster config in sys-catalog"));
-      cl.Commit();
-    }
-    // 2. Remove from Master Configs on Producer and Consumer.
-    {
-      auto l = original_ri->LockForWrite();
+
+      // 2. Remove from Master Configs on Producer and Consumer.
+
       if (!l->pb.table_streams().empty()) {
         // Delete Relevant Table->StreamID mappings on Consumer.
         auto table_streams = l.mutable_data()->pb.mutable_table_streams();
@@ -4479,10 +4660,20 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
           }
         }
       }
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), original_ri),
-          "updating universe replication info in sys-catalog"));
+
+      {
+        // Need both these updates to be atomic.
+        auto w = sys_catalog_->NewWriter(leader_ready_term());
+        RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
+                                original_ri.get(),
+                                cluster_config.get()));
+        RETURN_NOT_OK(CheckStatus(
+            sys_catalog_->SyncWrite(w.get()),
+            "Updating universe replication info and cluster config in sys-catalog"));
+      }
+
       l.Commit();
+      cl.Commit();
     }
   } else if (req->producer_table_ids_to_add_size() > 0) {
     // 'add_table'
@@ -4948,17 +5139,25 @@ Status CatalogManager::ClearFailedUniverse() {
   universe_req.set_producer_id(universe_id);
 
   RETURN_NOT_OK(GetUniverseReplication(&universe_req, &universe_resp, /* RpcContext */ nullptr));
-  if (universe_resp.entry().state() != SysUniverseReplicationEntryPB::FAILED) {
-    return STATUS(IllegalState, "Universe is not Failed, and cannot be cleared.");
-  }
 
   DeleteUniverseReplicationRequestPB req;
   DeleteUniverseReplicationResponsePB resp;
   req.set_producer_id(universe_id);
+  req.set_ignore_errors(true);
 
   RETURN_NOT_OK(DeleteUniverseReplication(&req, &resp, /* RpcContext */ nullptr));
 
   return Status::OK();
+}
+
+std::shared_ptr<cdc::CDCServiceProxy> CatalogManager::GetCDCServiceProxy(RemoteTabletServer* ts) {
+  auto ybclient = master_->cdc_state_client_initializer().client();
+  auto hostport = HostPortFromPB(ts->DesiredHostPort(ybclient->cloud_info()));
+  DCHECK(!hostport.host().empty());
+
+  auto cdc_service = std::make_shared<cdc::CDCServiceProxy>(&ybclient->proxy_cache(), hostport);
+
+  return cdc_service;
 }
 
 }  // namespace enterprise

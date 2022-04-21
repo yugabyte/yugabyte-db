@@ -522,8 +522,8 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
 
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
-  VLOG(3) << "Looking for collisions in\n"
-          << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
+  VLOG(3) << "Looking for collisions in\n" << docdb::DocDBDebugDumpToStr(
+      data.doc_write_batch->doc_db(), SchemaPackingStorage());
   // We need to check backwards only for backfilled entries.
   bool ret =
       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
@@ -601,8 +601,8 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
                 << "\nExisting: " << yb::ToString(*existing_value)
                 << " vs New: " << yb::ToString(new_value)
                 << "\nUsed read time as " << yb::ToString(data.read_time);
-        DVLOG(3) << "DocDB is now:\n"
-                 << docdb::DocDBDebugDumpToStr(data.doc_write_batch->doc_db());
+        DVLOG(3) << "DocDB is now:\n" << docdb::DocDBDebugDumpToStr(
+            data.doc_write_batch->doc_db(), SchemaPackingStorage());
         return true;
       }
     }

@@ -19,7 +19,7 @@ import {
   fetchAuthConfigList,
   fetchAuthConfigListResponse
 } from '../../../actions/cloud';
-import { getTlsCertificates, getTlsCertificatesResponse } from '../../../actions/customers';
+import { fetchRunTimeConfigs, fetchRunTimeConfigsResponse, getTlsCertificates, getTlsCertificatesResponse } from '../../../actions/customers';
 import {
   rollingUpgrade,
   rollingUpgradeResponse,
@@ -217,7 +217,12 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(getNodeInstancesForProvider(providerUUID)).then((response) => {
         dispatch(getNodesInstancesForProviderResponse(response.payload));
       });
-    }
+    },
+    fetchRunTimeConfigs: () => {
+      return dispatch(fetchRunTimeConfigs('00000000-0000-0000-0000-000000000000',true)).then((response) =>
+        dispatch(fetchRunTimeConfigsResponse(response.payload))
+      );
+    },
   };
 };
 
@@ -380,7 +385,10 @@ function getFormData(currentUniverse, formType, clusterType) {
 
 function mapStateToProps(state, ownProps) {
   const {
-    universe: { currentUniverse }
+    universe: { currentUniverse },
+    customer: {
+      runtimeConfigs
+    }
   } = state;
   let data = {
     formType: 'Create',
@@ -448,6 +456,7 @@ function mapStateToProps(state, ownProps) {
     modal: state.modal,
     tasks: state.tasks,
     cloud: state.cloud,
+    runtimeConfigs,
     softwareVersions: state.customer.softwareVersions,
     userCertificates: state.customer.userCertificates,
     accessKeys: state.cloud.accessKeys,

@@ -44,6 +44,8 @@ class Master : public yb::master::Master {
   Master(const Master&) = delete;
   void operator=(const Master&) = delete;
 
+  CHECKED_STATUS ReloadKeysAndCertificates() override;
+
  protected:
   CHECKED_STATUS RegisterServices() override;
   CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
