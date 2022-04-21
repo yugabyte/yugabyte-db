@@ -31,7 +31,7 @@ showAsideToc: true
 
 This tutorial demonstrates how to grant privileges in YSQL using the scenario of a company with an engineering organization that has three sub-teams: developers, QA, and DB admins.
 
-Here is what you want to achieve from a role-based access control (RBAC) perspective.
+Here is what you want to achieve from a role-based access control (RBAC) perspective:
 
 - All members of engineering should be able to read data from any database and table.
 - Both developers and QA should be able to modify data in existing tables in the database `dev_database`.
@@ -110,7 +110,7 @@ You should see something like the following output.
  yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
 ```
 
-The above shows the various role attributes of the `yugabyte` role. Because `yugabyte` is a superuser, it has all privileges on all databases, including `ALTER`, `Create role` and `DROP` on the roles you created (`engineering`, `developer`, `qa` and `db_admin`).
+This shows the various role attributes of the `yugabyte` role. Because `yugabyte` is a superuser, it has all privileges on all databases, including `ALTER`, `Create role` and `DROP` on the roles you created (`engineering`, `developer`, `qa` and `db_admin`).
 
 ## 3. Grant privileges to roles
 
