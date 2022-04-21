@@ -42,34 +42,21 @@
 package org.yb.client;
 
 import com.stumbleupon.async.Deferred;
-
-import org.jboss.netty.channel.ConnectTimeoutException;
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBuffers;
+import org.jboss.netty.channel.*;
+import org.jboss.netty.handler.codec.replay.ReplayingDecoder;
+import org.jboss.netty.handler.codec.replay.VoidEnum;
 import org.jboss.netty.handler.timeout.ReadTimeoutException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.WireProtocol;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.cdc.CdcService;
 import org.yb.master.MasterTypes;
 import org.yb.rpc.RpcHeader;
-import org.yb.tserver.Tserver;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
-
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelEvent;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelFutureListener;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.Channels;
-import org.jboss.netty.channel.ExceptionEvent;
-import org.jboss.netty.handler.codec.replay.ReplayingDecoder;
-import org.jboss.netty.handler.codec.replay.VoidEnum;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.security.sasl.SaslException;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -506,24 +493,27 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
                                                      CdcService.CDCErrorPB error) {
     WireProtocol.AppStatusPB.ErrorCode code = error.getStatus().getCode();
     CDCErrorException ex = new CDCErrorException(uuid, error);
-    if (error.getCode() == CdcService.CDCErrorPB.Code.TABLET_NOT_FOUND) {
+    if (error.getCode() == CdcService.CDCErrorPB.Code.TABLET_NOT_RUNNING ||
+      error.getCode() == CdcService.CDCErrorPB.Code.LEADER_NOT_READY ||
+      error.getCode() == CdcService.CDCErrorPB.Code.NOT_LEADER ||
+      error.getCode() == CdcService.CDCErrorPB.Code.NOT_RUNNING) {
       // rpc.deadlineTracker.reset();
       ybClient.handleNotLeader(rpc, ex, this);
-      //ybClient.handleTabletNotFound(rpc, ex, this);
       // we're not calling rpc.callback() so we rely on the client to retry that RPC
-    } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE /*||
+    } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE ||
+      code == WireProtocol.AppStatusPB.ErrorCode.IO_ERROR ||
       code == WireProtocol.AppStatusPB.ErrorCode.LEADER_NOT_READY_TO_SERVE ||
-      error.getCode() ==
-        Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_CHANGE_CONFIG ||
-      error.getCode() ==
-        Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_TO_STEP_DOWN ||
-      error.getCode() ==
-        Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_TO_SERVE*/) {
+      code == WireProtocol.AppStatusPB.ErrorCode.TIMED_OUT) {
       ybClient.handleRetryableError(rpc, ex, this);
       // The following error codes are an indication that the tablet isn't a leader, or, in case
       // of LEADER_HAS_NO_LEASE, might no longer be the leader due to failing to replicate a leader
       // lease, so we retry looking up the leader anyway.
-    } else if (code == WireProtocol.AppStatusPB.ErrorCode.LEADER_HAS_NO_LEASE ||
+    }
+    else if (error.getCode() == CdcService.CDCErrorPB.Code.TABLET_NOT_FOUND ||
+      code == WireProtocol.AppStatusPB.ErrorCode.NOT_FOUND) {
+      ybClient.handleTabletNotFound(rpc, ex, this);
+    }
+    else if (code == WireProtocol.AppStatusPB.ErrorCode.LEADER_HAS_NO_LEASE ||
       code == WireProtocol.AppStatusPB.ErrorCode.ILLEGAL_STATE ||
       code == WireProtocol.AppStatusPB.ErrorCode.ABORTED ||
       error.getCode() == CdcService.CDCErrorPB.Code.NOT_LEADER) {
