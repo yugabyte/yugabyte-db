@@ -455,7 +455,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
 
   Status VerifyWrittenRecords(const YBTableName& producer_table,
                               const YBTableName& consumer_table) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, producer_table, consumer_table]() -> Result<bool> {
       auto producer_results = ScanToStrings(producer_table, &producer_cluster_);
       auto consumer_results = ScanToStrings(consumer_table, &consumer_cluster_);
       if (PQntuples(producer_results.get()) != PQntuples(consumer_results.get())) {
@@ -473,7 +473,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
   }
 
   Status VerifyNumRecords(const YBTableName& table, Cluster* cluster, int expected_size) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, table, cluster, expected_size]() -> Result<bool> {
       auto results = ScanToStrings(table, cluster);
       return PQntuples(results.get()) == expected_size;
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
