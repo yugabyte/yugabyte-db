@@ -42,7 +42,7 @@ Ebean ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc) and th
 
 Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/quick-start/build-apps/java/ysql-ebeans/) page under the Quick start section.
 
-The following sections demonstrate how to perform common tasks required for Java application development using the Ebean ORM.
+The following sections demonstrate how to perform common tasks required for Java-based [Play Framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html) application development using the Ebean ORM.
 
 ### Create a new Java-based Play Framework project
 
@@ -177,26 +177,28 @@ Do the following:
     }
     ```
 
-1. Create a `EmployeeController.java` file in `app/controllers/`. This file controls the flow of employees data. It consists of methods for all API calls, such as adding an employee and retrieving employee information. Add the following code to the file:
+1. Create a `EmployeeController.java` file in `app/controllers/`. This file controls the flow of employees data. It consists of methods for all API calls, such as adding an employee and retrieving employee information. Using the annotation `@Transactional` over the APIs gives the feature of automatically managing the transaction in that API. Add the following code to the file:
 
     ```java
     package controllers;
-    
-    import models.Employee;
+
+    import models.Employee; 
     import javax.persistence.*;
     import play.libs.Json;
+    import play.db.ebean.Transactional;
     import play.mvc.*;
     import java.util.ArrayList;
     import java.util.List;
-    
+
     public class EmployeeController extends Controller{
-    
+
+      @Transactional 
       public Result AddEmployee(Http.Request request){      
           Employee employee=Json.fromJson(request.body().asJson(),Employee.class);
           employee.save();
           return ok(Json.toJson(employee.toString()));
       }
-    
+
       public Result GetAllEmployees(){
           List <Employee> employees = Employee.find.all();
           List<String> employeesList = new ArrayList<String>();
