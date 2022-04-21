@@ -52,8 +52,9 @@ public class CheckMemory extends UniverseTaskBase {
         command.add(" | awk -F' ' '{print $2}'");
         NodeDetails node = universe.getNodeByPrivateIP(nodeIp);
         ShellResponse response =
-            nodeUniverseManager.runCommand(node, universe, String.join(" ", command));
-        processShellResponse(response);
+            nodeUniverseManager
+                .runCommand(node, universe, String.join(" ", command))
+                .processErrors();
         // We will be expecting the response in below format and the retrieved memory will be in KB.
         // Command output: \n 4044800
         List<String> cmdOutputList = Arrays.asList(response.getMessage().trim().split("\n", 0));

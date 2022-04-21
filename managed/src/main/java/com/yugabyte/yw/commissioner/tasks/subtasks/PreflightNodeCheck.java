@@ -35,8 +35,9 @@ public class PreflightNodeCheck extends NodeTaskBase {
     Params taskParams = taskParams();
     log.info("Running preflight checks for node {}.", taskParams.nodeName);
     ShellResponse response =
-        getNodeManager().nodeCommand(NodeManager.NodeCommandType.Precheck, taskParams);
-    processShellResponse(response);
+        getNodeManager()
+            .nodeCommand(NodeManager.NodeCommandType.Precheck, taskParams)
+            .processErrors();
     JsonNode responseJson = Json.parse(response.message);
     for (JsonNode nodeContent : responseJson) {
       if (!nodeContent.isBoolean() || !nodeContent.asBoolean()) {

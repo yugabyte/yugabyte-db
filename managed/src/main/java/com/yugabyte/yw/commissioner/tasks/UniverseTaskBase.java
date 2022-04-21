@@ -14,7 +14,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -103,8 +103,6 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -137,28 +135,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   // Flag to indicate if we have locked the universe.
   private boolean universeLocked = false;
-
-  // This is a map from task classes names to the task types.
-  private static final Map<String, TaskType> taskClassnameToTaskTypeMap;
-
-  static {
-    // Initialize the map which holds task class names to their task types.
-    Map<String, TaskType> typeMap = new HashMap<>();
-
-    for (TaskType taskType : TaskType.filteredValues()) {
-      String className = "com.yugabyte.yw.commissioner.tasks." + taskType.toString();
-      try {
-        if (Class.forName(className).asSubclass(ITask.class) != null) {
-          typeMap.put(className, taskType);
-        }
-        log.debug("Found class {} for task type {}", className, taskType);
-      } catch (ClassNotFoundException e) {
-        log.error("Could not find class for task type " + taskType, e);
-      }
-    }
-    taskClassnameToTaskTypeMap = Collections.unmodifiableMap(typeMap);
-    log.debug("Done preparing tasks types map.");
-  }
 
   @Inject
   protected UniverseTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -224,7 +200,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean isForceUpdate,
       boolean isResumeOrDelete,
       Consumer<Universe> callback) {
-    TaskType owner = taskClassnameToTaskTypeMap.get(this.getClass().getCanonicalName());
+    TaskType owner = TaskExecutor.getTaskType(getClass());
     if (owner == null) {
       log.trace("TaskType not found for class " + this.getClass().getCanonicalName());
     }
@@ -1077,11 +1053,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Create a task to create a table.
    *
+   * @param tableType type of the table.
    * @param tableName name of the table.
    * @param tableDetails table options and related details.
+   * @param ifNotExist create only if it does not exist.
+   * @return
    */
   public SubTaskGroup createTableTask(
-      TableType tableType, String tableName, TableDetails tableDetails) {
+      TableType tableType, String tableName, TableDetails tableDetails, boolean ifNotExist) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateTable", executor);
     CreateTable task = createTask(CreateTable.class);
     CreateTable.Params params = new CreateTable.Params();
@@ -1089,6 +1068,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.tableType = tableType;
     params.tableName = tableName;
     params.tableDetails = tableDetails;
+    params.ifNotExist = ifNotExist;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1778,9 +1758,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public Optional<Boolean> instanceExists(
       NodeTaskParams taskParams, Map<String, String> expectedTags) {
     NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
-    ShellResponse response = nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams);
-    processShellResponse(response);
-    if (response == null || Strings.isNullOrEmpty(response.message)) {
+    ShellResponse response =
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams).processErrors();
+    if (Strings.isNullOrEmpty(response.message)) {
       // Instance does not exist.
       return Optional.empty();
     }

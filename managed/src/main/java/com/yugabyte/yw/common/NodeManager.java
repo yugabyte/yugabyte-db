@@ -1253,8 +1253,7 @@ public class NodeManager extends DevopsBase {
 
   static boolean isIpAddress(String maybeIp) {
     InetAddressValidator ipValidator = InetAddressValidator.getInstance();
-    return InetAddressValidator.getInstance().isValidInet4Address(maybeIp)
-        || InetAddressValidator.getInstance().isValidInet6Address(maybeIp);
+    return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
   }
 
   enum SkipCertValidationType {
@@ -1959,7 +1958,7 @@ public class NodeManager extends DevopsBase {
       result.add("--cql_proxy_rpc_port");
       result.add(Integer.toString(ports.yqlServerRpcPort));
     }
-    if (userIntent.enableYCQL) {
+    if (userIntent.enableYSQL) {
       result.add("--ysql_proxy_http_port");
       result.add(Integer.toString(ports.ysqlServerHttpPort));
       result.add("--ysql_proxy_rpc_port");
