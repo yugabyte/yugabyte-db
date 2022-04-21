@@ -138,6 +138,10 @@ DEFINE_test_flag(bool, exit_unfinished_deleting, false,
 DEFINE_test_flag(bool, exit_unfinished_merging, false,
                  "Whether to exit part way through the merging universe process.");
 
+DEFINE_bool(disable_universe_gc, false,
+            "Whether to run the GC on universes or not.");
+TAG_FLAG(disable_universe_gc, runtime);
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -5122,6 +5126,10 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
 
 Status CatalogManager::ClearFailedUniverse() {
   // Delete a single failed universe from universes_to_clear_.
+  if (PREDICT_FALSE(FLAGS_disable_universe_gc)) {
+    return Status::OK();
+  }
+
   std::string universe_id;
   {
     SharedLock lock(mutex_);
