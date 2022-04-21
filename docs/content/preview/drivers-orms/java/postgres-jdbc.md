@@ -11,7 +11,7 @@ menu:
 isTocNested: false
 showAsideToc: true
 ---
-For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform. YugabyteDB supports the cluster- and topology-aware YugabyteDB Smart JDBC Driver, and this driver is recommended for building Java applications with YugabyteDB. Yugabyte also provides full support for the [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/).
+For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform. YugabyteDB supports the cluster- and topology-aware YugabyteDB Smart JDBC Driver, which is recommended for building Java applications with YugabyteDB. Yugabyte also provides full support for the [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
