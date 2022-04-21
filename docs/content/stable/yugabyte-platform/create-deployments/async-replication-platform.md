@@ -68,7 +68,7 @@ You can configure an existing replication as follows:
 
 ### How to view, manage, and monitor replication
 
-To view and manage an existing replication, as well as configure monitoring, click the replication name to open the details page shown the following illustration:
+To view and manage an existing replication, as well as configure monitoring, click the replication name to open the details page shown in the following illustration:
 
 <br>
 
