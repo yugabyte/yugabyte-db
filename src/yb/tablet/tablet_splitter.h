@@ -40,9 +40,14 @@ class TabletSplitter {
 
   // Implementation should apply tablet split Raft operation.
   // state is a context of operation to apply.
-  // If raft_log is specified - it will be used as a source tablet Raft log (during tablet bootstrap
-  // tablet peer's Raft consensus is not yet initialized, so we pass raft_log explicitly).
-  virtual CHECKED_STATUS ApplyTabletSplit(SplitOperation* operation, log::Log* raft_log) = 0;
+  // If raft_log and raft_config are specified - they will be used as a source tablet Raft log and
+  // Raft config (during tablet bootstrap tablet peer's Raft consensus is not yet initialized,
+  // so we pass raft_log and raft_config explicitly).
+  // If these arguments are not specified, it's assumed that the Raft log and Raft config are
+  // accessible from tablet peer's Raft consensus instance and initialized.
+  virtual CHECKED_STATUS ApplyTabletSplit(
+      SplitOperation* operation, log::Log* raft_log,
+      boost::optional<consensus::RaftConfigPB> raft_config) = 0;
 };
 
 }  // namespace tablet
