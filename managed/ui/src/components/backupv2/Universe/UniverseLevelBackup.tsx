@@ -13,6 +13,7 @@ import { BackupList } from '..';
 import { Tab } from 'react-bootstrap';
 import './UniverseLevelBackup.scss';
 import { withRouter } from 'react-router';
+import { ScheduledBackup } from '../scheduled/ScheduledBackup';
 
 interface UniverseBackupProps {
   params: {
@@ -26,6 +27,9 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
     <YBTabsPanel id="backup-tab-panel">
       <Tab eventKey="backupList" title="Backups" unmountOnExit>
         <BackupList allowTakingBackup universeUUID={uuid} />
+      </Tab>
+      <Tab eventKey="backupSchedule" title="Scheduled Backup Policies" unmountOnExit>
+        <ScheduledBackup universeUUID={uuid} />
       </Tab>
     </YBTabsPanel>
   );

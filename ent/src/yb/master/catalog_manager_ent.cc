@@ -132,6 +132,16 @@ TAG_FLAG(allow_consecutive_restore, runtime);
 DEFINE_bool(check_bootstrap_required, false,
             "Is it necessary to check whether bootstrap is required for Universe Replication.");
 
+DEFINE_test_flag(bool, exit_unfinished_deleting, false,
+                 "Whether to exit part way through the deleting universe process.");
+
+DEFINE_test_flag(bool, exit_unfinished_merging, false,
+                 "Whether to exit part way through the merging universe process.");
+
+DEFINE_bool(disable_universe_gc, false,
+            "Whether to run the GC on universes or not.");
+TAG_FLAG(disable_universe_gc, runtime);
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -346,7 +356,9 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       catalog_manager_->universe_replication_map_[ri->id()] = ri;
 
       // Add any failed universes to be cleared
-      if (l->pb.state() == SysUniverseReplicationEntryPB::FAILED) {
+      if (l->pb.state() == SysUniverseReplicationEntryPB::FAILED ||
+          l->pb.state() == SysUniverseReplicationEntryPB::DELETING ||
+          GStringPiece(l->pb.producer_id()).ends_with(".ALTER")) {
         catalog_manager_->universes_to_clear_.push_back(ri->id());
       }
 
@@ -4194,10 +4206,15 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
       return;
     }
   }
-  // Merge Cluster Config for TServers.
+
   {
     auto cluster_config = ClusterConfig();
+    // Acquire Locks in order of Original Universe, Cluster Config, New Universe
+    auto original_lock = original_universe->LockForWrite();
+    auto alter_lock = universe->LockForWrite();
     auto cl = cluster_config->LockForWrite();
+
+    // Merge Cluster Config for TServers.
     auto pm = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
     auto original_producer_entry = pm->find(original_universe->id());
     auto alter_producer_entry = pm->find(universe->id());
@@ -4211,13 +4228,8 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
       LOG(WARNING) << "Could not find both universes in Cluster Config: " << universe->id();
     }
     cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
-    const Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config.get());
-    cl.CommitOrWarn(s, "updating cluster config in sys-catalog");
-  }
-  // Merge Master Config on Consumer. (no need for Producer changes, since it uses stream_id)
-  {
-    auto original_lock = original_universe->LockForWrite();
-    auto alter_lock = universe->LockForWrite();
+
+    // Merge Master Config on Consumer. (no need for Producer changes, since it uses stream_id)
     // Merge Table->StreamID mapping.
     auto at = alter_lock.mutable_data()->pb.mutable_tables();
     original_lock.mutable_data()->pb.mutable_tables()->MergeFrom(*at);
@@ -4230,13 +4242,33 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
     av->clear();
     alter_lock.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
 
-    vector<UniverseReplicationInfo*> universes{original_universe.get(), universe.get()};
-    const Status s = sys_catalog_->Upsert(leader_ready_term(), universes);
-    alter_lock.CommitOrWarn(s, "updating universe replication entries in sys-catalog");
-    if (s.ok()) {
-      original_lock.Commit();
+    if (PREDICT_FALSE(FLAGS_TEST_exit_unfinished_merging)) {
+      // Exit for texting services
+      return;
     }
+
+    {
+      // Need both these updates to be atomic.
+      auto w = sys_catalog_->NewWriter(leader_ready_term());
+      auto s = w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
+                         original_universe.get(),
+                         universe.get(),
+                         cluster_config.get());
+      s = CheckStatus(
+          sys_catalog_->SyncWrite(w.get()),
+          "Updating universe replication entries and cluster config in sys-catalog");
+    }
+      alter_lock.Commit();
+      cl.Commit();
+      original_lock.Commit();
   }
+
+  // Add universe to universes_to_clear_
+  {
+    SharedLock lock(mutex_);
+    universes_to_clear_.push_back(universe->id());
+  }
+
   // TODO: universe_replication_map_.erase(universe->id()) at a later time.
   //       TwoDCTest.AlterUniverseReplicationTables crashes due to undiagnosed race right now.
   LOG(INFO) << "Done with Merging " << universe->id() << " into " << original_universe->id();
@@ -4278,6 +4310,18 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
       return STATUS(NotFound, "Universe replication info does not exist",
                     req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
+  }
+
+  {
+    auto l = ri->LockForWrite();
+    l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETING);
+
+    RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
+      sys_catalog_->Upsert(leader_ready_term(), ri),
+      "Updating delete universe replication info into sys-catalog", resp));
+    TRACE("Wrote universe replication info to sys-catalog");
+
+    l.Commit();
   }
 
   auto l = ri->LockForWrite();
@@ -4343,6 +4387,11 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
 
       RETURN_NOT_OK(ReturnErrorOrAddWarning(s, req, resp));
     }
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_exit_unfinished_deleting)) {
+      // Exit for texting services
+      return Status::OK();
   }
 
   // Delete universe in the Universe Config.
@@ -4492,21 +4541,16 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     // 'set_master_addresses'
     // TODO: Verify the input. Setup an RPC Task, ListTables, ensure same.
 
-    // 1a. Persistent Config: Update the Universe Config for Master.
     {
+      // 1a. Persistent Config: Update the Universe Config for Master.
       auto l = original_ri->LockForWrite();
       l.mutable_data()->pb.mutable_producer_master_addresses()->CopyFrom(
           req->producer_master_addresses());
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), original_ri),
-          "updating universe replication info in sys-catalog"));
-      l.Commit();
-    }
-    // 1b. Persistent Config: Update the Consumer Registry (updates TServers)
-    {
+
+      // 1b. Persistent Config: Update the Consumer Registry (updates TServers)
       auto cluster_config = ClusterConfig();
-      auto l = cluster_config->LockForWrite();
-      auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+      auto cl = cluster_config->LockForWrite();
+      auto producer_map = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
       auto it = producer_map->find(req->producer_id());
       if (it == producer_map->end()) {
         LOG(WARNING) << "Valid Producer Universe not in Consumer Registry: " << req->producer_id();
@@ -4514,12 +4558,22 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
                       req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
       }
       (*it).second.mutable_master_addrs()->CopyFrom(req->producer_master_addresses());
-      l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
-          "updating cluster config in sys-catalog"));
+      cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
+
+      {
+        // Need both these updates to be atomic.
+        auto w = sys_catalog_->NewWriter(leader_ready_term());
+        RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
+                                original_ri.get(),
+                                cluster_config.get()));
+        RETURN_NOT_OK(CheckStatus(
+            sys_catalog_->SyncWrite(w.get()),
+            "Updating universe replication info and cluster config in sys-catalog"));
+      }
       l.Commit();
+      cl.Commit();
     }
+
     // 2. Memory Update: Change cdc_rpc_tasks (Master cache)
     {
       auto result = original_ri->GetOrCreateCDCRpcTasks(req->producer_master_addresses());
@@ -4543,9 +4597,13 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     }
 
     vector<CDCStreamId> streams_to_remove;
-    // 1. Update the Consumer Registry (removes from TServers).
+
     {
+      auto l = original_ri->LockForWrite();
       auto cluster_config = ClusterConfig();
+
+      // 1. Update the Consumer Registry (removes from TServers).
+
       auto cl = cluster_config->LockForWrite();
       auto pm = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
       auto producer_entry = pm->find(req->producer_id());
@@ -4574,14 +4632,9 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         }
       }
       cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
-          "updating cluster config in sys-catalog"));
-      cl.Commit();
-    }
-    // 2. Remove from Master Configs on Producer and Consumer.
-    {
-      auto l = original_ri->LockForWrite();
+
+      // 2. Remove from Master Configs on Producer and Consumer.
+
       if (!l->pb.table_streams().empty()) {
         // Delete Relevant Table->StreamID mappings on Consumer.
         auto table_streams = l.mutable_data()->pb.mutable_table_streams();
@@ -4611,10 +4664,20 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
           }
         }
       }
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), original_ri),
-          "updating universe replication info in sys-catalog"));
+
+      {
+        // Need both these updates to be atomic.
+        auto w = sys_catalog_->NewWriter(leader_ready_term());
+        RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
+                                original_ri.get(),
+                                cluster_config.get()));
+        RETURN_NOT_OK(CheckStatus(
+            sys_catalog_->SyncWrite(w.get()),
+            "Updating universe replication info and cluster config in sys-catalog"));
+      }
+
       l.Commit();
+      cl.Commit();
     }
   } else if (req->producer_table_ids_to_add_size() > 0) {
     // 'add_table'
@@ -5063,6 +5126,10 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
 
 Status CatalogManager::ClearFailedUniverse() {
   // Delete a single failed universe from universes_to_clear_.
+  if (PREDICT_FALSE(FLAGS_disable_universe_gc)) {
+    return Status::OK();
+  }
+
   std::string universe_id;
   {
     SharedLock lock(mutex_);
@@ -5080,13 +5147,11 @@ Status CatalogManager::ClearFailedUniverse() {
   universe_req.set_producer_id(universe_id);
 
   RETURN_NOT_OK(GetUniverseReplication(&universe_req, &universe_resp, /* RpcContext */ nullptr));
-  if (universe_resp.entry().state() != SysUniverseReplicationEntryPB::FAILED) {
-    return STATUS(IllegalState, "Universe is not Failed, and cannot be cleared.");
-  }
 
   DeleteUniverseReplicationRequestPB req;
   DeleteUniverseReplicationResponsePB resp;
   req.set_producer_id(universe_id);
+  req.set_ignore_errors(true);
 
   RETURN_NOT_OK(DeleteUniverseReplication(&req, &resp, /* RpcContext */ nullptr));
 

@@ -13,21 +13,12 @@
 
 package org.yb.client;
 
-import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
 import org.jboss.netty.buffer.ChannelBuffer;
-
 import org.yb.annotations.InterfaceAudience;
-import org.yb.CommonNet.HostPortPB;
 import org.yb.CommonTypes.YQLDatabase;
-import org.yb.consensus.Consensus;
-import org.yb.consensus.Metadata;
-import org.yb.consensus.Metadata.RaftPeerPB;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.util.Pair;
-
-import java.util.ArrayList;
-import java.util.List;
 
 @InterfaceAudience.Public
 class CreateKeyspaceRequest extends YRpc<CreateKeyspaceResponse> {

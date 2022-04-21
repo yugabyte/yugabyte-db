@@ -1,9 +1,8 @@
 ---
 title: Deploy to two data centers with asynchronous replication
-headerTitle: Asynchronous Replication
+headerTitle: Asynchronous replication
 linkTitle: Asynchronous replication
 description: Enable deployment using asynchronous replication between two data centers
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable:
     parent: create-deployments
@@ -14,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Platform allows you to use its UI or API to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#setting-up-bidirectional-replication) (multi-master) asynchronous replication between two data centers.
+Yugabyte Platform allows you to use its UI or [API](https://api-docs.yugabyte.com/docs/yugabyte-platform/) to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#setting-up-bidirectional-replication) (multi-master) asynchronous replication between two data centers.
 
 Within the concept of replication, universes are divided into the following categories:
 
@@ -69,7 +68,7 @@ You can configure an existing replication as follows:
 
 ### How to view, manage, and monitor replication
 
-To view and manage an existing replication, as well as configure monitoring, click the replication name to open the details page shown the following illustration:
+To view and manage an existing replication, as well as configure monitoring, click the replication name to open the details page shown in the following illustration:
 
 <br>
 
