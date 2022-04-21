@@ -54,7 +54,6 @@ typedef struct edge_state_entry
  */
 typedef enum
 {                                  /* Given a path (u)-[e]-(v)                */
-
     VLE_FUNCTION_PATHS_FROM,       /* Paths from a (u) without a provided (v) */
     VLE_FUNCTION_PATHS_TO,         /* Paths to a (v) without a provided (u)   */
     VLE_FUNCTION_PATHS_BETWEEN,    /* Paths between a (u) and a provided (v)  */

@@ -114,6 +114,10 @@ static void drop_age_extension(DropStmt *stmt)
      * extension.
      */
     RemoveObjects(stmt);
+
+    /* reset global variables for OIDs */
+    clear_global_Oids_AGTYPE();
+    clear_global_Oids_GRAPHID();
 }
 
 // Check to see if the Utility Command is to drop the AGE Extension.

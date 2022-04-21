@@ -167,6 +167,42 @@ static int extract_variadic_args_min(FunctionCallInfo fcinfo,
                                      int min_num_args);
 agtype_value *agtype_composite_to_agtype_value_binary(agtype *a);
 
+/* global storage of  OID for agtype and _agtype */
+static Oid g_AGTYPEOID = InvalidOid;
+static Oid g_AGTYPEARRAYOID = InvalidOid;
+
+/* helper function to quickly set, if necessary, and retrieve AGTYPEOID */
+Oid get_AGTYPEOID(void)
+{
+    if (g_AGTYPEOID == InvalidOid)
+    {
+        g_AGTYPEOID = GetSysCacheOid2(TYPENAMENSP, CStringGetDatum("agtype"),
+                                      ObjectIdGetDatum(ag_catalog_namespace_id()));
+    }
+
+    return g_AGTYPEOID;
+}
+
+/* helper function to quickly set, if necessary, and retrieve AGTYPEARRAYOID */
+Oid get_AGTYPEARRAYOID(void)
+{
+    if (g_AGTYPEARRAYOID == InvalidOid)
+    {
+        g_AGTYPEARRAYOID = GetSysCacheOid2(TYPENAMENSP,
+                                           CStringGetDatum("_agtype"),
+                                           ObjectIdGetDatum(ag_catalog_namespace_id()));
+    }
+
+    return g_AGTYPEARRAYOID;
+}
+
+/* helper function to clear the AGTYPEOIDs after a drop extension */
+void clear_global_Oids_AGTYPE(void)
+{
+    g_AGTYPEOID = InvalidOid;
+    g_AGTYPEARRAYOID = InvalidOid;
+}
+
 /* fast helper function to test for AGTV_NULL in an agtype */
 bool is_agtype_null(agtype *agt_arg)
 {
