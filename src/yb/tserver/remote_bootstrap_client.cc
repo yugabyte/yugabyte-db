@@ -58,6 +58,7 @@
 #include "yb/tserver/remote_bootstrap_snapshots.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
@@ -105,6 +106,7 @@ DEFINE_test_flag(int32, simulate_long_remote_bootstrap_sec, 0,
                  "follower_unavailable_considered_failed_sec seconds.");
 
 DEFINE_test_flag(bool, download_partial_wal_segments, false, "");
+DEFINE_test_flag(bool, pause_rbs_before_download_wal, false, "Pause RBS before downloading WAL.");
 
 DECLARE_int32(bytes_remote_bootstrap_durable_write_mb);
 
@@ -398,6 +400,8 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   new_superblock_.mutable_kv_store()->set_rocksdb_dir(meta_->rocksdb_dir());
 
   RETURN_NOT_OK(DownloadRocksDBFiles());
+  TEST_PAUSE_IF_FLAG_WITH_PREFIX(
+      TEST_pause_rbs_before_download_wal, LogPrefix() + tablet_id_ + ": ");
   RETURN_NOT_OK(DownloadWALs());
   for (const auto& component : components_) {
     RETURN_NOT_OK(component->Download());
