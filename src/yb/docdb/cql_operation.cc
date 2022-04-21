@@ -233,7 +233,7 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
 
     const auto& member = column_value.json_args(index).operand().value().string_value().c_str();
     *memberit = document->FindMember(member);
-    if (*memberit == document->MemberEnd()) {
+    if (memberit->operator==(document->MemberEnd())) {
       return STATUS_SUBSTITUTE(QLError, "Could not find member: ", member);
     }
   } else {

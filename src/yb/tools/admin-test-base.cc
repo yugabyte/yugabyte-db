@@ -91,7 +91,7 @@ Result<const rapidjson::Value&> Get(const rapidjson::Value& value, const char* n
 
 Result<rapidjson::Value&> Get(rapidjson::Value* value, const char* name) {
   auto it = value->FindMember(name);
-  if (it == value->MemberEnd()) {
+  if (it.operator==(value->MemberEnd())) {
     return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
   }
   return it->value;

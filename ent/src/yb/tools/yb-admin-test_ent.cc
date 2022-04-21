@@ -115,7 +115,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
 
   CHECKED_STATUS WaitForRestoreSnapshot() {
     return WaitFor([this]() -> Result<bool> {
-      auto document = VERIFY_RESULT(RunAdminToolCommandJson("list_snapshot_restorations"));
+      const auto document = VERIFY_RESULT(RunAdminToolCommandJson("list_snapshot_restorations"));
       auto it = document.FindMember("restorations");
       if (it == document.MemberEnd()) {
         LOG(INFO) << "No restorations";
