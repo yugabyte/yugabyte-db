@@ -265,7 +265,7 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 
     <br>Then, run the following command:
-
+    
     ```sh
     $ sudo chronyc makestep   # (force instant sync to NTP server)
     ```
@@ -488,7 +488,7 @@ Yugabyte Platform supports backing up YugabyteDB to AWS S3, Azure Storage, Googl
 * Download `azcopy_linux_amd64_10.13.0.tar.gz` using the following command:
 
     ```sh
-    $ wget https://azcopyvnext.azureedge.net/release20200410/azcopy_linux_amd64_10.13.0.tar.gz
+    $ wget https://azcopyvnext.azureedge.net/release20211027/azcopy_linux_amd64_10.13.0.tar.gz
     ```
 
 * For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the Yugabyte Platform node, as follows:
