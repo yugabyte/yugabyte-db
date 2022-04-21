@@ -1,8 +1,8 @@
 ---
-title: Customize ports
-headerTitle: Customize ports
-linkTitle: Customize ports
-description: Customize ports
+title: Configure ports
+headerTitle: Configure ports
+linkTitle: Configure ports
+description: Configure ports
 menu:
   preview:
     parent: security
@@ -12,16 +12,16 @@ menu:
 
 YugabyteDB Anywhere allows you to configure your YugabyteDB ports for security purposes, as follows:
 
-- Go to the **Create universe** page and configure as desired.
+- Navigate to **Universes** and click **Create Universe**.
 
-- Select **Override Deployment Ports**.
+- Use the **Create universe > Primary cluster** page to navigate to **Advanced** and enable **Override Deployment Ports**, as per the following illustration:<br><br>
 
-  ![Create universe - Override Deployment Ports](/images/yp/security/override-deployment-ports.png)
+  ![Override Deployment Ports](/images/yp/security/override-deployment-ports.png)<br><br>
 
-- Specify the port each process should use. This can be any value from `1024` to `65535` (as long as the specified values don’t conflict with anything else running on nodes to be provisioned). In the case of **Node Exporter Port**, the value is used for both what Prometheus will use to scrape node-level metrics as well as what Node Exporter will be configured on nodes to use. If **Install Node Exporter** is not selected and the user is configuring Node Exporter on nodes out of band of YugabyteDB Anywhere, this value should be the port that Node Exporter is already running on nodes with.
+- Replace the default values with the values identifying the port that each process should use. Any value from `1024` to `65535` is valid, as long as this value does not conflict with anything else running on nodes to be provisioned. 
 
-  ![Override Deployment Ports](/images/yp/security/override-deployment-ports.png)
+For more information, see the following: 
 
-- Create the universe.
+- [Configure the on-premises provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#configure-the-on-premises-provider) describes how to configure a node exporter port.
+- [Default ports reference](../../../reference/configuration/default-ports) provides details on YugabyteDB default ports.
 
-For information on YugabyteDB default ports, see [Default ports reference](../../../reference/configuration/default-ports).
