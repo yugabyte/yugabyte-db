@@ -225,9 +225,6 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     TabletSplitITestBase<MiniClusterType>::WriteRows(
         client::TableHandle* table, const uint32_t num_rows,
         const int32_t start_key, const int32_t start_value, client::YBSessionPtr session) {
-  auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
-  auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
-
   LOG(INFO) << "Writing " << num_rows << " rows...";
 
   auto txn = this->CreateTransaction();
@@ -237,22 +234,31 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
   } else {
     session = this->CreateSession(txn);
   }
+
+  vector<client::YBqlWriteOpPtr> ops;
+  ops.reserve(num_rows);
   for (int32_t i = start_key, v = start_value;
        i < start_key + static_cast<int32_t>(num_rows);
        ++i, ++v) {
-    client::YBqlWriteOpPtr op = VERIFY_RESULT(
+    ops.push_back(VERIFY_RESULT(
         client::kv_table_test::WriteRow(table,
                                         session,
                                         i /* key */,
                                         v /* value */,
                                         client::WriteOpType::INSERT,
-                                        client::Flush::kFalse));
-    const auto hash_code = op->GetHashCode();
-    min_hash_code = std::min(min_hash_code, hash_code);
-    max_hash_code = std::max(max_hash_code, hash_code);
+                                        client::Flush::kFalse)));
     YB_LOG_EVERY_N_SECS(INFO, 10) << "Rows written: " << start_key << "..." << i;
   }
   RETURN_NOT_OK(session->TEST_Flush());
+
+  auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
+  auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
+  for (const auto& op : ops) {
+    const auto hash_code = op->GetHashCode();
+    min_hash_code = std::min(min_hash_code, hash_code);
+    max_hash_code = std::max(max_hash_code, hash_code);
+  }
+
   if (txn) {
     RETURN_NOT_OK(txn->CommitFuture().get());
     LOG(INFO) << "Committed: " << txn->id();
