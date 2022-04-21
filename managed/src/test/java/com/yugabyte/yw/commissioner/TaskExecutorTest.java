@@ -12,7 +12,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -75,7 +74,6 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   @Override
   protected Application provideApplication() {
     mockConfig = mock(Config.class);
-    when(mockConfig.getString(anyString())).thenReturn("");
     return configureApplication(
             new GuiceApplicationBuilder()
                 .disable(SwaggerModule.class)
