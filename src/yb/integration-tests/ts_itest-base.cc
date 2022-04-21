@@ -180,7 +180,7 @@ itest::TServerDetails* TabletServerIntegrationTestBase::GetLeaderReplicaOrNull(
     replicas_copy.push_back((*range.first).second);
   }
 
-  std::shuffle(replicas_copy.begin(), replicas_copy.end(), yb::ThreadLocalRandom());
+  std::shuffle(replicas_copy.begin(), replicas_copy.end(), ThreadLocalRandom());
   for (itest::TServerDetails* replica : replicas_copy) {
     if (GetReplicaStatusAndCheckIfLeader(replica, tablet_id,
                                          MonoDelta::FromMilliseconds(100)).ok()) {

@@ -132,7 +132,6 @@ class GenericCalculatorService : public ServiceIf {
 };
 
 struct MessengerOptions {
-  MessengerOptions() = delete;
   int n_reactors;
   std::chrono::milliseconds keep_alive_timeout;
   int num_connections_to_server = -1;

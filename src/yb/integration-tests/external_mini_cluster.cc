@@ -1885,13 +1885,13 @@ struct GlobalLogTailerState {
 
 class ExternalDaemon::LogTailerThread {
  public:
-  LogTailerThread(const string line_prefix,
+  LogTailerThread(const std::string& line_prefix,
                   const int child_fd,
                   ostream* const out)
       : id_(global_state()->next_log_tailer_id.fetch_add(1)),
         stopped_(CreateStoppedFlagForId(id_)),
         thread_desc_(Substitute("log tailer thread for prefix $0", line_prefix)),
-        thread_([=] {
+        thread_([this, line_prefix, child_fd, out] {
           VLOG(1) << "Starting " << thread_desc_;
           FILE* const fp = fdopen(child_fd, "rb");
           char buf[65536];
