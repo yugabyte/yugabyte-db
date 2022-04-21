@@ -1215,7 +1215,6 @@ orafce_textregexreplace_extended(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("modifier 'g' is not supported by this function")));
 
-
 	/*
 	 * If N was not specified, force the 'g' modifier. This is the
 	 * default in Oracle when no occurence is specified.
