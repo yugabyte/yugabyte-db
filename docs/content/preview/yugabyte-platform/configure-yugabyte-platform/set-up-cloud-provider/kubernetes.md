@@ -120,9 +120,9 @@ The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
-    --as yugabyte-platform-universe-management \
-    {get|create|delete|list} \
-    {namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+--as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
+{get|create|delete|list} \ 
+{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 **Namespace Admin** can grant namespace-level admin access by using the following command:
@@ -138,10 +138,10 @@ If you have multiple target namespaces, then you have to apply the YAML in all o
 The following command can be used to validate the service account:
 
 ```sh
-kubectl auth can-i \
-    --as yugabyte-platform-universe-management \
-    {get|create|delete|list|patch} \
-    {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+kubectl auth can-i \ 
+--as yugabyte-platform-universe-management \ 
+{get|create|delete|list|patch} \ 
+{poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 **Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
@@ -158,10 +158,10 @@ The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
-    --as yugabyte-platform-universe-management \
-    --namespace {namespace} \
-    {get|delete|list} \
-    {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+--as yugabyte-platform-universe-management \
+--namespace {namespace} \
+{get|delete|list} \
+{poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 ### `kubeconfig` file
@@ -180,7 +180,7 @@ You can create a `kubeconfig` file for the previously created `yugabyte-platform
     python generate_kubeconfig.py -s yugabyte-platform-universe-management -n <namespace>
     ```
 
-    <br>The following output should appear:
+    <br>Expect the following output:
 
     ```output
     Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
