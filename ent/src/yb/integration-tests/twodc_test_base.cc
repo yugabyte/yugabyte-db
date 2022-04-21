@@ -167,7 +167,7 @@ Status TwoDCTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_clu
 
 Status TwoDCTestBase::GetCDCStreamForTable(
     const std::string& table_id, master::ListCDCStreamsResponsePB* resp) {
-  return LoggedWaitFor([=]() -> Result<bool> {
+  return LoggedWaitFor([this, table_id, resp]() -> Result<bool> {
     master::ListCDCStreamsRequestPB req;
     req.set_table_id(table_id);
     resp->Clear();
@@ -232,7 +232,7 @@ size_t TwoDCTestBase::NumProducerTabletsPolled(MiniCluster* cluster) {
 
 Status TwoDCTestBase::CorrectlyPollingAllTablets(
     MiniCluster* cluster, uint32_t num_producer_tablets) {
-  return LoggedWaitFor([=]() -> Result<bool> {
+  return LoggedWaitFor([this, cluster, num_producer_tablets]() -> Result<bool> {
     static int i = 0;
     constexpr int kNumIterationsWithCorrectResult = 5;
     auto cur_tablets = NumProducerTabletsPolled(cluster);

@@ -254,7 +254,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
   Status VerifyWrittenRecords(const YBTableName& producer_table,
                               const YBTableName& consumer_table,
                               int timeout_secs = kRpcTimeout) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, producer_table, consumer_table]() -> Result<bool> {
       auto producer_results = ScanToStrings(producer_table, producer_client());
       auto consumer_results = ScanToStrings(consumer_table, consumer_client());
       return producer_results == consumer_results;
@@ -262,7 +262,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
   }
 
   Status VerifyNumRecords(const YBTableName& table, YBClient* client, size_t expected_size) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, table, client, expected_size]() -> Result<bool> {
       auto results = ScanToStrings(table, client);
       return results.size() == expected_size;
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");

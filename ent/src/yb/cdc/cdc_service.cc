@@ -1627,18 +1627,18 @@ void CDCServiceImpl::TabletLeaderGetChanges(const GetChangesRequestPB* req,
   GetChangesRequestPB new_req;
   new_req.CopyFrom(*req);
   new_req.set_serve_as_proxy(false);
-  CoarseTimePoint deadline = GetDeadline(*context.get(), client());
+  CoarseTimePoint deadline = GetDeadline(*context, client());
 
   *rpc_handle = CreateGetChangesCDCRpc(
       deadline,
       nullptr, /* RemoteTablet: will get this from 'new_req' */
       client(),
       &new_req,
-      [=] (Status status, GetChangesResponsePB&& new_resp) {
+      [this, resp, context, rpc_handle] (const Status& status, GetChangesResponsePB&& new_resp) {
         auto retained = rpcs_.Unregister(rpc_handle);
         *resp = std::move(new_resp);
         RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), resp->error().code(),
-                                *context.get());
+                                *context);
         context->RespondSuccess();
       });
   (**rpc_handle).SendRpc();

@@ -85,7 +85,7 @@ class RWOperationCounter {
 
   void Decrement() { Update(-1); }
   uint64_t Get() const {
-    return counters_.load(std::memory_order::memory_order_acquire);
+    return counters_.load(std::memory_order::acquire);
   }
 
   // Return pending operations counter value only.
