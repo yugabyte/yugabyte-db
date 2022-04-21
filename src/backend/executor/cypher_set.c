@@ -99,7 +99,9 @@ static void begin_cypher_set(CustomScanState *node, EState *estate,
      * that have modified the command id.
      */
     if (estate->es_output_cid == 0)
+    {
         estate->es_output_cid = estate->es_snapshot->curcid;
+    }
 
     Increment_Estate_CommandId(estate);
 }
@@ -133,7 +135,9 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
         // Check the constraints of the tuple
         tuple->t_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
         if (resultRelInfo->ri_RelationDesc->rd_att->constr != NULL)
+        {
             ExecConstraints(resultRelInfo, elemTupleSlot, estate);
+        }
 
         // Insert the tuple normally
         update_result = heap_update(resultRelInfo->ri_RelationDesc,
@@ -143,14 +147,18 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
                                     &lockmode);
 
         if (update_result != HeapTupleMayBeUpdated)
-        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-                        errmsg("Entity failed to be updated: %i",
-                               update_result)));
+        {
+            ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                            errmsg("Entity failed to be updated: %i",
+                                   update_result)));
+        }
 
         // Insert index entries for the tuple
         if (resultRelInfo->ri_NumIndices > 0)
+        {
             ExecInsertIndexTuples(elemTupleSlot, &(tuple->t_self), estate,
                                   false, NULL, NIL);
+        }
     }
 
     ReleaseBuffer(buffer);
@@ -179,6 +187,11 @@ static void process_all_tuples(CustomScanState *node)
     } while (!TupIsNull(slot));
 }
 
+/*
+ * Checks the path to see if the entities contained within
+ * have the same graphid and the updated_id field. Returns
+ * true if yes, false otherwise.
+ */
 static bool check_path(agtype_value *path, graphid updated_id)
 {
     int i;
@@ -190,12 +203,18 @@ static bool check_path(agtype_value *path, graphid updated_id)
         agtype_value *id = GET_AGTYPE_VALUE_OBJECT_VALUE(elem, "id");
 
         if (updated_id == id->val.int_value)
+        {
             return true;
+        }
     }
 
     return false;
 }
 
+/*
+ * Construct a new agtype path with the entity with updated_id
+ * replacing all of its intances in path with updated_entity
+ */
 static agtype_value *replace_entity_in_path(agtype_value *path,
                                             graphid updated_id,
                                             agtype *updated_entity)
@@ -217,24 +236,37 @@ static agtype_value *replace_entity_in_path(agtype_value *path,
     parsed_agtype_value = push_agtype_value(&parse_state, tok,
                                             tok < WAGT_BEGIN_ARRAY ? r : NULL);
 
+    // Iterate through the path, replace entities as necessary.
     for (i = 0; i < path->val.array.num_elems; i++)
     {
         agtype_value *id, *elem;
 
         elem = &path->val.array.elems[i];
 
+        // something unexpected happended, throw an error.
         if (elem->type != AGTV_VERTEX && elem->type != AGTV_EDGE)
+        {
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                             errmsg("unsupported agtype found in a path")));
+        }
 
+        // extract the id field
         id = GET_AGTYPE_VALUE_OBJECT_VALUE(elem, "id");
 
+        /*
+         * Either replace or keep the entity in the new path, depending on the id
+         * check.
+         */
         if (updated_id == id->val.int_value)
+        {
             parsed_agtype_value = push_agtype_value(&parse_state, WAGT_ELEM,
                 get_ith_agtype_value_from_container(&updated_entity->root, 0));
+        }
         else
+        {
             parsed_agtype_value = push_agtype_value(&parse_state, WAGT_ELEM,
                                                     elem);
+        }
     }
 
     parsed_agtype_value = push_agtype_value(&parse_state, WAGT_END_ARRAY, NULL);
@@ -243,6 +275,11 @@ static agtype_value *replace_entity_in_path(agtype_value *path,
     return parsed_agtype_value;
 }
 
+/*
+ * When a vertex or edge is updated, we need to update the vertex
+ * or edge if it is contained within a path. Scan through scanTupleSlot
+ * to find all paths and check if they need to be updated.
+ */
 static void update_all_paths(CustomScanState *node, graphid id,
                              agtype *updated_entity)
 {
@@ -256,19 +293,35 @@ static void update_all_paths(CustomScanState *node, graphid id,
         agtype *original_entity;
         agtype_value *original_entity_value;
 
+        // skip non agtype values
         if (scanTupleSlot->tts_tupleDescriptor->attrs[i].atttypid != AGTYPEOID)
+        {
             continue;
+        }
 
+        // skip nulls
         if (scanTupleSlot->tts_isnull[i])
+        {
             continue;
+        }
 
         original_entity = DATUM_GET_AGTYPE_P(scanTupleSlot->tts_values[i]);
+
+        // if the value is not a scalar type, its not a path
+        if (!AGTYPE_CONTAINER_IS_SCALAR(&original_entity->root))
+        {
+            continue;
+        }
+
         original_entity_value = get_ith_agtype_value_from_container(&original_entity->root, 0);
 
+        // we found a path
         if (original_entity_value->type == AGTV_PATH)
         {
+            // check if the path contains the entity.
             if (check_path(original_entity_value, id))
             {
+                // the path does contain the entity replace with the new entity.
                 agtype_value *new_path = replace_entity_in_path(original_entity_value, id, updated_entity);
 
                 scanTupleSlot->tts_values[i] = AGTYPE_P_GET_DATUM(agtype_value_to_agtype(new_path));
@@ -340,23 +393,29 @@ static void process_update_list(CustomScanState *node)
          * possible when the OPTIONAL MATCH clause is implemented.
          */
         if (scanTupleSlot->tts_isnull[update_item->entity_position - 1])
+        {
             continue;
+        }
 
         if (scanTupleSlot->tts_tupleDescriptor->attrs[update_item->entity_position -1].atttypid != AGTYPEOID)
+        {
             ereport(ERROR,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                      errmsg("age %s clause can only update agtype",
                             clause_name)));
+        }
 
         original_entity = DATUM_GET_AGTYPE_P(scanTupleSlot->tts_values[update_item->entity_position - 1]);
         original_entity_value = get_ith_agtype_value_from_container(&original_entity->root, 0);
 
         if (original_entity_value->type != AGTV_VERTEX &&
             original_entity_value->type != AGTV_EDGE)
+        {
             ereport(ERROR,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                      errmsg("age %s clause can only update vertex and edges",
                             clause_name)));
+        }
 
         /* get the id and label for later */
         id = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value, "id");
@@ -374,18 +433,26 @@ static void process_update_list(CustomScanState *node)
          * MATCH is implemented.
          */
         if(update_item->remove_item)
+        {
             remove_property = true;
+        }
         else
+        {
             remove_property = scanTupleSlot->tts_isnull[update_item->prop_position - 1];
+        }
 
         /*
          * If we need to remove the property, set the value to NULL. Otherwise
          * fetch the evaluated expression from the tuble slot.
          */
         if (remove_property)
+        {
             new_property_value = NULL;
+        }
         else
+        {
             new_property_value = DATUM_GET_AGTYPE_P(scanTupleSlot->tts_values[update_item->prop_position - 1]);
+        }
 
         /*
          * Alter the properties Agtype value to contain or remove the updated
@@ -508,7 +575,9 @@ static TupleTableSlot *exec_cypher_set(CustomScanState *node)
     Increment_Estate_CommandId(estate);
 
     if (TupIsNull(slot))
+    {
         return NULL;
+    }
 
     econtext->ecxt_scantuple =
         node->ss.ps.lefttree->ps_ProjInfo->pi_exprContext->ecxt_scantuple;

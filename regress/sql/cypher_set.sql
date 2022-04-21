@@ -174,6 +174,36 @@ END;
 SELECT * FROM cypher('cypher_set', $$MATCH (u:vertices) return u $$) AS (result agtype);
 SELECT * FROM cypher('cypher_set', $$MATCH (u:begin)-[:edge]->(v:end) return u, v $$) AS (u agtype, v agtype);
 
+-- test lists
+SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = [3, 'test', [1, 2, 3], {id: 1}, 1.0, 1.0::numeric] RETURN n$$) AS (a agtype);
+
+SELECT * FROM cypher('cypher_set', $$MATCH (n) RETURN n$$) AS (a agtype);
+
+-- test that lists get updated in paths
+SELECT * FROM cypher('cypher_set', $$MATCH p=(u:begin)-[:edge]->(v:end) SET u.i = [1, 2, 3] return u, p $$) AS (u agtype, p agtype);
+
+SELECT * FROM cypher('cypher_set', $$MATCH p=(u:begin)-[:edge]->(v:end) return u, p $$) AS (u agtype, p agtype);
+
+-- test empty lists
+SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = [] RETURN n$$) AS (a agtype);
+
+SELECT * FROM cypher('cypher_set', $$MATCH (n) RETURN n$$) AS (a agtype);
+
+-- test maps
+SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = {prop1: 3, prop2:'test', prop3: [1, 2, 3], prop4: {id: 1}, prop5: 1.0, prop6:1.0::numeric} RETURN n$$) AS (a agtype);
+
+SELECT * FROM cypher('cypher_set', $$MATCH (n) RETURN n$$) AS (a agtype);
+
+-- test maps in paths
+SELECT * FROM cypher('cypher_set', $$MATCH p=(u:begin)-[:edge]->(v:end) SET u.i = {prop1: 1, prop2: 2, prop3: 3} return u, p $$) AS (u agtype, p agtype);
+
+SELECT * FROM cypher('cypher_set', $$MATCH p=(u:begin)-[:edge]->(v:end) return u, p $$) AS (u agtype, p agtype);
+
+-- test empty maps
+SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = {} RETURN n$$) AS (a agtype);
+
+SELECT * FROM cypher('cypher_set', $$MATCH (n) RETURN n$$) AS (a agtype);
+
 --
 -- Clean up
 --
@@ -182,5 +212,4 @@ DROP FUNCTION set_test;
 SELECT drop_graph('cypher_set', true);
 
 --
--- End
---
+
