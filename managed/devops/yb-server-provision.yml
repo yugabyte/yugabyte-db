@@ -14,6 +14,7 @@
         that:
           - server_type is defined
           - server_type in ["cluster-server"]
+      tags: yb-prebuilt-ami
 
 
 # This is required to set locale to avoid bash warning message on GCP Ubuntu
@@ -26,6 +27,7 @@
             sudo apt-get install -y locales &&
             sudo locale-gen "en_US.UTF-8"'
       when: ansible_distribution == "Ubuntu" and cloud_type == "gcp"
+  tags: yb-prebuilt-ami
 
 - name: Provision server
   become: yes
