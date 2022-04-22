@@ -11,10 +11,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.forms.LiveQueriesParams;
 import java.util.UUID;
 import java.util.concurrent.Callable;
-
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.api.Play;
 import play.libs.Json;
 
@@ -112,6 +109,9 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
               mapper.treeToValue(objNode, LiveQueriesParams.YCQLQueryParams.class);
           if (params.calls_in_flight != null) {
             for (LiveQueriesParams.QueryCallsInFlight query : params.calls_in_flight) {
+              if (query.cql_details == null) {
+                continue;
+              }
               // Get SQL query string, joining multiple entries if necessary
               StringBuilder queryStringBuilder = new StringBuilder();
               ObjectNode rowData = Json.newObject();
