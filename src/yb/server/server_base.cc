@@ -458,10 +458,10 @@ RpcAndWebServerBase::~RpcAndWebServerBase() {
   Shutdown();
 }
 
-Endpoint RpcAndWebServerBase::first_http_address() const {
+Result<Endpoint> RpcAndWebServerBase::first_http_address() const {
   std::vector<Endpoint> addrs;
-  WARN_NOT_OK(web_server_->GetBoundAddresses(&addrs),
-              "Couldn't get bound webserver addresses");
+  RETURN_NOT_OK_PREPEND(web_server_->GetBoundAddresses(&addrs),
+                        "Couldn't get bound webserver addresses");
   CHECK(!addrs.empty()) << "Not bound";
   return addrs[0];
 }
