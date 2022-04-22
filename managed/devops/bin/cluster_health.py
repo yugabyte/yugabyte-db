@@ -478,7 +478,7 @@ class NodeChecker():
             self.node, process, self.tserver_http_port, self.universe_version)
 
     def check_logs_find_output(self, output):
-        logs = []
+        log_tuples = []
         if output:
             for line in output.strip().split('\n'):
                 splits = line.strip().split()
@@ -491,10 +491,11 @@ class NodeChecker():
                 epoch = epoch.split('.')[0]
                 if not epoch.isdigit():
                     continue
-                logs.append('{} ({} old)'.format(
-                    filename,
-                    ''.join(seconds_to_human_readable_time(int(time.time() - int(epoch))))))
-        return logs
+                log_tuples.append((epoch, filename,
+                                   seconds_to_human_readable_time(int(time.time() - int(epoch)))))
+
+        sorted_logs = sorted(log_tuples, key=lambda log: log[0], reverse=True)
+        return list(map(lambda log: '{} ({} old)'.format(log[1], log[2]), sorted_logs))
 
     def check_for_error_logs(self, process):
         logging.info("Checking for error logs on node {}".format(self.node))
@@ -505,7 +506,7 @@ class NodeChecker():
 
         metric_value = 0
         for log_severity in ["FATAL", "ERROR"]:
-            remote_cmd = ('find {} {} -name "*{}*" -type f -printf "%T@ %p\\n" | sort -rn'.format(
+            remote_cmd = ('find {} {} -name "*{}*" -type f -printf "%T@ %p\\n"'.format(
                 search_dir,
                 '-mmin -{}'.format(FATAL_TIME_THRESHOLD_MINUTES),
                 log_severity))
@@ -594,13 +595,13 @@ class NodeChecker():
         logging.info("Checking for open file descriptors on node {}".format(self.node))
         e = self._new_entry("Opened file descriptors")
 
-        remote_cmd = 'ulimit -n; cat /proc/sys/fs/file-max; cat /proc/sys/fs/file-nr | cut -f1'
+        remote_cmd = 'ulimit -n; cat /proc/sys/fs/file-max; awk \'{print $1}\' /proc/sys/fs/file-nr'
         output = self._remote_check_output(remote_cmd)
 
         if has_errors(output):
             return e.fill_and_return_entry([output], True)
 
-        counts = output.split()
+        counts = output.split('\n')
 
         if len(counts) != 3:
             return e.fill_and_return_entry(
