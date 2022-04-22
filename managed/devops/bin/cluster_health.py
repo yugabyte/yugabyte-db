@@ -286,11 +286,11 @@ class NodeChecker():
     def check_for_fatal_logs(self, process):
         logging.info("Checking for fatals on node {}".format(self.node))
         e = self._new_entry("Fatal log files")
-        logs = []
+        log_tuples = []
         process_dir = process.strip("yb-")
         search_dir = YB_PROCESS_LOG_PATH_FORMAT.format(process_dir)
         remote_cmd = (
-            'find {} {} -name "*FATAL*" -type f -printf "%T@ %p\\n" | sort -rn'.format(
+            'find {} {} -name "*FATAL*" -type f -printf "%T@ %p\\n"'.format(
                 search_dir,
                 '-mmin -{}'.format(FATAL_TIME_THRESHOLD_MINUTES)))
         output = self._remote_check_output(remote_cmd)
@@ -309,9 +309,12 @@ class NodeChecker():
                 epoch = epoch.split('.')[0]
                 if not epoch.isdigit():
                     continue
-                logs.append('{} ({} old)'.format(
-                    filename,
-                    ''.join(seconds_to_human_readable_time(int(time.time() - int(epoch))))))
+                log_tuples.append((epoch, filename,
+                                   seconds_to_human_readable_time(int(time.time() - int(epoch)))))
+
+        sorted_logs = sorted(log_tuples, key=lambda log: log[0], reverse=True)
+        logs = list(map(lambda log: '{} ({} old)'.format(log[1], log[2]), sorted_logs))
+
         return e.fill_and_return_entry(logs, len(logs) > 0)
 
     def check_for_core_files(self):
@@ -360,13 +363,13 @@ class NodeChecker():
         logging.info("Checking for open file descriptors on node {}".format(self.node))
         e = self._new_entry("Opened file descriptors")
 
-        remote_cmd = 'ulimit -n; cat /proc/sys/fs/file-max; cat /proc/sys/fs/file-nr | cut -f1'
+        remote_cmd = 'ulimit -n; cat /proc/sys/fs/file-max; awk \'{print $1}\' /proc/sys/fs/file-nr'
         output = self._remote_check_output(remote_cmd)
 
         if has_errors(output):
             return e.fill_and_return_entry([output], True)
 
-        counts = output.split()
+        counts = output.split('\n')
 
         if len(counts) != 3:
             return e.fill_and_return_entry(
