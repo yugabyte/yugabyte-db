@@ -61,7 +61,7 @@ class CQLServerEnt : public cqlserver::CQLServer {
 
     return server::ReloadSecureContextKeysAndCertificates(
           secure_context_.get(),
-          server::DefaultRootDir(*fs_manager_),
+          fs_manager_->GetDefaultRootDir(),
           server::SecureContextType::kExternal,
           options_.HostsString());
   }

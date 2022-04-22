@@ -79,7 +79,7 @@ Status Master::ReloadKeysAndCertificates() {
 
   return server::ReloadSecureContextKeysAndCertificates(
         secure_context_.get(),
-        server::DefaultRootDir(*fs_manager_),
+        fs_manager_->GetDefaultRootDir(),
         server::SecureContextType::kInternal,
         options_.HostsString());
 }

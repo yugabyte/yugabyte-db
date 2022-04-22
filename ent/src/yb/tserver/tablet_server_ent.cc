@@ -167,7 +167,7 @@ Status TabletServer::ReloadKeysAndCertificates() {
 
   RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
         secure_context_.get(),
-        server::DefaultRootDir(*fs_manager_),
+        fs_manager_->GetDefaultRootDir(),
         server::SecureContextType::kInternal,
         options_.HostsString()));
 
