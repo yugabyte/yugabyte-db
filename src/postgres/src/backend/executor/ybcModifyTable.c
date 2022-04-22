@@ -56,6 +56,7 @@
 #include "access/yb_scan.h"
 
 bool yb_disable_transactional_writes = false;
+bool yb_enable_upsert_mode = false;
 
 /*
  * Hack to ensure that the next CommandCounterIncrement() will call
@@ -288,6 +289,11 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 		MarkCurrentCommandUsed();
 		CacheInvalidateHeapTuple(rel, tuple, NULL);
 	}
+
+	if (yb_enable_upsert_mode)
+    {
+        HandleYBStatus(YBCPgInsertStmtSetUpsertMode(insert_stmt));
+    }
 
 	/* Execute the insert */
 	YBCExecWriteStmt(insert_stmt, rel, NULL /* rows_affected_count */, true /* cleanup */);

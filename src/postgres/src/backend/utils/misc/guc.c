@@ -2045,6 +2045,16 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+    {
+		{"yb_enable_upsert_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the boolean flag to enable or disable upsert mode for writes."),
+			NULL
+		},
+		&yb_enable_upsert_mode,
+		false,
+		NULL, NULL, NULL
+    },
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
