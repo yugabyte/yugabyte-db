@@ -94,7 +94,7 @@
     <dependency>
       <groupId>org.mybatis</groupId>
       <artifactId>mybatis</artifactId>
-      <version>3.4.5</version>
+      <version>3.5.9</version>
     </dependency>
     <!-- dependency for YCQL driver -->
     <dependency>
