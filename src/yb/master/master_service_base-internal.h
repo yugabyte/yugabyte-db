@@ -110,7 +110,7 @@ void MasterServiceBase::HandleIn(
     int line_number,
     const char* function_name,
     HoldCatalogLock hold_catalog_lock) {
-  HandleOnLeader(req, resp, rpc, [=]() -> Status {
+  HandleOnLeader(req, resp, rpc, [this, resp, f]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(resp); },
       file_name, line_number, function_name, hold_catalog_lock);
 }
@@ -127,7 +127,7 @@ void MasterServiceBase::HandleIn(
     HoldCatalogLock hold_catalog_lock) {
   LongOperationTracker long_operation_tracker("HandleIn", std::chrono::seconds(10));
 
-  HandleOnLeader(req, resp, rpc, [=]() -> Status {
+  HandleOnLeader(req, resp, rpc, [this, req, resp, f]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp); },
       file_name, line_number, function_name, hold_catalog_lock);
 }
@@ -142,7 +142,7 @@ void MasterServiceBase::HandleIn(
     int line_number,
     const char* function_name,
     HoldCatalogLock hold_catalog_lock) {
-  HandleOnLeader(req, resp, rpc, [=]() -> Status {
+  HandleOnLeader(req, resp, rpc, [this, req, resp, f, rpc]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp, rpc); },
       file_name, line_number, function_name, hold_catalog_lock);
 }

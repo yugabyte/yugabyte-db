@@ -203,11 +203,14 @@ struct StatusCategoryDescription {
   std::function<size_t(const uint8_t*)> decode_size;
   std::function<std::string(const uint8_t*)> to_string;
 
-  StatusCategoryDescription() = default;
-
   template <class Tag>
   static StatusCategoryDescription Make(const std::string* name_) {
-    return StatusCategoryDescription{Tag::kCategory, name_, &Tag::DecodeSize, &Tag::DecodeToString};
+    return StatusCategoryDescription {
+      .id = Tag::kCategory,
+      .name = name_,
+      .decode_size = &Tag::DecodeSize,
+      .to_string = &Tag::DecodeToString
+    };
   }
 };
 

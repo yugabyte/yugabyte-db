@@ -469,9 +469,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 template<typename T, typename Alloc = std::allocator<T> >
 class MemTrackerAllocator : public Alloc {
  public:
-  typedef typename Alloc::pointer pointer;
-  typedef typename Alloc::const_pointer const_pointer;
-  typedef typename Alloc::size_type size_type;
+  using size_type = typename Alloc::size_type;
 
   explicit MemTrackerAllocator(std::shared_ptr<MemTracker> mem_tracker)
       : mem_tracker_(std::move(mem_tracker)) {}
@@ -486,15 +484,15 @@ class MemTrackerAllocator : public Alloc {
   ~MemTrackerAllocator() {
   }
 
-  pointer allocate(size_type n, const_pointer hint = 0) {
+  T* allocate(size_type n) {
     // Ideally we'd use TryConsume() here to enforce the tracker's limit.
     // However, that means throwing bad_alloc if the limit is exceeded, and
     // it's not clear that the rest of YB can handle that.
     mem_tracker_->Consume(n * sizeof(T));
-    return Alloc::allocate(n, hint);
+    return Alloc::allocate(n);
   }
 
-  void deallocate(pointer p, size_type n) {
+  void deallocate(T* p, size_type n) {
     Alloc::deallocate(p, n);
     mem_tracker_->Release(n * sizeof(T));
   }
@@ -502,7 +500,8 @@ class MemTrackerAllocator : public Alloc {
   // This allows an allocator<T> to be used for a different type.
   template <class U>
   struct rebind {
-    typedef MemTrackerAllocator<U, typename Alloc::template rebind<U>::other> other;
+    using other = MemTrackerAllocator<
+        U, typename std::allocator_traits<Alloc>::template rebind_alloc<U>>;
   };
 
   const std::shared_ptr<MemTracker>& mem_tracker() const { return mem_tracker_; }
