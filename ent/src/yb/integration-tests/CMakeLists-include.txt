@@ -41,6 +41,7 @@ set(INTEGRATION_TESTS_EXTENSIONS_TESTS
   encryption-test
   cdc_service-int-test
   cdc_service-txn-test
+  cql-backup-test
   twodc_ysql-test
   twodc-test
   PARENT_SCOPE)

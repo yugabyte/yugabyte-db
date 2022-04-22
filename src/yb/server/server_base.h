@@ -161,13 +161,16 @@ YB_STRONGLY_TYPED_BOOL(RpcOnly);
 // and provides a common interface for server-type-agnostic functions.
 class RpcAndWebServerBase : public RpcServerBase {
  public:
-  const Webserver *web_server() const { return web_server_.get(); }
+  const Webserver* web_server() const { return web_server_.get(); }
+
+  // Get writable Web Server object for test scenarios.
+  Webserver* TEST_web_server() { return web_server_.get(); }
 
   FsManager* fs_manager() { return fs_manager_.get(); }
 
   // Return the first HTTP address that this server has bound to.
-  // FATALs if the server is not started.
-  Endpoint first_http_address() const;
+  // Return an error status if the server is not started.
+  Result<Endpoint> first_http_address() const;
 
   // Return a PB describing the status of the server (version info, bound ports, etc)
   void GetStatusPB(ServerStatusPB* status) const override;

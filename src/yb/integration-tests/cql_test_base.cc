@@ -97,4 +97,11 @@ void CqlTestBase<ExternalMiniCluster>::DoTearDown() {
   MiniClusterTestWithClient<ExternalMiniCluster>::DoTearDown();
 }
 
+template <>
+Status CqlTestBase<MiniCluster>::RunBackupCommand(const vector<string>& args) {
+  return tools::RunBackupCommand(
+      HostPort(), // Not used YSQL host/port.
+      cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(), *tmp_dir_, args);
+}
+
 } // namespace yb

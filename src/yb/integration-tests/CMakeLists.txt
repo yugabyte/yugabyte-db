@@ -75,11 +75,11 @@ add_library(cdc_test_util cdc_test_util.cc)
 target_link_libraries(cdc_test_util yb_test_util cdc_service_proto tserver)
 
 add_library(cql_test_util cql_test_base.cc cql_test_util.cc)
-target_link_libraries(cql_test_util cassandra integration-tests yb-cql yb_test_util)
+target_link_libraries(cql_test_util cassandra integration-tests yb-cql yb_test_util tools_test_utils)
 
 # Tests
 set(YB_TEST_LINK_LIBS
-    integration-tests yb_client yb_tools_util ql-dml-test-base rpc_test_util ${YB_MIN_TEST_LIBS})
+    integration-tests yb_client yb_tools_util ql-dml-test-base rpc_test_util cql_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)
@@ -139,7 +139,7 @@ ADD_YB_TEST(sys_catalog_respect_affinity-test)
 ADD_YB_TEST(restart-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
-set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra cql_test_util)
+set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
 set(CASS_DRIVER_VERSION "2.9.0-yb-4")
 set(CASS_DRIVER_INTERNAL_INCLUDE
     "${YB_THIRDPARTY_DIR}/src/cassandra-cpp-driver-${CASS_DRIVER_VERSION}/src")
