@@ -1832,31 +1832,41 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
                  errmsg("paths require at least 1 vertex")));
     }
 
+    /*
+     * If this path is only 1 to 3 elements in length, check to see if the
+     * contained edge is actually a path (made by the VLE). If so, just
+     * materialize the vle path because it already contains the two outside
+     * vertices.
+     */
+    if (nargs >= 1 && nargs <= 3)
+    {
+        int i = 0;
+
+        for (i = 0; i < nargs; i++)
+        {
+            agtype *agt = NULL;
+
+            if (nulls[i] || types[i] != AGTYPEOID)
+            {
+                break;
+            }
+
+            agt = DATUM_GET_AGTYPE_P(args[i]);
+
+            if (AGT_ROOT_IS_BINARY(agt) &&
+                AGT_ROOT_BINARY_FLAGS(agt) == AGT_FBINARY_TYPE_VLE_PATH)
+            {
+                agtype *path = agt_materialize_vle_path(agt);
+                PG_RETURN_POINTER(path);
+            }
+        }
+    }
+
     if (nargs % 2 == 0)
     {
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("a path is of the form: [vertex, (edge, vertex)*i] where i >= 0")));
-    }
-
-    /*
-     * If this path is only 3 elements long (vertex, edge, vertex). Check to see
-     * if the edge is actually a path (made by the VLE). If so, just materialize
-     * the vle path because it already contains the two outside vertices.
-     */
-    if (nargs == 3)
-    {
-        agtype *agt = NULL;
-
-        agt = DATUM_GET_AGTYPE_P(args[1]);
-
-        if (types[1] == AGTYPEOID &&
-            AGT_ROOT_IS_BINARY(agt) &&
-            AGT_ROOT_BINARY_FLAGS(agt) == AGT_FBINARY_TYPE_VLE_PATH)
-        {
-            agtype *path = agt_materialize_vle_path(agt);
-            PG_RETURN_POINTER(path);
-        }
     }
 
     /* initialize the result */

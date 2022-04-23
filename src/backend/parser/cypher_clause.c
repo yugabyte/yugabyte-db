@@ -381,6 +381,7 @@ static RangeTblEntry *append_VLE_Func_to_FromClause(cypher_parsestate *cpstate,
                                                     Node *n);
 static void setNamespaceLateralState(List *namespace, bool lateral_only,
                                      bool lateral_ok);
+static bool isa_special_VLE_case(cypher_path *path);
 
 /*
  * transform a cypher_clause
@@ -3420,6 +3421,31 @@ static transform_entity *transform_VLE_edge_entity(cypher_parsestate *cpstate,
     return vle_entity;
 }
 
+/* helper function to check for specific VLE cases */
+static bool isa_special_VLE_case(cypher_path *path)
+{
+    cypher_relationship *cr = NULL;
+
+    if (path->var_name == NULL)
+    {
+        return false;
+    }
+
+    if (list_length(path->path) != 3)
+    {
+        return false;
+    }
+
+    cr = (cypher_relationship*)lfirst(lnext(list_head(path->path)));
+
+    if (cr->varlen != NULL)
+    {
+        return true;
+    }
+
+    return false;
+}
+
 /*
  * Iterate through the path and construct all edges and necessary vertices
  */
@@ -3432,6 +3458,9 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
     int i = 0;
     bool node_declared_in_prev_clause = false;
     transform_entity *prev_entity = NULL;
+    bool special_VLE_case = false;
+
+    special_VLE_case = isa_special_VLE_case(path);
 
     /*
      * Iterate through every node in the path, construct the expr node
@@ -3448,6 +3477,7 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
         if (i % 2 == 0)
         {
             cypher_node *node = NULL;
+            bool output_node = false;
 
             node = lfirst(lc);
 
@@ -3471,9 +3501,14 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
                 }
             }
 
+            /* should we make the node available */
+            output_node = (special_VLE_case && !node->name && !node->props) ?
+                          false :
+                          INCLUDE_NODE_IN_JOIN_TREE(path, node);
+
             /* transform vertex */
             expr = transform_cypher_node(cpstate, node, &query->targetList,
-                                         INCLUDE_NODE_IN_JOIN_TREE(path, node));
+                                         output_node);
 
             entity = make_transform_entity(cpstate, ENT_VERTEX, (Node *)node,
                                            expr);
@@ -3641,8 +3676,8 @@ static List *make_path_join_quals(cypher_parsestate *cpstate, List *entities)
         }
 
         // create the join quals for the node
-        join_quals = make_join_condition_for_edge(
-            cpstate, prev_edge, prev_node, edge, next_node, next_edge);
+        join_quals = make_join_condition_for_edge(cpstate, prev_edge, prev_node,
+                                                  edge, next_node, next_edge);
 
         quals = list_concat(quals, join_quals);
 
@@ -3691,7 +3726,10 @@ transform_match_create_path_variable(cypher_parsestate *cpstate,
     {
         transform_entity *entity = lfirst(lc);
 
-        entity_exprs = lappend(entity_exprs, entity->expr);
+        if (entity->expr != NULL)
+        {
+            entity_exprs = lappend(entity_exprs, entity->expr);
+        }
     }
 
     // get the oid for the path creation function
@@ -4031,8 +4069,7 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
                      parser_errposition(pstate, node->location)));
         }
     }
-
-    if (!node->name)
+    else
     {
         node->name = get_next_default_alias(cpstate);
     }
@@ -4054,11 +4091,9 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
 
     expr = (Expr *)make_vertex_expr(cpstate, rte, node->label);
 
-    if (node->name)
-    {
-        te = makeTargetEntry(expr, resno, node->name, false);
-        *target_list = lappend(*target_list, te);
-    }
+    /* make target entry and add it */
+    te = makeTargetEntry(expr, resno, node->name, false);
+    *target_list = lappend(*target_list, te);
 
     return expr;
 }
