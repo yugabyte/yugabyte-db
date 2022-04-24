@@ -14,6 +14,8 @@
 
 #endif
 
+#include "orafce.h"
+#include "builtins.h"
 
 /* all the options of interest for regex functions */
 typedef struct pg_re_flags
