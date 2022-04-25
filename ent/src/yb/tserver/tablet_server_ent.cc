@@ -176,7 +176,15 @@ Status TabletServer::ReloadKeysAndCertificates() {
     RETURN_NOT_OK(cdc_consumer_->ReloadCertificates());
   }
 
+  for (const auto& reloader : certificate_reloaders_) {
+    RETURN_NOT_OK(reloader());
+  }
+
   return Status::OK();
+}
+
+void TabletServer::RegisterCertificateReloader(CertificateReloader reloader) {
+  certificate_reloaders_.push_back(std::move(reloader));
 }
 
 } // namespace enterprise

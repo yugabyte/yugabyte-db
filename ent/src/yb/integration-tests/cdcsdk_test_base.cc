@@ -123,8 +123,9 @@ Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
   LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
             << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-  cluster->pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf);
-      RETURN_NOT_OK(cluster->pg_supervisor_->Start());
+  cluster->pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(
+      pg_process_conf, nullptr /* tserver */);
+  RETURN_NOT_OK(cluster->pg_supervisor_->Start());
 
   cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
   return Status::OK();

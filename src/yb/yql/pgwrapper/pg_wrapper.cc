@@ -23,6 +23,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/tserver/tablet_server_interface.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
@@ -439,6 +440,10 @@ Status PgWrapper::Start() {
   return Status::OK();
 }
 
+Status PgWrapper::ReloadConfig() {
+  return pg_proc_->Kill(SIGHUP);
+}
+
 void PgWrapper::Kill() {
   WARN_NOT_OK(pg_proc_->Kill(SIGQUIT), "Kill PostgreSQL server failed");
 }
@@ -606,8 +611,11 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
 // PgSupervisor: monitoring a PostgreSQL child process and restarting if needed
 // ------------------------------------------------------------------------------------------------
 
-PgSupervisor::PgSupervisor(PgProcessConf conf)
+PgSupervisor::PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver)
     : conf_(std::move(conf)) {
+  if (tserver) {
+    tserver->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
+  }
 }
 
 PgSupervisor::~PgSupervisor() {
@@ -748,6 +756,14 @@ void PgSupervisor::Stop() {
     }
   }
   supervisor_thread_->Join();
+}
+
+Status PgSupervisor::ReloadConfig() {
+  std::lock_guard<std::mutex> lock(mtx_);
+  if (pg_wrapper_) {
+    return pg_wrapper_->ReloadConfig();
+  }
+  return Status::OK();
 }
 
 }  // namespace pgwrapper

@@ -80,7 +80,7 @@ void PgMiniTestBase::SetUp() {
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
 
   BeforePgProcessStart();
-  pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf);
+  pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf, nullptr /* tserver */);
   ASSERT_OK(pg_supervisor_->Start());
 
   DontVerifyClusterBeforeNextTearDown();
@@ -117,7 +117,7 @@ Status PgMiniTestBase::RestartCluster() {
   pg_supervisor_->Stop();
   RETURN_NOT_OK(cluster_->RestartSync());
   pg_supervisor_ = std::make_unique<PgSupervisor>(
-      VERIFY_RESULT(CreatePgProcessConf(pg_host_port_.port())));
+      VERIFY_RESULT(CreatePgProcessConf(pg_host_port_.port())), nullptr /* tserver */);
   return pg_supervisor_->Start();
 }
 

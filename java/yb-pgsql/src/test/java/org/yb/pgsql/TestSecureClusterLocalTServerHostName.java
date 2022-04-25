@@ -22,6 +22,9 @@ import java.util.Map;
 // with extra argument 'use_node_hostname_for_local_tserver=true'
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestSecureClusterLocalTServerHostName extends TestSecureCluster {
+  public TestSecureClusterLocalTServerHostName() throws Exception {
+    super();
+  }
 
   @Override
   protected Map<String, String> getTServerFlags() {
