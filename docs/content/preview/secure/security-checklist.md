@@ -26,7 +26,7 @@ Read more about [how to enable authentication in YugabyteDB](../authentication/)
 
 Roles can be modified to grant users or applications only the essential privileges based on the operations they need to perform against the database. Typically, an administrator role is created first. The administrator then creates additional roles for users.
 
-See the [authorization](../authorization/) section to enable role-based access control in YugabyteDB.
+Refer to [Role-based access control](../authorization/) to enable role-based access control in YugabyteDB.
 
 ## Run as a dedicated user
 

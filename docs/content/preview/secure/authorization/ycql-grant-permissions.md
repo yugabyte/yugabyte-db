@@ -39,7 +39,7 @@ Here is what you want to achieve from a role-based access control (RBAC) perspec
 
 ## 1. Create role hierarchy
 
-Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../enable-authentication/ycql/) in YugabyteDB clusters for YCQL. For this article, use the default `cassandra` user and connect to the cluster using `ycqlsh` as follows:
+Connect to the cluster using a superuser role. Use the default `cassandra` user and connect to the cluster using `ycqlsh` as follows:
 
 ```sh
 $ ./bin/ycqlsh -u cassandra -p cassandra
@@ -233,9 +233,9 @@ All Keyspaces (data) > keyspace (dev_keyspace) > table (integration_tests)
 
 DB admins should be able to perform all operations on any keyspace. There are two ways to achieve this:
 
-1. The DB admins can be granted the superuser permission. Read more about [granting the superuser permission to roles](../../enable-authentication/ycql/). Doing this gives the DB admin all the permissions over all the roles as well.
+1. Grant DB admins the superuser permission. Doing this gives DB admins all permissions over all roles as well.
 
-2. Grant ALL permissions to the "db_admin" role. This can be achieved as follows.
+2. Grant ALL permissions to the "db_admin" role. Do the following:
 
     ```sql
     cassandra@ycqlsh> GRANT ALL ON ALL KEYSPACES TO db_admin;
@@ -262,7 +262,7 @@ DB admins should be able to perform all operations on any keyspace. There are tw
 
 ## 4. Revoke permissions from roles
 
-Suppose you want to revoke the `AUTHORIZE` permission from the DB admins so that they can no longer change permissions for other roles. This can be done as follows.
+To revoke the `AUTHORIZE` permission from DB admins so that they can no longer change permissions for other roles, do the following:
 
 ```sql
 cassandra@ycqlsh> REVOKE AUTHORIZE ON ALL KEYSPACES FROM db_admin;
@@ -274,7 +274,7 @@ Run the following command to verify the permissions.
 cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
 ```
 
-We should see the following output.
+You should see the following output.
 
 ```output
  role        | resource                            | permissions
@@ -288,3 +288,7 @@ We should see the following output.
 ```
 
 The `AUTHORIZE` permission is no longer granted to the `db_admin` role.
+
+## Learn more
+
+Read more about [enabling authentication and connecting using a superuser role](../../enable-authentication/ycql/) in YugabyteDB clusters for YCQL.

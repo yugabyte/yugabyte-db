@@ -40,7 +40,7 @@ Here is what you want to achieve from a role-based access control (RBAC) perspec
 
 ## 1. Create role hierarchy
 
-Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../enable-authentication/ysql/) in YugabyteDB clusters for YSQL. For this tutorial, use the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
+Connect to the cluster using a superuser role. For this tutorial, use the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
 
 ```sh
 $ ./bin/ysqlsh
@@ -110,7 +110,7 @@ You should see something like the following output.
  yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
 ```
 
-This shows the various role attributes of the `yugabyte` role. Because `yugabyte` is a superuser, it has all privileges on all databases, including `ALTER`, `Create role` and `DROP` on the roles you created (`engineering`, `developer`, `qa` and `db_admin`).
+This shows the various role attributes of the `yugabyte` role. Because `yugabyte` is a superuser, it has all privileges on all databases.
 
 ## 3. Grant privileges to roles
 
@@ -198,16 +198,12 @@ Owner has changed from `yugabyte` to `qa` and `qa` has all access privileges (`a
 
 ### Grant all privileges
 
-DB admins should be able to perform all operations on the database. There are two ways to achieve this:
+DB admins should be able to perform all operations on the database. You can do this by granting DB admins the superuser privilege. Doing this gives the DB admins all privileges over all roles as well. Only superusers can grant the superuser privilege.
 
-- The DB admins can be granted the superuser privilege. Read more about [granting the superuser privilege to roles](../../enable-authentication/ysql/). Doing this gives the DB admin all the privileges over all the roles as well.
-
-- Grant `ALL` privileges to the `db_admin` role.
-
-To grant all privileges, do the following:
+To grant superuser, do the following:
 
 ```sql
-dev_database=# GRANT ALL PRIVILEGES ON DATABASE dev_database TO db_admin;
+dev_database=# ALTER USER db_admin WITH SUPERUSER;
 ```
 
 Run the following command to verify the privileges:
@@ -216,24 +212,24 @@ Run the following command to verify the privileges:
 dev_database=# \du
 ```
 
-`Superuser` privileges are granted to the role `db_admin`.
-
 ```output
-                                      List of roles
-  Role name  |                         Attributes                         |   Member of
--------------+------------------------------------------------------------+---------------
-db_admin    | Superuser                                                  | {engineering}
-developer   | Cannot login                                               | {engineering}
-eng         | Cannot login                                               | {}
-engineering | Cannot login                                               | {}
-postgres    | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
-qa          | Cannot login                                               | {engineering}
-yugabyte    | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+                                       List of roles
+  Role name   |                         Attributes                         |   Member of   
+--------------+------------------------------------------------------------+---------------
+ db_admin     | Superuser, Cannot login                                    | {engineering}
+ developer    | Cannot login                                               | {engineering}
+ engineering  | Cannot login                                               | {}
+ john         |                                                            | {}
+ postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ qa           | Cannot login                                               | {engineering}
+ yb_extension | Cannot login                                               | {}
+ yb_fdw       | Cannot login                                               | {}
+ yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
 ```
 
 ## 4. Revoke privileges from roles
 
-To revoke the `Superuser` privilege from the DB admins so that they can no longer change privileges for other roles, do the following:
+To revoke superuser from the DB admins so that they can no longer change privileges for other roles, do the following:
 
 ```sql
 dev_database=# ALTER USER db_admin WITH NOSUPERUSER;
@@ -248,18 +244,20 @@ dev_database=# \du
 You should see the following output.
 
 ```output
-                                      List of roles
-  Role name  |                         Attributes                         |   Member of
--------------+------------------------------------------------------------+---------------
- db_admin    |                                                            | {engineering}
- developer   | Cannot login                                               | {engineering}
- eng         | Cannot login                                               | {}
- engineering | Cannot login                                               | {}
- postgres    | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
- qa          | Cannot login                                               | {engineering}
- steve       |                                                            | {}
- test        |                                                            | {}
- yugabyte    | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+                                       List of roles
+  Role name   |                         Attributes                         |   Member of   
+--------------+------------------------------------------------------------+---------------
+ db_admin     | Cannot login                                               | {engineering}
+ developer    | Cannot login                                               | {engineering}
+ engineering  | Cannot login                                               | {}
+ john         |                                                            | {}
+ postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ qa           | Cannot login                                               | {engineering}
+ yb_extension | Cannot login                                               | {}
+ yb_fdw       | Cannot login                                               | {}
+ yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
 ```
 
-The `Superuser` privilege is no longer granted to the `db_admin` role.
+## Learn more
+
+Read more about [enabling authentication and connecting using a superuser role](../../enable-authentication/ysql/) in YugabyteDB clusters for YSQL.
