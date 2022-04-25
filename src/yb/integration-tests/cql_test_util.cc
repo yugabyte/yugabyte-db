@@ -466,6 +466,19 @@ CppCassandraDriver::~CppCassandraDriver() {
   LOG(INFO) << "Terminating driver - DONE";
 }
 
+void CppCassandraDriver::EnableTLS(const std::vector<std::string>& ca_certs) {
+  LOG(INFO) << "Enabling TLS...";
+
+  CassSsl* ssl = cass_ssl_new();
+  cass_ssl_set_verify_flags(ssl, CASS_SSL_VERIFY_PEER_CERT | CASS_SSL_VERIFY_PEER_IDENTITY);
+  for (const auto& ca_cert : ca_certs) {
+    CheckErrorCode(cass_ssl_add_trusted_cert(ssl, ca_cert.c_str()));
+  }
+
+  cass_cluster_set_ssl(cass_cluster_, ssl);
+  cass_ssl_free(ssl);
+}
+
 Result<CassandraSession> CppCassandraDriver::CreateSession() {
   return CassandraSession::Create(cass_cluster_);
 }
