@@ -18,7 +18,6 @@ This page explains errors and warnings that you may see while running a Yugabyte
 | [open files ulimits value set low](#open-files-ulimits-value-set-low) | installation | Warning |
 | [max user processes value set low](#max-user-processes-value-set-low) | installation | Warning |
 | [Transparent hugepages disabled](#transparent-hugepages-disabled) | installation | Warning |
-| [Six loopback IPs are required](#six-loopback-ips-are-required) | installation | Warning |
 | [ntp package missing](#ntp-package-missing) | installation | Warning |
 
 ## Open files ulimits value set low
@@ -44,14 +43,6 @@ Transparent Huge Pages (THP) is a Linux memory management system that uses large
 Enable `transparent_hugepages` on your computer or VM to resolve this issue.
 
 See [transparent hugepages](../../../../deploy/manual-deployment/system-config/#transparent-hugepages) to learn more about this system configuration.
-
-## Six loopback IPs are required
-
-When you're running a cluster (for testing or development) on a single computer, you assign loopback addresses to the master and tablet servers. For example, a replication factor of 3 (RF=3) requires six loopback IP addresses.
-
-To resolve this issue, run `sudo ifconfig lo0 alias 127.0.0.x` six times with different IP address values, such as 127.0.0.2 through 127.0.0.7.
-
-Refer to [Install YugabyteDB](https://docs.yugabyte.com/latest/quick-start/install/macos/) for more prerequisites.
 
 ## NTP package missing
 
