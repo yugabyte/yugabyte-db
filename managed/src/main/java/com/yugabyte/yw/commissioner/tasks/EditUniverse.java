@@ -433,6 +433,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               null /* no gflag to update */,
               true /* updateMasterAddrs */)
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+
+      // Update the master addresses on the target universes whose source universe belongs to
+      // this task.
+      createXClusterConfigUpdateMasterAddressesTask();
     }
 
     // Finally send destroy to the old set of nodes and remove them from this universe.
