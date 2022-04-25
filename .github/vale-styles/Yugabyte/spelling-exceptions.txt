@@ -112,6 +112,7 @@ Codepen
 Cognito
 colocated
 colocating
+colocation
 compilable
 composable
 Conda
@@ -395,6 +396,7 @@ namespacings
 Nanoc
 negatable
 Netlify
+nginx
 Nokogiri
 noteable
 noteables
