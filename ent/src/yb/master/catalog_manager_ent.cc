@@ -2775,19 +2775,21 @@ Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
         LOG(WARNING) << "CDC stream does not exist: " << stream_id;
       } else {
         auto ltm = stream->LockForRead();
-        bool active = (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE);
-        bool is_WAL = false;
-        for (const auto& option : ltm->pb.options()) {
-          if (option.key() == "record_format" && option.value() == "WAL") {
-            is_WAL = true;
+        if (req->has_force_delete() && req->force_delete() == false) {
+          bool active = (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE);
+          bool is_WAL = false;
+          for (const auto& option : ltm->pb.options()) {
+            if (option.key() == "record_format" && option.value() == "WAL") {
+              is_WAL = true;
+            }
           }
-        }
-        if (!req->force_delete() && is_WAL && active) {
-          return STATUS(NotSupported,
-                        "Cannot delete an xCluster Stream in replication. "
-                        "Use 'force_delete' to override",
-                        req->ShortDebugString(),
-                        MasterError(MasterErrorPB::INVALID_REQUEST));
+          if (is_WAL && active) {
+            return STATUS(NotSupported,
+                "Cannot delete an xCluster Stream in replication. "
+                "Use 'force_delete' to override",
+                req->ShortDebugString(),
+                MasterError(MasterErrorPB::INVALID_REQUEST));
+          }
         }
         streams.push_back(stream);
       }
