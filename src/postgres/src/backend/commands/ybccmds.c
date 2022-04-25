@@ -558,9 +558,8 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		heap_close(rel, AccessShareLock);
 	}
 
-	// TODO(alex): Rename to disambiguate colocation via DB vs via tablegroup
 	/* By default, inherit the colocated option from the database */
-	bool colocated = MyDatabaseColocated;
+	bool is_colocated_via_database = MyDatabaseColocated;
 
 	/* Handle user-supplied colocated reloption */
 	ListCell *opt_cell;
@@ -577,7 +576,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 
 			bool colocated_relopt = defGetBoolean(def);
 			if (MyDatabaseColocated)
-				colocated = colocated_relopt;
+				is_colocated_via_database = colocated_relopt;
 			else if (colocated_relopt)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -590,12 +589,12 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		}
 	}
 
-	if (colocated && stmt->tablespacename)
+	if (is_colocated_via_database && stmt->tablespacename)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot create colocated table with a tablespace")));
 
-	if (OidIsValid(colocationId) && !colocated && !OidIsValid(tablegroupId))
+	if (OidIsValid(colocationId) && !is_colocated_via_database && !OidIsValid(tablegroupId))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot set colocation_id for non-colocated table")));
@@ -608,21 +607,24 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 									   is_shared_relation,
 									   false, /* if_not_exists */
 									   primary_key == NULL /* add_primary_key */,
-									   colocated,
+									   is_colocated_via_database,
 									   tablegroupId,
 									   colocationId,
 									   tablespaceId,
 									   matviewPgTableId,
 									   &handle));
 
-	CreateTableAddColumns(handle, desc, primary_key, colocated || OidIsValid(tablegroupId));
+	CreateTableAddColumns(handle,
+						  desc,
+						  primary_key,
+						  is_colocated_via_database || OidIsValid(tablegroupId));
 
 	/* Handle SPLIT statement, if present */
 	OptSplit *split_options = stmt->split_options;
 	if (split_options)
 		CreateTableHandleSplitOptions(
 			handle, desc, split_options, primary_key, namespaceId,
-			colocated || OidIsValid(tablegroupId));
+			is_colocated_via_database || OidIsValid(tablegroupId));
 
 	/* Create the table. */
 	HandleYBStatus(YBCPgExecCreateTable(handle));
@@ -633,24 +635,12 @@ YBCDropTable(Oid relationId)
 {
 	YBCPgStatement  handle     = NULL;
 	Oid             databaseId = YBCGetDatabaseOidByRelid(relationId);
-	// TODO(alex): Rename to disambiguate colocation via DB vs via tablegroup
-	bool            colocated  = false;
 
-	/* Determine if table is colocated */
-	if (MyDatabaseColocated)
-	{
-		bool not_found = false;
-		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(databaseId,
-														   relationId,
-														   &colocated),
-									 &not_found);
-	}
+	/* Whether the table is colocated (via DB or a tablegroup) */
+	bool            colocated  = YbIsUserTableColocated(databaseId, relationId);
 
 	/* Create table-level tombstone for colocated tables / tables in a tablegroup */
-	Oid tablegroupId = InvalidOid;
-	if (YbTablegroupCatalogExists)
-		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
-	if (colocated || tablegroupId != InvalidOid)
+	if (colocated)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
@@ -698,18 +688,11 @@ YBCTruncateTable(Relation rel) {
 	YBCPgStatement  handle;
 	Oid             relationId = RelationGetRelid(rel);
 	Oid             databaseId = YBCGetDatabaseOid(rel);
-	// TODO(alex): Rename to disambiguate colocation via DB vs via tablegroup
-	bool            colocated = false;
 
-	/* Determine if table is colocated */
-	if (MyDatabaseColocated)
-		HandleYBStatus(YBCPgIsTableColocated(databaseId,
-											 relationId,
-											 &colocated));
-	Oid tablegroupId = InvalidOid;
-	if (YbTablegroupCatalogExists)
-		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
-	if (colocated || tablegroupId != InvalidOid)
+	/* Whether the table is colocated (via DB or a tablegroup) */
+	bool            colocated = YbIsUserTableColocated(databaseId, relationId);
+
+	if (colocated)
 	{
 		/* Create table-level tombstone for colocated tables / tables in tablegroups */
 		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
@@ -743,16 +726,10 @@ YBCTruncateTable(Relation rel) {
 		if (indexId == rel->rd_pkindex)
 			continue;
 
-		/* Determine if index is colocated */
-		if (MyDatabaseColocated)
-			HandleYBStatus(YBCPgIsTableColocated(databaseId,
-												indexId,
-												&colocated));
+		/* Whether the table is colocated (via DB or a tablegroup) */
+		colocated = YbIsUserTableColocated(databaseId, relationId);
 
-		tablegroupId = InvalidOid;
-		if (YbTablegroupCatalogExists)
-			tablegroupId = get_tablegroup_oid_by_table_oid(indexId);
-		if (colocated || tablegroupId != InvalidOid)
+		if (colocated)
 		{
 			/* Create index-level tombstone for colocated indexes / indexes in tablegroups */
 			HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
@@ -1222,25 +1199,13 @@ void
 YBCDropIndex(Oid relationId)
 {
 	YBCPgStatement	handle;
-	// TODO(alex): Rename to disambiguate colocation via DB vs via tablegroup
-	bool			colocated  = false;
 	Oid				databaseId = YBCGetDatabaseOidByRelid(relationId);
 
-	/* Determine if table is colocated */
-	if (MyDatabaseColocated)
-	{
-		bool not_found = false;
-		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(databaseId,
-														   relationId,
-														   &colocated),
-									 &not_found);
-	}
+	/* Whether the table is colocated (via DB or a tablegroup) */
+	bool			colocated = YbIsUserTableColocated(databaseId, relationId);
 
 	/* Create table-level tombstone for colocated indexes / indexes in a tablegroup */
-	Oid tablegroupId = InvalidOid;
-	if (YbTablegroupCatalogExists)
-		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
-	if (colocated || tablegroupId != InvalidOid)
+	if (colocated)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
@@ -1274,15 +1239,6 @@ YBCDropIndex(Oid relationId)
 			YBSaveDdlHandle(handle);
 		}
 	}
-}
-
-// TODO(alex): Rename to disambiguate colocation via DB vs via tablegroup
-bool
-YBCIsTableColocated(Oid dboid, Oid relationId)
-{
-	bool colocated;
-	HandleYBStatus(YBCPgIsTableColocated(dboid, relationId, &colocated));
-	return colocated;
 }
 
 void

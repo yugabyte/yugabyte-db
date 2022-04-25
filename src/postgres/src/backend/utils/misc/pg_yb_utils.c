@@ -310,18 +310,26 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 }
 
 bool
-YBIsDatabaseColocated(Oid dbId)
+YbIsDatabaseColocated(Oid dbid)
 {
 	bool colocated;
-	HandleYBStatus(YBCPgIsDatabaseColocated(dbId, &colocated));
+	HandleYBStatus(YBCPgIsDatabaseColocated(dbid, &colocated));
 	return colocated;
 }
 
 bool
-YBIsTableColocated(Oid dbId, Oid relationId)
+YbIsUserTableColocated(Oid dbid, Oid relid)
 {
-	bool colocated;
-	HandleYBStatus(YBCPgIsTableColocated(dbId, relationId, &colocated));
+	if (!MyDatabaseColocated && !YbTablegroupCatalogExists)
+		return false;
+
+	bool colocated = false;
+	bool not_found = false;
+
+	HandleYBStatusIgnoreNotFound(YbPgIsUserTableColocated(dbid,
+														  relid,
+														  &colocated),
+								 &not_found);
 	return colocated;
 }
 

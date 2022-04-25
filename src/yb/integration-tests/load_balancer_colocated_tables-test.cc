@@ -105,7 +105,7 @@ class LoadBalancerColocatedTablesTest : public YBTableTestBase {
       ASSERT_OK(NewTableCreator()->table_name(tn)
                                   .table_id(tn.table_id())
                                   .schema(&schema_)
-                                  .colocated(true)
+                                  .is_colocated_via_database(true)
                                   .Create());
     }
   }

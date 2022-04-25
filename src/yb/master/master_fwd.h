@@ -82,6 +82,7 @@ class UDTypeInfo;
 class XClusterSplitDriverIf;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
+class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
 
