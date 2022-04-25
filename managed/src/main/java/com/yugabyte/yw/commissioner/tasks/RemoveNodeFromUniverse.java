@@ -173,6 +173,10 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
+      // Update the master addresses on the target universes whose source universe belongs to
+      // this task.
+      createXClusterConfigUpdateMasterAddressesTask();
+
       // Remove its tserver status in DB.
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
