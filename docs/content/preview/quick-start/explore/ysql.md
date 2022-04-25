@@ -223,7 +223,7 @@ Referenced by:
 
 ### SQL updates
 
-The [UPDATE](../../../api/ysql/the-sql-language/statements/dml_update/) statement can compute a new value and return it without the need to do another query. Using the RETURNING clause returns the new values in the same call.
+The [UPDATE](../../../api/ysql/the-sql-language/statements/dml_update/) statement can compute a new value and return it without the need to do another query. Using the `RETURNING` clause returns the new values in the same call.
 
 The following adds 100 to the salaries of all employees who are not managers and shows the new value:
 
@@ -281,7 +281,7 @@ ORDER BY employee.sal;
 
 Use a [prepared statement](../../../api/ysql/the-sql-language/statements/perf_prepare/) with typed input to prevent SQL injection. A prepared statement declares parameterized SQL.
 
-1. Prepare the statement `employee_salary` with a parameterized query. The following prepared statement accepts the input of an employee number as an integer only, and displays the name and salary.
+1. Prepare the statement `employee_salary` with a parameterized query. The following prepared statement accepts the input of an employee number as an integer only and displays the name and salary:
 
     ```sql
     prepare employee_salary(int) AS
@@ -292,7 +292,7 @@ Use a [prepared statement](../../../api/ysql/the-sql-language/statements/perf_pr
     PREPARE
     ```
 
-1. Use the EXECUTE statement to execute a prepared statement. The following executes the prepared statement for the employee ID 7900.
+1. Use `EXECUTE` to execute a prepared statement. The following executes the prepared statement for the employee ID 7900:
 
     ```sql
     EXECUTE employee_salary(7900);
@@ -305,7 +305,7 @@ Use a [prepared statement](../../../api/ysql/the-sql-language/statements/perf_pr
     (1 row)
     ```
 
-1. Execute the same prepared statement with another value.
+1. Execute the same prepared statement with another value:
 
     ```sql
     EXECUTE employee_salary(7902);
@@ -318,7 +318,7 @@ Use a [prepared statement](../../../api/ysql/the-sql-language/statements/perf_pr
     (1 row)
     ```
 
-1. A prepared statement stays in the session until it is de-allocated. The following frees the memory used by this statement.
+1. A prepared statement stays in the session until it is de-allocated. The following frees the memory used by this statement:
 
     ```sql
     DEALLOCATE employee_salary;
@@ -332,7 +332,7 @@ Use a [prepared statement](../../../api/ysql/the-sql-language/statements/perf_pr
 
 Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query table values more efficiently.
 
-1. Create a table with randomly generated rows. You can use the GENERATE_SERIES function to generate rows. The following uses GENERATE_SERIES to create a table with 42 rows and a random value from 1 to 10.
+1. Create a table with randomly generated rows. You can use the `generate_series()` function to generate rows. The following uses `generate_series()` to create a table with 42 rows and a random value from 1 to 10:
 
     ```sql
     CREATE TABLE demo AS SELECT generate_series(1,42) num, round(10*random()) val;
@@ -342,7 +342,7 @@ Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query 
     SELECT 42
     ```
 
-1. Create the index `demo_val` on the `demo` table. The following statement creates an index on `val` (hashed for distribution) and `num` in ascending order.
+1. Create the index `demo_val` on the `demo` table. The following statement creates an index on `val` (hashed for distribution) and `num` in ascending order:
 
     ```sql
     CREATE INDEX demo_val ON demo(val,num);
@@ -352,7 +352,7 @@ Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query 
     CREATE INDEX
     ```
 
-1. Use ANALYZE to gather optimizer statistics on the table. The query planner chooses the best access path when provided with statistics about the data stored in the table.
+1. Use `ANALYZE` to gather optimizer statistics on the table. The query planner chooses the best access path when provided with statistics about the data stored in the table:
 
     ```sql
     analyze demo;
@@ -362,7 +362,7 @@ Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query 
     ANALYZE
     ```
 
-1. Query the Top 3 numbers for a specific value.
+1. Query the Top 3 numbers for a specific value:
 
     ```sql
     SELECT * FROM demo WHERE val=5 ORDER BY num FETCH FIRST 3 ROWS only;
@@ -376,7 +376,7 @@ Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query 
     (2 rows)
     ```
 
-1. Verify that index is leading to faster query execution using EXPLAIN ANALYZE. When defining an index for a specific access pattern, verify that the index is used. The following shows that an Index Only Scan was used, without the need for an additional Sort operation.
+1. Verify that index is leading to faster query execution using `EXPLAIN ANALYZE`. When defining an index for a specific access pattern, verify that the index is used. The following shows that an Index Only Scan was used, without the need for an additional Sort operation:
 
     ```sql
     EXPLAIN ANALYZE SELECT * FROM demo WHERE val=5 ORDER BY num FETCH FIRST 3 ROWS only;
@@ -394,7 +394,7 @@ Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query 
     (6 rows)
     ```
 
-1. Clean up the table for this exercise.
+1. Clean up the table for this exercise:
 
     ```sql
     DROP TABLE IF EXISTS demo;
@@ -406,7 +406,7 @@ Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query 
 
 ### Recursive queries
 
-The following example uses a [recursive common table expression](../../../explore/ysql-language-features/queries/#recursive-queries-and-ctes) (CTE) to show the manager hierarchy. The `emp_manager` CTE is built using the `WITH RECURSIVE` clause to follow the hierarchy under JONES, down to the last level. The first subquery in the recursive clause starts at JONES. The second lists the employees who have JONES as a manager. They are declared with a UNION ALL and are executed recursively to get the other levels. The main query is then run on the CTE.
+The following example uses a [recursive common table expression](../../../explore/ysql-language-features/queries/#recursive-queries-and-ctes) (CTE) to show the manager hierarchy. The `emp_manager` CTE is built using the `WITH RECURSIVE` clause to follow the hierarchy under JONES, down to the last level. The first subquery in the recursive clause starts at JONES. The second lists the employees who have JONES as a manager. They are declared with a `UNION ALL` and are executed recursively to get the other levels. The main query is then run on the CTE.
 
 ```sql
 WITH RECURSIVE emp_manager AS (
@@ -434,7 +434,7 @@ SELECT * FROM emp_manager;
 
 Use analytic [window functions](../../../api/ysql/exprs/window_functions/) to compare the hiring time interval by department.
 
-The following SQL statement uses WINDOW to define groups of employees by department, ordered by hiring date. The LAG window function is used to access the previous row to compare the hiring date interval between two employees. FORMAT builds text from column values, and COALESCE handles the first hire for which there is no previous row in the group. Without these window functions, this query would need to read the table twice.
+The following SQL statement uses `WINDOW` to define groups of employees by department, ordered by hiring date. The LAG window function is used to access the previous row to compare the hiring date interval between two employees. `FORMAT` builds text from column values, and `COALESCE` handles the first hire for which there is no previous row in the group. Without these window functions, this query would need to read the table twice.
 
 ```sql
 SELECT
@@ -473,7 +473,7 @@ SELECT
 
 ### REGEXP matching
 
-Use [regular expressions](../../../develop/learn/strings-and-text-ysql/) in an array to do pattern matching. REGEXP performs a pattern match of a string expression. The following lists employees with an e-mail ending in '.org' or a domain starting with 'gmail.'.
+Use [regular expressions](../../../develop/learn/strings-and-text-ysql/) in an array to do pattern matching. REGEXP performs a pattern match of a string expression. The following lists employees with an e-mail ending in '.org' or a domain starting with 'gmail.':
 
 ```sql
 SELECT * FROM emp
@@ -493,7 +493,7 @@ SELECT * FROM emp
 
 Using arithmetic on [date intervals](../../../explore/ysql-language-features/data-types/#date-and-time), you can find employees with overlapping evaluation periods.
 
-The interval data type allows you to store and manipulate a period of time in years, months, days, and so forth. The following example compares overlapping evaluation periods. The WITH clause defines the evaluation period length depending on the job.
+The interval data type allows you to store and manipulate a period of time in years, months, days, and so forth. The following example compares overlapping evaluation periods. The `WITH` clause defines the evaluation period length depending on the job:
 
 ```sql
 WITH emp_evaluation_period AS (
@@ -520,7 +520,7 @@ SELECT * FROM emp_evaluation_period e1
 
 ### Cross table pivots
 
-Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](../../../admin/ysqlsh/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table.
+Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](../../../admin/ysqlsh/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table:
 
 ```sql
 SELECT job, dname, sum(sal)
@@ -542,7 +542,7 @@ SELECT job, dname, sum(sal)
 
 ### ntile function
 
-To send the e-mails to all employees in different batches, split them into three groups using the [ntile() window function](../../../api/ysql/exprs/window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#ntile). Then format them using the format() function, and aggregate them in a comma-separated list using the string_agg() function.
+To send the e-mails to all employees in different batches, split them into three groups using the [ntile() window function](../../../api/ysql/exprs/window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#ntile). Then format them using the `format()` function, and aggregate them in a comma-separated list using the `string_agg()` function:
 
 ```sql
 WITH groups AS (
@@ -593,11 +593,11 @@ The employee skills are stored in a semi-structured JSON document. You can query
 
 ### Text search
 
-SQL queries can search in text using the to_tsvector() text search function to extract a list of words that can be compared. This exercise finds all department descriptions with the words 'responsible' and 'services' in it using a GIN index.
+SQL queries can search in text using the `to_tsvector()` text search function to extract a list of words that can be compared. This exercise finds all department descriptions with the words 'responsible' and 'services' in it using a GIN index.
 
 (GIN indexes are only available in YugabyteDB v2.11.0 or later. If you are using an earlier version, skip this scenario.)
 
-1. Create a text search index on the description column. The following creates an index for the simple-grammar vector of words extracted from the department description.
+1. Create a text search index on the description column. The following creates an index for the simple-grammar vector of words extracted from the department description:
 
     ```sql
     CREATE INDEX dept_description_text_search ON dept
@@ -653,7 +653,7 @@ A [stored procedure](../../../explore/ysql-language-features/stored-procedures/)
     CALL
     ```
 
-1. List all employees who have received commission to verify the transfer.
+1. List all employees who have received commission to verify the transfer:
 
     ```sql
     SELECT * FROM emp WHERE comm IS NOT NULL;
@@ -669,7 +669,7 @@ A [stored procedure](../../../explore/ysql-language-features/stored-procedures/)
     (4 rows)
     ```
 
-1. Call the procedure with an amount that is not available. The following attempts to transfer 1000000, which is more than what 7521 has available. This raises the "Cannot transfer" error defined in the procedure, and automatically reverts all intermediate changes to return to a consistent state.
+1. Call the procedure with an amount that is not available. The following attempts to transfer 1000000, which is more than what 7521 has available:
 
     ```sql
     CALL commission_transfer(7521,7654,999999);
@@ -679,6 +679,8 @@ A [stored procedure](../../../explore/ysql-language-features/stored-procedures/)
     ERROR:  Cannot transfer 999999 from 7521
     CONTEXT:  PL/pgSQL function commission_transfer(integer,integer,integer) line 5 at RAISE
     ```
+
+This raises the "Cannot transfer" error defined in the procedure, and automatically reverts all intermediate changes to return to a consistent state.
 
 ### Triggers
 
@@ -738,7 +740,7 @@ Use [triggers](../../../explore/ysql-language-features/triggers/) to automatical
     (4 rows)
     ```
 
-1. Update multiple rows in a single transaction. You can declare multiple updates in a single atomic transaction using BEGIN TRANSACTION and COMMIT. The following updates the location of departments 30 and 40 with a 3 second interval.
+1. Update multiple rows in a single transaction. You can declare multiple updates in a single atomic transaction using `BEGIN TRANSACTION` and `COMMIT`. The following updates the location of departments 30 and 40 with a 3 second interval.
 
     ```sql
     BEGIN TRANSACTION;
@@ -779,11 +781,11 @@ In addition to the changed location, the last update timestamp has been automati
 
 ### Materialized views
 
-To get fast on-demand reports, create a [materialized view](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) to store pre-joined and pre-aggregated data. This view stores the total salary per department, the number of employees, and the list of jobs in the department.
+To get fast on-demand reports, create a [materialized view](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) to store pre-joined and pre-aggregated data.
 
 (Materialized views are only available in YugabyteDB v2.11.2 or later. If you are using an earlier version, skip this scenario.)
 
-1. Create the materialized view.
+1. Create the materialized view. This view stores the total salary per department, the number of employees, and the list of jobs in the department:
 
     ```sql
     CREATE MATERIALIZED VIEW report_sal_per_dept AS
@@ -801,7 +803,7 @@ To get fast on-demand reports, create a [materialized view](../../../explore/ysq
     SELECT 3
     ```
 
-1. Create an index on the view. This allows fast queries on a range of total salary.
+1. Create an index on the view. This allows fast queries on a range of total salary:
 
     ```sql
     CREATE INDEX report_sal_per_dept_sal ON report_sal_per_dept(sal_per_dept desc);
@@ -811,7 +813,7 @@ To get fast on-demand reports, create a [materialized view](../../../explore/ysq
     CREATE INDEX
     ```
 
-1. You can schedule a daily refresh to re-compute the view in the background. Use the [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) command to refresh the view.
+1. You can schedule a daily refresh to recompute the view in the background. Use the [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) command to refresh the view:
 
     ```sql
     REFRESH MATERIALIZED VIEW report_sal_per_dept;
