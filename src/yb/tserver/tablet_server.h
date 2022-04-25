@@ -216,6 +216,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
+  void RegisterCertificateReloader(CertificateReloader reloader) override {}
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
