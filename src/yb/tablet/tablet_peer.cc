@@ -815,6 +815,12 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
 }
 
 Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) const {
+  if (PREDICT_FALSE(!log_)) {
+    auto status = STATUS(Uninitialized, "Log not ready (tablet peer not yet initialized?)");
+    LOG(DFATAL) << status;
+    return status;
+  }
+
   // First, we anchor on the last OpId in the Log to establish a lower bound
   // and avoid racing with the other checks. This limits the Log GC candidate
   // segments before we check the anchors.
