@@ -39,18 +39,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: "GCC 5, debug, Linuxbrew, CentOS 7"
+          - name: "GCC 9, debug, CentOS 7 x86_64"
             os: ubuntu-20.04
-            yb_build_args: debug
-          - name: "GCC 5, release, Linuxbrew, CentOS 7"
+            yb_build_args: --gcc9 --no-linuxbrew debug
+          - name: "GCC 9, release, CentOS 7 x86_64"
             os: ubuntu-20.04
-            yb_build_args: release
-          - name: "Clang 11, debug, CentOS 7"
+            yb_build_args: --gcc9 --no-linuxbrew release
+          - name: "Clang 12, debug, CentOS 7 x86_64"
             os: ubuntu-20.04
-            yb_build_args: --clang11 debug
-          - name: "Clang 11, release, CentOS 7"
+            yb_build_args: --clang12 --no-linuxbrew debug
+          - name: "Clang 12, release (Linuxbrew glibc 2.23), CentOS 7, x86_64"
             os: ubuntu-20.04
-            yb_build_args: --clang11 release
+            yb_build_args: --clang12 --linuxbrew release
     if: >
       (github.event_name == 'push' &&
        !contains(github.event.head_commit.message, 'skip ci') &&
