@@ -61,20 +61,27 @@ DEFINE_bool(enable_stream_compression, true, "Whether it is allowed to use strea
 
 namespace yb {
 namespace server {
+
 namespace {
 
-string DefaultCertsDir(const string& root_dir) {
-  return JoinPathSegments(root_dir, "certs");
+string CertsDir(const std::string& root_dir, SecureContextType type) {
+  string certs_dir;
+  if (type == SecureContextType::kExternal) {
+    certs_dir = FLAGS_certs_for_client_dir;
+  }
+  if (certs_dir.empty()) {
+    certs_dir = FLAGS_certs_dir;
+  }
+  if (certs_dir.empty()) {
+    certs_dir = FsManager::GetCertsDir(root_dir);
+  }
+  return certs_dir;
 }
 
 } // namespace
 
-string DefaultRootDir(const FsManager& fs_manager) {
-  return DirName(fs_manager.GetRaftGroupMetadataDir());
-}
-
 string DefaultCertsDir(const FsManager& fs_manager) {
-  return DefaultCertsDir(DefaultRootDir(fs_manager));
+  return fs_manager.GetCertsDir(fs_manager.GetDefaultRootDir());
 }
 
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
@@ -84,7 +91,7 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
   RETURN_NOT_OK(HostPort::ParseStrings(hosts, 0, &host_ports));
 
   return server::SetupSecureContext(
-      DefaultRootDir(fs_manager), host_ports[0].host(), type, builder);
+      fs_manager.GetDefaultRootDir(), host_ports[0].host(), type, builder);
 }
 
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
@@ -118,18 +125,7 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     return nullptr;
   }
 
-  std::string dir;
-  if (!cert_dir.empty()) {
-    dir = cert_dir;
-  } else if (type == SecureContextType::kExternal) {
-    dir = FLAGS_certs_for_client_dir;
-  }
-  if (dir.empty()) {
-    dir = FLAGS_certs_dir;
-  }
-  if (dir.empty()) {
-    dir = DefaultCertsDir(root_dir);
-  }
+  std::string dir = cert_dir.empty() ? CertsDir(root_dir, type) : cert_dir;
 
   UseClientCerts use_client_certs = UseClientCerts::kFalse;
   std::string required_uid;
@@ -172,17 +168,7 @@ Status ReloadSecureContextKeysAndCertificates(
 Status ReloadSecureContextKeysAndCertificates(
     rpc::SecureContext* context, const std::string& node_name, const std::string& root_dir,
     SecureContextType type) {
-  std::string certs_dir;
-  if (type == SecureContextType::kExternal) {
-    certs_dir = FLAGS_certs_for_client_dir;
-  }
-  if (certs_dir.empty()) {
-    certs_dir = FLAGS_certs_dir;
-  }
-  if (certs_dir.empty()) {
-    certs_dir = DefaultCertsDir(root_dir);
-  }
-
+  std::string certs_dir = CertsDir(root_dir, type);
   return ReloadSecureContextKeysAndCertificates(context, certs_dir, node_name);
 }
 

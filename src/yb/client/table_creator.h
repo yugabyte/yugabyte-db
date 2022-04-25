@@ -59,9 +59,9 @@ class YBTableCreator {
   // will calculate this value (num_shards_per_tserver * num_of_tservers).
   YBTableCreator& num_tablets(int32_t count);
 
-  // Whether this table should be colocated. Will be ignored by catalog manager if the database is
-  // not colocated.
-  YBTableCreator& colocated(const bool colocated);
+  // Whether this table should be colocated due to being a part of colocated database.
+  // Will be ignored by catalog manager if the database is not colocated.
+  YBTableCreator& is_colocated_via_database(bool is_colocated_via_database);
 
   // Tablegroup ID - will be ignored by catalog manager if the table is not in a tablegroup.
   YBTableCreator& tablegroup_id(const std::string& tablegroup_id);
@@ -207,7 +207,7 @@ class YBTableCreator {
   MonoDelta timeout_;
   bool wait_ = true;
 
-  bool colocated_ = true;
+  bool is_colocated_via_database_ = true;
 
   // The tablegroup id to assign (if a table is in a tablegroup).
   std::string tablegroup_id_;

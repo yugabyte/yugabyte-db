@@ -874,7 +874,7 @@ void MasterPathHandlers::HandleHealthCheck(
 
 string MasterPathHandlers::GetParentTableOid(scoped_refptr<TableInfo> parent_table) {
   TableId t_id = parent_table->id();;
-  if (parent_table->IsColocatedParentTable()) {
+  if (parent_table->IsColocatedDbParentTable()) {
     // No YSQL parent id for colocated database parent table
     return "";
   }
@@ -939,7 +939,7 @@ void MasterPathHandlers::HandleCatalogManager(
       table_cat = kUserIndex;
     } else if (master_->catalog_manager()->IsUserTable(*table)) {
       table_cat = kUserTable;
-    } else if (table->IsTablegroupParentTable() || table->IsColocatedParentTable()) {
+    } else if (table->IsColocationParentTable()) {
       table_cat = kParentTable;
     } else {
       table_cat = kSystemTable;
@@ -2324,8 +2324,7 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       auto replication_locations = tablet->GetReplicaLocations();
 
       for (const auto& replica : *replication_locations) {
-        if (is_user_table || table->IsColocatedParentTable()
-                          || table->IsTablegroupParentTable()) {
+        if (is_user_table || table->IsColocationParentTable()) {
           if (replica.second.role == PeerRole::LEADER) {
             (*tablet_map)[replica.first].user_tablet_leaders++;
           } else {

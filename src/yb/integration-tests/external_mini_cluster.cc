@@ -1885,13 +1885,13 @@ struct GlobalLogTailerState {
 
 class ExternalDaemon::LogTailerThread {
  public:
-  LogTailerThread(const string line_prefix,
+  LogTailerThread(const std::string& line_prefix,
                   const int child_fd,
                   ostream* const out)
       : id_(global_state()->next_log_tailer_id.fetch_add(1)),
         stopped_(CreateStoppedFlagForId(id_)),
         thread_desc_(Substitute("log tailer thread for prefix $0", line_prefix)),
-        thread_([=] {
+        thread_([this, line_prefix, child_fd, out] {
           VLOG(1) << "Starting " << thread_desc_;
           FILE* const fp = fdopen(child_fd, "rb");
           char buf[65536];
@@ -1952,6 +1952,8 @@ class ExternalDaemon::LogTailerThread {
   void RemoveListener(StringListener* listener) {
     listener_.compare_exchange_strong(listener, nullptr);
   }
+
+  StringListener* listener() { return listener_.load(std::memory_order_acquire); }
 
   ~LogTailerThread() {
     VLOG(1) << "Stopping " << thread_desc_;
@@ -2132,13 +2134,21 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   RETURN_NOT_OK_PREPEND(p->Start(),
                         Substitute("Failed to start subprocess $0", exe_));
 
+  auto* listener = stdout_tailer_thread_ ? stdout_tailer_thread_->listener() : nullptr;
   stdout_tailer_thread_ = std::make_unique<LogTailerThread>(
       Substitute("[$0 stdout]", daemon_id_), p->ReleaseChildStdoutFd(), &std::cout);
+  if (listener) {
+    stdout_tailer_thread_->SetListener(listener);
+  }
 
+  listener = stderr_tailer_thread_ ? stderr_tailer_thread_->listener() : nullptr;
   // We will mostly see stderr output from the child process (because of --logtostderr), so we'll
   // assume that by default in the output prefix.
   stderr_tailer_thread_ = std::make_unique<LogTailerThread>(
       default_output_prefix, p->ReleaseChildStderrFd(), &std::cerr);
+  if (listener) {
+    stderr_tailer_thread_->SetListener(listener);
+  }
 
   // The process is now starting -- wait for the bound port info to show up.
   Stopwatch sw;

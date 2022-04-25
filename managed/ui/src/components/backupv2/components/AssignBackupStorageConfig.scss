@@ -1,9 +1,9 @@
 @import '../../../_style/colors.scss';
 
 .storage-config {
-  .storage-location {
-    background: #f7f7f7;
-    border: 1px solid #e3e3e5;
+  .storage-location-path {
+    background: $YB_BACKGROUND;
+    border: 1px solid $YB_LIGHT_GRAY_BORDER;
     border-radius: 8px;
     padding: 10px 20px;
   }
@@ -14,7 +14,7 @@
 
   .help-text {
     margin-top: 32px;
-
+    margin-left: 8px;
     .storage-link {
       text-decoration: underline;
       color: $YB_ORANGE;
@@ -31,5 +31,9 @@
     margin-top: 12px;
     max-height: 300px;
     overflow: scroll;
+  }
+  .err-msg {
+    color: $YB_ERROR_TEXT_COLOR;
+    margin-bottom: 10px;
   }
 }

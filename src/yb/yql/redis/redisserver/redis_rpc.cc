@@ -224,10 +224,7 @@ Status RedisInboundCall::ParseFrom(
 
   client_batch_.resize(commands);
   responses_.resize(commands);
-  ready_.reserve(commands);
-  for (size_t i = 0; i != commands; ++i) {
-    ready_.emplace_back(0);
-  }
+  ready_.resize(commands, 0);
   RedisParser parser(IoVecs(1, iovec{request_data_.data(), request_data_.size()}));
   size_t end_of_command = 0;
   for (size_t i = 0; i != commands; ++i) {
@@ -394,7 +391,7 @@ void RedisInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_c
 void RedisInboundCall::Respond(size_t idx, bool is_success, RedisResponsePB* resp) {
   // Did we set response for command at this index already?
   VLOG(2) << "Responding to '" << client_batch_[idx][0] << "' with " << resp->ShortDebugString();
-  if (ready_[idx].fetch_add(1, std::memory_order_relaxed) == 0) {
+  if (base::subtle::NoBarrier_AtomicIncrement(&ready_[idx], 1) == 1) {
     if (!is_success) {
       had_failures_.store(true, std::memory_order_release);
     }

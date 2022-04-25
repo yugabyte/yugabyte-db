@@ -87,6 +87,8 @@ DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(TEST_exit_unfinished_deleting);
+DECLARE_bool(TEST_exit_unfinished_merging);
 
 namespace yb {
 
@@ -252,7 +254,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
   Status VerifyWrittenRecords(const YBTableName& producer_table,
                               const YBTableName& consumer_table,
                               int timeout_secs = kRpcTimeout) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, producer_table, consumer_table]() -> Result<bool> {
       auto producer_results = ScanToStrings(producer_table, producer_client());
       auto consumer_results = ScanToStrings(consumer_table, consumer_client());
       return producer_results == consumer_results;
@@ -260,7 +262,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
   }
 
   Status VerifyNumRecords(const YBTableName& table, YBClient* client, size_t expected_size) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, table, client, expected_size]() -> Result<bool> {
       auto results = ScanToStrings(table, client);
       return results.size() == expected_size;
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
@@ -1962,6 +1964,120 @@ TEST_P(TwoDCTest, TestFailedUniverseDeletionOnRestart) {
   // Should delete on restart
   ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kUniverseId));
   rpc.Reset();
+  Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
+  ASSERT_OK(s);
+  ASSERT_TRUE(new_resp.has_error());
+}
+
+TEST_P(TwoDCTest, TestFailedDeleteOnRestart) {
+  // Setup the consumer and producer cluster.
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  producer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); i += 2) {
+    producer_tables.push_back(tables[i]);
+  }
+
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+      kUniverseId, {producer_tables[0]}));
+
+  // Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+    &consumer_client()->proxy_cache(),
+    ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  // Delete The Table
+  master::DeleteUniverseReplicationRequestPB alter_req;
+  master::DeleteUniverseReplicationResponsePB alter_resp;
+  alter_req.set_producer_id(kUniverseId);
+  rpc::RpcController rpc;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_exit_unfinished_deleting) = true;
+  ASSERT_OK(master_proxy->DeleteUniverseReplication(alter_req, &alter_resp, &rpc));
+
+  // Check that deletion was incomplete
+  master::GetUniverseReplicationRequestPB new_req;
+  new_req.set_producer_id(kUniverseId);
+  master::GetUniverseReplicationResponsePB new_resp;
+  rpc.Reset();
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
+  ASSERT_EQ(new_resp.entry().state(), master::SysUniverseReplicationEntryPB::DELETING);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_exit_unfinished_deleting) = false;
+
+  // Restart the ENTIRE Consumer cluster.
+  ASSERT_OK(consumer_cluster()->RestartSync());
+
+  // Wait for incomplete delete universe to be deleted on start up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kUniverseId));
+
+  // Check that the unfinished alter universe was deleted on start up
+  rpc.Reset();
+  new_req.set_producer_id(kUniverseId);
+  Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
+  ASSERT_OK(s);
+  ASSERT_TRUE(new_resp.has_error());
+}
+
+
+TEST_P(TwoDCTest, TestFailedAlterUniverseOnRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_exit_unfinished_merging) = true;
+
+  // Setup the consumer and producer cluster.
+  auto tables = ASSERT_RESULT(SetUpWithParams({3, 3}, {3, 3}, 1));
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables{tables[0], tables[2]};
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables{tables[1], tables[3]};
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+      kUniverseId, {producer_tables[0]}));
+
+  // Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+    &consumer_client()->proxy_cache(),
+    ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  // Make sure only 1 table is included in replication
+  master::GetUniverseReplicationRequestPB new_req;
+  new_req.set_producer_id(kUniverseId);
+  master::GetUniverseReplicationResponsePB new_resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
+  ASSERT_EQ(new_resp.entry().tables_size(), 1);
+
+  // Add the other table
+  master::AlterUniverseReplicationRequestPB alter_req;
+  master::AlterUniverseReplicationResponsePB alter_resp;
+  alter_req.set_producer_id(kUniverseId);
+  alter_req.add_producer_table_ids_to_add(producer_tables[1]->id());
+  rpc.Reset();
+
+  ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
+
+  // Restart the ENTIRE Consumer cluster.
+  ASSERT_OK(consumer_cluster()->RestartSync());
+
+  // Wait for alter universe to be deleted on start up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kUniverseId + ".ALTER"));
+
+  // Change should not have gone through
+  new_req.set_producer_id(kUniverseId);
+  rpc.Reset();
+  ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
+  ASSERT_NE(new_resp.entry().tables_size(), 2);
+
+  // Check that the unfinished alter universe was deleted on start up
+  rpc.Reset();
+  new_req.set_producer_id(kUniverseId + ".ALTER");
   Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
   ASSERT_OK(s);
   ASSERT_TRUE(new_resp.has_error());

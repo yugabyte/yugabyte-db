@@ -223,7 +223,7 @@ YBCStatus YBCPgNewCreateDatabase(const char *database_name,
                                  const YBCPgOid database_oid,
                                  const YBCPgOid source_database_oid,
                                  const YBCPgOid next_oid,
-                                 const bool colocated,
+                                 bool colocated,
                                  YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateDatabase(
       database_name, database_oid, source_database_oid, next_oid, colocated, handle));
@@ -368,7 +368,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool is_shared_table,
                               bool if_not_exist,
                               bool add_primary_key,
-                              const bool colocated,
+                              bool is_colocated_via_database,
                               const YBCPgOid tablegroup_oid,
                               const YBCPgOid colocation_id,
                               const YBCPgOid tablespace_oid,
@@ -380,8 +380,8 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
   const PgObjectId matview_pg_table_id(database_oid, matview_pg_table_oid);
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
-      if_not_exist, add_primary_key, colocated, tablegroup_id, colocation_id, tablespace_id,
-      matview_pg_table_id, handle));
+      if_not_exist, add_primary_key, is_colocated_via_database, tablegroup_id, colocation_id,
+      tablespace_id, matview_pg_table_id, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -478,9 +478,9 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecTruncateTable(handle));
 }
 
-YBCStatus YBCPgIsTableColocated(const YBCPgOid database_oid,
-                                const YBCPgOid table_oid,
-                                bool *colocated) {
+YBCStatus YbPgIsUserTableColocated(const YBCPgOid database_oid,
+                                   const YBCPgOid table_oid,
+                                   bool *colocated) {
   const PgObjectId table_id(database_oid, table_oid);
   PgTableDescPtr table_desc;
   YBCStatus status = ExtractValueFromResult(pgapi->LoadTable(table_id), &table_desc);

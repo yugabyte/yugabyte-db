@@ -25,6 +25,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/ysql_tablegroup_manager.h"
 
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_service.h"
@@ -131,6 +132,16 @@ TAG_FLAG(allow_consecutive_restore, runtime);
 
 DEFINE_bool(check_bootstrap_required, false,
             "Is it necessary to check whether bootstrap is required for Universe Replication.");
+
+DEFINE_test_flag(bool, exit_unfinished_deleting, false,
+                 "Whether to exit part way through the deleting universe process.");
+
+DEFINE_test_flag(bool, exit_unfinished_merging, false,
+                 "Whether to exit part way through the merging universe process.");
+
+DEFINE_bool(disable_universe_gc, false,
+            "Whether to run the GC on universes or not.");
+TAG_FLAG(disable_universe_gc, runtime);
 
 namespace yb {
 
@@ -346,7 +357,9 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       catalog_manager_->universe_replication_map_[ri->id()] = ri;
 
       // Add any failed universes to be cleared
-      if (l->pb.state() == SysUniverseReplicationEntryPB::FAILED) {
+      if (l->pb.state() == SysUniverseReplicationEntryPB::FAILED ||
+          l->pb.state() == SysUniverseReplicationEntryPB::DELETING ||
+          GStringPiece(l->pb.producer_id()).ends_with(".ALTER")) {
         catalog_manager_->universes_to_clear_.push_back(ri->id());
       }
 
@@ -658,9 +671,8 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
 
           TRACE("Locking table");
           auto l = table_info->LockForRead();
-          // PG schema name is available for YSQL table only.
-          // Except '<uuid>.colocated.parent.uuid' table ID.
-          if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocatedParentTableId(entry.id())) {
+          // PG schema name is available for YSQL table only, except for colocation parent tables.
+          if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
             const string pg_schema_name = VERIFY_RESULT(GetPgSchemaName(table_info));
             VLOG(1) << "PG Schema: " << pg_schema_name << " for table " << table_info->ToString();
             backup_entry->set_pg_schema_name(pg_schema_name);
@@ -1535,7 +1547,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       SharedLock lock(mutex_);
       if (VERIFY_RESULT(CheckTableForImport(table, table_data))) {
         LOG_WITH_FUNC(INFO) << "Found existing table: '" << table->ToString() << "'";
-        if (meta.colocated() && IsColocatedParentTableId(table_data->old_table_id)) {
+        if (meta.colocated() && IsColocationParentTableId(table_data->old_table_id)) {
           // Parent colocated tables don't have partition info, so make sure to mark them.
           is_parent_colocated_table = true;
         }
@@ -1564,12 +1576,13 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
         // For YSQL, the table must be created via external call. Therefore, continue the search for
         // the table, this time checking for name matches rather than id matches.
 
-        if (meta.colocated() && IsColocatedParentTableId(table_data->old_table_id)) {
+        // TODO(alex): Handle tablegroups in #11632
+        if (meta.colocated() && IsColocatedDbParentTableId(table_data->old_table_id)) {
           // For the parent colocated table we need to generate the new_table_id ourselves
           // since the names will not match.
           // For normal colocated tables, we are still able to follow the normal table flow, so no
           // need to generate the new_table_id ourselves.
-          table_data->new_table_id = new_namespace_id + kColocatedParentTableIdSuffix;
+          table_data->new_table_id = GetColocatedDbParentTableId(new_namespace_id);
           is_parent_colocated_table = true;
         } else {
           if (!table_data->new_table_id.empty()) {
@@ -3294,18 +3307,19 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
 
     // SETUP CONTINUES after this async call.
     Status s;
-    if (IsColocatedParentTableId(req->producer_table_ids(i))) {
+    if (IsColocatedDbParentTableId(req->producer_table_ids(i))) {
       auto tables_info = std::make_shared<std::vector<client::YBTableInfo>>();
-      s = cdc_rpc->client()->GetColocatedTabletSchemaById(
+      s = cdc_rpc->client()->GetColocatedTabletSchemaByParentTableId(
           req->producer_table_ids(i), tables_info,
           Bind(&enterprise::CatalogManager::GetColocatedTabletSchemaCallback, Unretained(this),
                ri->id(), tables_info, table_id_to_bootstrap_id));
     } else if (IsTablegroupParentTableId(req->producer_table_ids(i))) {
-      auto tablegroup_info = std::make_shared<std::vector<client::YBTableInfo>>();
+      auto tablegroup_id = GetTablegroupIdFromParentTableId(req->producer_table_ids(i));
+      auto tables_info = std::make_shared<std::vector<client::YBTableInfo>>();
       s = cdc_rpc->client()->GetTablegroupSchemaById(
-          req->producer_table_ids(i), tablegroup_info,
+          tablegroup_id, tables_info,
           Bind(&enterprise::CatalogManager::GetTablegroupSchemaCallback, Unretained(this),
-               ri->id(), tablegroup_info, req->producer_table_ids(i), table_id_to_bootstrap_id));
+               ri->id(), tables_info, tablegroup_id, table_id_to_bootstrap_id));
     } else {
       auto table_info = std::make_shared<client::YBTableInfo>();
       s = cdc_rpc->client()->GetTableSchemaById(
@@ -3673,8 +3687,9 @@ void CatalogManager::GetTablegroupSchemaCallback(
   // the tablegroup ID from table ID), we only do this call once and do validation afterward.
   TablegroupId consumer_tablegroup_id;
   {
-    const auto& result = FindTablegroupByTableId(*validated_consumer_tables.begin());
-    if (!result.has_value()) {
+    SharedLock lock(mutex_);
+    const auto* tablegroup = tablegroup_manager_->FindByTable(*validated_consumer_tables.begin());
+    if (!tablegroup) {
       std::string message =
           Format("No consumer tablegroup found for producer tablegroup: $0",
                  producer_tablegroup_id);
@@ -3682,7 +3697,7 @@ void CatalogManager::GetTablegroupSchemaCallback(
       LOG(ERROR) << message;
       return;
     }
-    consumer_tablegroup_id = result.value();
+    consumer_tablegroup_id = tablegroup->id();
   }
 
   // tables_in_consumer_tablegroup are the tables listed within the consumer_tablegroup_id.
@@ -3691,7 +3706,7 @@ void CatalogManager::GetTablegroupSchemaCallback(
   {
     GetTablegroupSchemaRequestPB req;
     GetTablegroupSchemaResponsePB resp;
-    req.mutable_parent_tablegroup()->set_id(consumer_tablegroup_id);
+    req.mutable_tablegroup()->set_id(consumer_tablegroup_id);
     Status status = GetTablegroupSchema(&req, &resp);
     if (!status.ok() || resp.has_error()) {
       std::string message = Format("Error when getting consumer tablegroup schema: $0",
@@ -3735,10 +3750,11 @@ void CatalogManager::GetTablegroupSchemaCallback(
                << producer_tablegroup_id << ": " << status;
   }
 
-  status = AddValidatedTableAndCreateCdcStreams(universe,
-                                                       table_bootstrap_ids,
-                                                       producer_tablegroup_id,
-                                                       consumer_tablegroup_id);
+  status = AddValidatedTableAndCreateCdcStreams(
+      universe,
+      table_bootstrap_ids,
+      GetTablegroupParentTableId(producer_tablegroup_id),
+      GetTablegroupParentTableId(consumer_tablegroup_id));
   if (!status.ok()) {
     LOG(ERROR) << "Found error while adding validated table to system catalog: "
                << producer_tablegroup_id << ": " << status;
@@ -3801,9 +3817,9 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     }
     // Store the parent table ids.
     producer_parent_table_ids.insert(
-        info.table_name.namespace_id() + kColocatedParentTableIdSuffix);
+        GetColocatedDbParentTableId(info.table_name.namespace_id()));
     consumer_parent_table_ids.insert(
-        resp.identifier().namespace_().id() + kColocatedParentTableIdSuffix);
+        GetColocatedDbParentTableId(resp.identifier().namespace_().id()));
   }
 
   // Verify that we only found one producer and one consumer colocated parent table id.
@@ -4194,10 +4210,15 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
       return;
     }
   }
-  // Merge Cluster Config for TServers.
+
   {
     auto cluster_config = ClusterConfig();
+    // Acquire Locks in order of Original Universe, Cluster Config, New Universe
+    auto original_lock = original_universe->LockForWrite();
+    auto alter_lock = universe->LockForWrite();
     auto cl = cluster_config->LockForWrite();
+
+    // Merge Cluster Config for TServers.
     auto pm = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
     auto original_producer_entry = pm->find(original_universe->id());
     auto alter_producer_entry = pm->find(universe->id());
@@ -4211,13 +4232,8 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
       LOG(WARNING) << "Could not find both universes in Cluster Config: " << universe->id();
     }
     cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
-    const Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config.get());
-    cl.CommitOrWarn(s, "updating cluster config in sys-catalog");
-  }
-  // Merge Master Config on Consumer. (no need for Producer changes, since it uses stream_id)
-  {
-    auto original_lock = original_universe->LockForWrite();
-    auto alter_lock = universe->LockForWrite();
+
+    // Merge Master Config on Consumer. (no need for Producer changes, since it uses stream_id)
     // Merge Table->StreamID mapping.
     auto at = alter_lock.mutable_data()->pb.mutable_tables();
     original_lock.mutable_data()->pb.mutable_tables()->MergeFrom(*at);
@@ -4230,13 +4246,33 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
     av->clear();
     alter_lock.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
 
-    vector<UniverseReplicationInfo*> universes{original_universe.get(), universe.get()};
-    const Status s = sys_catalog_->Upsert(leader_ready_term(), universes);
-    alter_lock.CommitOrWarn(s, "updating universe replication entries in sys-catalog");
-    if (s.ok()) {
-      original_lock.Commit();
+    if (PREDICT_FALSE(FLAGS_TEST_exit_unfinished_merging)) {
+      // Exit for texting services
+      return;
     }
+
+    {
+      // Need both these updates to be atomic.
+      auto w = sys_catalog_->NewWriter(leader_ready_term());
+      auto s = w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
+                         original_universe.get(),
+                         universe.get(),
+                         cluster_config.get());
+      s = CheckStatus(
+          sys_catalog_->SyncWrite(w.get()),
+          "Updating universe replication entries and cluster config in sys-catalog");
+    }
+      alter_lock.Commit();
+      cl.Commit();
+      original_lock.Commit();
   }
+
+  // Add universe to universes_to_clear_
+  {
+    SharedLock lock(mutex_);
+    universes_to_clear_.push_back(universe->id());
+  }
+
   // TODO: universe_replication_map_.erase(universe->id()) at a later time.
   //       TwoDCTest.AlterUniverseReplicationTables crashes due to undiagnosed race right now.
   LOG(INFO) << "Done with Merging " << universe->id() << " into " << original_universe->id();
@@ -4278,6 +4314,18 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
       return STATUS(NotFound, "Universe replication info does not exist",
                     req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
+  }
+
+  {
+    auto l = ri->LockForWrite();
+    l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETING);
+
+    RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
+      sys_catalog_->Upsert(leader_ready_term(), ri),
+      "Updating delete universe replication info into sys-catalog", resp));
+    TRACE("Wrote universe replication info to sys-catalog");
+
+    l.Commit();
   }
 
   auto l = ri->LockForWrite();
@@ -4343,6 +4391,11 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
 
       RETURN_NOT_OK(ReturnErrorOrAddWarning(s, req, resp));
     }
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_exit_unfinished_deleting)) {
+      // Exit for texting services
+      return Status::OK();
   }
 
   // Delete universe in the Universe Config.
@@ -4492,21 +4545,16 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     // 'set_master_addresses'
     // TODO: Verify the input. Setup an RPC Task, ListTables, ensure same.
 
-    // 1a. Persistent Config: Update the Universe Config for Master.
     {
+      // 1a. Persistent Config: Update the Universe Config for Master.
       auto l = original_ri->LockForWrite();
       l.mutable_data()->pb.mutable_producer_master_addresses()->CopyFrom(
           req->producer_master_addresses());
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), original_ri),
-          "updating universe replication info in sys-catalog"));
-      l.Commit();
-    }
-    // 1b. Persistent Config: Update the Consumer Registry (updates TServers)
-    {
+
+      // 1b. Persistent Config: Update the Consumer Registry (updates TServers)
       auto cluster_config = ClusterConfig();
-      auto l = cluster_config->LockForWrite();
-      auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+      auto cl = cluster_config->LockForWrite();
+      auto producer_map = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
       auto it = producer_map->find(req->producer_id());
       if (it == producer_map->end()) {
         LOG(WARNING) << "Valid Producer Universe not in Consumer Registry: " << req->producer_id();
@@ -4514,12 +4562,22 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
                       req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
       }
       (*it).second.mutable_master_addrs()->CopyFrom(req->producer_master_addresses());
-      l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
-          "updating cluster config in sys-catalog"));
+      cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
+
+      {
+        // Need both these updates to be atomic.
+        auto w = sys_catalog_->NewWriter(leader_ready_term());
+        RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
+                                original_ri.get(),
+                                cluster_config.get()));
+        RETURN_NOT_OK(CheckStatus(
+            sys_catalog_->SyncWrite(w.get()),
+            "Updating universe replication info and cluster config in sys-catalog"));
+      }
       l.Commit();
+      cl.Commit();
     }
+
     // 2. Memory Update: Change cdc_rpc_tasks (Master cache)
     {
       auto result = original_ri->GetOrCreateCDCRpcTasks(req->producer_master_addresses());
@@ -4543,9 +4601,13 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     }
 
     vector<CDCStreamId> streams_to_remove;
-    // 1. Update the Consumer Registry (removes from TServers).
+
     {
+      auto l = original_ri->LockForWrite();
       auto cluster_config = ClusterConfig();
+
+      // 1. Update the Consumer Registry (removes from TServers).
+
       auto cl = cluster_config->LockForWrite();
       auto pm = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
       auto producer_entry = pm->find(req->producer_id());
@@ -4574,14 +4636,9 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         }
       }
       cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
-          "updating cluster config in sys-catalog"));
-      cl.Commit();
-    }
-    // 2. Remove from Master Configs on Producer and Consumer.
-    {
-      auto l = original_ri->LockForWrite();
+
+      // 2. Remove from Master Configs on Producer and Consumer.
+
       if (!l->pb.table_streams().empty()) {
         // Delete Relevant Table->StreamID mappings on Consumer.
         auto table_streams = l.mutable_data()->pb.mutable_table_streams();
@@ -4611,10 +4668,20 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
           }
         }
       }
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), original_ri),
-          "updating universe replication info in sys-catalog"));
+
+      {
+        // Need both these updates to be atomic.
+        auto w = sys_catalog_->NewWriter(leader_ready_term());
+        RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
+                                original_ri.get(),
+                                cluster_config.get()));
+        RETURN_NOT_OK(CheckStatus(
+            sys_catalog_->SyncWrite(w.get()),
+            "Updating universe replication info and cluster config in sys-catalog"));
+      }
+
       l.Commit();
+      cl.Commit();
     }
   } else if (req->producer_table_ids_to_add_size() > 0) {
     // 'add_table'
@@ -5063,6 +5130,10 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
 
 Status CatalogManager::ClearFailedUniverse() {
   // Delete a single failed universe from universes_to_clear_.
+  if (PREDICT_FALSE(FLAGS_disable_universe_gc)) {
+    return Status::OK();
+  }
+
   std::string universe_id;
   {
     SharedLock lock(mutex_);
@@ -5080,13 +5151,11 @@ Status CatalogManager::ClearFailedUniverse() {
   universe_req.set_producer_id(universe_id);
 
   RETURN_NOT_OK(GetUniverseReplication(&universe_req, &universe_resp, /* RpcContext */ nullptr));
-  if (universe_resp.entry().state() != SysUniverseReplicationEntryPB::FAILED) {
-    return STATUS(IllegalState, "Universe is not Failed, and cannot be cleared.");
-  }
 
   DeleteUniverseReplicationRequestPB req;
   DeleteUniverseReplicationResponsePB resp;
   req.set_producer_id(universe_id);
+  req.set_ignore_errors(true);
 
   RETURN_NOT_OK(DeleteUniverseReplication(&req, &resp, /* RpcContext */ nullptr));
 

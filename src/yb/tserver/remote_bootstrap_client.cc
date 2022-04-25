@@ -58,6 +58,7 @@
 #include "yb/tserver/remote_bootstrap_snapshots.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
@@ -105,6 +106,7 @@ DEFINE_test_flag(int32, simulate_long_remote_bootstrap_sec, 0,
                  "follower_unavailable_considered_failed_sec seconds.");
 
 DEFINE_test_flag(bool, download_partial_wal_segments, false, "");
+DEFINE_test_flag(bool, pause_rbs_before_download_wal, false, "Pause RBS before downloading WAL.");
 
 DECLARE_int32(bytes_remote_bootstrap_durable_write_mb);
 
@@ -343,6 +345,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
         IndexMap(table.indexes()),
         table.has_index_info() ? boost::optional<IndexInfo>(table.index_info()) : boost::none,
         table.schema_version(), partition_schema);
+    fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
     auto create_result = RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
         .fs_manager = &fs_manager(),
         .table_info = table_info,
@@ -398,6 +401,8 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   new_superblock_.mutable_kv_store()->set_rocksdb_dir(meta_->rocksdb_dir());
 
   RETURN_NOT_OK(DownloadRocksDBFiles());
+  TEST_PAUSE_IF_FLAG_WITH_PREFIX(
+      TEST_pause_rbs_before_download_wal, LogPrefix() + tablet_id_ + ": ");
   RETURN_NOT_OK(DownloadWALs());
   for (const auto& component : components_) {
     RETURN_NOT_OK(component->Download());
@@ -429,7 +434,7 @@ Status RemoteBootstrapClient::Finish() {
   RETURN_NOT_OK(meta_->ReplaceSuperBlock(new_superblock_));
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {
-    string meta_path = fs_manager().GetRaftGroupMetadataPath(tablet_id_);
+    string meta_path = VERIFY_RESULT(fs_manager().GetRaftGroupMetadataPath(tablet_id_));
     string meta_copy_path = Substitute("$0.copy.$1.tmp", meta_path, start_time_micros_);
     RETURN_NOT_OK_PREPEND(CopyFile(Env::Default(), meta_path, meta_copy_path,
                                    WritableFileOptions()),
@@ -727,7 +732,7 @@ Status RemoteBootstrapClient::WriteConsensusMetadata() {
   RETURN_NOT_OK(cmeta_->Flush());
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {
-    string cmeta_path = fs_manager().GetConsensusMetadataPath(tablet_id_);
+    string cmeta_path = VERIFY_RESULT(fs_manager().GetConsensusMetadataPath(tablet_id_));
     string cmeta_copy_path = Substitute("$0.copy.$1.tmp", cmeta_path, start_time_micros_);
     RETURN_NOT_OK_PREPEND(CopyFile(Env::Default(), cmeta_path, cmeta_copy_path,
                                    WritableFileOptions()),
