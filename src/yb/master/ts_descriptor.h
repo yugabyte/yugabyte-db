@@ -427,6 +427,18 @@ Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
   return Status::OK();
 }
 
+struct cloud_equal_to {
+  bool operator()(const yb::CloudInfoPB& x, const yb::CloudInfoPB& y) const {
+    return x.placement_cloud() == y.placement_cloud() &&
+           x.placement_region() == y.placement_region() && x.placement_zone() == y.placement_zone();
+  }
+};
+
+struct cloud_hash {
+  std::size_t operator()(const yb::CloudInfoPB& ci) const {
+    return std::hash<std::string>{}(TSDescriptor::generate_placement_id(ci));
+  }
+};
 } // namespace master
 } // namespace yb
 

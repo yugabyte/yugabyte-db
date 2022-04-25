@@ -250,6 +250,17 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
     }
   }
 
+  void ShutdownTabletServers(int region) {
+    std::string region_str = yb::Format("rack$0", region);
+    for (auto& tserver : cluster_->mini_tablet_servers()) {
+      ServerRegistrationPB reg;
+      ASSERT_OK(tserver->server()->GetRegistration(&reg));
+      if (reg.cloud_info().placement_region() == region_str) {
+        tserver->Shutdown();
+      }
+    }
+  }
+
   void DropTables() {
     // Drop tablespaces and tables.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
@@ -648,8 +659,8 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
             )#",
       NumTabletServers(), placement_blocks2);
 
-  ASSERT_OK(conn.ExecuteFormat(tablespace1_sql));
-  ASSERT_OK(conn.ExecuteFormat(tablespace2_sql));
+  ASSERT_OK(conn.Execute(tablespace1_sql));
+  ASSERT_OK(conn.Execute(tablespace2_sql));
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(value int) TABLESPACE tablespace1", table_name));
 
   auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
@@ -671,6 +682,11 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
   status_tablet_ids = ASSERT_RESULT(GetStatusTablets(2, false /*global*/));
   ValidateAllTabletLeaderinZone(table_uuids, 3);
   ValidateAllTabletLeaderinZone(status_tablet_ids, 3);
+
+  ShutdownTabletServers(3);
+  WaitForLoadBalanceCompletion();
+  ValidateAllTabletLeaderinZone(table_uuids, 1);
+  ValidateAllTabletLeaderinZone(status_tablet_ids, 1);
 }
 } // namespace client
 } // namespace yb
