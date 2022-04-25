@@ -173,46 +173,6 @@ showAsideToc: true
     $ tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
     ```
 
-## Configure loopback addresses
-
-Some of the examples in the [Explore core features](../../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
-
-To add six loopback addresses, run the following commands, which require `sudo` access.
-
-```sh
-sudo ifconfig lo0 alias 127.0.0.2
-sudo ifconfig lo0 alias 127.0.0.3
-sudo ifconfig lo0 alias 127.0.0.4
-sudo ifconfig lo0 alias 127.0.0.5
-sudo ifconfig lo0 alias 127.0.0.6
-sudo ifconfig lo0 alias 127.0.0.7
-```
-
-The loopback addresses _do not_ persist after rebooting your Mac.
-
-To verify that the extra loopback addresses exist, run the following command.
-
-```sh
-$ ifconfig lo0
-```
-
-You should see some output like the following:
-
-```output
-lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
-  options=1203<RXCSUM,TXCSUM,TXSTATUS,SW_TIMESTAMP>
-  inet 127.0.0.1 netmask 0xff000000
-  inet6 ::1 prefixlen 128
-  inet6 fe80::1%lo0 prefixlen 64 scopeid 0x1
-  inet 127.0.0.2 netmask 0xff000000
-  inet 127.0.0.3 netmask 0xff000000
-  inet 127.0.0.4 netmask 0xff000000
-  inet 127.0.0.5 netmask 0xff000000
-  inet 127.0.0.6 netmask 0xff000000
-  inet 127.0.0.7 netmask 0xff000000
-  nd6 options=201<PERFORMNUD,DAD>
-```
-
 ## Next step
 
 [Create a local cluster](../../create-local-cluster/macos/)
