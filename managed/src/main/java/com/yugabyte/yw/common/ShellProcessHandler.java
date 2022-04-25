@@ -202,7 +202,15 @@ public class ShellProcessHandler {
           LOG.debug(consoleOnly, processError.toString());
         }
 
-        response.code = process.exitValue();
+        try {
+          response.code = process.exitValue();
+        } catch (IllegalThreadStateException itse) {
+          response.code = ERROR_CODE_GENERIC_ERROR;
+          LOG.warn(
+              "Expected process to be shut down, marking this process as failed '{}'",
+              response.description,
+              itse);
+        }
         response.message =
             (response.code == ERROR_CODE_SUCCESS)
                 ? processOutput.toString().trim()
@@ -230,7 +238,7 @@ public class ShellProcessHandler {
           LOG.error(
               "Process could not be destroyed gracefully within the specified time '{}'",
               response.description);
-          process.destroyForcibly();
+          destroyForcibly(process, response.description);
         }
       }
     } finally {
@@ -318,11 +326,11 @@ public class ShellProcessHandler {
       while (!process.waitFor(1, TimeUnit.SECONDS)) {
         // read a limited number of lines so that we don't
         // get stuck infinitely without getting to the time check
-        tailStream(outputStream, 1000 /*maxLines*/);
-        tailStream(errorStream, 1000 /*maxLines*/);
+        tailStream(outputStream, 10000 /*maxLines*/);
+        tailStream(errorStream, 10000 /*maxLines*/);
         if (endTimeSecs > 0 && ((System.currentTimeMillis() / 1000) >= endTimeSecs)) {
           LOG.warn("Aborting command {} forcibly because it took too long", description);
-          process.destroyForcibly();
+          destroyForcibly(process, description);
           break;
         }
       }
@@ -351,6 +359,16 @@ public class ShellProcessHandler {
       if (maxLines > 0 && count >= maxLines) {
         return;
       }
+    }
+  }
+
+  private static void destroyForcibly(Process process, String description) {
+    process.destroyForcibly();
+    try {
+      process.waitFor(DESTROY_GRACE_TIMEOUT.getSeconds(), TimeUnit.SECONDS);
+      LOG.info("Process was succesfully forcibly terminated '{}'", description);
+    } catch (InterruptedException ie) {
+      LOG.warn("Ignoring problem with forcible process termination '{}'", description, ie);
     }
   }
 
