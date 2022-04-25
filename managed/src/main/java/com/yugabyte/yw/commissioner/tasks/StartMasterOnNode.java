@@ -143,6 +143,10 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       // Update all server conf files with new master information.
       createMasterInfoUpdateTask(universe, currentNode);
 
+      // Update the master addresses on the target universes whose source universe belongs to
+      // this task.
+      createXClusterConfigUpdateMasterAddressesTask();
+
       // Update node state to running.
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);

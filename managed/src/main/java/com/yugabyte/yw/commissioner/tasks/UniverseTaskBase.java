@@ -71,6 +71,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -93,6 +94,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -1524,6 +1526,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * It updates the source master addresses on the target universe cluster config for all xCluster
+   * configs on the source universe.
+   */
+  public void createXClusterConfigUpdateMasterAddressesTask() {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterConfigUpdateMasterAddresses", executor);
+    List<XClusterConfig> xClusterConfigs =
+        XClusterConfig.getBySourceUniverseUUID(taskParams().universeUUID);
+    Set<UUID> updatedTargetUniverses = new HashSet<>();
+    for (XClusterConfig config : xClusterConfigs) {
+      UUID targetUniverseUUID = config.targetUniverseUUID;
+      // Each target universe needs to be updated only once, even though there could be several
+      // xCluster configs between each source and target universe pair.
+      if (updatedTargetUniverses.contains(targetUniverseUUID)) {
+        continue;
+      }
+      updatedTargetUniverses.add(targetUniverseUUID);
+
+      XClusterConfigUpdateMasterAddresses.Params params =
+          new XClusterConfigUpdateMasterAddresses.Params();
+      // Set the target universe UUID to be told the new master addresses.
+      params.universeUUID = targetUniverseUUID;
+      // Set the source universe UUID to get the new master addresses.
+      params.sourceUniverseUuid = taskParams().universeUUID;
+
+      XClusterConfigUpdateMasterAddresses task =
+          createTask(XClusterConfigUpdateMasterAddresses.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      // Add it to the task list.
+      subTaskGroup.addSubTask(task);
+    }
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
   }
 
   /**

@@ -1045,7 +1045,7 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(txccTaskParams.rootCertPath.toString());
         }
         expectedCommand.add("--replication_config_name");
-        expectedCommand.add(txccTaskParams.replicationConfigName);
+        expectedCommand.add(txccTaskParams.replicationGroupName);
         if (txccTaskParams.producerCertsDirOnTarget != null) {
           expectedCommand.add("--producer_certs_dir");
           expectedCommand.add(txccTaskParams.producerCertsDirOnTarget.toString());
@@ -1153,7 +1153,7 @@ public class NodeManagerTest extends FakeDBApplication {
       } else {
         params.action = TransferXClusterCerts.Params.Action.REMOVE;
       }
-      params.replicationConfigName = "universe-uuid_MyRepl1";
+      params.replicationGroupName = "universe-uuid_MyRepl1";
       if (isCustomProducerCertsDir) {
         params.producerCertsDirOnTarget = new File("custom-producer-dir");
       }

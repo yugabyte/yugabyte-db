@@ -124,6 +124,8 @@ public enum TaskType {
 
   SyncXClusterConfig("SyncXClusterConfig"),
 
+  XClusterConfigUpdateMasterAddresses("XClusterConfigUpdateMasterAddresses"),
+
   CreateSupportBundle("CreateSupportBundle"),
 
   // Tasks belonging to subtasks classpath
