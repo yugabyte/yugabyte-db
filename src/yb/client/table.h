@@ -108,7 +108,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   // For index table: information about this index.
   const IndexInfo& index_info() const;
 
-  // Is the table colocated?
+  // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   bool colocated() const;
 
   // Returns the replication info for the table.

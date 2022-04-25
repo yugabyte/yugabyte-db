@@ -3288,7 +3288,6 @@ add_tablegroup_footer(printTableContent *const cont, char relkind,
 			PGresult   *result = NULL;
 			PQExpBufferData buf;
 
-			/* TODO(alex): Can we use YBTABLEGROUPOID cache, e.g. get_tablegroup_name? */
 			initPQExpBuffer(&buf);
 			printfPQExpBuffer(&buf,
 							  "SELECT grpname FROM pg_catalog.pg_yb_tablegroup\n"

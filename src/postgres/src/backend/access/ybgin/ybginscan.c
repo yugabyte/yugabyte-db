@@ -71,33 +71,6 @@ ybginbeginscan(Relation rel, int nkeys, int norderbys)
 	return scan;
 }
 
-/*
- * Given pg_class oid, is relation colocated?
- */
-static bool
-isColocated(Oid relid)
-{
-	if (MyDatabaseColocated)
-	{
-		bool		colocated = false;
-		bool		notfound;
-
-		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(MyDatabaseId,
-														   relid,
-														   &colocated),
-									 &notfound);
-		return colocated;
-	}
-	else
-	{
-		Oid			tablegroupId = InvalidOid;
-
-		if (YbTablegroupCatalogExists)
-			tablegroupId = get_tablegroup_oid_by_table_oid(relid);
-		return tablegroupId != InvalidOid;
-	}
-}
-
 void
 ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 			ScanKey orderbys, int norderbys)
@@ -107,12 +80,15 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	/* Initialize non-yb gin scan opaque fields. */
 	ginrescan(scan, scankey, nscankeys, orderbys, norderbys);
 
+	bool colocated =
+		YbIsUserTableColocated(MyDatabaseId, RelationGetRelid(scan->heapRelation));
+
 	/* Initialize ybgin scan opaque handle. */
 	YBCPgPrepareParameters prepare_params = {
 		.index_oid = RelationGetRelid(scan->indexRelation),
 		.index_only_scan = scan->xs_want_itup,
 		.use_secondary_index = true,	/* can't have ybgin primary index */
-		.querying_colocated_table = isColocated(RelationGetRelid(scan->heapRelation)),
+		.querying_colocated_table = colocated,
 	};
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(scan->heapRelation),
 								  YbGetStorageRelid(scan->heapRelation),

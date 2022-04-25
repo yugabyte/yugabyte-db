@@ -73,6 +73,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
+#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/tablet/operations/write_operation.h"
@@ -980,7 +981,7 @@ Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
     const uint32_t tablespace_oid = tablespace_oid_col->uint32_value();
 
     const TablegroupId tablegroup_id = GetPgsqlTablegroupId(database_oid, tablegroup_oid);
-    const TableId parent_table_id = tablegroup_id + kTablegroupParentTableIdSuffix;
+    const TableId parent_table_id = GetTablegroupParentTableId(tablegroup_id);
     boost::optional<TablespaceId> tablespace_id = boost::none;
 
     // If no valid tablespace found, then this tablegroup has no placement info
@@ -1018,7 +1019,7 @@ Status SysCatalogTable::ReadPgClassInfo(
   const Schema& schema = table_info->schema();
 
   Schema projection;
-  std::vector<GStringPiece> col_names = {"oid", "reltablespace", "relkind"};
+  std::vector<GStringPiece> col_names = {"oid", "relname", "reltablespace", "relkind"};
 
   if (is_colocated_database) {
     VLOG(5) << "Scanning pg_class for colocated database oid " << database_oid;
@@ -1029,6 +1030,7 @@ Status SysCatalogTable::ReadPgClassInfo(
                                                &projection,
                                                schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
+  const auto relname_col_id = VERIFY_RESULT(projection.ColumnIdByName("relname")).rep();
   const auto relkind_col_id = VERIFY_RESULT(projection.ColumnIdByName("relkind")).rep();
   const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("reltablespace")).rep();
 
@@ -1065,6 +1067,9 @@ Status SysCatalogTable::ReadPgClassInfo(
       return STATUS(Corruption, "Could not read oid column from pg_class");
     }
     const uint32_t oid = oid_col->uint32_value();
+
+    const auto& relname_col = row.GetValue(relname_col_id);
+    const std::string table_name = relname_col->string_value();
 
     // Skip rows that pertain to relation types that do not have use for tablespaces.
     const auto& relkind_col = row.GetValue(relkind_col_id);
@@ -1108,7 +1113,8 @@ Status SysCatalogTable::ReadPgClassInfo(
 
     if (is_colocated_table) {
       // This is a colocated table. This cannot have a tablespace associated with it.
-      VLOG(5) << "Table oid: " << oid << " skipped as it is colocated";
+      VLOG(5) << "Table { oid: " << oid << ", name: " << table_name << " }"
+              << " skipped as it is colocated";
       continue;
     }
 
@@ -1119,7 +1125,8 @@ Status SysCatalogTable::ReadPgClassInfo(
     }
 
     const uint32 tablespace_oid = tablespace_oid_col->uint32_value();
-    VLOG(1) << "Table oid: " << oid << " Tablespace oid: " << tablespace_oid;
+    VLOG(1) << "Table { oid: " << oid << ", name: " << table_name << " }"
+            << " has tablespace oid " << tablespace_oid;
 
     boost::optional<TablespaceId> tablespace_id = boost::none;
     // If the tablespace oid is kInvalidOid then it means this table was created
