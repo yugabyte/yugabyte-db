@@ -11,7 +11,7 @@ menu:
   preview:
     identifier: point-in-time-recovery
     parent: backup-restore
-    weight: 704
+    weight: 705
 isTocNested: true
 showAsideToc: true
 ---
