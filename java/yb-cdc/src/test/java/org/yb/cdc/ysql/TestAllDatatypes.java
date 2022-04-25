@@ -13,8 +13,9 @@
 
 package org.yb.cdc.ysql;
 
-import org.apache.log4j.Logger;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
@@ -33,7 +34,7 @@ import java.util.List;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestAllDatatypes extends CDCBaseClass {
-  private final Logger LOG = Logger.getLogger(TestAllDatatypes.class);
+  private final Logger LOG = LoggerFactory.getLogger(TestAllDatatypes.class);
 
   public void assertRecordsOnly(ExpectedRecordYSQL<?>[] expectedRecords,
                                 CDCSubscriber testSubscriber) throws Exception {

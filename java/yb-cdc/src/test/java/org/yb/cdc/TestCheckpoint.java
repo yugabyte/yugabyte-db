@@ -13,8 +13,9 @@
 
 package org.yb.cdc;
 
-import org.apache.log4j.Logger;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.util.CDCSubscriber;
 import org.yb.client.GetCheckpointResponse;
@@ -26,7 +27,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestCheckpoint extends CDCBaseClass {
-  private final static Logger LOG = Logger.getLogger(TestCheckpoint.class);
+  private final static Logger LOG = LoggerFactory.getLogger(TestCheckpoint.class);
 
   @Before
   public void setUp() throws Exception {

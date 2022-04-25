@@ -21,7 +21,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.cli.CommandLine;
-import org.apache.log4j.Logger;
 
 import com.datastax.oss.driver.api.core.cql.BoundStatement;
 import com.datastax.oss.driver.api.core.cql.PreparedStatement;
@@ -29,9 +28,11 @@ import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
 import com.yugabyte.sample.common.CmdLineOpts;
 import com.yugabyte.sample.common.TimeseriesLoadGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CassandraStockTicker extends AppBase {
-  private static final Logger LOG = Logger.getLogger(CassandraStockTicker.class);
+  private static final Logger LOG = LoggerFactory.getLogger(CassandraStockTicker.class);
   // Static initialization of this workload's config.
   static {
     // Disable the read-write percentage.

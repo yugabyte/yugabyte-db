@@ -16,7 +16,8 @@ package org.yb.cdc.util;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.PropertiesConfiguration;
 import org.apache.ibatis.jdbc.ScriptRunner;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CDCConsoleSubscriber;
 import org.yb.cdc.CmdLineOpts;
 import org.yb.cdc.ysql.TestBase;
@@ -30,7 +31,7 @@ import java.sql.Connection;
 import java.util.List;
 
 public class TestUtils {
-  private static final Logger LOG = Logger.getLogger(TestUtils.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestUtils.class);
 
   private static final Path resourcePath = Paths.get("src", "test", "resources");
   private static final String TEST_RESOURCES_PATH = resourcePath.toFile().getAbsolutePath();
