@@ -344,9 +344,6 @@ class CatalogManager :
   CHECKED_STATUS ListTables(const ListTablesRequestPB* req,
                             ListTablesResponsePB* resp) override;
 
-  // Find the tablegroup associated with the given table.
-  boost::optional<TablegroupId> FindTablegroupByTableId(const TableId& table_id);
-
   CHECKED_STATUS GetTableLocations(const GetTableLocationsRequestPB* req,
                                    GetTableLocationsResponsePB* resp) override;
 
@@ -451,8 +448,6 @@ class CatalogManager :
   CHECKED_STATUS ListTablegroups(const ListTablegroupsRequestPB* req,
                                  ListTablegroupsResponsePB* resp,
                                  rpc::RpcContext* rpc);
-
-  bool HasTablegroups() override;
 
   // Create a new User-Defined Type with the specified attributes.
   //
@@ -597,12 +592,6 @@ class CatalogManager :
 
   // Is the table a special sequences system table?
   bool IsSequencesSystemTable(const TableInfo& table) const;
-
-  // Is the table id from a tablegroup?
-  bool IsTablegroupParentTableId(const TableId& table_id) const;
-
-  // Is the table id from a table created for colocated database?
-  bool IsColocatedParentTableId(const TableId& table_id) const;
 
   // Is the table created by user?
   // Note that table can be regular table or index in this case.
@@ -1563,22 +1552,14 @@ class CatalogManager :
   // Tablets of system tables on the master indexed by the tablet id.
   std::unordered_map<std::string, std::shared_ptr<tablet::AbstractTablet>> system_tablets_;
 
-  // Tablet of colocated namespaces indexed by the namespace id.
-  std::unordered_map<NamespaceId, scoped_refptr<TabletInfo>> colocated_tablet_ids_map_
+  // Tablet of colocated databases indexed by the namespace id.
+  std::unordered_map<NamespaceId, scoped_refptr<TabletInfo>> colocated_db_tablets_map_
       GUARDED_BY(mutex_);
 
-  typedef std::unordered_map<TablegroupId, scoped_refptr<TabletInfo>> TablegroupTabletMap;
-
-  std::unordered_map<NamespaceId, TablegroupTabletMap> tablegroup_tablet_ids_map_
-      GUARDED_BY(mutex_);
-
-  std::unordered_map<TablegroupId, scoped_refptr<TablegroupInfo>> tablegroup_ids_map_
+  std::unique_ptr<YsqlTablegroupManager> tablegroup_manager_
       GUARDED_BY(mutex_);
 
   std::unordered_map<TableId, TableId> matview_pg_table_ids_map_
-      GUARDED_BY(mutex_);
-
-  std::unordered_map<TableId, TablegroupId> table_tablegroup_ids_map_
       GUARDED_BY(mutex_);
 
   boost::optional<std::future<Status>> initdb_future_;
@@ -1731,6 +1712,10 @@ class CatalogManager :
 
   void InitializeGlobalLoadState(
       TSDescriptorVector ts_descs, CMGlobalLoadState* state);
+
+  // Attempts to remove a colocated table from tablegroup.
+  // NOOP if the table does not belong to one.
+  CHECKED_STATUS TryRemoveFromTablegroup(const TableId& table_id);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

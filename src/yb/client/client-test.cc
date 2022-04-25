@@ -166,7 +166,7 @@ constexpr int32_t kNoBound = kint32max;
 constexpr int kNumTablets = 2;
 
 const std::string kKeyspaceName = "my_keyspace";
-const std::string kPgsqlKeyspaceID = "1234";
+const std::string kPgsqlKeyspaceID = "1234567890abcdef1234567890abcdef";
 const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
 
 } // namespace

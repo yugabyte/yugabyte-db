@@ -57,6 +57,11 @@ bool IsBoolean(const Slice& s) {
   return iequals(s.cdata(), "true") || iequals(s.cdata(), "false");
 }
 
+bool IsIdLikeUuid(const Slice& s) {
+  static const regex uuid_regex("[0-9a-f]{32}");
+  return regex_match(s.cdata(), uuid_regex);
+}
+
 vector<string> StringSplit(const string& arg, char delim) {
   vector<string> splits;
   stringstream ss(arg);
