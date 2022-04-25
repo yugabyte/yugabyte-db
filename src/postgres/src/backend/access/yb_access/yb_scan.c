@@ -433,8 +433,8 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	/*
 	 * Setup control-parameters for Yugabyte preparing statements for different
 	 * types of scan.
-	 * - "querying_colocated_table": Support optimizations for (system and
-	 *   user) colocated tables
+	 * - "querying_colocated_table": Support optimizations for (system,
+	 *   user database and tablegroup) colocated tables
 	 * - "index_oid, index_only_scan, use_secondary_index": Different index
 	 *   scans.
 	 * NOTE: Primary index is a special case as there isn't a primary index
@@ -443,23 +443,12 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 
 	ybScan->prepare_params.querying_colocated_table =
 		IsSystemRelation(relation);
-	if (!ybScan->prepare_params.querying_colocated_table &&
-		MyDatabaseColocated)
+
+	if (!ybScan->prepare_params.querying_colocated_table)
 	{
-		bool colocated = false;
-		bool notfound;
-		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(MyDatabaseId,
-														   YbGetStorageRelid(relation),
-														   &colocated),
-									 &notfound);
+		bool colocated = YbIsUserTableColocated(MyDatabaseId,
+												YbGetStorageRelid(relation));
 		ybScan->prepare_params.querying_colocated_table |= colocated;
-	}
-	else if (!ybScan->prepare_params.querying_colocated_table)
-	{
-		Oid tablegroupId = InvalidOid;
-		if (YbTablegroupCatalogExists)
-			tablegroupId = get_tablegroup_oid_by_table_oid(RelationGetRelid(relation));
-		ybScan->prepare_params.querying_colocated_table |= (tablegroupId != InvalidOid);
 	}
 
 	if (index)

@@ -623,7 +623,7 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  bool is_shared_table,
                                  bool if_not_exist,
                                  bool add_primary_key,
-                                 const bool colocated,
+                                 bool is_colocated_via_database,
                                  const PgObjectId& tablegroup_oid,
                                  const ColocationId colocation_id,
                                  const PgObjectId& tablespace_oid,
@@ -631,8 +631,8 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
-      table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid,
-      colocation_id, tablespace_oid, matview_pg_table_oid);
+      table_id, is_shared_table, if_not_exist, add_primary_key, is_colocated_via_database,
+      tablegroup_oid, colocation_id, tablespace_oid, matview_pg_table_oid);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }

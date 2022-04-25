@@ -34,6 +34,7 @@
 
 #include "yb/common/constants.h"
 #include "yb/master/master_util.h"
+#include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
 
 #include "yb/util/flag_tags.h"
@@ -85,8 +86,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   // YSQL table OID as a colocation ID, and won't have colocation ID explicitly set.
   if (pb.table_type() == PGSQL_TABLE_TYPE &&
       pb.colocated() &&
-      !catalog_manager_->IsColocatedParentTableId(table_id) &&
-      !catalog_manager_->IsTablegroupParentTableId(table_id) &&
+      !IsColocationParentTableId(table_id) &&
       pb.schema().has_colocated_table_id() &&
       !pb.schema().colocated_table_id().has_colocation_id()) {
     auto clc_id = CHECK_RESULT(GetPgsqlTableOid(table_id));
@@ -249,8 +249,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       if (schema.has_colocated_table_id() &&
           schema.colocated_table_id().has_colocation_id()) {
         colocation_id = schema.colocated_table_id().colocation_id();
-      } else if (table->IsColocatedParentTable() ||
-                 table->IsTablegroupParentTable()) {
+      } else if (table->IsColocationParentTable()) {
         colocation_id = kColocationIdNotSet;
       } else {
         // We do not care about cotables here.
@@ -281,33 +280,33 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     l.Commit();
   }
 
-  // Add the tablet to colocated_tablet_ids_map_ if the tablet is colocated.
-  if (first_table->IsColocatedParentTable()) {
-    catalog_manager_->colocated_tablet_ids_map_[first_table->namespace_id()] =
-        catalog_manager_->tablet_map_->find(tablet_id)->second;
-  }
-
-  // Add the tablet to tablegroup_tablet_ids_map_ if the tablet is a tablegroup parent.
-  if (first_table->IsTablegroupParentTable()) {
-    const auto tablegroup_id = first_table->id().substr(0, 32);
-    catalog_manager_->tablegroup_tablet_ids_map_[first_table->namespace_id()]
-        [tablegroup_id] = catalog_manager_->tablet_map_->find(tablet_id)->second;
-
-    TablegroupInfo *tg = new TablegroupInfo(tablegroup_id,
-                                            first_table->namespace_id());
-
+  if (first_table->IsColocationParentTable()) {
     SCHECK(tablet_colocation_map.size() == existing_table_ids.size(), IllegalState,
            Format("Tablet $0 has $1 tables, but only $2 of them were colocated",
                   tablet_id, existing_table_ids.size(), tablet_colocation_map.size()));
+  }
 
-    // Loop through tablet_colocation_map to add tables to our tablegroup info.
+  // Add the tablet to colocated_db_tablets_map_ if the tablet is colocated via database.
+  if (first_table->IsColocatedDbParentTable()) {
+    catalog_manager_->colocated_db_tablets_map_[first_table->namespace_id()] =
+        catalog_manager_->tablet_map_->find(tablet_id)->second;
+  }
+
+  // Add the tablet to tablegroup_manager_ if the tablet is for a tablegroup.
+  if (first_table->IsTablegroupParentTable()) {
+    const auto tablegroup_id = GetTablegroupIdFromParentTableId(first_table->id());
+
+    auto* tablegroup =
+        VERIFY_RESULT(catalog_manager_->tablegroup_manager_->Add(
+            first_table->namespace_id(),
+            tablegroup_id,
+            catalog_manager_->tablet_map_->find(tablet_id)->second));
+
+    // Loop through tablet_colocation_map to add child tables to our tablegroup info.
     for (const auto& colocation_info : tablet_colocation_map) {
-      tg->AddChildTable(colocation_info.second, colocation_info.first);
-    }
-    catalog_manager_->tablegroup_ids_map_[tablegroup_id] = tg;
-
-    for (const TableId& table_id : existing_table_ids) {
-      catalog_manager_->table_tablegroup_ids_map_[table_id] = tablegroup_id;
+      if (!IsTablegroupParentTableId(colocation_info.second)) {
+        RETURN_NOT_OK(tablegroup->AddChildTable(colocation_info.second, colocation_info.first));
+      }
     }
   }
 

@@ -602,6 +602,7 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
 
 TEST_F(MasterTest, TestTablegroups) {
   TablegroupId kTablegroupId = GetPgsqlTablegroupId(12345, 67890);
+  TableId      kTableId = GetPgsqlTableId(123455, 67891);
   const char*  kTableName = "test_table";
   const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
   const NamespaceName ns_name = "test_tablegroup_ns";
@@ -662,14 +663,13 @@ TEST_F(MasterTest, TestTablegroups) {
   }
 
   // Now ensure that a table can be created in the tablegroup.
-  TableId table_id;
-  ASSERT_OK(CreateTablegroupTable(ns_id, kTableName, kTablegroupId, kTableSchema, &table_id));
+  ASSERT_OK(CreateTablegroupTable(ns_id, kTableId, kTableName, kTablegroupId, kTableSchema));
 
   // Delete the table to clean up tablegroup.
-  ASSERT_OK(DeleteTableById(table_id));
+  ASSERT_OK(DeleteTableById(kTableId));
 
   // Delete the tablegroup.
-  ASSERT_OK(DeleteTablegroup(kTablegroupId, ns_id));
+  ASSERT_OK(DeleteTablegroup(kTablegroupId));
 }
 
 // Regression test for KUDU-253/KUDU-592: crash if the schema passed to CreateTable

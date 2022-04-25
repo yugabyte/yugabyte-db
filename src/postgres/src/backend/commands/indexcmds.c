@@ -685,9 +685,8 @@ DefineIndex(Oid relationId,
 			!YBIsPreparingTemplates() &&
 			IsYBRelation(rel))
 		{
-			HandleYBStatus(YBCPgIsTableColocated(databaseId,
-												 YbGetStorageRelid(rel),
-												 &is_colocated));
+			is_colocated = YbIsUserTableColocated(databaseId,
+												  YbGetStorageRelid(rel));
 		}
 	}
 
@@ -1563,7 +1562,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	int			attn;
 	int			nkeycols = indexInfo->ii_NumIndexKeyAttrs;
 	bool		use_yb_ordering = false;
-	bool		colocated;
+	bool		colocated = false;
 
 	/* Allocate space for exclusion operator info, if needed */
 	if (exclusionOpNames)
@@ -1590,9 +1589,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		Relation rel = RelationIdGetRelation(relId);
 		use_yb_ordering = IsYBRelation(rel) && !IsSystemRelation(rel);
 		if (IsYBRelation(rel))
-			HandleYBStatus(YBCPgIsTableColocated(YBCGetDatabaseOid(rel),
-												 YbGetStorageRelid(rel),
-												 &colocated));
+			colocated = YbIsUserTableColocated(YBCGetDatabaseOid(rel),
+											   YbGetStorageRelid(rel));
 		RelationClose(rel);
 	}
 
