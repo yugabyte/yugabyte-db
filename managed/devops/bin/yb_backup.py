@@ -76,6 +76,7 @@ SQL_DATA_DUMP_FILE_NAME = 'YSQLDump_data'
 CREATE_METAFILES_MAX_RETRIES = 10
 CLOUD_CFG_FILE_NAME = 'cloud_cfg'
 CLOUD_CMD_MAX_RETRIES = 10
+LOCAL_FILE_MAX_RETRIES = 3
 RESTORE_DOWNLOAD_LOOP_MAX_RETRIES = 20
 
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
@@ -1751,7 +1752,7 @@ class YBBackup:
                 '-c',
                 k8s_details.container,
                 '--no-preserve=true'
-            ], env=k8s_details.env_config)
+            ], env=k8s_details.env_config, num_retry=LOCAL_FILE_MAX_RETRIES)
         elif not self.args.no_ssh:
             if self.needs_change_user():
                 # TODO: Currently ssh_wrapper_with_sudo.sh will only change users to yugabyte,
@@ -1766,7 +1767,8 @@ class YBBackup:
                         '-P', self.args.ssh_port,
                         '-q',
                         src,
-                        '%s@%s:%s' % (self.args.ssh_user, dest_ip, dest)])
+                        '%s@%s:%s' % (self.args.ssh_user, dest_ip, dest)],
+                    num_retry=LOCAL_FILE_MAX_RETRIES)
             else:
                 output += self.run_program(
                     ['scp',
@@ -1776,7 +1778,8 @@ class YBBackup:
                         '-P', self.args.ssh_port,
                         '-q',
                         src,
-                        '%s@%s:%s' % (self.args.ssh_user, dest_ip, dest)])
+                        '%s@%s:%s' % (self.args.ssh_user, dest_ip, dest)],
+                    num_retry=LOCAL_FILE_MAX_RETRIES)
 
         return output
 
@@ -1793,7 +1796,7 @@ class YBBackup:
                 '-c',
                 k8s_details.container,
                 '--no-preserve=true'
-            ], env=k8s_details.env_config)
+            ], env=k8s_details.env_config, num_retry=LOCAL_FILE_MAX_RETRIES)
         elif not self.args.no_ssh:
             if self.needs_change_user():
                 # TODO: Currently ssh_wrapper_with_sudo.sh will only change users to yugabyte,
@@ -1808,7 +1811,7 @@ class YBBackup:
                         '-P', self.args.ssh_port,
                         '-q',
                         '%s@%s:%s' % (self.args.ssh_user, src_ip, src),
-                        dest])
+                        dest], num_retry=LOCAL_FILE_MAX_RETRIES)
             else:
                 output += self.run_program(
                     ['scp',
@@ -1818,7 +1821,7 @@ class YBBackup:
                         '-P', self.args.ssh_port,
                         '-q',
                         '%s@%s:%s' % (self.args.ssh_user, src_ip, src),
-                        dest])
+                        dest], num_retry=LOCAL_FILE_MAX_RETRIES)
 
         return output
 

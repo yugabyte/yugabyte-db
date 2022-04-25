@@ -279,7 +279,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Returns true if it was the first call to StartShutdown.
   bool StartShutdown();
   bool IsShutdownRequested() const {
-    return shutdown_requested_.load(std::memory_order::memory_order_acquire);
+    return shutdown_requested_.load(std::memory_order::acquire);
   }
 
   // Complete the shutdown of this tablet. This includes shutdown of internal structures such as:

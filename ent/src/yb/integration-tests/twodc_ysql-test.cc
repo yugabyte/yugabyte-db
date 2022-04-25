@@ -57,6 +57,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_util.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/sys_catalog_initialization.h"
@@ -403,7 +404,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
                     Format("Unable to find tablegroup in namespace $0", namespace_name));
     }
 
-    return resp.tablegroups()[0].id() + master::kTablegroupParentTableIdSuffix;
+    return master::GetTablegroupParentTableId(resp.tablegroups()[0].id());
   }
 
   Status CreateTablegroup(Cluster* cluster,
@@ -455,7 +456,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
 
   Status VerifyWrittenRecords(const YBTableName& producer_table,
                               const YBTableName& consumer_table) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, producer_table, consumer_table]() -> Result<bool> {
       auto producer_results = ScanToStrings(producer_table, &producer_cluster_);
       auto consumer_results = ScanToStrings(consumer_table, &consumer_cluster_);
       if (PQntuples(producer_results.get()) != PQntuples(consumer_results.get())) {
@@ -473,7 +474,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
   }
 
   Status VerifyNumRecords(const YBTableName& table, Cluster* cluster, int expected_size) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, table, cluster, expected_size]() -> Result<bool> {
       auto results = ScanToStrings(table, cluster);
       return PQntuples(results.get()) == expected_size;
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
@@ -846,7 +847,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   // Only need to add the colocated parent table id.
   setup_universe_req.mutable_producer_table_ids()->Reserve(1);
   setup_universe_req.add_producer_table_ids(
-      ns_resp.namespace_().id() + master::kColocatedParentTableIdSuffix);
+      master::GetColocatedDbParentTableId(ns_resp.namespace_().id()));
   auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client()->proxy_cache(),

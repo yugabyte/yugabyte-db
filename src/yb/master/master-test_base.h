@@ -154,10 +154,10 @@ class MasterTestBase : public YBTest {
                           const Schema& schema);
 
   Status CreateTablegroupTable(const NamespaceId& namespace_id,
+                               const TableId& table_id,
                                const TableName& table_name,
                                const TablegroupId& tablegroup_id,
-                               const Schema& schema,
-                               TableId* table_id = nullptr);
+                               const Schema& schema);
 
   Status DoCreateTable(const NamespaceName& namespace_name,
                        const TableName& table_name,
@@ -193,8 +193,7 @@ class MasterTestBase : public YBTest {
                           const NamespaceName& namespace_name,
                           const TablespaceId& tablespace_id);
 
-  Status DeleteTablegroup(const TablegroupId& tablegroup_id,
-                          const NamespaceId& namespace_id);
+  Status DeleteTablegroup(const TablegroupId& tablegroup_id);
 
   void DoListTablegroups(const ListTablegroupsRequestPB& req,
                          ListTablegroupsResponsePB* resp);
