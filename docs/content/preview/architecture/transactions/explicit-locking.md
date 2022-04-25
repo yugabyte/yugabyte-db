@@ -27,7 +27,7 @@ DocDB exposes the ability to write [provisional records]() which is exercised by
 
 [Optimistic locking](https://en.wikipedia.org/wiki/Optimistic_concurrency_control) delays the checking of whether a transaction meets the isolation and other integrity rules until its end, without blocking any of the operations performed as a part of the transaction. In scenarios where there are two concurrent transactions that conflict with each other (meaning a commit of the changes made by both these transactions would violate integrity constraints), one of these transactions is aborted. An aborted transaction could immediately be restarted and re-executed, or surfaced as an error to the end user.
 
-In scenarios where too many transactions do not conflict with each other, optimistic concurrency control is a good strategy. This is generally the case in high-volume systems. For example, most web applications have short-lived the connections to the database.
+In scenarios where not too many transactions conflict with each other, optimistic concurrency control is a good strategy. This is generally the case in high-volume systems. For example, most web applications have short-lived the connections to the database.
 
 YugabyteDB opts for optimistic concurrency in the case of simple transactions. This is achieved by assigning a random priority to each of the transactions. In the case of a conflict, the transaction with a lower priority is aborted. Some transactions that get aborted due to a conflict are internally retried while others result in an error to the end application.
 
