@@ -13,9 +13,10 @@
 
 package org.yb.cdc.ysql;
 
-import org.apache.log4j.Logger;
 import org.junit.*;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.Value;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
@@ -30,7 +31,7 @@ import static org.yb.AssertionWrappers.*;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestNullValues extends CDCBaseClass {
-  private final static Logger LOG = Logger.getLogger(TestNullValues.class);
+  private final static Logger LOG = LoggerFactory.getLogger(TestNullValues.class);
 
   protected int DEFAULT_KEY_VALUE = 1;
 

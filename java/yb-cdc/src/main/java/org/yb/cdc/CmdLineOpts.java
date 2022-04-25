@@ -15,13 +15,14 @@ package org.yb.cdc;
 
 import org.apache.commons.cli.*;
 import org.apache.commons.configuration.PropertiesConfiguration;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.AsyncYBClient;
 
 public class CmdLineOpts {
   private static final String DEFAULT_MASTER_ADDRESS = "127.0.0.1:7100";
 
-  private static final Logger LOG = Logger.getLogger(CmdLineOpts.class);
+  private static final Logger LOG = LoggerFactory.getLogger(CmdLineOpts.class);
 
   public String tableName;
   public String namespaceName;
