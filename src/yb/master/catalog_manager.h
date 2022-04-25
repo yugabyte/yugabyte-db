@@ -890,7 +890,9 @@ class CatalogManager :
   bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
-  Result<BlacklistSet> BlacklistSetFromPB() const override;
+  Status GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) override;
+  Result<vector<BlacklistSet>> GetAffinitizedZoneSet();
+  Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const override;
 
   std::vector<std::string> GetMasterAddresses();
 

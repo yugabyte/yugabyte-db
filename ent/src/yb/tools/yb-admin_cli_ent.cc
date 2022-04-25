@@ -319,7 +319,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "set_preferred_zones", " <cloud.region.zone> [<cloud.region.zone>]...",
+      "set_preferred_zones", " <cloud.region.zone[:priority]> [<cloud.region.zone>[:priority]]...",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;

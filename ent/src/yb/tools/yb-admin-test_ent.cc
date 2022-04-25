@@ -1333,6 +1333,88 @@ TEST_F(XClusterAdminCliTest, TestFailedSetupUniverseWithDeletion) {
   std::this_thread::sleep_for(5s);
 }
 
+TEST_F(AdminCliTest, TestSetPreferredZone) {
+  const std::string c1z1 = "c1.r1.z1";
+  const std::string c1z2 = "c1.r1.z2";
+  const std::string c2z1 = "c2.r1.z1";
+  const std::string c1z1_json =
+      "{\"placementCloud\":\"c1\",\"placementRegion\":\"r1\",\"placementZone\":\"z1\"}";
+  const std::string c1z2_json =
+      "{\"placementCloud\":\"c1\",\"placementRegion\":\"r1\",\"placementZone\":\"z2\"}";
+  const std::string c2z1_json =
+      "{\"placementCloud\":\"c2\",\"placementRegion\":\"r1\",\"placementZone\":\"z1\"}";
+  const std::string affinitized_leaders_json_Start = "\"affinitizedLeaders\"";
+  const std::string multi_affinitized_leaders_json_start =
+      "\"multiAffinitizedLeaders\":[{\"zones\":[";
+  const std::string json_end = "]}]";
+
+  ASSERT_OK(RunAdminToolCommand(
+      "modify_placement_info", strings::Substitute("$0,$1,$2", c1z1, c1z2, c2z1), 5, ""));
+
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", ""));
+  auto output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_EQ(output.find(multi_affinitized_leaders_json_start), string::npos);
+
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", c1z1));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(output.find(multi_affinitized_leaders_json_start + c1z1_json + json_end), string::npos);
+
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", c1z1, c1z2, c2z1));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(
+      output.find(
+          multi_affinitized_leaders_json_start + c1z1_json + "," + c1z2_json + "," + c2z1_json +
+          json_end),
+      string::npos);
+
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:1", c1z1)));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(output.find(multi_affinitized_leaders_json_start + c1z1_json + json_end), string::npos);
+
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:1", c1z1), c1z2));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(
+      output.find(multi_affinitized_leaders_json_start + c1z1_json + "," + c1z2_json + json_end),
+      string::npos);
+
+  ASSERT_OK(RunAdminToolCommand(
+      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:2", c1z2),
+      strings::Substitute("$0:3", c2z1)));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(
+      output.find(
+          multi_affinitized_leaders_json_start + c1z1_json + "]},{\"zones\":[" + c1z2_json +
+          "]},{\"zones\":[" + c2z1_json + json_end),
+      string::npos);
+
+  ASSERT_OK(RunAdminToolCommand(
+      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:1", c1z2),
+      strings::Substitute("$0:2", c2z1)));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(
+      output.find(
+          multi_affinitized_leaders_json_start + c1z1_json + "," + c1z2_json + "]},{\"zones\":[" +
+          c2z1_json + json_end),
+      string::npos);
+
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:0", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:-13", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:2", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand(
+      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:3", c1z2)));
+  ASSERT_NOK(RunAdminToolCommand(
+      "set_preferred_zones", strings::Substitute("$0:2", c1z1), strings::Substitute("$0:2", c1z2),
+      strings::Substitute("$0:3", c2z1)));
+}
+
 class XClusterAdminCliTest_Large : public XClusterAdminCliTest {
  public:
   int num_tablet_servers() override {
