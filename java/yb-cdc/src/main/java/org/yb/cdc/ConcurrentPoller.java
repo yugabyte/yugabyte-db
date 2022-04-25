@@ -15,7 +15,8 @@ package org.yb.cdc;
 
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.util.Checkpoint;
 import org.yb.client.*;
 
@@ -26,7 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public class ConcurrentPoller {
-  private static final Logger LOG = Logger.getLogger(ConcurrentPoller.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ConcurrentPoller.class);
   private final String streamId;
   private final AsyncYBClient asyncYBClient;
   private final OutputClient outputClient;

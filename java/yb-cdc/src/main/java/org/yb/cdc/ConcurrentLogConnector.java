@@ -15,7 +15,8 @@ package org.yb.cdc;
 
 import com.google.common.net.HostAndPort;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.*;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.util.ServerInfo;
@@ -31,7 +32,7 @@ import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 public class ConcurrentLogConnector {
-  private static final Logger LOG = Logger.getLogger(ConcurrentLogConnector.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ConcurrentLogConnector.class);
   private static AsyncYBClient client;
   private static YBClient syncClient;
   private static String CDC_CONFIG_FILE = "";
