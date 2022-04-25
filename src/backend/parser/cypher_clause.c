@@ -224,9 +224,9 @@ static transform_entity *
 make_transform_entity(cypher_parsestate *cpstate,
                       enum transform_entity_type type, Node *node, Expr *expr);
 static transform_entity *find_variable(cypher_parsestate *cpstate, char *name);
-static Node *create_property_constraint_function(cypher_parsestate *cpstate,
-                                                 transform_entity *entity,
-                                                 Node *property_constraints);
+static Node *create_property_constraints(cypher_parsestate *cpstate,
+                                         transform_entity *entity,
+                                         Node *property_constraints);
 static TargetEntry *findTarget(List *targetList, char *resname);
 static transform_entity *transform_VLE_edge_entity(cypher_parsestate *cpstate,
                                                    cypher_relationship *rel,
@@ -370,7 +370,7 @@ static List *make_target_list_from_join(ParseState *pstate,
 static Expr *add_volatile_wrapper(Expr *node);
 static FuncExpr *make_clause_func_expr(char *function_name,
                                        Node *clause_information);
-
+static char *get_entity_name(transform_entity *entity);
 /* for VLE support */
 static RangeTblEntry *transform_RangeFunction(cypher_parsestate *cpstate,
                                               RangeFunction *r);
@@ -808,7 +808,7 @@ transform_cypher_union_tree(cypher_parsestate *cpstate, cypher_clause *clause,
             {
                 TargetEntry *tle = (TargetEntry *) lfirst(tl);
 
-                if(!tle->resjunk)
+                if (!tle->resjunk)
                 {
                     *targetlist = lappend(*targetlist, tle);
                 }
@@ -2622,7 +2622,6 @@ static void transform_match_pattern(cypher_parsestate *cpstate, Query *query,
         }
     }
 
-
     query->rtable = cpstate->pstate.p_rtable;
     query->jointree = makeFromExpr(cpstate->pstate.p_joinlist, (Node *)expr);
 }
@@ -3227,40 +3226,45 @@ static transform_entity *find_variable(cypher_parsestate *cpstate, char *name)
     return NULL;
 }
 
-/*
- * Create a function to handle property constraints on an edge/vertex.
- * Since the property constraints might be a parameter, we cannot split
- * the property map into indvidual quals, this will be slightly inefficient,
- * but necessary to cover all possible situations.
- */
-static Node *create_property_constraint_function(cypher_parsestate *cpstate,
-                                                 transform_entity *entity,
-                                                 Node *property_constraints)
+static char *get_entity_name(transform_entity *entity)
 {
-    ParseState *pstate = (ParseState *)cpstate;
-    char *entity_name;
-    ColumnRef *cr;
-    FuncExpr *fexpr;
-    Oid func_oid;
-    Node *prop_expr, *const_expr;
-    RangeTblEntry *rte;
-
-    cr = makeNode(ColumnRef);
-
-    if (entity->type == ENT_EDGE)
+    if (entity->type == ENT_EDGE || entity->type == ENT_VLE_EDGE)
     {
-        entity_name = entity->entity.node->name;
+        return entity->entity.rel->name;
     }
     else if (entity->type == ENT_VERTEX)
     {
-        entity_name = entity->entity.rel->name;
+        return entity->entity.node->name;
     }
     else
     {
         ereport(ERROR,
                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                        errmsg("cannot create a property constraint on non vertex or edge agtype")));
+                        errmsg("cannot get entity name from transform_entity type %i", entity->type)));
     }
+
+    return NULL;
+}
+
+/*
+ * Creates the Contains operator to process property contraints for a vertex/
+ * edge in a MATCH clause. creates the agtype @> with the enitity's properties
+ * on the right and the contraints in the MATCH clause on the left.
+ */
+static Node *create_property_constraints(cypher_parsestate *cpstate,
+                                         transform_entity *entity,
+                                         Node *property_constraints)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    char *entity_name;
+    ColumnRef *cr;
+    Node *prop_expr, *const_expr;
+    RangeTblEntry *rte;
+    Node *last_srf = pstate->p_last_srf;
+
+    cr = makeNode(ColumnRef);
+
+    entity_name = get_entity_name(entity);
 
     cr->fields = list_make2(makeString(entity_name), makeString("properties"));
 
@@ -3279,13 +3283,8 @@ static Node *create_property_constraint_function(cypher_parsestate *cpstate,
     const_expr = transform_cypher_expr(cpstate, property_constraints,
                                        EXPR_KIND_WHERE);
 
-    func_oid = get_ag_func_oid("_property_constraint_check", 2, AGTYPEOID,
-                               AGTYPEOID);
-
-    fexpr = makeFuncExpr(func_oid, BOOLOID, list_make2(prop_expr, const_expr),
-                         InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
-
-    return (Node *)fexpr;
+    return (Node *)make_op(pstate, list_make1(makeString("@>")), prop_expr,
+                           const_expr, last_srf, -1);
 }
 
 
@@ -3484,8 +3483,8 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
             {
                 Node *n = NULL;
 
-                n = create_property_constraint_function(cpstate, entity,
-                                                        node->props);
+                n = create_property_constraints(cpstate, entity, node->props);
+
                 cpstate->property_constraint_quals =
                     lappend(cpstate->property_constraint_quals, n);
             }
@@ -3542,9 +3541,8 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
 
                 if (rel->props)
                 {
-                    Node *n = create_property_constraint_function(cpstate,
-                                                                  entity,
-                                                                  rel->props);
+                    Node *n = create_property_constraints(cpstate, entity,
+                                                          rel->props);
                     cpstate->property_constraint_quals =
                         lappend(cpstate->property_constraint_quals, n);
                 }
@@ -4835,7 +4833,7 @@ transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
         checkNameSpaceConflicts(pstate, pstate->p_namespace, namespace);
     }
 
-    if(add_rte_to_query)
+    if (add_rte_to_query)
     {
         // all variables(attributes) from the previous clause(subquery) are visible
         addRTEtoQuery(pstate, rte, true, false, true);

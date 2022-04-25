@@ -2722,7 +2722,8 @@ Datum agtype_to_int4_array(PG_FUNCTION_ARGS)
     agtype_iterator *agtype_iterator = agtype_iterator_init(&agtype_in->root);
     agtv_token = agtype_iterator_next(&agtype_iterator, &agtv, false);
 
-    if(agtv.type != AGTV_ARRAY) {
+    if (agtv.type != AGTV_ARRAY)
+    {
         cannot_cast_agtype_value(agtv.type, "int4[]");
     }
 
@@ -4069,25 +4070,6 @@ Datum agtype_typecast_path(PG_FUNCTION_ARGS)
     path.res->type = AGTV_PATH;
 
     PG_RETURN_POINTER(agtype_value_to_agtype(path.res));
-}
-
-PG_FUNCTION_INFO_V1(_property_constraint_check);
-
-Datum _property_constraint_check(PG_FUNCTION_ARGS)
-{
-    agtype_iterator *constraint_it, *property_it;
-    agtype *properties, *constraints;
-
-    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
-        PG_RETURN_BOOL(false);
-
-    properties = AG_GET_ARG_AGTYPE_P(0);
-    constraints = AG_GET_ARG_AGTYPE_P(1);
-
-    constraint_it = agtype_iterator_init(&constraints->root);
-    property_it = agtype_iterator_init(&properties->root);
-
-    PG_RETURN_BOOL(agtype_deep_contains(&property_it, &constraint_it));
 }
 
 PG_FUNCTION_INFO_V1(age_id);

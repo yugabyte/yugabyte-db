@@ -149,8 +149,7 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
         if (update_result != HeapTupleMayBeUpdated)
         {
             ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-                            errmsg("Entity failed to be updated: %i",
-                                   update_result)));
+                    errmsg("Entity failed to be updated: %i", update_result)));
         }
 
         // Insert index entries for the tuple
@@ -160,7 +159,6 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
                                   false, NULL, NIL);
         }
     }
-
     ReleaseBuffer(buffer);
 
     estate->es_result_relation_info = saved_resultRelInfo;
@@ -293,13 +291,13 @@ static void update_all_paths(CustomScanState *node, graphid id,
         agtype *original_entity;
         agtype_value *original_entity_value;
 
-        // skip non agtype values
+        // skip nulls
         if (scanTupleSlot->tts_tupleDescriptor->attrs[i].atttypid != AGTYPEOID)
         {
             continue;
         }
 
-        // skip nulls
+        // skip non agtype values
         if (scanTupleSlot->tts_isnull[i])
         {
             continue;
@@ -432,7 +430,7 @@ static void process_update_list(CustomScanState *node)
          * NULL. It will be possible for a variable to be NULL when OPTIONAL
          * MATCH is implemented.
          */
-        if(update_item->remove_item)
+        if (update_item->remove_item)
         {
             remove_property = true;
         }
@@ -496,12 +494,12 @@ static void process_update_list(CustomScanState *node)
             slot = populate_edge_tts(slot, id, startid, endid,
                                      altered_properties);
         }
-	else
-	{
+        else
+        {
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                             errmsg("age %s clause can only update vertex and edges",
                                    clause_name)));
-	}
+        }
 
         /* place the datum in its tuple table slot position. */
         scanTupleSlot->tts_values[update_item->entity_position - 1] = new_entity;
@@ -539,7 +537,7 @@ static void process_update_list(CustomScanState *node)
              * If the heap tuple still exists (It wasn't deleted between the
              * match and this SET/REMOVE) update the heap_tuple.
              */
-            if(HeapTupleIsValid(heap_tuple))
+            if (HeapTupleIsValid(heap_tuple))
             {
                 heap_tuple = update_entity_tuple(resultRelInfo, slot, estate,
                                                  heap_tuple);

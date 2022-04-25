@@ -267,7 +267,7 @@ SELECT 3 % '3.14'::agtype;
 SELECT 3 % '3.14::numeric'::agtype;
 
 --
--- Test overloaded agytype any functions and operators for NULL input 
+-- Test overloaded agytype any functions and operators for NULL input
 -- +, -, *, /, %, =, <>, <, >, <=, >=
 -- These should all return null
 SELECT agtype_any_add('null'::agtype, 1);
@@ -741,6 +741,31 @@ SELECT age_end_id(NULL);
 SELECT age_id(agtype_in('null'));
 SELECT age_start_id(agtype_in('null'));
 SELECT age_end_id(agtype_in('null'));
+
+SELECT agtype_contains('{"id": 1}','{"id": 1}');
+SELECT agtype_contains('{"id": 1}','{"id": 2}');
+
+SELECT '{"id": 1}'::agtype @> '{"id": 1}';
+SELECT '{"id": 1}'::agtype @> '{"id": 2}';
+
+SELECT agtype_exists('{"id": 1}','id');
+SELECT agtype_exists('{"id": 1}','not_id');
+
+SELECT '{"id": 1}'::agtype ? 'id';
+SELECT '{"id": 1}'::agtype ? 'not_id';
+
+SELECT agtype_exists_any('{"id": 1}', array['id']);
+SELECT agtype_exists_any('{"id": 1}', array['not_id']);
+
+SELECT '{"id": 1}'::agtype ?| array['id'];
+SELECT '{"id": 1}'::agtype ?| array['not_id'];
+
+
+SELECT agtype_exists_all('{"id": 1}', array['id']);
+SELECT agtype_exists_all('{"id": 1}', array['not_id']);
+
+SELECT '{"id": 1}'::agtype ?& array['id'];
+SELECT '{"id": 1}'::agtype ?& array['not_id'];
 
 --
 -- Test STARTS WITH, ENDS WITH, and CONTAINS

@@ -127,27 +127,31 @@ SELECT * FROM cypher('cypher_index', $$ MATCH(n) MERGE (n)-[:e]->(:idx {i: n.i})
 --data cleanup
 SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtype);
 
-
 /*
- * Section 2: Indices to Improve Query Runtime
+ * Section 2: Graphid Indices to Improve Join Performance
  */
 SELECT create_graph('agload_test_graph');
 
-ALTER TABLE agload_test_graph._ag_label_vertex
-CLUSTER ON _ag_label_vertex_pkey;
-
-SELECT create_vlabel('agload_test_graph','Country');
-SELECT load_labels_from_file('agload_test_graph', 'Country',
-    'age_load/countries.csv');
+SELECT * FROM cypher('agload_test_graph', $$
+    CREATE (us:Country {name: "United States"}),
+        (ca:Country {name: "Canada"}),
+        (mx:Country {name: "Mexico"}),
+        (us)<-[:has_city]-(:City {name:"New York", country_code:"US"}),
+        (us)<-[:has_city]-(:City {name:"San Fransisco", country_code:"US"}),
+        (us)<-[:has_city]-(:City {name:"Los Angeles", country_code:"US"}),
+        (us)<-[:has_city]-(:City {name:"Seattle", country_code:"US"}),
+        (ca)<-[:has_city]-(:City {name:"Vancouver", country_code:"CA"}),
+        (ca)<-[:has_city]-(:City {name:"Toroto", country_code:"CA"}),
+        (ca)<-[:has_city]-(:City {name:"Montreal", country_code:"CA"}),
+        (mx)<-[:has_city]-(:City {name:"Mexico City", country_code:"MX"}),
+        (mx)<-[:has_city]-(:City {name:"Monterrey", country_code:"MX"}),
+        (mx)<-[:has_city]-(:City {name:"Tijuana", country_code:"MX"})
+$$) as (n agtype);
 
 ALTER TABLE agload_test_graph."Country" ADD PRIMARY KEY (id);
+
 CREATE UNIQUE INDEX CONCURRENTLY cntry_id_idx ON agload_test_graph."Country" (id);
 ALTER TABLE agload_test_graph."Country"  CLUSTER ON cntry_id_idx;
-
-
-SELECT create_vlabel('agload_test_graph','City');
-SELECT load_labels_from_file('agload_test_graph', 'City',
-    'age_load/cities.csv');
 
 ALTER TABLE agload_test_graph."City"
 ADD PRIMARY KEY (id);
@@ -157,11 +161,6 @@ ON agload_test_graph."City" (id);
 
 ALTER TABLE agload_test_graph."City"
 CLUSTER ON city_id_idx;
-
-
-SELECT create_elabel('agload_test_graph','has_city');
-SELECT load_edges_from_file('agload_test_graph', 'has_city',
-     'age_load/edges.csv');
 
 ALTER TABLE agload_test_graph.has_city
 ADD CONSTRAINT has_city_end_fk FOREIGN KEY (end_id)
@@ -175,6 +174,7 @@ ON agload_test_graph.has_city (start_id);
 
 ALTER TABLE agload_test_graph."has_city"
 CLUSTER ON load_has_city_eid_idx;
+
 
 SET enable_mergejoin = ON;
 SET enable_hashjoin = OFF;
@@ -203,5 +203,19 @@ SELECT COUNT(*) FROM cypher('agload_test_graph', $$
     RETURN e
 $$) as (n agtype);
 
+--
+-- Section 3: Agtype GIN Indices to Improve WHERE clause Performance
+--
+CREATE INDEX load_city_gid_idx
+ON agload_test_graph."City" USING gin (properties);
+
+SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+    MATCH (c:City {country_code: "AD"})
+    RETURN c
+$$) as (n agtype);
+
+--
+-- General Cleanup
+--
 SELECT drop_graph('cypher_index', true);
 SELECT drop_graph('agload_test_graph', true);

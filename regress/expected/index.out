@@ -224,7 +224,7 @@ SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtyp
 (0 rows)
 
 /*
- * Section 2: Indices to Improve Query Runtime
+ * Section 2: Graphid Indices to Improve Join Performance
  */
 SELECT create_graph('agload_test_graph');
 NOTICE:  graph "agload_test_graph" has been created
@@ -233,59 +233,34 @@ NOTICE:  graph "agload_test_graph" has been created
  
 (1 row)
 
-ALTER TABLE agload_test_graph._ag_label_vertex
-CLUSTER ON _ag_label_vertex_pkey;
-SELECT create_vlabel('agload_test_graph','Country');
-NOTICE:  VLabel "Country" has been created
- create_vlabel 
----------------
- 
-(1 row)
-
-SELECT load_labels_from_file('agload_test_graph', 'Country',
-    'age_load/countries.csv');
- load_labels_from_file 
------------------------
- 
-(1 row)
+SELECT * FROM cypher('agload_test_graph', $$
+    CREATE (us:Country {name: "United States"}),
+        (ca:Country {name: "Canada"}),
+        (mx:Country {name: "Mexico"}),
+        (us)<-[:has_city]-(:City {name:"New York", country_code:"US"}),
+        (us)<-[:has_city]-(:City {name:"San Fransisco", country_code:"US"}),
+        (us)<-[:has_city]-(:City {name:"Los Angeles", country_code:"US"}),
+        (us)<-[:has_city]-(:City {name:"Seattle", country_code:"US"}),
+        (ca)<-[:has_city]-(:City {name:"Vancouver", country_code:"CA"}),
+        (ca)<-[:has_city]-(:City {name:"Toroto", country_code:"CA"}),
+        (ca)<-[:has_city]-(:City {name:"Montreal", country_code:"CA"}),
+        (mx)<-[:has_city]-(:City {name:"Mexico City", country_code:"MX"}),
+        (mx)<-[:has_city]-(:City {name:"Monterrey", country_code:"MX"}),
+        (mx)<-[:has_city]-(:City {name:"Tijuana", country_code:"MX"})
+$$) as (n agtype);
+ n 
+---
+(0 rows)
 
 ALTER TABLE agload_test_graph."Country" ADD PRIMARY KEY (id);
 CREATE UNIQUE INDEX CONCURRENTLY cntry_id_idx ON agload_test_graph."Country" (id);
 ALTER TABLE agload_test_graph."Country"  CLUSTER ON cntry_id_idx;
-SELECT create_vlabel('agload_test_graph','City');
-NOTICE:  VLabel "City" has been created
- create_vlabel 
----------------
- 
-(1 row)
-
-SELECT load_labels_from_file('agload_test_graph', 'City',
-    'age_load/cities.csv');
- load_labels_from_file 
------------------------
- 
-(1 row)
-
 ALTER TABLE agload_test_graph."City"
 ADD PRIMARY KEY (id);
 CREATE UNIQUE INDEX city_id_idx
 ON agload_test_graph."City" (id);
 ALTER TABLE agload_test_graph."City"
 CLUSTER ON city_id_idx;
-SELECT create_elabel('agload_test_graph','has_city');
-NOTICE:  ELabel "has_city" has been created
- create_elabel 
----------------
- 
-(1 row)
-
-SELECT load_edges_from_file('agload_test_graph', 'has_city',
-     'age_load/edges.csv');
- load_edges_from_file 
-----------------------
- 
-(1 row)
-
 ALTER TABLE agload_test_graph.has_city
 ADD CONSTRAINT has_city_end_fk FOREIGN KEY (end_id)
 REFERENCES agload_test_graph."Country"(id) MATCH FULL;
@@ -304,7 +279,7 @@ SELECT COUNT(*) FROM cypher('agload_test_graph', $$
 $$) as (n agtype);
  count 
 -------
- 72485
+    10
 (1 row)
 
 SET enable_mergejoin = OFF;
@@ -316,7 +291,7 @@ SELECT COUNT(*) FROM cypher('agload_test_graph', $$
 $$) as (n agtype);
  count 
 -------
- 72485
+    10
 (1 row)
 
 SET enable_mergejoin = OFF;
@@ -328,9 +303,26 @@ SELECT COUNT(*) FROM cypher('agload_test_graph', $$
 $$) as (n agtype);
  count 
 -------
- 72485
+    10
 (1 row)
 
+--
+-- Section 3: Agtype GIN Indices to Improve WHERE clause Performance
+--
+CREATE INDEX load_city_gid_idx
+ON agload_test_graph."City" USING gin (properties);
+SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+    MATCH (c:City {country_code: "AD"})
+    RETURN c
+$$) as (n agtype);
+ count 
+-------
+     0
+(1 row)
+
+--
+-- General Cleanup
+--
 SELECT drop_graph('cypher_index', true);
 NOTICE:  drop cascades to 3 other objects
 DETAIL:  drop cascades to table cypher_index._ag_label_vertex
@@ -347,8 +339,8 @@ NOTICE:  drop cascades to 5 other objects
 DETAIL:  drop cascades to table agload_test_graph._ag_label_vertex
 drop cascades to table agload_test_graph._ag_label_edge
 drop cascades to table agload_test_graph."Country"
-drop cascades to table agload_test_graph."City"
 drop cascades to table agload_test_graph.has_city
+drop cascades to table agload_test_graph."City"
 NOTICE:  graph "agload_test_graph" has been dropped
  drop_graph 
 ------------

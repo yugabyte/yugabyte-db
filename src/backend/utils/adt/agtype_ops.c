@@ -25,6 +25,7 @@
 
 #include <math.h>
 
+#include "catalog/pg_type_d.h"
 #include "fmgr.h"
 #include "utils/builtins.h"
 #include "utils/numeric.h"
@@ -995,6 +996,165 @@ Datum agtype_any_ge(PG_FUNCTION_ARGS)
     PG_RETURN_BOOL(result);
 }
 
+
+PG_FUNCTION_INFO_V1(agtype_contains);
+/*
+ * <@ operator for agtype. Returns true if the right agtype path/value entries
+ * contained at the top level within the left agtype value
+ */
+Datum agtype_contains(PG_FUNCTION_ARGS)
+{
+    agtype_iterator *constraint_it, *property_it;
+    agtype *properties, *constraints;
+
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+    {
+        PG_RETURN_BOOL(false);
+    }
+
+    properties = AG_GET_ARG_AGTYPE_P(0);
+    constraints = AG_GET_ARG_AGTYPE_P(1);
+
+    constraint_it = agtype_iterator_init(&constraints->root);
+    property_it = agtype_iterator_init(&properties->root);
+
+    PG_RETURN_BOOL(agtype_deep_contains(&property_it, &constraint_it));
+}
+
+
+PG_FUNCTION_INFO_V1(agtype_contained_by);
+/*
+ * <@ operator for agtype. Returns true if the left agtype path/value entries
+ * contained at the top level within the right agtype value
+ */
+Datum agtype_contained_by(PG_FUNCTION_ARGS)
+{
+    agtype_iterator *constraint_it, *property_it;
+    agtype *properties, *constraints;
+
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+    {
+        PG_RETURN_BOOL(false);
+    }
+
+    properties = AG_GET_ARG_AGTYPE_P(0);
+    constraints = AG_GET_ARG_AGTYPE_P(1);
+
+    constraint_it = agtype_iterator_init(&constraints->root);
+    property_it = agtype_iterator_init(&properties->root);
+
+    PG_RETURN_BOOL(agtype_deep_contains(&constraint_it, &property_it));
+}
+
+PG_FUNCTION_INFO_V1(agtype_exists);
+/*
+ * ? operator for agtype. Returns true if the string exists as top-level keys
+ */
+Datum agtype_exists(PG_FUNCTION_ARGS)
+{
+    agtype *agt = AG_GET_ARG_AGTYPE_P(0);
+    text *key = PG_GETARG_TEXT_PP(1);
+    agtype_value aval;
+    agtype_value *v = NULL;
+
+    /*
+     * We only match Object keys (which are naturally always Strings), or
+     * string elements in arrays.  In particular, we do not match non-string
+     * scalar elements.  Existence of a key/element is only considered at the
+     * top level.  No recursion occurs.
+     */
+    aval.type = AGTV_STRING;
+    aval.val.string.val = VARDATA_ANY(key);
+    aval.val.string.len = VARSIZE_ANY_EXHDR(key);
+
+    v = find_agtype_value_from_container(&agt->root,
+                                         AGT_FOBJECT | AGT_FARRAY,
+                                         &aval);
+
+    PG_RETURN_BOOL(v != NULL);
+}
+
+PG_FUNCTION_INFO_V1(agtype_exists_any);
+/*
+ * ?| operator for agtype. Returns true if any of the array strings exist as
+ * top-level keys
+ */
+Datum agtype_exists_any(PG_FUNCTION_ARGS)
+{
+    agtype *agt = AG_GET_ARG_AGTYPE_P(0);
+    ArrayType *keys = PG_GETARG_ARRAYTYPE_P(1);
+    int i;
+    Datum *key_datums;
+    bool *key_nulls;
+    int elem_count;
+
+    deconstruct_array(keys, TEXTOID, -1, false, 'i', &key_datums, &key_nulls,
+                      &elem_count);
+
+    for (i = 0; i < elem_count; i++)
+    {
+        agtype_value strVal;
+
+        if (key_nulls[i])
+        {
+            continue;
+        }
+
+        strVal.type = AGTV_STRING;
+        strVal.val.string.val = VARDATA(key_datums[i]);
+        strVal.val.string.len = VARSIZE(key_datums[i]) - VARHDRSZ;
+
+        if (find_agtype_value_from_container(&agt->root,
+                                        AGT_FOBJECT | AGT_FARRAY,
+                                        &strVal) != NULL)
+        {
+            PG_RETURN_BOOL(true);
+        }
+    }
+
+    PG_RETURN_BOOL(false);
+}
+
+PG_FUNCTION_INFO_V1(agtype_exists_all);
+/*
+ * ?& operator for agtype. Returns true if all of the array strings exist as
+ * top-level keys
+ */
+Datum agtype_exists_all(PG_FUNCTION_ARGS)
+{
+    agtype *agt = AG_GET_ARG_AGTYPE_P(0);
+    ArrayType  *keys = PG_GETARG_ARRAYTYPE_P(1);
+    int i;
+    Datum *key_datums;
+    bool *key_nulls;
+    int elem_count;
+
+    deconstruct_array(keys, TEXTOID, -1, false, 'i', &key_datums, &key_nulls,
+                      &elem_count);
+
+    for (i = 0; i < elem_count; i++)
+    {
+        agtype_value strVal;
+
+        if (key_nulls[i])
+        {
+            continue;
+        }
+
+        strVal.type = AGTV_STRING;
+        strVal.val.string.val = VARDATA(key_datums[i]);
+        strVal.val.string.len = VARSIZE(key_datums[i]) - VARHDRSZ;
+
+        if (find_agtype_value_from_container(&agt->root,
+                                        AGT_FOBJECT | AGT_FARRAY,
+                                        &strVal) == NULL)
+        {
+            PG_RETURN_BOOL(false);
+        }
+    }
+
+    PG_RETURN_BOOL(true);
+}
 
 static agtype *agtype_concat(agtype *agt1, agtype *agt2)
 {

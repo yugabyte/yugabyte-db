@@ -2834,6 +2834,157 @@ CREATE OPERATOR CLASS agtype_ops_hash
   FUNCTION 1 ag_catalog.agtype_hash_cmp(agtype);
 
 --
+-- Contains operators @> <@
+--
+CREATE FUNCTION ag_catalog.agtype_contains(agtype, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR @> (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_contains,
+  COMMUTATOR = '<@',
+  RESTRICT = contsel,
+  JOIN = contjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_contained_by(agtype, agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <@ (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_contained_by,
+  COMMUTATOR = '@>',
+  RESTRICT = contsel,
+  JOIN = contjoinsel
+);
+
+--
+-- Key Existence Operators ? ?| ?&
+--
+CREATE FUNCTION ag_catalog.agtype_exists(agtype, text)
+RETURNS boolean
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR ? (
+  LEFTARG = agtype,
+  RIGHTARG = text,
+  FUNCTION = ag_catalog.agtype_exists,
+  COMMUTATOR = '?',
+  RESTRICT = contsel,
+  JOIN = contjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_exists_any(agtype, text[])
+RETURNS boolean
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR ?| (
+  LEFTARG = agtype,
+  RIGHTARG = text[],
+  FUNCTION = ag_catalog.agtype_exists_any,
+  RESTRICT = contsel,
+  JOIN = contjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_exists_all(agtype, text[])
+RETURNS boolean
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR ?& (
+  LEFTARG = agtype,
+  RIGHTARG = text[],
+  FUNCTION = ag_catalog.agtype_exists_all,
+  RESTRICT = contsel,
+  JOIN = contjoinsel
+);
+
+--
+-- agtype GIN support
+--
+CREATE FUNCTION ag_catalog.gin_compare_agtype(text, text)
+RETURNS int
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE
+STRICT
+PARALLEL SAFE;
+
+CREATE FUNCTION gin_extract_agtype(agtype, internal)
+RETURNS internal
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE
+STRICT
+PARALLEL SAFE;
+
+CREATE FUNCTION ag_catalog.gin_extract_agtype_query(agtype, internal, int2,
+                                                    internal, internal)
+RETURNS internal
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE
+STRICT
+PARALLEL SAFE;
+
+CREATE FUNCTION ag_catalog.gin_consistent_agtype(internal, int2, agtype, int4,
+                                                 internal, internal)
+RETURNS bool
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE
+STRICT
+PARALLEL SAFE;
+
+CREATE FUNCTION ag_catalog.gin_triconsistent_agtype(internal, int2, agtype, int4,
+                                                    internal, internal, internal)
+RETURNS bool
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE
+STRICT
+PARALLEL SAFE;
+
+CREATE OPERATOR CLASS ag_catalog.gin_agtype_ops
+DEFAULT FOR TYPE agtype USING gin AS
+  OPERATOR 7 @>,
+  OPERATOR 9 ?(agtype, text),
+  OPERATOR 10 ?|(agtype, text[]),
+  OPERATOR 11 ?&(agtype, text[]),
+  FUNCTION 1 ag_catalog.gin_compare_agtype(text,text),
+  FUNCTION 2 ag_catalog.gin_extract_agtype(agtype, internal),
+  FUNCTION 3 ag_catalog.gin_extract_agtype_query(agtype, internal, int2,
+                                                 internal, internal),
+  FUNCTION 4 ag_catalog.gin_consistent_agtype(internal, int2, agtype, int4,
+                                              internal, internal),
+  FUNCTION 6 ag_catalog.gin_triconsistent_agtype(internal, int2, agtype, int4,
+                                                 internal, internal, internal),
+STORAGE text;
+
+--
 -- graph id conversion function
 --
 CREATE FUNCTION ag_catalog.graphid_to_agtype(graphid)
@@ -3322,13 +3473,6 @@ RETURNS agtype
 LANGUAGE c
 STABLE
 RETURNS NULL ON NULL INPUT
-PARALLEL SAFE
-AS 'MODULE_PATHNAME';
-
-CREATE FUNCTION ag_catalog._property_constraint_check(agtype, agtype)
-RETURNS boolean
-LANGUAGE c
-STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 

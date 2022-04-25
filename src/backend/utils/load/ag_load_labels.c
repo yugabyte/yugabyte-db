@@ -119,7 +119,9 @@ void vertex_row_cb(int delim __attribute__((unused)), void *data)
             cr->header_len[i] = cr->fields_len[i];
             cr->header[i] = strndup(cr->fields[i], cr->header_len[i]);
         }
-    } else {
+    }
+    else
+    {
         if (cr->id_field_exists)
         {
             label_id_int = strtol(cr->fields[0], NULL, 10);
@@ -157,15 +159,28 @@ void vertex_row_cb(int delim __attribute__((unused)), void *data)
 
 static int is_space(unsigned char c)
 {
-    if(c == CSV_SPACE || c == CSV_TAB) return 1;
-    return 0;
-}
+    if (c == CSV_SPACE || c == CSV_TAB)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
 
+}
 static int is_term(unsigned char c)
 {
-    if (c == CSV_CR || c == CSV_LF) return 1;
-    return 0;
+    if (c == CSV_CR || c == CSV_LF)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
 }
+
 int create_labels_from_csv_file(char *file_path,
                                 char *graph_name,
                                 Oid graph_id,
