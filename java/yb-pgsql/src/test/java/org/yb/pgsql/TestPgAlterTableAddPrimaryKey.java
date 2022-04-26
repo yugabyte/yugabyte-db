@@ -362,7 +362,7 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
           new Row("nopk_nc", false, null, null)));
 
       runInvalidQuery(stmt, "ALTER TABLE nopk_c ADD PRIMARY KEY (id HASH)",
-          "cannot colocate hash partitioned table");
+          "cannot colocate hash partitioned index");
 
       // This doesn't really accomplish much though, since colocated property is invisible to SQL
       // - we can't check whether a re-created table keeps/gains/loses it.
