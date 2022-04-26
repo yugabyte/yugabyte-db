@@ -78,6 +78,9 @@ const mapDispatchToProps = (dispatch) => {
     showRunSampleAppsModal: () => {
       dispatch(openDialog('runSampleAppsModal'));
     },
+    showSupportBundleModal: () => {
+      dispatch(openDialog('supportBundleModal'));
+    },
     showTLSConfigurationModal: () => {
       dispatch(openDialog('tlsConfigurationModal'));
     },

@@ -13,7 +13,8 @@ const initialStateFeatureInTest = {
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false,
   backupv2: false,
-  enableOIDC: false
+  enableOIDC: false,
+  supportBundle: false
 };
 
 const initialStateFeatureReleased = {
@@ -29,7 +30,8 @@ const initialStateFeatureReleased = {
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false,
   backupv2: false,
-  enableOIDC: false
+  enableOIDC: false,
+  supportBundle: true
 };
 
 export const FeatureFlag = (
