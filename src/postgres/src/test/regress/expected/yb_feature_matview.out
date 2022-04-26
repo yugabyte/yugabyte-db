@@ -773,3 +773,15 @@ SELECT * FROM mv_collate_test_explicit_collation ORDER BY b;
  zzz
  ZZZ
 (6 rows)
+
+-- Test EXPLAIN ANALYZE + CREATE MATERIALIZED VIEW AS.
+-- Use EXECUTE to hide the output since it won't be stable.
+DO $$
+BEGIN
+  EXECUTE 'EXPLAIN ANALYZE CREATE MATERIALIZED VIEW view_as_1 AS SELECT 1';
+END$$;
+SELECT * FROM view_as_1;
+ ?column?
+----------
+        1
+(1 row)
