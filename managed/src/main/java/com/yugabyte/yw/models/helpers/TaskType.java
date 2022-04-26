@@ -281,6 +281,8 @@ public enum TaskType {
 
   BackupTableYb("subtasks.BackupTableYb"),
 
+  BackupTableYbc("subtasks.BackupTableYbc"),
+
   BackupUniverseKeys("subtasks.BackupUniverseKeys"),
 
   RestoreBackupYb("subtasks.RestoreBackupYb"),

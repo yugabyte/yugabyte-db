@@ -223,6 +223,24 @@ public class EncryptionAtRestManager {
     }
   }
 
+  /**
+   * Function to get universe keys history as ObjectNode, for use in YB-Controller extended args.
+   *
+   * @param universeUUID
+   * @return ObjectNode consisting of universe key history.
+   * @throws Exception
+   */
+  public ObjectNode backupUniverseKeyHistory(UUID universeUUID) throws Exception {
+    ObjectNode backup = Json.newObject();
+    ArrayNode universeKeys = backup.putArray("universe_keys");
+    List<ObjectNode> universeKeyRefs = getUniverseKeyRefsForBackup(universeUUID);
+    if (universeKeyRefs.size() > 0) {
+      universeKeyRefs.forEach(universeKeys::add);
+      return backup;
+    }
+    return null;
+  }
+
   // Restore universe keys from metadata file
   public RestoreKeyResult restoreUniverseKeyHistory(
       String storageLocation, Consumer<JsonNode> restorer) {

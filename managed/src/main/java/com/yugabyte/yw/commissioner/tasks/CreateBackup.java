@@ -85,6 +85,7 @@ public class CreateBackup extends UniverseTaskBase {
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     boolean isUniverseLocked = false;
+    boolean ybcBackup = universe.getUniverseDetails().useYbcForBackups;
     try {
       checkUniverseVersion();
 
@@ -108,7 +109,10 @@ public class CreateBackup extends UniverseTaskBase {
 
         Backup backup =
             createAllBackupSubtasks(
-                params(), UserTaskDetails.SubTaskGroupType.CreatingTableBackup, tablesToBackup);
+                params(),
+                UserTaskDetails.SubTaskGroupType.CreatingTableBackup,
+                tablesToBackup,
+                ybcBackup);
         log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
