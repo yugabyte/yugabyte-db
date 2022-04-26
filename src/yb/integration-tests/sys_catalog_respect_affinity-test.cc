@@ -161,5 +161,26 @@ TEST_F(SysCatalogRespectAffinityTest, TestMultiplePreferredZones) {
   }, kDefaultTimeout, "Master leader stepdown"));
 }
 
+TEST_F(SysCatalogRespectAffinityTest, TestMultiplePriorityPreferredZones) {
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  std::string leader_zone = ASSERT_RESULT(GetMasterLeaderZone());
+  int leader_zone_idx = leader_zone[1] - '0';
+  int first_zone_idx = (leader_zone_idx + 1) % 3;
+  int second_zone_idx = (leader_zone_idx + 2) % 3;
+
+  ASSERT_OK(yb_admin_client_->SetPreferredZones(
+      {Substitute("c.r.z$0:1", first_zone_idx), Substitute("c.r.z$0:2", second_zone_idx)}));
+  ASSERT_OK(WaitFor(
+      [&]() { return IsMasterLeaderInZone("c", "r", Substitute("z$0", first_zone_idx)); },
+      kDefaultTimeout,
+      "Master leader stepdown"));
+
+  external_mini_cluster()->master(first_zone_idx)->Shutdown();
+  ASSERT_OK(WaitFor(
+      [&]() { return IsMasterLeaderInZone("c", "r", Substitute("z$0", second_zone_idx)); },
+      kDefaultTimeout,
+      "Master leader stepdown"));
+}
+
 } // namespace integration_tests
 } // namespace yb

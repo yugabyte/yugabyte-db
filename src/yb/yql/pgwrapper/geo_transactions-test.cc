@@ -157,6 +157,17 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
     }
   }
 
+  void ShutdownTabletServers(int region) {
+    std::string region_str = yb::Format("rack$0", region);
+    for (auto& tserver : cluster_->mini_tablet_servers()) {
+      ServerRegistrationPB reg;
+      ASSERT_OK(tserver->server()->GetRegistration(&reg));
+      if (reg.cloud_info().placement_region() == region_str) {
+        tserver->Shutdown();
+      }
+    }
+  }
+
   Result<std::vector<TabletId>> GetStatusTablets(int region, bool global) {
     YBTableName table_name;
     if (global) {
@@ -410,6 +421,10 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
   WaitForLoadBalanceCompletion();
 
   ValidateAllTabletLeaderinZone(table_uuids, 3);
+
+  ShutdownTabletServers(3);
+  WaitForLoadBalanceCompletion();
+  ValidateAllTabletLeaderinZone(table_uuids, 1);
 }
 }  // namespace client
 }  // namespace yb

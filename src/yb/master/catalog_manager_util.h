@@ -29,6 +29,8 @@ namespace master {
 
 using ZoneToDescMap = std::unordered_map<string, TSDescriptorVector>;
 
+class SetPreferredZonesRequestPB;
+
 class CatalogManagerUtil {
  public:
   // For the given set of descriptors, checks if the load is considered balanced across AZs in
@@ -95,6 +97,12 @@ class CatalogManagerUtil {
   // block string (C.R.Z format) should be proper prefix of another.
   // Validate placement information if passed.
   static CHECKED_STATUS IsPlacementInfoValid(const PlacementInfoPB& placement_info);
+
+  static CHECKED_STATUS SetPreferredZones(
+      const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info);
+
+  static void GetAllAffinitizedZones(
+      const ReplicationInfoPB* replication_info, vector<AffinitizedZonesSet>* affinitized_zones);
 
  private:
   CatalogManagerUtil();

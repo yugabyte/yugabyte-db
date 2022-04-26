@@ -1895,13 +1895,12 @@ Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicat
 
 bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
   const auto& live_placement_info = replication_info.live_replicas();
-  if (!(live_placement_info.placement_blocks().empty() &&
-        live_placement_info.num_replicas() <= 0 &&
+  if (!(live_placement_info.placement_blocks().empty() && live_placement_info.num_replicas() <= 0 &&
         live_placement_info.placement_uuid().empty()) ||
       !replication_info.read_replicas().empty() ||
-      !replication_info.affinitized_leaders().empty()) {
-
-      return true;
+      !replication_info.affinitized_leaders().empty() ||
+      !replication_info.multi_affinitized_leaders().empty()) {
+    return true;
   }
   return false;
 }
@@ -10016,17 +10015,8 @@ Status CatalogManager::SetPreferredZones(
   auto cluster_config = ClusterConfig();
   auto l = cluster_config->LockForWrite();
   auto replication_info = l.mutable_data()->pb.mutable_replication_info();
-  replication_info->clear_affinitized_leaders();
 
-  for (const auto& cloud_info : req->preferred_zones()) {
-    const auto& placement_info = replication_info->live_replicas();
-    if (!CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(placement_info, cloud_info)) {
-      Status s = STATUS_FORMAT(InvalidArgument, "Placement info $0 does not contain cloud info $1",
-                               placement_info, TSDescriptor::generate_placement_id(cloud_info));
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
-    }
-    *replication_info->add_affinitized_leaders() = cloud_info;
-  }
+  RETURN_NOT_OK(CatalogManagerUtil::SetPreferredZones(req, replication_info));
 
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
 
@@ -10488,55 +10478,59 @@ void CatalogManager::RebuildYQLSystemPartitions() {
 Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   auto l = ClusterConfig()->LockForRead();
 
-  const auto& affinitized_leaders = l->pb.replication_info().affinitized_leaders();
-  if (affinitized_leaders.empty()) {
+  vector<AffinitizedZonesSet> affinitized_zones;
+  RETURN_NOT_OK(GetAllAffinitizedZones(&affinitized_zones));
+
+  if (affinitized_zones.empty()) {
     return Status::OK();
   }
 
-  for (const CloudInfoPB& cloud_info : affinitized_leaders) {
-    // Do nothing if already in an affinitized zone.
-    if (CatalogManagerUtil::IsCloudInfoEqual(cloud_info, server_registration_.cloud_info())) {
-      return Status::OK();
-    }
-  }
-
-  // Not in affinitized zone, try finding a master to send a step down request to.
   std::vector<ServerEntryPB> masters;
   RETURN_NOT_OK(master_->ListMasters(&masters));
 
-  for (const ServerEntryPB& master : masters) {
-    auto master_cloud_info = master.registration().cloud_info();
-
-    for (const CloudInfoPB& config_cloud_info : affinitized_leaders) {
-      if (CatalogManagerUtil::IsCloudInfoEqual(config_cloud_info, master_cloud_info)) {
-        if (PREDICT_FALSE(
-            GetAtomicFlag(&FLAGS_TEST_crash_server_on_sys_catalog_leader_affinity_move))) {
-          LOG_WITH_PREFIX(FATAL) << "For test: Crashing the server instead of performing sys "
-                                    "catalog leader affinity move.";
-        }
-        YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
-            << "Sys catalog tablet is not in an affinitized zone, "
-            << "sending step down request to master uuid "
-            << master.instance_id().permanent_uuid()
-            << " in zone "
-            << TSDescriptor::generate_placement_id(master_cloud_info);
-        std::shared_ptr<TabletPeer> tablet_peer;
-        RETURN_NOT_OK(GetTabletPeer(sys_catalog_->tablet_id(), &tablet_peer));
-
-        consensus::LeaderStepDownRequestPB req;
-        req.set_tablet_id(sys_catalog_->tablet_id());
-        req.set_dest_uuid(sys_catalog_->tablet_peer()->permanent_uuid());
-        req.set_new_leader_uuid(master.instance_id().permanent_uuid());
-
-        consensus::LeaderStepDownResponsePB resp;
-        RETURN_NOT_OK(tablet_peer->consensus()->StepDown(&req, &resp));
-        if (resp.has_error()) {
-          YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10) << "Step down failed: "
-                                                    << resp.error().status().message();
-          break;
-        }
-        LOG_WITH_PREFIX(INFO) << "Successfully stepped down to new master";
+  for (const auto& zone_set : affinitized_zones) {
+    for (const CloudInfoPB& cloud_info : zone_set) {
+      // Do nothing if already on a high priority affinitized zone.
+      if (CatalogManagerUtil::IsCloudInfoEqual(cloud_info, server_registration_.cloud_info())) {
         return Status::OK();
+      }
+    }
+
+    // Try to find a master within this priority group of affinitized zones that we can step down
+    // to.
+    for (const ServerEntryPB& master : masters) {
+      auto master_cloud_info = master.registration().cloud_info();
+
+      for (const CloudInfoPB& config_cloud_info : zone_set) {
+        if (CatalogManagerUtil::IsCloudInfoEqual(config_cloud_info, master_cloud_info)) {
+          if (PREDICT_FALSE(
+                  GetAtomicFlag(&FLAGS_TEST_crash_server_on_sys_catalog_leader_affinity_move))) {
+            LOG_WITH_PREFIX(FATAL) << "For test: Crashing the server instead of performing sys "
+                                      "catalog leader affinity move.";
+          }
+          YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
+              << "Sys catalog tablet is not in an affinitized zone, "
+              << "sending step down request to master uuid "
+              << master.instance_id().permanent_uuid() << " in zone "
+              << TSDescriptor::generate_placement_id(master_cloud_info);
+          std::shared_ptr<TabletPeer> tablet_peer;
+          RETURN_NOT_OK(GetTabletPeer(sys_catalog_->tablet_id(), &tablet_peer));
+
+          consensus::LeaderStepDownRequestPB req;
+          req.set_tablet_id(sys_catalog_->tablet_id());
+          req.set_dest_uuid(sys_catalog_->tablet_peer()->permanent_uuid());
+          req.set_new_leader_uuid(master.instance_id().permanent_uuid());
+
+          consensus::LeaderStepDownResponsePB resp;
+          RETURN_NOT_OK(tablet_peer->consensus()->StepDown(&req, &resp));
+          if (resp.has_error()) {
+            YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
+                << "Step down failed: " << resp.error().status().message();
+            break;
+          }
+          LOG_WITH_PREFIX(INFO) << "Successfully stepped down to new master";
+          return Status::OK();
+        }
       }
     }
   }
@@ -10544,14 +10538,24 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   return STATUS(NotFound, "Couldn't step down to a master in an affinitized zone");
 }
 
-Result<BlacklistSet> CatalogManager::BlacklistSetFromPB() const {
+Status CatalogManager::GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) {
+  SysClusterConfigEntryPB config;
+  RETURN_NOT_OK(GetClusterConfig(&config));
+  auto& replication_info = config.replication_info();
+
+  CatalogManagerUtil::GetAllAffinitizedZones(&replication_info, affinitized_zones);
+
+  return Status::OK();
+}
+
+Result<BlacklistSet> CatalogManager::BlacklistSetFromPB(bool leader_blacklist) const {
   auto cluster_config = ClusterConfig();
   if (!cluster_config) {
     return STATUS(IllegalState, "Cluster config not found.");
   }
   auto l = cluster_config->LockForRead();
 
-  const auto& blacklist_pb = l->pb.server_blacklist();
+  const auto& blacklist_pb = leader_blacklist ? l->pb.leader_blacklist() : l->pb.server_blacklist();
   BlacklistSet blacklist_set;
   for (int i = 0; i < blacklist_pb.hosts_size(); i++) {
     blacklist_set.insert(HostPortFromPB(blacklist_pb.hosts(i)));
