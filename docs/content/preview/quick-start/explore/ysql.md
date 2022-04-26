@@ -221,7 +221,36 @@ Referenced by:
     TABLE "emp" CONSTRAINT "fk_mgr" FOREIGN KEY (mgr) REFERENCES emp(empno)
 ```
 
-### Self-joins
+### SQL updates
+
+The [UPDATE](../../../api/ysql/the-sql-language/statements/dml_update/) statement can compute a new value and return it without the need to do another query. Using the `RETURNING` clause returns the new values in the same call.
+
+The following adds 100 to the salaries of all employees who are not managers and shows the new value:
+
+```sql
+UPDATE emp SET sal=sal+100
+    WHERE job != 'MANAGER'
+    RETURNING ename,sal AS new_salary;
+```
+
+```output
+ ename  | new_salary 
+--------+------------
+ SMITH  |        900
+ ADAMS  |       1200
+ WARD   |       1350
+ KING   |       5100
+ FORD   |       3100
+ MARTIN |       1350
+ JAMES  |       1050
+ ALLEN  |       1700
+ MILLER |       1400
+ SCOTT  |       3100
+ TURNER |       1600
+(11 rows)
+```
+
+### Join
 
 A self-join is a regular [join](../../../explore/ysql-language-features/queries/#joining-columns) where the table is joined with itself. The following statement matches employees with their manager and filters those that are earning more than their manager.
 
@@ -243,14 +272,141 @@ ORDER BY employee.sal;
 ```output
  ename | sal  | manager ename | manager sal
 -------+------+---------------+-------------
- FORD  | 3000 | JONES         |        2975
- SCOTT | 3000 | JONES         |        2975
+ FORD  | 3100 | JONES         |        2975
+ SCOTT | 3100 | JONES         |        2975
 (2 rows)
 ```
 
+### Prepared statements
+
+Use a [prepared statement](../../../api/ysql/the-sql-language/statements/perf_prepare/) with typed input to prevent SQL injection. A prepared statement declares parameterized SQL.
+
+1. Prepare the statement `employee_salary` with a parameterized query. The following prepared statement accepts the input of an employee number as an integer only and displays the name and salary:
+
+    ```sql
+    prepare employee_salary(int) AS
+        SELECT ename,sal FROM emp WHERE empno=$1;
+    ```
+
+    ```output
+    PREPARE
+    ```
+
+1. Use `EXECUTE` to execute a prepared statement. The following executes the prepared statement for the employee ID 7900:
+
+    ```sql
+    EXECUTE employee_salary(7900);
+    ```
+
+    ```output
+        ename | sal
+    -------+------
+    JAMES | 1050
+    (1 row)
+    ```
+
+1. Execute the same prepared statement with another value:
+
+    ```sql
+    EXECUTE employee_salary(7902);
+    ```
+
+    ```output
+    ename | sal
+    -------+------
+    FORD  | 3100
+    (1 row)
+    ```
+
+1. A prepared statement stays in the session until it is de-allocated. The following frees the memory used by this statement:
+
+    ```sql
+    DEALLOCATE employee_salary;
+    ```
+
+    ```output
+    DEALLOCATE
+    ```
+
+### Indexes
+
+Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query table values more efficiently.
+
+1. Create a table with randomly generated rows. You can use the `generate_series()` function to generate rows. The following uses `generate_series()` to create a table with 42 rows and a random value from 1 to 10:
+
+    ```sql
+    CREATE TABLE demo AS SELECT generate_series(1,42) num, round(10*random()) val;
+    ```
+
+    ```output
+    SELECT 42
+    ```
+
+1. Create the index `demo_val` on the `demo` table. The following statement creates an index on `val` (hashed for distribution) and `num` in ascending order:
+
+    ```sql
+    CREATE INDEX demo_val ON demo(val,num);
+    ```
+
+    ```output
+    CREATE INDEX
+    ```
+
+1. Use `ANALYZE` to gather optimizer statistics on the table. The query planner chooses the best access path when provided with statistics about the data stored in the table:
+
+    ```sql
+    analyze demo;
+    ```
+
+    ```output
+    ANALYZE
+    ```
+
+1. Query the Top 3 numbers for a specific value:
+
+    ```sql
+    SELECT * FROM demo WHERE val=5 ORDER BY num FETCH FIRST 3 ROWS only;
+    ```
+
+    ```output
+    num | val
+    -----+-----
+      11 |   5
+      35 |   5
+    (2 rows)
+    ```
+
+1. Verify that index is leading to faster query execution using `EXPLAIN ANALYZE`. When defining an index for a specific access pattern, verify that the index is used. The following shows that an Index Only Scan was used, without the need for an additional Sort operation:
+
+    ```sql
+    EXPLAIN ANALYZE SELECT * FROM demo WHERE val=5 ORDER BY num FETCH FIRST 3 ROWS only;
+    ```
+
+    ```output
+                                                            QUERY PLAN
+    ---------------------------------------------------------------------------------------------------------------------------
+    Limit  (cost=0.00..3.19 rows=3 width=12) (actual time=0.712..0.715 rows=2 loops=1)
+      ->  Index Only Scan using demo_val on demo  (cost=0.00..4.47 rows=4 width=12) (actual time=0.710..0.713 rows=2 loops=1)
+            Index Cond: (val = '5'::double precision)
+            Heap Fetches: 0
+    Planning Time: 0.086 ms
+    Execution Time: 0.750 ms
+    (6 rows)
+    ```
+
+1. Clean up the table for this exercise:
+
+    ```sql
+    DROP TABLE IF EXISTS demo;
+    ```
+
+    ```output
+    DROP TABLE
+    ```
+
 ### Recursive queries
 
-The following example uses a [recursive common table expression](../../../explore/ysql-language-features/queries/#recursive-queries-and-ctes) (CTE) to show the manager hierarchy. The `emp_manager` CTE is built using the `WITH RECURSIVE` clause to follow the hierarchy under JONES, down to the last level. The first subquery in the recursive clause starts at JONES. The second lists the employees who have JONES as a manager. They are declared with a UNION ALL and are executed recursively to get the other levels. The main query is then run on the CTE.
+The following example uses a [recursive common table expression](../../../explore/ysql-language-features/queries/#recursive-queries-and-ctes) (CTE) to show the manager hierarchy. The `emp_manager` CTE is built using the `WITH RECURSIVE` clause to follow the hierarchy under JONES, down to the last level. The first subquery in the recursive clause starts at JONES. The second lists the employees who have JONES as a manager. They are declared with a `UNION ALL` and are executed recursively to get the other levels. The main query is then run on the CTE.
 
 ```sql
 WITH RECURSIVE emp_manager AS (
@@ -274,11 +430,11 @@ SELECT * FROM emp_manager;
 (5 rows)
 ```
 
-### LAG window functions
+### Window functions
 
 Use analytic [window functions](../../../api/ysql/exprs/window_functions/) to compare the hiring time interval by department.
 
-The following SQL statement uses WINDOW to define groups of employees by department, ordered by hiring date. The LAG window function is used to access the previous row to compare the hiring date interval between two employees. FORMAT builds text from column values, and COALESCE handles the first hire for which there is no previous row in the group. Without these window functions, this query would need to read the table twice.
+The following SQL statement uses `WINDOW` to define groups of employees by department, ordered by hiring date. The LAG window function is used to access the previous row to compare the hiring date interval between two employees. `FORMAT` builds text from column values, and `COALESCE` handles the first hire for which there is no previous row in the group. Without these window functions, this query would need to read the table twice.
 
 ```sql
 SELECT
@@ -315,31 +471,9 @@ SELECT
 (14 rows)
 ```
 
-### Cross table pivots
+### REGEXP matching
 
-Use a cross table to show the sum of salary per job, by department. The [crosstabview](../../../admin/ysqlsh/#crosstabview-colv-colh-cold-sortcolh) shell command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table.
-
-```sql
-SELECT job, dname, sum(sal)
-    FROM emp JOIN dept USING(deptno)
-    GROUP BY dname, job
-    \crosstabview
-```
-
-```output
-    job    | ACCOUNTING | SALES | RESEARCH
------------+------------+-------+----------
- PRESIDENT |       5000 |       |
- CLERK     |       1300 |   950 |     1900
- SALESMAN  |            |  5600 |
- MANAGER   |       2450 |  2850 |     2975
- ANALYST   |            |       |     6000
-(5 rows)
-```
-
-### Pattern matches using regular expressions
-
-Use [regular expressions](../../../develop/learn/strings-and-text-ysql/) in an array to do pattern matching. The following statement matches all employees with `@gmail` or `.org` in their email address.
+Use [regular expressions](../../../develop/learn/strings-and-text-ysql/) in an array to do pattern matching. REGEXP performs a pattern match of a string expression. The following lists employees with an e-mail ending in '.org' or a domain starting with 'gmail.':
 
 ```sql
 SELECT * FROM emp
@@ -355,68 +489,11 @@ SELECT * FROM emp
 (3 rows)
 ```
 
-### GIN index JSON
-
-The employee skills are stored in a semi-structured JSON document. You can query them using the `@>`, `?`, `?&`, and `?|` operators. For best performance, index them using a [GIN index](../../../explore/indexes-constraints/gin/). GIN indexes provide quick access to elements inside a JSON document.
-
-(GIN indexes are only available in YugabyteDB v2.11 or later. If you are using an earlier version, skip this scenario.)
-
-1. Create the GIN index on the JSON document.
-
-    ```sql
-    CREATE INDEX emp_skills ON emp USING gin((other_info->'skills'));
-    ```
-
-    This creates an index on the `skills` attributes in the `other_info` JSON column.
-
-1. Query on the JSON attribute list. SQL queries can navigate into the JSON document using `->` and check if an array contains a value using `@>`. The following searches the employees with the "SQL" skill.
-
-    ```sql
-    SELECT * FROM emp WHERE other_info->'skills' @> '"SQL"';
-    ```
-
-1. Explain the plan to verify that the index is used.
-
-    ```sql
-    explain SELECT * FROM emp WHERE other_info->'skills' @> '"SQL"';
-    ```
-
-    Thanks to the GIN index, this search doesn't need to read all documents.
-
-### GIN index text
-
-GIN indexes also provide fast access to words inside text. The following creates an index for the simple-grammar vector of words extracted from the department description.
-
-(GIN indexes are only available in YugabyteDB v2.11 or later. If you are using an earlier version, skip this scenario.)
-
-1. Create a text search index on the description column.
-
-    ```sql
-    CREATE INDEX dept_description_text_search ON dept
-        USING ybgin (( to_tsvector('simple',description) ));
-    ```
-
-1. Query on description for matching words. The following compares the simple-grammar vector of words extracted from the department description with a word search pattern to find the departments that contain "responsible" and "service" in their description.
-
-    ```sql
-    SELECT * FROM dept
-        WHERE to_tsvector('simple',description) @@ to_tsquery('simple','responsible & services');
-    ```
-
-1. Explain the plan to verify that the index is used.
-
-    ```sql
-    explain SELECT * FROM dept
-        WHERE to_tsvector('simple',description) @@ to_tsquery('simple','responsible & services');
-    ```
-
-Thanks to the GIN index, this search doesn't need to read all rows and text.
-
-### Date intervals
+### Arithmetic date intervals
 
 Using arithmetic on [date intervals](../../../explore/ysql-language-features/data-types/#date-and-time), you can find employees with overlapping evaluation periods.
 
-The interval data type allows you to store and manipulate a period of time in years, months, days, and so forth. The following example compares overlapping evaluation periods. The WITH clause defines the evaluation period length depending on the job.
+The interval data type allows you to store and manipulate a period of time in years, months, days, and so forth. The following example compares overlapping evaluation periods. The `WITH` clause defines the evaluation period length depending on the job:
 
 ```sql
 WITH emp_evaluation_period AS (
@@ -441,91 +518,113 @@ SELECT * FROM emp_evaluation_period e1
 (3 rows)
 ```
 
-### Update and return values
+### Cross table pivots
 
-The [UPDATE](../../../api/ysql/the-sql-language/statements/dml_update/) statement can compute a new value and return it without the need to query again. Using the RETURNING clause returns the new values in the same call. The following adds 100 to the salaries of all employees who are not managers and shows the new value.
+Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](../../../admin/ysqlsh/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table:
 
 ```sql
-UPDATE emp SET sal=sal+100
-    WHERE job != 'MANAGER'
-    returning ename,sal AS new_salary;
+SELECT job, dname, sum(sal)
+    FROM emp JOIN dept USING(deptno)
+    GROUP BY dname, job
+    \crosstabview
 ```
 
 ```output
- ename  | new_salary
---------+------------
- SMITH  |        900
- ADAMS  |       1200
- WARD   |       1350
- KING   |       5100
- FORD   |       3100
- MARTIN |       1350
- JAMES  |       1050
- ALLEN  |       1700
- MILLER |       1400
- SCOTT  |       3100
- TURNER |       1600
-(11 rows)
-
-UPDATE 11
+    job    | ACCOUNTING | SALES | RESEARCH
+-----------+------------+-------+----------
+ PRESIDENT |       5000 |       |
+ CLERK     |       1300 |   950 |     1900
+ SALESMAN  |            |  5600 |
+ MANAGER   |       2450 |  2850 |     2975
+ ANALYST   |            |       |     6000
+(5 rows)
 ```
 
-### Prepared statements
+### ntile function
 
-Use a [prepared statement](../../../api/ysql/the-sql-language/statements/perf_prepare/) with typed input to prevent SQL injection. A prepared statement declares parameterized SQL.
+To send the e-mails to all employees in different batches, split them into three groups using the [ntile() window function](../../../api/ysql/exprs/window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#ntile). Then format them using the `format()` function, and aggregate them in a comma-separated list using the `string_agg()` function:
 
-1. Prepare the statement `employee_salary` with a parameterized query. The following prepared statement accepts the input of an employee number as an integer only, and displays the name and salary.
+```sql
+WITH groups AS (
+    SELECT ntile(3) OVER (ORDER BY empno) group_num
+    ,* 
+    FROM emp
+)
+SELECT string_agg(format('<%s> %s',ename,email),', ') 
+FROM groups GROUP BY group_num;
+```
 
-    ```sql
-    prepare employee_salary(int) AS
-        SELECT ename,sal FROM emp WHERE empno=$1;
-    ```
+```output
+                                                          string_agg                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ <ADAMS> ADAMS@acme.org, <JAMES> JAMES@acme.org, <FORD> FORD@acme.com, <MILLER> MILLER@acme.com
+ <BLAKE> BLAKE@hotmail.com, <CLARK> CLARK@acme.com, <SCOTT> SCOTT@acme.com, <KING> KING@aol.com, <TURNER> TURNER@acme.com
+ <SMITH> SMITH@acme.com, <ALLEN> ALLEN@acme.com, <WARD> WARD@compuserve.com, <JONES> JONES@gmail.com, <MARTIN> MARTIN@acme.com
+(3 rows)
+```
 
-    ```output
-    PREPARE
-    ```
+### GIN index on documents
 
-1. Use the EXECUTE statement to execute a prepared statement. The following executes the prepared statement for the employee ID 7900.
+The employee skills are stored in a semi-structured JSON document. You can query them using the `@>`, `?`, `?&`, and `?|` operators. For best performance, index them using a [GIN index](../../../explore/indexes-constraints/gin/). GIN indexes provide quick access to elements inside a JSON document.
 
-    ```sql
-    EXECUTE employee_salary(7900);
-    ```
+(GIN indexes are only available in YugabyteDB v2.11.0 or later. If you are using an earlier version, skip this scenario.)
 
-    ```output
-        ename | sal
-    -------+------
-    JAMES | 1050
-    (1 row)
-    ```
-
-1. Execute the same prepared statement with another value.
-
-    ```sql
-    EXECUTE employee_salary(7902);
-    ```
-
-    ```output
-    ename | sal
-    -------+------
-    FORD  | 3100
-    (1 row)
-    ```
-
-1. A prepared statement stays in the session until it is de-allocated. The following frees the memory used by this statement.
+1. Create the GIN index on the JSON document.
 
     ```sql
-    DEALLOCATE employee_salary;
+    CREATE INDEX emp_skills ON emp USING gin((other_info->'skills'));
     ```
 
-    ```output
-    DEALLOCATE
+    This creates an index on the `skills` attributes in the `other_info` JSON column.
+
+1. Query on the JSON attribute list. SQL queries can navigate into the JSON document using `->` and check if an array contains a value using `@>`. The following searches the employees with the "SQL" skill.
+
+    ```sql
+    SELECT * FROM emp WHERE other_info->'skills' @> '"SQL"';
     ```
+
+1. Explain the plan to verify that the index is used.
+
+    ```sql
+    explain SELECT * FROM emp WHERE other_info->'skills' @> '"SQL"';
+    ```
+
+    Thanks to the GIN index, this search doesn't need to read all documents.
+
+### Text search
+
+SQL queries can search in text using the `to_tsvector()` text search function to extract a list of words that can be compared. This exercise finds all department descriptions with the words 'responsible' and 'services' in it using a GIN index.
+
+(GIN indexes are only available in YugabyteDB v2.11.0 or later. If you are using an earlier version, skip this scenario.)
+
+1. Create a text search index on the description column. The following creates an index for the simple-grammar vector of words extracted from the department description:
+
+    ```sql
+    CREATE INDEX dept_description_text_search ON dept
+        USING gin (( to_tsvector('simple',description) ));
+    ```
+
+1. Query on description for matching words. The following compares the simple-grammar vector of words extracted from the department description with a word search pattern to find the departments that contain "responsible" and "service" in their description.
+
+    ```sql
+    SELECT * FROM dept
+        WHERE to_tsvector('simple',description) @@ to_tsquery('simple','responsible & services');
+    ```
+
+1. Explain the plan to verify that the index is used.
+
+    ```sql
+    explain SELECT * FROM dept
+        WHERE to_tsvector('simple',description) @@ to_tsquery('simple','responsible & services');
+    ```
+
+Thanks to the GIN index, this search doesn't need to read all rows and text.
 
 ### Stored procedures
 
 A [stored procedure](../../../explore/ysql-language-features/stored-procedures/) encapsulates procedural logic into an atomic operation. Use stored procedures to encapsulate transactions with error handling. The following example creates a procedure in PL/pgSQL, named "commission_transfer", that transfers a commission "amount" from `empno1` to `empno2`.
 
-1. Create the procedure with the business logic. The procedure has two SQL operations: decrease from `empno1` and add to `empno2`. It also adds error checking to raise a custom exception if `empno1` doesn't have sufficient funds to transfer.
+1. Create the procedure for the commission transfer between employees. The procedure has two SQL operations: decrease from `empno1` and add to `empno2`. It also adds error checking to raise a custom exception if `empno1` doesn't have sufficient funds to transfer.
 
     ```sql
     CREATE OR REPLACE PROCEDURE commission_transfer(empno1 int, empno2 int, amount int) AS $$
@@ -554,7 +653,7 @@ A [stored procedure](../../../explore/ysql-language-features/stored-procedures/)
     CALL
     ```
 
-1. Check the result.
+1. List all employees who have received commission to verify the transfer:
 
     ```sql
     SELECT * FROM emp WHERE comm IS NOT NULL;
@@ -570,7 +669,7 @@ A [stored procedure](../../../explore/ysql-language-features/stored-procedures/)
     (4 rows)
     ```
 
-1. Call the procedure with an amount that is not available. The following attempts to transfer 1000000, which is more than what 7521 has available. This raises the "Cannot transfer" error defined in the procedure, and automatically reverts all intermediate changes to return to a consistent state.
+1. Call the procedure with an amount that is not available. The following attempts to transfer 1000000, which is more than what 7521 has available:
 
     ```sql
     CALL commission_transfer(7521,7654,999999);
@@ -580,6 +679,8 @@ A [stored procedure](../../../explore/ysql-language-features/stored-procedures/)
     ERROR:  Cannot transfer 999999 from 7521
     CONTEXT:  PL/pgSQL function commission_transfer(integer,integer,integer) line 5 at RAISE
     ```
+
+This raises the "Cannot transfer" error defined in the procedure, and automatically reverts all intermediate changes to return to a consistent state.
 
 ### Triggers
 
@@ -639,7 +740,7 @@ Use [triggers](../../../explore/ysql-language-features/triggers/) to automatical
     (4 rows)
     ```
 
-1. Update multiple rows in a single transaction. You can declare multiple updates in a single atomic transaction using BEGIN TRANSACTION and COMMIT. The following updates the location of departments 30 and 40 with a 3 second interval.
+1. Update multiple rows in a single transaction. You can declare multiple updates in a single atomic transaction using `BEGIN TRANSACTION` and `COMMIT`. The following updates the location of departments 30 and 40 with a 3 second interval.
 
     ```sql
     BEGIN TRANSACTION;
@@ -678,80 +779,85 @@ Use [triggers](../../../explore/ysql-language-features/triggers/) to automatical
 
 In addition to the changed location, the last update timestamp has been automatically set. Although the updates were done at 3 second intervals, they show the same update time because they were run in the same atomic transaction.
 
-### Create indexes
+### Materialized views
 
-Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query table values more efficiently.
+To get fast on-demand reports, create a [materialized view](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) to store pre-joined and pre-aggregated data.
 
-1. Create a table with randomly generated rows. You can use the GENERATE_SERIES function to generate rows. The following uses GENERATE_SERIES to create a table with 42 rows and a random value from 1 to 10.
+(Materialized views are only available in YugabyteDB v2.11.2 or later. If you are using an earlier version, skip this scenario.)
+
+1. Create the materialized view. This view stores the total salary per department, the number of employees, and the list of jobs in the department:
 
     ```sql
-    CREATE TABLE demo AS SELECT generate_series(1,42) num, round(10*random()) val;
+    CREATE MATERIALIZED VIEW report_sal_per_dept AS
+    SELECT
+        deptno,dname,
+        sum(sal) sal_per_dept,
+        count(*) num_of_employees,
+        string_agg(distinct job,', ') distinct_jobs
+    FROM dept join emp using(deptno)
+    GROUP BY deptno,dname
+    ORDER BY deptno;
     ```
 
     ```output
-    SELECT 42
+    SELECT 3
     ```
 
-1. Create the index `demo_val` on the `demo` table. The following statement creates an index on `val` (hashed for distribution) and `num` in ascending order.
+1. Create an index on the view. This allows fast queries on a range of total salary:
 
     ```sql
-    CREATE INDEX demo_val ON demo(val,num);
+    CREATE INDEX report_sal_per_dept_sal ON report_sal_per_dept(sal_per_dept desc);
     ```
 
     ```output
     CREATE INDEX
     ```
 
-1. Use ANALYZE to gather optimizer statistics on the table. The query planner chooses the best access path when provided with statistics about the data stored in the table.
+1. You can schedule a daily refresh to recompute the view in the background. Use the [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) command to refresh the view:
 
     ```sql
-    analyze demo;
+    REFRESH MATERIALIZED VIEW report_sal_per_dept;
     ```
 
     ```output
-    ANALYZE
+    REFRESH MATERIALIZED VIEW
     ```
 
-1. Query the Top 3 numbers for a specific value.
+1. Query the materialized view to show the data is consistent as of the last refresh. This lists the departments with a total salary lower than 10000:
 
     ```sql
-    SELECT * FROM demo WHERE val=5 ORDER BY num FETCH FIRST 3 ROWS only;
+    SELECT *
+        FROM report_sal_per_dept
+        WHERE sal_per_dept<=10000
+        ORDER BY sal_per_dept;
     ```
 
     ```output
-    num | val
-    -----+-----
-      11 |   5
-      35 |   5
+    deptno |   dname    | sal_per_dept | num_of_employees |       distinct_jobs       
+    --------+------------+--------------+------------------+---------------------------
+        10 | ACCOUNTING |         8750 |                3 | CLERK, MANAGER, PRESIDENT
+        30 | SALES      |         9400 |                6 | CLERK, MANAGER, SALESMAN
     (2 rows)
     ```
 
-1. Use Explain to verify that no Sort operation is needed thanks to the index. When defining an index for a specific access pattern, verify that the index is used. The following shows that an "Index Only Scan" was used, without the need for an additional "Sort" operation.
+1. The execution plan shows that no additional join or group by is needed when querying the materialized view:
 
     ```sql
-    EXPLAIN ANALYZE SELECT * FROM demo WHERE val=5 ORDER BY num FETCH FIRST 3 ROWS only;
+    EXPLAIN ANALYZE
+    SELECT *
+        FROM report_sal_per_dept
+        WHERE sal_per_dept<=10000
+        ORDER BY sal_per_dept;
     ```
 
     ```output
-                                                            QUERY PLAN
-    ---------------------------------------------------------------------------------------------------------------------------
-    Limit  (cost=0.00..3.19 rows=3 width=12) (actual time=0.712..0.715 rows=2 loops=1)
-      ->  Index Only Scan using demo_val on demo  (cost=0.00..4.47 rows=4 width=12) (actual time=0.710..0.713 rows=2 loops=1)
-            Index Cond: (val = '5'::double precision)
-            Heap Fetches: 0
-    Planning Time: 0.086 ms
-    Execution Time: 0.750 ms
-    (6 rows)
-    ```
-
-1. Clean up the table for this exercise.
-
-    ```sql
-    DROP TABLE IF EXISTS demo;
-    ```
-
-    ```output
-    DROP TABLE
+                                                                        QUERY PLAN                                                                       
+    --------------------------------------------------------------------------------------------------------------------------------------------------------
+    Index Scan Backward using report_sal_per_dept_sal on report_sal_per_dept  (cost=0.00..5.33 rows=10 width=84) (actual time=1.814..1.821 rows=2 loops=1)
+    Index Cond: (sal_per_dept <= 10000)
+    Planning Time: 0.143 ms
+    Execution Time: 1.917 ms
+    (4 rows)
     ```
 
 ## Next step
