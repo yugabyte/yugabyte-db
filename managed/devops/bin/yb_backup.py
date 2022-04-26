@@ -158,9 +158,9 @@ class BackupTimer:
         # Print completed time of last stage.
         time_taken = self.logged_times[self.num_phases] - self.logged_times[self.num_phases - 1]
         logging.info("Completed phase {}: {} [Time taken for phase: {}]".format(
-                self.num_phases - 1,
-                self.phases[self.num_phases - 1],
-                str(timedelta(seconds=time_taken))))
+            self.num_phases - 1,
+            self.phases[self.num_phases - 1],
+            str(timedelta(seconds=time_taken))))
         logging.info("[app] Starting phase {}: {}".format(self.num_phases, msg))
 
     def print_summary(self):
@@ -171,7 +171,7 @@ class BackupTimer:
             log_str += "{} : PHASE {} : {}\n".format(str(timedelta(seconds=t)), i, self.phases[i])
         # Also print info for total runtime.
         log_str += "Total runtime: {}".format(
-                str(timedelta(seconds=time.time() - self.logged_times[0])))
+            str(timedelta(seconds=time.time() - self.logged_times[0])))
         # Add [app] for YW platform filter.
         logging.info("[app] " + log_str)
 
@@ -192,6 +192,7 @@ class SingleArgParallelCmd:
                            Thread-2: -> fn(b)
                            Thread-3: -> fn(c)
     """
+
     def __init__(self, fn, args):
         self.fn = fn
         self.args = args
@@ -220,6 +221,7 @@ class MultiArgParallelCmd(SingleArgParallelCmd):
         -> run in parallel Thread-1: -> fn(a1, a2)
                            Thread-2: -> fn(b1, b2)
     """
+
     def __init__(self, fn):
         self.fn = fn
         self.args = []
@@ -253,6 +255,7 @@ class SequencedParallelCmd(SingleArgParallelCmd):
         -> run in parallel Thread-1: -> fn(a1, a2); fn(b1, b2)
                            Thread-2: -> fn(c1, c2); fn(d1, d2)
     """
+
     def __init__(self, fn, preprocess_args_fn=None, handle_errors=False):
         self.fn = fn
         self.args = []
@@ -776,6 +779,7 @@ class YBManifest:
         }
       }
     """
+
     def __init__(self, backup):
         self.backup = backup
         self.body = {}
@@ -937,10 +941,10 @@ class YBBackup:
                 proc_env.update(env if env is not None else {})
 
                 subprocess_result = str(subprocess.check_output(
-                                         args, stderr=subprocess.STDOUT,
-                                         env=proc_env, **kwargs).decode('utf-8', errors='replace')
-                                                                .encode("ascii", "ignore")
-                                                                .decode("ascii"))
+                    args, stderr=subprocess.STDOUT,
+                    env=proc_env, **kwargs).decode('utf-8', errors='replace')
+                    .encode("ascii", "ignore")
+                    .decode("ascii"))
 
                 if self.args.verbose:
                     logging.info(
@@ -1379,7 +1383,7 @@ class YBBackup:
                 # In case of k8s, we get live tserver, since master pod does not have
                 # pgsql unix socket.
                 socket_fds = self.run_ssh_cmd(
-                        "ls /tmp/.yb.*/.s.PGSQL.*", self.get_main_host_ip()).strip().split()
+                    "ls /tmp/.yb.*/.s.PGSQL.*", self.get_main_host_ip()).strip().split()
                 if len(socket_fds):
                     self.ysql_ip = os.path.dirname(socket_fds[0])
                 else:
@@ -1421,6 +1425,29 @@ class YBBackup:
                 num_ssh_retry=10,
                 env_vars=env_vars)
 
+    def get_master_addresses_for_servers(self):
+
+        def get_key(val):
+            for key, value in self.ts_secondary_to_primary_ip_map.items():
+                if val == value:
+                    return key
+
+        master_addresses = self.args.masters
+        if self.args.local_yb_admin_binary:
+            # We are using the local yb-admin, so we should use the management addresses
+            return master_addresses
+
+        if self.ts_secondary_to_primary_ip_map:
+            master_list_for_servers = list()
+            master_address_list = master_addresses.split(',')
+            for master in master_address_list:
+                master_host, master_port = master.split(":")
+                master_for_server = get_key(master_host)
+                master_for_server = master_for_server + ":" + master_port
+                master_list_for_servers.append(master_for_server)
+            master_addresses = ','.join(master_list_for_servers)
+        return master_addresses
+
     def run_yb_admin(self, cmd_line_args, run_ip=None):
         """
         Runs the yb-admin utility from the configured location.
@@ -1436,9 +1463,11 @@ class YBBackup:
             cert_flag = ["--certs_dir_name", self.args.certs_dir]
             cmd_line_args = cert_flag + cmd_line_args
 
+        master_addresses = self.get_master_addresses_for_servers()
+
         try:
             return self.run_tool(self.args.local_yb_admin_binary, self.args.remote_yb_admin_binary,
-                                 ['--master_addresses', self.args.masters],
+                                 ['--master_addresses', master_addresses],
                                  cmd_line_args, run_ip=run_ip)
         except Exception as ex:
             if "Invalid operation" in str(ex.output.decode('utf-8')):
@@ -1472,19 +1501,21 @@ class YBBackup:
         certs_env = {}
         if self.args.certs_dir:
             certs_env = {
-                            'FLAGS_certs_dir': self.args.certs_dir,
-                            'FLAGS_use_node_to_node_encryption': 'true',
-                            'FLAGS_use_node_hostname_for_local_tserver': 'true',
-                        }
+                'FLAGS_certs_dir': self.args.certs_dir,
+                'FLAGS_use_node_to_node_encryption': 'true',
+                'FLAGS_use_node_hostname_for_local_tserver': 'true',
+            }
 
         run_at_ip = self.get_live_tserver_ip() if self.is_k8s() else None
         # If --ysql_enable_auth is passed, connect with ysql through the remote socket.
         local_binary = None if self.args.ysql_enable_auth else local_tool_binary
 
+        master_addresses = self.get_master_addresses_for_servers()
+
         return self.run_tool(local_binary, remote_tool_binary,
                              # Latest tools do not need '--masters', but keep it for backward
                              # compatibility with older YB releases.
-                             self.get_ysql_dump_std_args() + ['--masters=' + self.args.masters],
+                             self.get_ysql_dump_std_args() + ['--masters=' + master_addresses],
                              cmd_line_args, run_ip=run_at_ip, env_vars=certs_env)
 
     def run_ysql_dump(self, cmd_line_args):
@@ -1551,8 +1582,8 @@ class YBBackup:
         matched = STARTED_SNAPSHOT_CREATION_RE.match(output)
         if not matched:
             raise BackupException(
-                    "Couldn't parse create snapshot output! Expected "
-                    "'Started snapshot creation: <id>' in the end: {}".format(output))
+                "Couldn't parse create snapshot output! Expected "
+                "'Started snapshot creation: <id>' in the end: {}".format(output))
         snapshot_id = matched.group('uuid')
         if not UUID_ONLY_RE.match(snapshot_id):
             raise BackupException("Did not get a valid snapshot id out of yb-admin output:\n" +
@@ -1962,13 +1993,13 @@ class YBBackup:
                 for data_dir in data_dirs:
                     # Find all tablets for this table on this TS in this data_dir:
                     output = self.run_ssh_cmd(
-                      ['find', data_dir,
-                       '!', '-readable', '-prune', '-o',
-                       '-name', TABLET_MASK,
-                       '-and',
-                       '-wholename', TABLET_DIR_GLOB.format(table_id),
-                       '-print'],
-                      tserver_ip)
+                        ['find', data_dir,
+                         '!', '-readable', '-prune', '-o',
+                         '-name', TABLET_MASK,
+                         '-and',
+                         '-wholename', TABLET_DIR_GLOB.format(table_id),
+                         '-print'],
+                        tserver_ip)
                     tablet_dirs += [line.strip() for line in output.split("\n") if line.strip()]
 
                 if self.args.verbose:
@@ -2090,8 +2121,8 @@ class YBBackup:
             parallel_uploads = SequencedParallelCmd(
                 self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds)
             self.prepare_cloud_ssh_cmds(
-                 parallel_uploads, leader_ip_to_tablet_id_to_snapshot_dirs, location_by_tablet,
-                 snapshot_id, tablets_by_leader_ip, upload=True, snapshot_metadata=None)
+                parallel_uploads, leader_ip_to_tablet_id_to_snapshot_dirs, location_by_tablet,
+                snapshot_id, tablets_by_leader_ip, upload=True, snapshot_metadata=None)
 
             # Run a sequence of steps for each tablet, handling different tablets in parallel.
             parallel_uploads.run(pool)
@@ -2464,8 +2495,8 @@ class YBBackup:
         matched = YSQL_CATALOG_VERSION_RE.match(output)
         if not matched:
             raise BackupException(
-                    "Couldn't parse ysql_catalog_version output! Expected "
-                    "'Version: <number>' in the end: {}".format(output))
+                "Couldn't parse ysql_catalog_version output! Expected "
+                "'Version: <number>' in the end: {}".format(output))
         return matched.group('version')
 
     def create_metadata_files(self):
@@ -2484,14 +2515,14 @@ class YBBackup:
                               '--schema-only', '--dbname=' + db_name, '--file=' + sql_dump_path]
             if sql_tbsp_dump_path:
                 logging.info("[app] Creating ysql dump for tablespaces to {}".format(
-                                sql_tbsp_dump_path))
+                    sql_tbsp_dump_path))
                 self.run_ysql_dumpall(['--tablespaces-only', '--file=' + sql_tbsp_dump_path])
                 dump_files.append(sql_tbsp_dump_path)
             else:
                 ysql_dump_args.append('--no-tablespaces')
 
             logging.info("[app] Creating ysql dump for DB '{}' to {}".format(
-                            db_name, sql_dump_path))
+                db_name, sql_dump_path))
             self.run_ysql_dump(ysql_dump_args)
 
             dump_files.append(sql_dump_path)
@@ -2499,8 +2530,8 @@ class YBBackup:
                 sql_data_dump_path = os.path.join(self.get_tmp_dir(), SQL_DATA_DUMP_FILE_NAME)
                 logging.info("[app] Performing ysql_dump based backup!")
                 self.run_ysql_dump(
-                        ['--include-yb-metadata', '--serializable-deferrable', '--data-only',
-                            '--dbname=' + db_name, '--file=' + sql_data_dump_path])
+                    ['--include-yb-metadata', '--serializable-deferrable', '--data-only',
+                     '--dbname=' + db_name, '--file=' + sql_data_dump_path])
                 dump_files.append(sql_data_dump_path)
 
         if not self.args.snapshot_id and not pg_based_backup:
@@ -2839,7 +2870,7 @@ class YBBackup:
             dump_files.append(sql_dump_path)
             if self.manifest.is_pg_based_backup():
                 src_sql_data_dump_path = os.path.join(
-                        self.args.backup_location, SQL_DATA_DUMP_FILE_NAME)
+                    self.args.backup_location, SQL_DATA_DUMP_FILE_NAME)
                 sql_data_dump_path = os.path.join(self.get_tmp_dir(), SQL_DATA_DUMP_FILE_NAME)
                 try:
                     self.download_file(src_sql_data_dump_path, sql_data_dump_path)
