@@ -55,7 +55,7 @@ public class WaitForServer extends ServerSubTaskBase {
       closeClient(client);
     }
     if (!ret) {
-      throw new RuntimeException(getName() + " did not respond to pings in the set time.");
+      throw new RuntimeException(getName() + " did not respond in the set time.");
     }
     log.info(
         "Server {} responded to RPC calls in {} ms",
