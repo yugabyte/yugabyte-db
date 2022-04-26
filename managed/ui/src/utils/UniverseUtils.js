@@ -179,10 +179,3 @@ export const getProxyNodeAddress = (universeUUID, customer, nodeIp, nodePort) =>
   }
   return href;
 };
-
-export const downloadFileInTar = (blob, name) => {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([blob], { type: 'application/x-compressed' }));
-  a.download = name;
-  a.click()
-}

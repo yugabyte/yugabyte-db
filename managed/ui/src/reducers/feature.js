@@ -31,7 +31,7 @@ const initialStateFeatureReleased = {
   enablePathStyleAccess: false,
   backupv2: false,
   enableOIDC: false,
-  supportBundle: true
+  supportBundle: false
 };
 
 export const FeatureFlag = (
