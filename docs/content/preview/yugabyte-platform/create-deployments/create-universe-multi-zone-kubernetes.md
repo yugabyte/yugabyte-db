@@ -63,11 +63,11 @@ Complete the **Instance Configuration** section as follows:
 
 - Use the **Instance Type** field to select the CPU and memory combination, as per needs to allocate the YB-TServer nodes. The default is small. You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones)).
 - In the **Volume Info** field, specify the number of volumes multiplied by size. The default is 1 x 100GB.
-- Use the **Enable YSQL** field to enable the YSQL API endpoint to run Postgres-compatible workloads. This setting is enabled by default.
-- Use the **Enable YEDIS** field to enable the YEDIS API endpoint to run Redis-compatible workloads. This setting is disabled by default.
-- Use the **Enable Node-to-Node TLS** field to enable encryption-in-transit for communication between the database servers. This setting is enabled by default.
-- Use the **Enable Client-to-Node TLS** field to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default.
-- Use the **Enable Encryption at Rest** field to enable encryption for data stored on the tablet servers. This setting is disabled by default.
+- Select **Enable YSQL** to enable the YSQL API endpoint to run Postgres-compatible workloads. This setting is enabled by default.
+- Select **Enable YEDIS** to enable the YEDIS API endpoint to run Redis-compatible workloads. This setting is disabled by default.
+- Select **Enable Node-to-Node TLS** to enable encryption-in-transit for communication between the database servers. This setting is enabled by default.
+- Select **Enable Client-to-Node TLS** to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default.
+- Select **Enable Encryption at Rest** to enable encryption for data stored on the tablet servers. This setting is disabled by default.
 - Enter the appropriate information in the remaining fields.
 
 Complete the **Advanced** section as follows:
