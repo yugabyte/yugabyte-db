@@ -1456,7 +1456,7 @@ export default class ClusterFields extends Component {
           providerUUID && this.props.type === 'Create' && this.props.clusterType === 'async'
       });
 
-      if(currentProviderData.code === 'aws' && getPromiseState(this.props.runtimeConfigs).isSuccess()){
+      if(currentProviderData.code === 'aws' && this.props.runtimeConfigs && getPromiseState(this.props.runtimeConfigs).isSuccess()){
         const default_aws_instance = this.props.runtimeConfigs.data.configEntries.find( c => c.key === 'yb.internal.default_aws_instance_type')
         if(default_aws_instance?.value){
           updateFormField(`${clusterType}.instanceType`, default_aws_instance.value);
