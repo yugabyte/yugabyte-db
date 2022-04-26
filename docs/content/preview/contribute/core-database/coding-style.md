@@ -524,6 +524,19 @@ However, if you could theoretically get bad data in production at a certain poin
   * If you can recover from this error, return an error `Status` (e.g. using [`SCHECK`]({{< relref "#scheck" >}}) or [`RSTATUS_DCHECK`]({{< relref "#rstatus_dcheck" >}})).
   * If this is a severe invariant violation and you can't recover from it, this could be a [`CHECK`]({{< relref "#check" >}}).
 
+### Log levels
+
+We should use the following policy when choosing log level:
+  * `INFO` - general logs that describe some important actions taken by the system.
+    Should not be too verbose, i.e. avoid logging the same information several times per second.
+    Use `YB_LOG_EVERY_N_SECS` when necessary.
+  * `WARNING` - expected failures. Failures that could occur while service is running. For instance network disconnect, timeout etc.
+  * `ERROR` - should NEVER be used.
+  * `DFATAL` - unexpected failures. Some sanity check failures that should not happen if the system operates correctly.
+    I.e. unexpected state, data corruption etc.
+    `DFATAL` logs an `ERROR` in release mode and `FATAL` in debug mode. So tests will fail when such issue happen.
+    Also use `RSTATUS_DCHECK` when possible, instead of `DFATAL`.
+
 ### PREDICT_TRUE and PREDICT_FALSE
 
 `PREDICT_TRUE` and `PREDICT_FALSE` macros expand to hints to the compiler that a particular codepath is likely or unlikely. In theory these macros could allow better compiler optimizations. However, we don't use them in new code as it is difficult to check if they really improve performance.
