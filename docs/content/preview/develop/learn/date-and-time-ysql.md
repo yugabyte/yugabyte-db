@@ -180,22 +180,20 @@ You can set the timezone to use for your session using the `SET` command. You ca
 It seems logical to be able to set the timezone using the `UTC_OFFSET` format above. YugabyteDB allows this, however, be aware of the following behaviour if you choose this method:
 
 {{< tip title="Tip" >}}
-When using POSIX time zone names, positive offsets are used for locations west of Greenwich. Everywhere else, YugabyteDB follows the ISO-8601 convention that positive timezone offsets are east of Greenwich. Therefore an entry of '+10:00:00' will result in a timezone offset of -10 Hours as this is deemed East of Greenwich.
+When using POSIX time zone names, positive offsets are used for locations west of Greenwich. Everywhere else, YugabyteDB follows the ISO-8601 convention that positive timezone offsets are east of Greenwich. Therefore an entry of '+10:00:00' results in a timezone offset of -10 Hours as this is deemed East of Greenwich.
 {{< /tip >}}
 
-To show the current date and time of the underlying server, enter the following:
+To show the current date and time of the underlying server, enter the following (note that the command uses the "Grave Accent" symbol, which is normally found below the Tilde `~` symbol on your keyboard):
 
 ```sql
 yugabyte=# \echo `date`
 ```
 
-Note that the command does not use quotes, but is the "Grave Accent" symbol, which is normally found below the Tilde `~` symbol on your keyboard.
-
 ```output
 Tue 09 Jul 12:27:08 AEST 2019
 ```
 
-The server time is not the date and time of the database. However, in a single node implementation of YugabyteDB there will be a relationship between your computer's date and the database date because YugabyteDB would have obtained the date from the server when it was started.
+The server time is not the date and time of the database. However, in a single node implementation of YugabyteDB there is a relationship between your computer's date and the database date because YugabyteDB obtains the date from the server when it is started.
 
 The following examples explore the date and time (timestamps) in the database.
 
@@ -349,15 +347,11 @@ Note that the `AT TIME ZONE` statement above does not cater for the variants of 
 
 ## Timestamps
 
-{{< note title="Note" >}}
 A database normally obtains its date and time from the underlying server. However, in the case of a distributed database, it is one synchronized database that is spread across many servers that are unlikely to have synchronized time.
 
 A detailed explanation of how time is obtained can be found at the blog post describing the [architecture of the storage layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/).
 
 A simpler explanation is that the time is determined by the 'Shard Leader' of the table and this is the time used by all followers of the leader. Therefore the UTC timestamp of the underlying server can differ from the current timestamp that is used for a transaction on a particular table.
-{{< /note >}}
-
-### Example queries
 
 The following example assumes that you have created and connected to the `yb_demo` database with the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
 
@@ -765,7 +759,7 @@ yugabyte=# select to_char(current_date, 'Day, DD-MON-YYYY') AS "Today",
  Tuesday  , 09-JUL-2019 | Monday   , 15-JUL-2019
 ```
 
-The above approach is to `EXTRACT` the current day of the week as an integer. As today is a Tuesday, the result will be 2. As you know there are 7 days per week, you need to target a calculation that has a result of 8, being 1 day more than the 7th day. We use this to calculate how many days to add to the current date (7 days - 2 + 1 day) to arrive at the next Monday which is day of the week (ISO dow) #1. The addition of the `AT TIME ZONE` is purely illustrative and would not impact the result because you are dealing with days, and the timezone difference is only +10 hours, therefore it does not affect the date. However, if you are working with hours or smaller, then the timezone will *potentially* have a bearing on your result.
+The above approach is to `EXTRACT` the current day of the week as an integer. As today is a Tuesday, the result will be 2. As you know there are 7 days per week, you need to target a calculation that has a result of 8, being 1 day more than the 7th day. We use this to calculate how many days to add to the current date (7 days - 2 + 1 day) to arrive at the next Monday which is day of the week (ISO dow) #1. The addition of the `AT TIME ZONE` is purely illustrative and would not impact the result because you are dealing with days, and the timezone difference is only +10 hours, therefore it does not affect the date. However, if you are working with hours or smaller, then the timezone can *potentially* have a bearing on your result.
 
 {{< tip title="Fun Fact" >}}
 For the very curious, why is there a gap after 'Tuesday' and 'Monday' in the example above? All 'Day' values are space padded to 9 characters. You could use string functions to remove the extra spaces if needed for formatting purposes or you could do a trimmed `TO_CHAR` for the 'Day' then concatenate with a comma and another `TO_CHAR` for the 'DD-MON-YYYY'.
@@ -779,11 +773,11 @@ YugabyteDB has `DateStyle` which is a setting that you apply to your session so 
 
 By default, YugabyteDB uses the ISO Standard of YYYY-MM-DD HH24:MI:SS. Other settings you can use are 'SQL', 'German', and 'Postgres'. These are all referenced below allowing you to see examples.
 
-All settings except ISO allow you specify whether a Day appears before or after the Month. Therefore, a setting of 'DMY' will result in 3/5 being 3rd May, whereas 'MDY' will result in 5th March.
+All settings except ISO allow you specify whether a Day appears before or after the Month. Therefore, a setting of 'DMY' results in 3/5 being 3rd May, whereas 'MDY' results in 5th March.
 
 If you are reading dates as text fields from a file or any source that is not a YugabyteDB date or timestamp data type, then it is very important that you set your DateStyle properly unless you are very specific on how to convert a text field to a date - an example of which is included below.
 
-Note that YugabyteDB will always interpret '6/6' as 6th June, and '13/12' as 13th December (because the month cannot be 13), but what about '6/12'? Let's work through some examples in YSQL.
+Note that YugabyteDB always interprets '6/6' as 6th June, and '13/12' as 13th December (because the month cannot be 13), but what about '6/12'? Let's work through some examples in YSQL.
 
 ```sql
 yugabyte=# SHOW DateStyle;
@@ -955,7 +949,7 @@ yugabyte=# select to_char(to_date('05-03-2019', 'MM-DD-YYYY'), 'DD-MON-YYYY');
 
 Best practise is to pass all text representations of date and time data types through a `TO_DATE` or `TO_TIMESTAMP` function. There is no 'to_time' function as its format is always fixed of 'HH24:MI:SS.ms', therefore be careful of AM/PM times and your milliseconds can also be thousandths of a second, so either 3 or 6 digits should be supplied.
 
-The final example above illustrates the difficulty that can occur with dates. The system is expecting a 'DMY' value but your source is of format 'MDY', therefore YugabyteDB will not know how to convert it in ambiguous cases, therefore be explicit as shown.
+The final example above illustrates the difficulty that can occur with dates. The system is expecting a 'DMY' value but your source is of format 'MDY', therefore YugabyteDB doesn't know how to convert it in ambiguous cases, therefore be explicit as shown.
 
 ## Getting dirty - into the logs you go
 
