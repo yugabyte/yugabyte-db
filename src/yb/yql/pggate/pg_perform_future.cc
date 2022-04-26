@@ -13,9 +13,12 @@
 
 #include "yb/yql/pggate/pg_perform_future.h"
 
+#include <chrono>
 #include <utility>
 
 #include "yb/yql/pggate/pg_session.h"
+
+using namespace std::literals;
 
 namespace yb {
 namespace pggate {
@@ -27,6 +30,10 @@ PerformFuture::PerformFuture(
 
 bool PerformFuture::Valid() const {
   return session_ != nullptr;
+}
+
+bool PerformFuture::Ready() const {
+  return Valid() && future_.wait_for(0ms) == std::future_status::ready;
 }
 
 Result<rpc::CallResponsePtr> PerformFuture::Get() {
