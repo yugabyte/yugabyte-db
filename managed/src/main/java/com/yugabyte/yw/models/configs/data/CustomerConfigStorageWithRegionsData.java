@@ -29,5 +29,9 @@ public class CustomerConfigStorageWithRegionsData extends CustomerConfigStorageD
     @NotNull
     @Size(min = 5)
     public String location;
+
+    @ApiModelProperty(value = "AWS host base", example = "s3.amazonaws.com")
+    @JsonProperty("AWS_HOST_BASE")
+    public String awsHostBase;
   }
 }

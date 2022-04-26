@@ -29,6 +29,6 @@ public class CustomerConfigStorageS3Data extends CustomerConfigStorageWithRegion
   public boolean isPathStyleAccess = false;
 
   @ApiModelProperty(value = "IAM Instance profile")
-  @JsonProperty("AWS_IAM_INSTANCE_PROFILE")
+  @JsonProperty("IAM_INSTANCE_PROFILE")
   public boolean isIAMInstanceProfile = false;
 }
