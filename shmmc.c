@@ -276,7 +276,7 @@ ora_sfree(void* ptr)
 			(errcode(ERRCODE_INTERNAL_ERROR),
 			 errmsg("corrupted pointer"),
 			 errdetail("Failed while reallocating memory block in shared memory."),
-			 errhint("Report this bug to autors.")));
+			 errhint("Please report this bug to the package authors.")));
 }
 
 
@@ -300,7 +300,7 @@ ora_srealloc(void *ptr, size_t size)
 			(errcode(ERRCODE_INTERNAL_ERROR),
 			errmsg("corrupted pointer"),
 			errdetail("Failed while reallocating memory block in shared memory."),
-			errhint("Report this bug to autors.")));
+			errhint("Please report this bug to the package authors.")));
 
 
 	if (NULL != (result = ora_salloc(size)))
