@@ -1831,7 +1831,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(taskParam.rootCertPath.toString());
           }
           commandArgs.add("--replication_config_name");
-          commandArgs.add(taskParam.replicationConfigName);
+          commandArgs.add(taskParam.replicationGroupName);
           if (taskParam.producerCertsDirOnTarget != null) {
             commandArgs.add("--producer_certs_dir");
             commandArgs.add(taskParam.producerCertsDirOnTarget.toString());

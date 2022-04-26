@@ -200,9 +200,13 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         // Wait for load to balance.
         createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
-        // Update all tserver conf files with new master information.
         if (masterAdded) {
+          // Update all tserver conf files with new master information.
           createMasterInfoUpdateTask(universe, currentNode);
+
+          // Update the master addresses on the target universes whose source universe belongs to
+          // this task.
+          createXClusterConfigUpdateMasterAddressesTask();
         }
 
         // Update node state to live.
