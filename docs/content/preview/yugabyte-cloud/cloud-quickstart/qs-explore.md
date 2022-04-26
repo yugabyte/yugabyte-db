@@ -59,19 +59,24 @@ The quick start includes the following scenarios:
 
 | Scenario | Description |
 | :--- | :--- |
-| Self Join | List all employees earning more than their managers using a self-join query. |
-| With Recursive | List the manager hierarchy using a recursive query. |
-| LAG Window Function | Compare employee hiring time interval by department using an analytical window function. |
-| CROSSTABVIEW | Display the sum of salary per job and department using a cross tab pivot query. |
-| Regexp | List all employees matching Gmail and org email domains using regular expressions for text pattern matching. |
+| **Basics** |
+| SQL Updates | Update the salary of all employees who are not managers and display the new results. |
+| Join | List all employees earning more than their managers using a self-join query. |
+| Prepared Statements | Get the salary for an employee using a prepared statement. |
+| Indexes | Create and analyze an index on the fly. |
+| Recursive Queries | List the manager hierarchy using a recursive query. |
+| **Built-in Functions** |
+| Window Functions | Compare employee hiring time interval by department using an analytical window function. |
+| Regexp Matching | List all employees matching Gmail and org email domains using regular expressions for text pattern matching. |
+| Arithmetic Date Intervals | Find employees with overlapping evaluation periods using arithmetic date intervals. |
+| Crosstab view | Display the sum of salary per job and department as a cross table. |
+| ntile Function | Split e-mails into 3 groups and format them. |
+| **Advanced Features** |
 | GIN Index | Query employee skills using a GIN index on a JSON document. |
 | Text Search Index | Create a GIN text search index on the description column and query for words. |
-| Arithmetic Date Intervals | Find employees with overlapping evaluation periods using arithmetic date intervals. |
-| SQL Update | Update the salary of all employees who are not managers and display the new results. |
-| Prepared Statement | Get the salary for an employee using a prepared statement. |
-| Stored Procedure | Transfer a commission from one employee to another using a stored procedure. |
-| Trigger | Record the last update time of each row automatically. |
-| Create Index | Create and analyze an index on the fly. |
+| Stored Procedures | Transfer a commission from one employee to another using a stored procedure. |
+| Triggers | Record the last update time of each row automatically. |
+| Materialized Views | Pre-compute analytics for reporting using a materialized view. |
 
 To run this tutorial from your desktop shell, refer to [Explore Yugabyte SQL](../../../quick-start/explore/ysql/) in the Core Quick Start.
 
