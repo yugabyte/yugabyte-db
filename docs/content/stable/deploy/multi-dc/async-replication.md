@@ -33,7 +33,7 @@ After you created the required tables, you can set up asynchronous replication a
 
 - Look up the source universe UUID and the table IDs for the two tables and the index table:
 
-    - To find a universe's UUID, check `/varz` for `--cluster_uuid`. If it is not available in this location, check the same field in the cluster configuration.
+    - To find a universe's UUID, check `http://yb-master-ip:7000/varz` for `--cluster_uuid`. If it is not available in this location, check the same field in the cluster configuration.
 
     - To find a table ID, execute the following command as an admin user:
 
