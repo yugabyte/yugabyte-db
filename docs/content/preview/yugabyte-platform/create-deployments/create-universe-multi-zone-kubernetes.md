@@ -44,7 +44,7 @@ If no universes have been created yet, the **Dashboard** does not display any.
 
 To start, click **Create Universe** and complete the first two fields of the **Cloud Configuration** section:
 
-- In the **Name** field, enter the name for the YugabyteDB universe (or example, yb-k8s).
+- In the **Name** field, enter the name for the YugabyteDB universe (for example, yb-k8s).
 
 - Use the **Provider** field to select the appropriate Kubernetes cloud (or example, K8s Provider). Notice that additional fields appear.
 
