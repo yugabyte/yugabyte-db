@@ -46,7 +46,7 @@ To start, click **Create Universe** and complete the first two fields of the **C
 
 - In the **Name** field, enter the name for the YugabyteDB universe (for example, yb-k8s).
 
-- Use the **Provider** field to select the appropriate Kubernetes cloud (or example, K8s Provider). Notice that additional fields appear.
+- Use the **Provider** field to select the appropriate Kubernetes cloud (for example, K8s Provider). Notice that additional fields appear.
 
 
 Complete the rest of the **Cloud Configuration** section as follows:
