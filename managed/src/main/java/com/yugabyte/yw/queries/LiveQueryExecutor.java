@@ -108,6 +108,9 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
               mapper.treeToValue(objNode, LiveQueriesParams.YCQLQueryParams.class);
           if (params.calls_in_flight != null) {
             for (LiveQueriesParams.QueryCallsInFlight query : params.calls_in_flight) {
+              if (query.cql_details == null) {
+                continue;
+              }
               // Get SQL query string, joining multiple entries if necessary
               StringBuilder queryStringBuilder = new StringBuilder();
               ObjectNode rowData = Json.newObject();
