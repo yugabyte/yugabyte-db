@@ -11,19 +11,29 @@ import com.azure.storage.blob.models.BlobItem;
 import com.azure.storage.blob.models.BlobStorageException;
 import com.azure.storage.blob.models.ListBlobsOptions;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
+import org.yb.ybc.CloudStoreSpec;
 
 @Singleton
 @Slf4j
 public class AZUtil implements CloudUtil {
+
   public static final String AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
+
+  public static final String YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
+
+  public static final String YBC_AZURE_STORAGE_END_POINT_FIELDNAME = "AZURE_STORAGE_END_POINT";
 
   public static String[] getSplitLocationValue(String backupLocation, Boolean isConfigLocation) {
     backupLocation = backupLocation.substring(8);
@@ -142,5 +152,24 @@ public class AZUtil implements CloudUtil {
         }
       }
     }
+  }
+
+  @Override
+  public CloudStoreSpec createCloudStoreSpec(
+      String backupLocation, String commonDir, CustomerConfigData configData) {
+    CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+    String[] splitValues = getSplitLocationValue(backupLocation, true);
+    String azureUrl = "https://" + splitValues[0];
+    String container = splitValues[1];
+    String cloudDir = commonDir + "/";
+    Map<String, String> azCredsMap = createCredsMapYbc(azData.azureSasToken, azureUrl);
+    return YbcBackupUtil.buildCloudStoreSpec(container, cloudDir, azCredsMap, Util.AZ);
+  }
+
+  private Map<String, String> createCredsMapYbc(String azureSasToken, String azureContainerUrl) {
+    Map<String, String> azCredsMap = new HashMap<>();
+    azCredsMap.put(YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME, azureSasToken);
+    azCredsMap.put(YBC_AZURE_STORAGE_END_POINT_FIELDNAME, azureContainerUrl);
+    return azCredsMap;
   }
 }
