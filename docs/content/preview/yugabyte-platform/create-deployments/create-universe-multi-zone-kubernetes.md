@@ -44,9 +44,9 @@ If no universes have been created yet, the **Dashboard** does not display any.
 
 To start, click **Create Universe** and complete the first two fields of the **Cloud Configuration** section:
 
-- In the **Name** field, enter the name for the YugabyteDB universe (or example, yb-k8s).
+- In the **Name** field, enter the name for the YugabyteDB universe (for example, yb-k8s).
 
-- Use the **Provider** field to select the appropriate Kubernetes cloud (or example, K8s Provider). Notice that additional fields appear.
+- Use the **Provider** field to select the appropriate Kubernetes cloud (for example, K8s Provider). Notice that additional fields appear.
 
 
 Complete the rest of the **Cloud Configuration** section as follows:
@@ -68,13 +68,11 @@ Complete the **Instance Configuration** section as follows:
 - Select **Enable Node-to-Node TLS** to enable encryption-in-transit for communication between the database servers. This setting is enabled by default.
 - Select **Enable Client-to-Node TLS** to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default.
 - Select **Enable Encryption at Rest** to enable encryption for data stored on the tablet servers. This setting is disabled by default.
-- Enter the appropriate information in the remaining fields.
 
 Complete the **Advanced** section as follows:
 
 - In the **DB Version** field, specify the YugabyteDB version. The default is either the same as the YugabyteDB Anywhere version or the latest YugabyteDB version available for YugabyteDB Anywhere.
 
-- Enter the appropriate information in the remaining fields.
 
 
 Complete the **G-Flags** section as follows:
