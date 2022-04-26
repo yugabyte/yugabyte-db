@@ -156,7 +156,8 @@ Status LogIndex::IndexChunk::Open() {
 
   mapping_ = static_cast<uint8_t*>(mmap(nullptr, kChunkFileSize, PROT_READ | PROT_WRITE,
                                         MAP_SHARED, fd_, 0));
-  if (mapping_ == nullptr) {
+  if (mapping_ == MAP_FAILED) {
+    mapping_ = nullptr;
     return STATUS(IOError, "Unable to mmap()", Errno(err));
   }
 
