@@ -9,15 +9,12 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.forms.LiveQueriesParams;
-import com.yugabyte.yw.models.MetricConfig;
+import java.util.UUID;
+import java.util.concurrent.Callable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Configuration;
 import play.api.Play;
 import play.libs.Json;
-
-import java.util.*;
-import java.util.concurrent.Callable;
 
 public class LiveQueryExecutor implements Callable<JsonNode> {
   public static final Logger LOG = LoggerFactory.getLogger(LiveQueryExecutor.class);
@@ -111,6 +108,9 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
               mapper.treeToValue(objNode, LiveQueriesParams.YCQLQueryParams.class);
           if (params.calls_in_flight != null) {
             for (LiveQueriesParams.QueryCallsInFlight query : params.calls_in_flight) {
+              if (query.cql_details == null) {
+                continue;
+              }
               // Get SQL query string, joining multiple entries if necessary
               StringBuilder queryStringBuilder = new StringBuilder();
               ObjectNode rowData = Json.newObject();

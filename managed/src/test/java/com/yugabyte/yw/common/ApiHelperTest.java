@@ -2,10 +2,28 @@
 
 package com.yugabyte.yw.common;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.startsWith;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
-import org.hamcrest.CoreMatchers;
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLStreamHandler;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
@@ -17,29 +35,6 @@ import play.libs.Json;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.libs.ws.WSResponse;
-
-import java.io.IOException;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLConnection;
-import java.net.URLStreamHandler;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.instanceOf;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ApiHelperTest {
@@ -57,7 +52,7 @@ public class ApiHelperTest {
     jsonResponse.put("Foo", "Bar");
     when(mockClient.url(anyString())).thenReturn(mockRequest);
     when(mockRequest.get()).thenReturn(mockCompletion);
-    when(mockResponse.asJson()).thenReturn(jsonResponse);
+    when(mockResponse.getBody()).thenReturn(jsonResponse.toString());
     JsonNode result = apiHelper.getRequest("http://foo.com/test");
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
     assertEquals(result.get("Foo").asText(), "Bar");
@@ -68,12 +63,10 @@ public class ApiHelperTest {
     CompletionStage<WSResponse> mockCompletion = CompletableFuture.completedFuture(mockResponse);
     when(mockClient.url(anyString())).thenReturn(mockRequest);
     when(mockRequest.get()).thenReturn(mockCompletion);
-    doThrow(new RuntimeException("Incorrect JSON")).when(mockResponse).asJson();
-    JsonNode result = apiHelper.getRequest("http://foo.com/test");
-    Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
-    assertThat(
-        result.get("error").asText(),
-        CoreMatchers.equalTo("java.lang.RuntimeException: Incorrect JSON"));
+    doReturn("Incorrect JSON").when(mockResponse).getBody();
+    RuntimeException exception =
+        assertThrows(RuntimeException.class, () -> apiHelper.getRequest("http://foo.com/test"));
+    assertThat(exception.getMessage(), startsWith("com.fasterxml.jackson.core.JsonParseException"));
   }
 
   @Test
@@ -83,7 +76,7 @@ public class ApiHelperTest {
     jsonResponse.put("Foo", "Bar");
     when(mockClient.url(anyString())).thenReturn(mockRequest);
     when(mockRequest.get()).thenReturn(mockCompletion);
-    when(mockResponse.asJson()).thenReturn(jsonResponse);
+    when(mockResponse.getBody()).thenReturn(jsonResponse.toString());
 
     HashMap<String, String> headers = new HashMap<>();
     headers.put("header", "sample");
@@ -100,7 +93,7 @@ public class ApiHelperTest {
     jsonResponse.put("Foo", "Bar");
     when(mockClient.url(anyString())).thenReturn(mockRequest);
     when(mockRequest.get()).thenReturn(mockCompletion);
-    when(mockResponse.asJson()).thenReturn(jsonResponse);
+    when(mockResponse.getBody()).thenReturn(jsonResponse.toString());
 
     HashMap<String, String> params = new HashMap<>();
     params.put("param", "foo");
@@ -121,7 +114,7 @@ public class ApiHelperTest {
     jsonResponse.put("Success", true);
 
     when(mockRequest.post(Matchers.any(JsonNode.class))).thenReturn(mockCompletion);
-    when(mockResponse.asJson()).thenReturn(jsonResponse);
+    when(mockResponse.getBody()).thenReturn(jsonResponse.toString());
     JsonNode result = apiHelper.postRequest("http://foo.com/test", postData);
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
     Mockito.verify(mockRequest, times(1)).post(postData);
