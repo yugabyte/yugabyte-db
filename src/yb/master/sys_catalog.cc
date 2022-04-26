@@ -918,7 +918,7 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
 
       if (block.leader_preference < 0) {
         return STATUS(InvalidArgument, "leader_preference cannot be negative");
-      } else if (block.leader_preference > placement.placement_infos.size()) {
+      } else if (static_cast<size_t>(block.leader_preference) > placement.placement_infos.size()) {
         return STATUS(
             InvalidArgument,
             "Priority value cannot be more than the number of zones in the preferred list since "

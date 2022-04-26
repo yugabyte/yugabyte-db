@@ -51,7 +51,6 @@ import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
-import javax.persistence.PersistenceException;
 import lombok.extern.slf4j.Slf4j;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
@@ -59,7 +58,6 @@ import org.pac4j.core.http.url.DefaultUrlResolver;
 import org.pac4j.oidc.client.OidcClient;
 import org.pac4j.oidc.config.OidcConfiguration;
 import org.pac4j.oidc.profile.OidcProfile;
-import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Configuration;
@@ -143,54 +141,33 @@ public class Module extends AbstractModule {
       bind(NativeKubernetesManager.class).asEagerSingleton();
       bind(SupportBundleUtil.class).asEagerSingleton();
       bind(MetricGrafanaController.class).asEagerSingleton();
-
-      final CallbackController callbackController = new CallbackController();
-      // TODO(sbapat): Check whats the use case for setting default url because '/' is anyway
-      //  used when we do not call setDefaultUrl here.
-      callbackController.setDefaultUrl(config.getString("yb.security.oidcDefaultRedirectUrl"));
-      bind(CallbackController.class).toInstance(callbackController);
     }
   }
 
   @Provides
   protected OidcClient<OidcProfile, OidcConfiguration> provideOidcClient(
       RuntimeConfigFactory runtimeConfigFactory) {
-    final OidcConfiguration oidcConfiguration = new OidcConfiguration();
-
-    try {
-      final com.typesafe.config.Config config = runtimeConfigFactory.globalRuntimeConf();
-      if (buildOidcClientFromAppConfig(oidcConfiguration, config)) {
-        return new OidcClient<>(oidcConfiguration);
-      }
-    } catch (PersistenceException e) {
-      // TODO(sbapat): This should not be needed.
-      log.debug("Defaulting to static configuration since runtime configuration is not available.");
-      com.typesafe.config.Config config1 = this.config.underlying();
-      if (buildOidcClientFromAppConfig(oidcConfiguration, config1)) {
-        return new OidcClient<>(oidcConfiguration);
-      }
-    }
-    return new OidcClient<>(oidcConfiguration);
-  }
-
-  private boolean buildOidcClientFromAppConfig(
-      OidcConfiguration oidcConfiguration, com.typesafe.config.Config config) {
-    if (config.getString("yb.security.type").equals("OIDC")) {
+    com.typesafe.config.Config config = runtimeConfigFactory.globalRuntimeConf();
+    String securityType = config.getString("yb.security.type");
+    if (securityType.equals("OIDC")) {
+      OidcConfiguration oidcConfiguration = new OidcConfiguration();
       oidcConfiguration.setClientId(config.getString("yb.security.clientID"));
       oidcConfiguration.setSecret(config.getString("yb.security.secret"));
       oidcConfiguration.setScope(config.getString("yb.security.oidcScope"));
       oidcConfiguration.setDiscoveryURI(config.getString("yb.security.discoveryURI"));
       oidcConfiguration.setMaxClockSkew(3600);
       oidcConfiguration.setResponseType("code");
-      return true;
+      return new OidcClient<>(oidcConfiguration);
+    } else {
+      log.warn("Client with empty OIDC configuration because yb.security.type={}", securityType);
+      // todo: fail fast instead of relying on log?
+      return new OidcClient<>();
     }
-    return false;
   }
 
   @Provides
   protected Config providePac4jConfig(OidcClient<OidcProfile, OidcConfiguration> oidcClient) {
-    final Clients clients =
-        new Clients(config.getString("yb.security.oidcCallbackUrl"), oidcClient);
+    final Clients clients = new Clients("/api/v1/callback", oidcClient);
     clients.setUrlResolver(new DefaultUrlResolver(true));
     final Config config = new Config(clients);
     config.setHttpActionAdapter(new PlatformHttpActionAdapter());
