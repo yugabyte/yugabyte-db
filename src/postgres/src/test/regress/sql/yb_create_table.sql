@@ -561,3 +561,11 @@ select count(*) from pg_class where relname = 'temp_view';
 select pg_sleep(5);
 select count(*) from pg_class where relname = 'temp_tab';
 select count(*) from pg_class where relname = 'temp_view';
+
+-- Test EXPLAIN ANALYZE + CREATE TABLE AS. Use EXECUTE to hide the output since it won't be stable.
+DO $$
+BEGIN
+  EXECUTE 'EXPLAIN ANALYZE CREATE TABLE tbl_as_1 AS SELECT 1';
+END$$;
+
+SELECT * FROM tbl_as_1;

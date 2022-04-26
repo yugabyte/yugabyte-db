@@ -64,6 +64,7 @@
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
+#include "commands/defrem.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
 #include "tcop/utility.h"
@@ -1094,6 +1095,34 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_c
 	}
 }
 
+static Node*
+GetActualStmtNode(PlannedStmt *pstmt)
+{
+	if (nodeTag(pstmt->utilityStmt) == T_ExplainStmt)
+	{
+		ExplainStmt *stmt = castNode(ExplainStmt, pstmt->utilityStmt);
+		Node *actual_stmt = castNode(Query, stmt->query)->utilityStmt;
+		if (actual_stmt)
+		{
+			/*
+			 * EXPLAIN statement may have multiple ANALYZE options.
+			 * The value of the last one will take effect.
+			 */
+			bool analyze = false;
+			ListCell *lc;
+			foreach(lc, stmt->options)
+			{
+				DefElem *opt = (DefElem *) lfirst(lc);
+				if (strcmp(opt->defname, "analyze") == 0)
+					analyze = defGetBoolean(opt);
+			}
+			if (analyze)
+				return actual_stmt;
+		}
+	}
+	return pstmt->utilityStmt;
+}
+
 bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
                                  bool *is_catalog_version_increment,
                                  bool *is_breaking_catalog_change)
@@ -1101,7 +1130,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 	/* Assume the worst. */
 	*is_catalog_version_increment = true;
 	*is_breaking_catalog_change = true;
-	Node *parsetree = pstmt->utilityStmt;
+	Node *parsetree = GetActualStmtNode(pstmt);
 
 	NodeTag node_tag = nodeTag(parsetree);
 	switch (node_tag) {
