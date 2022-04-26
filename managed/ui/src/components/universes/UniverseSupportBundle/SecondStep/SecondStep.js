@@ -1,9 +1,7 @@
-import {YBButton, YBCheckBox} from "../../../common/forms/fields";
+import {YBCheckBox} from "../../../common/forms/fields";
 import React, {useEffect, useRef, useState} from "react";
 import {DropdownButton, MenuItem} from "react-bootstrap";
 import moment from 'moment';
-
-import {getFeatureState} from "../../../../utils/LayoutUtils";
 
 const filterTypes = [
   { label: 'Last 24 hrs', type: 'days', value: '1' },
