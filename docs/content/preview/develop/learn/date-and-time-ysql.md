@@ -52,7 +52,7 @@ There are special values that you can reference - YugabyteDB only caters for som
 ```
 
 ```sql
-yugabyte=# select current_date, current_time, current_timestamp, now();
+yugabyte=# SELECT current_date, current_time, current_timestamp, now();
 ```
 
 ```output
@@ -62,7 +62,7 @@ yugabyte=# select current_date, current_time, current_timestamp, now();
 ```
 
 ```sql
-yugabyte=# select make_timestamptz(1970, 01, 01, 00, 00, 00, 'UTC') as epoch;
+yugabyte=# SELECT make_timestamptz(1970, 01, 01, 00, 00, 00, 'UTC') as epoch;
 ```
 
 ```output
@@ -72,7 +72,7 @@ yugabyte=# select make_timestamptz(1970, 01, 01, 00, 00, 00, 'UTC') as epoch;
 ```
 
 ```sql
-yugabyte=# select (current_date-1)::timestamp as yesterday,
+yugabyte=# SELECT (current_date-1)::timestamp as yesterday,
                   current_date::timestamp as today,
                   (current_date+1)::timestamp as tomorrow;
 ```
@@ -89,10 +89,10 @@ YugabyteDB cannot create the special PostgreSQL values `infinity`, `-infinity`, 
 
 ## Formatting
 
-Date formatting is an important aspect. The previous examples show the default ISO format for dates and timestamps. The following examples show how you can format dates.
+The previous examples show the default ISO format for dates and timestamps. The following examples show how you can format dates:
 
 ```sql
-yugabyte=# select to_char(current_timestamp, 'DD-MON-YYYY');
+yugabyte=# SELECT to_char(current_timestamp, 'DD-MON-YYYY');
 ```
 
 ```output
@@ -102,7 +102,7 @@ yugabyte=# select to_char(current_timestamp, 'DD-MON-YYYY');
 ```
 
 ```sql
-yugabyte=# select to_date(to_char(current_timestamp, 'DD-MON-YYYY'), 'DD-MON-YYYY');
+yugabyte=# SELECT to_date(to_char(current_timestamp, 'DD-MON-YYYY'), 'DD-MON-YYYY');
 ```
 
 ```output
@@ -112,7 +112,7 @@ yugabyte=# select to_date(to_char(current_timestamp, 'DD-MON-YYYY'), 'DD-MON-YYY
 ```
 
 ```sql
-yugabyte=# select to_char(current_timestamp, 'DD-MON-YYYY HH:MI:SS PM');
+yugabyte=# SELECT to_char(current_timestamp, 'DD-MON-YYYY HH:MI:SS PM');
 ```
 
 ```output
@@ -125,10 +125,10 @@ The examples use the `to_char()` function to present the date in a friendly read
 
 ## Time zones
 
-Thus far, you have been operating with the default time zone installed for YugabyteDB, being UTC (+0). To list the time zones that are available, enter the following:
+The default time zone installed with YugabyteDB is UTC (+0). To list the other time zones that are available, enter the following:
 
 ```sql
-yugabyte=# select * from pg_timezone_names;
+yugabyte=# SELECT * FROM pg_timezone_names;
 ```
 
 ```output
@@ -172,15 +172,15 @@ yugabyte=# select * from pg_timezone_names;
 ```
 
 {{< note title="Note" >}}
-**Not all 593 rows are shown**, so don't be concerned if the timezone you want is not there. Check your YSQL output to find the timezone you are interested in. As you can see, there is a lot of inconsistency in the naming conventions and definitions of the timezones, this is not the doing of Yugabyte!
+Not all available time zones are shown; check your YSQL output to find the time zone you are interested in.
 {{< /note >}}
 
-You can set the timezone to use for your session using the `SET` command. You can `SET` the timezone using the timezone name as listed in pg_timezone_names, but not the abbreviation. You can also set the timezone to a numeric/decimal representation of the time offset. For example, -3.5 is 3 hours and 30 minutes before UTC.
-
-It seems logical to be able to set the timezone using the `UTC_OFFSET` format above. YugabyteDB allows this, however, be aware of the following behaviour if you choose this method:
+You can set the time zone to use for your session using the `SET` command. You can `SET` the time zone using the time zone name as listed in pg_timezone_names, but not the abbreviation. You can also set the time zone to a numeric/decimal representation of the time offset. For example, -3.5 is 3 hours and 30 minutes before UTC.
 
 {{< tip title="Tip" >}}
-When using POSIX time zone names, positive offsets are used for locations west of Greenwich. Everywhere else, YugabyteDB follows the ISO-8601 convention that positive timezone offsets are east of Greenwich. Therefore an entry of '+10:00:00' results in a timezone offset of -10 Hours as this is deemed East of Greenwich.
+It seems logical to be able to set the time zone using the `UTC_OFFSET` format above. YugabyteDB allows this, however, be aware of the following behaviour if you choose this method:
+
+When using POSIX time zone names, positive offsets are used for locations west of Greenwich. Everywhere else, YugabyteDB follows the ISO-8601 convention that positive time zone offsets are east of Greenwich. Therefore an entry of '+10:00:00' results in a time zone offset of -10 Hours as this is deemed East of Greenwich.
 {{< /tip >}}
 
 To show the current date and time of the underlying server, enter the following (note that the command uses the "Grave Accent" symbol, which is normally found below the Tilde `~` symbol on your keyboard):
@@ -208,7 +208,7 @@ yugabyte=# SHOW timezone;
 ```
 
 ```sql
-yugabyte=# select current_timestamp;
+yugabyte=# SELECT current_timestamp;
 ```
 
 ```output
@@ -236,7 +236,7 @@ yugabyte=# SHOW timezone;
 ```
 
 ```sql
-yugabyte=# select current_timestamp;
+yugabyte=# SELECT current_timestamp;
 ```
 
 ```output
@@ -254,7 +254,7 @@ SET
 ```
 
 ```sql
-yugabyte=# select current_timestamp;
+yugabyte=# SELECT current_timestamp;
 ```
 
 ```output
@@ -282,7 +282,7 @@ yugabyte=# SHOW timezone;
 ```
 
 ```sql
-yugabyte=# select current_timestamp;
+yugabyte=# SELECT current_timestamp;
 ```
 
 ```output
@@ -300,7 +300,7 @@ SET
 ```
 
 ```sql
-yugabyte=# select current_timestamp;
+yugabyte=# SELECT current_timestamp;
 ```
 
 ```output
@@ -310,7 +310,7 @@ yugabyte=# select current_timestamp;
 ```
 
 ```sql
-yugabyte=# select current_timestamp AT TIME ZONE 'Australia/Sydney';
+yugabyte=# SELECT current_timestamp AT TIME ZONE 'Australia/Sydney';
 ```
 
 ```output
@@ -319,8 +319,10 @@ yugabyte=# select current_timestamp AT TIME ZONE 'Australia/Sydney';
  2019-07-09 12:29:03.416867
 ```
 
+(Note that the `AT TIME ZONE` statement above does not cater for the variants of `WITH TIME ZONE` and `WITHOUT TIME ZONE`.)
+
 ```sql
-yugabyte=# select current_timestamp(0);
+yugabyte=# SELECT current_timestamp(0);
 ```
 
 ```output
@@ -330,7 +332,7 @@ yugabyte=# select current_timestamp(0);
 ```
 
 ```sql
-yugabyte=# select current_timestamp(2);
+yugabyte=# SELECT current_timestamp(2);
 ```
 
 ```output
@@ -339,24 +341,22 @@ yugabyte=# select current_timestamp(2);
  2019-07-09 03:15:53.07+00
 ```
 
-As shown above, you can set your SESSION to a particular timezone. When working with timestamps, you can control their seconds precision by specifying a value from 0 -> 6. Timestamps cannot go beyond millisecond precision, which is 1,000,000 parts to one second.
+When working with timestamps, you can control the seconds precision by specifying a value from 0 -> 6. Timestamps cannot go beyond millisecond precision, which is 1,000,000 parts to one second.
 
-If your application assumes a local time, ensure that it issues a `SET` command to set to the correct time offset. Note that Daylight Savings is quite an advanced topic, so for the time being it is recommended to instead use the offset notation, for example, -3.5 for 3 hours and 30 minutes before UTC.
-
-Note that the `AT TIME ZONE` statement above does not cater for the variants of `WITH TIME ZONE` and `WITHOUT TIME ZONE`.
+If your application assumes a local time, ensure that it issues a `SET` command to set to the correct time offset. (Daylight Savings is an advanced topic, so for the time being it is recommended to instead use the offset notation, for example, -3.5 for 3 hours and 30 minutes before UTC.)
 
 ## Timestamps
 
-A database normally obtains its date and time from the underlying server. However, in the case of a distributed database, it is one synchronized database that is spread across many servers that are unlikely to have synchronized time.
+A database normally obtains its date and time from the underlying server. However, a distributed database is one synchronized database that is spread across many servers that are unlikely to have synchronized time.
 
-A detailed explanation of how time is obtained can be found at the blog post describing the [architecture of the storage layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/).
+For a detailed explanation of how time is obtained, refer to the blog post describing the [architecture of the storage layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/).
 
 A simpler explanation is that the time is determined by the 'Shard Leader' of the table and this is the time used by all followers of the leader. Therefore the UTC timestamp of the underlying server can differ from the current timestamp that is used for a transaction on a particular table.
 
-The following example assumes that you have created and connected to the `yb_demo` database with the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
+The following example assumes that you have created and connected to the `yb_demo` database with the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/):
 
 ```sql
-yb_demo=# select to_char(max(orders.created_at), 'DD-MON-YYYY HH24:MI') AS "Last Order Date" from orders;
+yb_demo=# SELECT to_char(max(orders.created_at), 'DD-MON-YYYY HH24:MI') AS "Last Order Date" from orders;
 ```
 
 ```output
@@ -366,7 +366,7 @@ yb_demo=# select to_char(max(orders.created_at), 'DD-MON-YYYY HH24:MI') AS "Last
 ```
 
 ```sql
-yb_demo=# select extract(MONTH from o.created_at) AS "Mth Num", to_char(o.created_at, 'MON') AS "Month",
+yb_demo=# SELECT extract(MONTH from o.created_at) AS "Mth Num", to_char(o.created_at, 'MON') AS "Month",
           extract(YEAR from o.created_at) AS "Year", count(*) AS "Orders"
           from orders o
           where o.created_at > current_timestamp(0)
@@ -391,7 +391,7 @@ yb_demo=# select extract(MONTH from o.created_at) AS "Mth Num", to_char(o.create
 ```
 
 ```sql
-yb_demo=# select to_char(o.created_at, 'HH AM') AS "Popular Hours", count(*) AS "Orders"
+yb_demo=# SELECT to_char(o.created_at, 'HH AM') AS "Popular Hours", count(*) AS "Orders"
           from orders o
           group by 1
           order by 2 DESC
@@ -418,7 +418,7 @@ UPDATE 18760
 ```
 
 ```sql
-yb_demo=# select to_char(o.created_at, 'Day') AS "Top Day",
+yb_demo=# SELECT to_char(o.created_at, 'Day') AS "Top Day",
           count(o.*) AS "SALES"
           from orders o
           group by 1
@@ -452,7 +452,7 @@ CREATE TABLE
 ```sql
 yb_demo=# insert into order_deliveries
           (order_id, delivery_date)
-          select o.id, o.created_at + ((floor(random() * (25-2+2) + 2))::int * interval '1 day 3 hours')
+          SELECT o.id, o.created_at + ((floor(random() * (25-2+2) + 2))::int * interval '1 day 3 hours')
           from orders o
           where o.created_at < current_timestamp - (20 * interval '1 day');
 ```
@@ -462,7 +462,7 @@ INSERT 0 12268
 ```
 
 ```sql
-yb_demo=# select * from order_deliveries limit 5;
+yb_demo=# SELECT * from order_deliveries limit 5;
 ```
 
 ```output
@@ -477,7 +477,7 @@ yb_demo=# select * from order_deliveries limit 5;
 ```
 
 ```sql
-yb_demo=# select d.order_id, to_char(o.created_at, 'DD-MON-YYYY HH AM') AS "Ordered",
+yb_demo=# SELECT d.order_id, to_char(o.created_at, 'DD-MON-YYYY HH AM') AS "Ordered",
           to_char(d.delivery_date, 'DD-MON-YYYY HH AM') AS "Delivered",
           d.delivery_date - o.created_at AS "Delivery Days"
           from orders o, order_deliveries d
@@ -502,17 +502,15 @@ yb_demo=# select d.order_id, to_char(o.created_at, 'DD-MON-YYYY HH AM') AS "Orde
 (10 rows)
 ```
 
-{{< note title="Note" >}}
-Your data may be slightly different as you used a `RANDOM()` function to set the 'delivery_date' in the new 'order_deliveries' table.
-{{< /note >}}
+Your output may differ slightly as the `RANDOM()` function is used to set the `delivery_date` in the new `order_deliveries` table.
 
-You can use views of the YugabyteDB Data Catalogs to create data that is already prepared and formatted for your application code so that your SQL is simpler. Below is an example that is defined in the yb_demo database (has no dependency on yb_demo). This demonstration shows how you can nominate a shortlist of timezones that are formatted and ready to use for display purposes.
+You can use views of the YugabyteDB Data Catalogs to create data that is already prepared and formatted for your application code so that your SQL is simpler. The following example shows how you can nominate a shortlist of time zones that are formatted and ready to use for display purposes:
 
 ```sql
 yb_demo=# CREATE OR REPLACE VIEW TZ AS
-          select '* Current time' AS "tzone", '' AS "offset", to_char(current_timestamp AT TIME ZONE 'Australia/Sydney', 'Dy dd-Mon-yy hh:mi PM') AS "Local Time"
+          SELECT '* Current time' AS "tzone", '' AS "offset", to_char(current_timestamp AT TIME ZONE 'Australia/Sydney', 'Dy dd-Mon-yy hh:mi PM') AS "Local Time"
           UNION
-          select x.name AS "tzone",
+          SELECT x.name AS "tzone",
           left(x.utc_offset::text, 5) AS "offset",
           to_char(current_timestamp AT TIME ZONE x.name, 'Dy dd-Mon-yy hh:mi PM') AS "Local Time"
           from pg_catalog.pg_timezone_names x
@@ -525,7 +523,7 @@ CREATE VIEW
 ```
 
 ```sql
-yb_demo=# select * from tz;
+yb_demo=# SELECT * from tz;
 ```
 
 ```output
@@ -561,18 +559,14 @@ yb_demo=# select * from tz;
 (27 rows)
 ```
 
-Assuming that you chose the timezones that interest you, then your results should be different to those shown above.
-
-{{< tip title="Fun Fact" >}}
-Who would have thought that Australia needs 23 timezone records?
-{{< /tip >}}
+Assuming that you chose the time zones that interest you, your results should be different to those shown above.
 
 ## Date and time intervals
 
-You may have noticed that the above YSQL has references to `INTERVAL`. An interval is a data type that describes an increment of time. An interval allows you to show the difference between two timestamps or to create a new timestamp by adding or subtracting a particular unit of measure. Some examples are:
+An interval is a data type that describes an increment of time. An interval allows you to show the difference between two timestamps or to create a new timestamp by adding or subtracting a particular unit of measure. Consider the following examples:
 
 ```sql
-yugabyte=# select current_timestamp AS "Current Timestamp",
+yugabyte=# SELECT current_timestamp AS "Current Timestamp",
            current_timestamp + (10 * interval '1 min') AS "Plus 10 Mins",
            current_timestamp + (10 * interval '3 min') AS "Plus 30 Mins",
            current_timestamp + (10 * interval '2 hour') AS "Plus 20 hours",
@@ -586,7 +580,7 @@ yugabyte=# select current_timestamp AS "Current Timestamp",
 ```
 
 ```sql
-yugabyte=# select current_time::time(0), time '05:00' + interval '5 hours 7 mins' AS "New time";
+yugabyte=# SELECT current_time::time(0), time '05:00' + interval '5 hours 7 mins' AS "New time";
 ```
 
 ```output
@@ -596,7 +590,7 @@ yugabyte=# select current_time::time(0), time '05:00' + interval '5 hours 7 mins
 ```
 
 ```sql
-yugabyte=# select current_date - date '01-01-2019' AS "Day of Year(A)", current_date - date_trunc('year', current_date) AS "Day of Year(B)";
+yugabyte=# SELECT current_date - date '01-01-2019' AS "Day of Year(A)", current_date - date_trunc('year', current_date) AS "Day of Year(B)";
 ```
 
 ```output
@@ -606,7 +600,7 @@ yugabyte=# select current_date - date '01-01-2019' AS "Day of Year(A)", current_
 ```
 
 ```sql
-yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamp '2019-07-09 09:00:00.000000+00' AS "Time Difference";
+yugabyte=# SELECT timestamp '2019-07-09 10:00:00.000000+00' - timestamp '2019-07-09 09:00:00.000000+00' AS "Time Difference";
 ```
 
 ```output
@@ -616,7 +610,7 @@ yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamp '2019-07
 ```
 
 ```sql
-yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-09 10:00:00.000000+00' AS "Time Offset";
+yugabyte=# SELECT timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-09 10:00:00.000000+00' AS "Time Offset";
 ```
 
 ```output
@@ -626,7 +620,7 @@ yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-
 ```
 
 ```sql
-yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-09 10:00:00.000000EST' AS "Time Offset";
+yugabyte=# SELECT timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-09 10:00:00.000000EST' AS "Time Offset";
 ```
 
 ```output
@@ -636,7 +630,7 @@ yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-
 ```
 
 ```sql
-yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-08 10:00:00.000000EST' AS "Time Offset";
+yugabyte=# SELECT timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-08 10:00:00.000000EST' AS "Time Offset";
 ```
 
 ```output
@@ -646,7 +640,7 @@ yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-
 ```
 
 ```sql
-yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-07 10:00:00.000000EST' AS "Time Offset";
+yugabyte=# SELECT timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-07 10:00:00.000000EST' AS "Time Offset";
 ```
 
 ```output
@@ -656,7 +650,7 @@ yugabyte=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-
 ```
 
 ```sql
-yugabyte=# select age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST') AS "Age Diff";
+yugabyte=# SELECT age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST') AS "Age Diff";
 ```
 
 ```output
@@ -666,7 +660,7 @@ yugabyte=# select age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '20
 ```
 
 ```sql
-yugabyte=# select (extract('days' from age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST'))*24)+
+yugabyte=# SELECT (extract('days' from age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST'))*24)+
            (extract('hours' from age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST'))) AS "Hours Diff";
 ```
 
@@ -678,10 +672,10 @@ yugabyte=# select (extract('days' from age(timestamp '2019-07-09 10:00:00.000000
 
 The above shows that date and time manipulation can be achieved in several ways. It is important to note that some outputs are of type `INTEGER`, whilst others are of type `INTERVAL` (not text as they may appear). The final YSQL above for "Hours Diff" uses the output of `EXTRACT` which produces an `INTEGER` so that it may be multiplied by the hours per day, whereas the `EXTRACT` function itself requires either a `INTERVAL` or `TIMESTAMP(TZ)` data type as its input.
 
-Ensure to cast your values thoroughly. Casts can be done for time(tz), date and timestamp(tz) like `MY_VALUE::timestamptz`.
+Be sure to cast your values thoroughly. Casts can be done for time(tz), date and timestamp(tz) like `MY_VALUE::timestamptz`.
 
 {{< note title="Note" >}}
-The `EXTRACT` command is the preferred command to `DATE_PART`.
+The `EXTRACT` command is preferred to `DATE_PART`.
 {{< /note >}}
 
 ## Manipulating using truncation
@@ -689,7 +683,7 @@ The `EXTRACT` command is the preferred command to `DATE_PART`.
 The `DATE_TRUNC` command is used to 'floor' the timestamp to a particular unit. The example assumes that you have created and connected to the `yb_demo` database with the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
 
 ```sql
-yb_demo=# select date_trunc('hour', current_timestamp);
+yb_demo=# SELECT date_trunc('hour', current_timestamp);
 ```
 
 ```output
@@ -700,7 +694,7 @@ yb_demo=# select date_trunc('hour', current_timestamp);
 ```
 
 ```sql
-yb_demo=# select to_char((date_trunc('month', generate_series)::date)-1, 'DD-MON-YYYY') AS "Last Day of Month"
+yb_demo=# SELECT to_char((date_trunc('month', generate_series)::date)-1, 'DD-MON-YYYY') AS "Last Day of Month"
           from generate_series(current_date-(365-1), current_date, '1 month');
 ```
 
@@ -723,7 +717,7 @@ yb_demo=# select to_char((date_trunc('month', generate_series)::date)-1, 'DD-MON
 ```
 
 ```sql
-yb_demo=# select date_trunc('days', age(created_at)) AS "Product Age" from products order by 1 desc limit 10;
+yb_demo=# SELECT date_trunc('days', age(created_at)) AS "Product Age" from products order by 1 desc limit 10;
 ```
 
 ```output
@@ -744,10 +738,10 @@ yb_demo=# select date_trunc('days', age(created_at)) AS "Product Age" from produ
 
 ## Bringing it all together
 
-A common requirement is to find out the date of next Monday; for example, that might be the first day of the new week for scheduling purposes. This can be achieved in many ways, maybe in a simpler fashion than illustrated below. The following illustrates the chaining together of different date and time operators and functions to achieve the result you want.
+A common requirement is to find out the date of next Monday; for example, that might be the first day of the new week for scheduling purposes. This can be achieved in many ways. The following illustrates the chaining together of different date and time operators and functions to achieve the result you want:
 
 ```sql
-yugabyte=# select to_char(current_date, 'Day, DD-MON-YYYY') AS "Today",
+yugabyte=# SELECT to_char(current_date, 'Day, DD-MON-YYYY') AS "Today",
            to_char((current_timestamp AT TIME ZONE 'Australia/Sydney')::date +
            (7-(extract('isodow' from current_timestamp AT TIME ZONE 'Australia/Sydney'))::int + 1),
            'Day, DD-MON-YYYY') AS "Start of Next Week";
@@ -759,7 +753,7 @@ yugabyte=# select to_char(current_date, 'Day, DD-MON-YYYY') AS "Today",
  Tuesday  , 09-JUL-2019 | Monday   , 15-JUL-2019
 ```
 
-The above approach is to `EXTRACT` the current day of the week as an integer. As today is a Tuesday, the result will be 2. As you know there are 7 days per week, you need to target a calculation that has a result of 8, being 1 day more than the 7th day. We use this to calculate how many days to add to the current date (7 days - 2 + 1 day) to arrive at the next Monday which is day of the week (ISO dow) #1. The addition of the `AT TIME ZONE` is purely illustrative and would not impact the result because you are dealing with days, and the timezone difference is only +10 hours, therefore it does not affect the date. However, if you are working with hours or smaller, then the timezone can *potentially* have a bearing on your result.
+The above approach is to `EXTRACT` the current day of the week as an integer. As today is a Tuesday, the result will be 2. As you know there are 7 days per week, you need to target a calculation that has a result of 8, being 1 day more than the 7th day. We use this to calculate how many days to add to the current date (7 days - 2 + 1 day) to arrive at the next Monday which is day of the week (ISO dow) #1. The addition of the `AT TIME ZONE` is purely illustrative and would not impact the result because you are dealing with days, and the time zone difference is only +10 hours, therefore it does not affect the date. However, if you are working with hours or smaller, then the time zone can potentially have a bearing on your result.
 
 {{< tip title="Fun Fact" >}}
 For the very curious, why is there a gap after 'Tuesday' and 'Monday' in the example above? All 'Day' values are space padded to 9 characters. You could use string functions to remove the extra spaces if needed for formatting purposes or you could do a trimmed `TO_CHAR` for the 'Day' then concatenate with a comma and another `TO_CHAR` for the 'DD-MON-YYYY'.
@@ -769,9 +763,9 @@ For the very curious, why is there a gap after 'Tuesday' and 'Monday' in the exa
 
 People in different locations of the world are familiar with local representations of dates. Times are reasonably similar, but dates can differ. The USA uses 3/5/19, whereas in Australia you would use 5/3/19, and in Europe either 5.3.19 or 5/3/19. What is the date in question? 5th March, 2019.
 
-YugabyteDB has `DateStyle` which is a setting that you apply to your session so that ambiguous dates can be determined and the display of dates in YSQL can be defaulted to a particular format.
+YugabyteDB has the `DateStyle` setting that you apply to your session so that ambiguous dates can be determined and the display of dates in YSQL can be defaulted to a particular format.
 
-By default, YugabyteDB uses the ISO Standard of YYYY-MM-DD HH24:MI:SS. Other settings you can use are 'SQL', 'German', and 'Postgres'. These are all referenced below allowing you to see examples.
+By default, YugabyteDB uses the ISO Standard of YYYY-MM-DD HH24:MI:SS. Other settings you can use are 'SQL', 'German', and 'Postgres'. These are all used in the following examples.
 
 All settings except ISO allow you specify whether a Day appears before or after the Month. Therefore, a setting of 'DMY' results in 3/5 being 3rd May, whereas 'MDY' results in 5th March.
 
@@ -790,7 +784,7 @@ yugabyte=# SHOW DateStyle;
 ```
 
 ```sql
-yugabyte=# select current_date, current_time(0), current_timestamp(0);
+yugabyte=# SELECT current_date, current_time(0), current_timestamp(0);
 ```
 
 ```output
@@ -808,7 +802,7 @@ SET
 ```
 
 ```sql
-yugabyte=# select current_date, current_time(0), current_timestamp(0);
+yugabyte=# SELECT current_date, current_time(0), current_timestamp(0);
 ```
 
 ```output
@@ -826,7 +820,7 @@ SET
 ```
 
 ```sql
-yugabyte=# select current_date, current_time(0), current_timestamp(0);
+yugabyte=# SELECT current_date, current_time(0), current_timestamp(0);
 ```
 
 ```output
@@ -844,7 +838,7 @@ SET
 ```
 
 ```sql
-yugabyte=# select current_date, current_time(0), current_timestamp(0);
+yugabyte=# SELECT current_date, current_time(0), current_timestamp(0);
 ```
 
 ```output
@@ -862,7 +856,7 @@ SET
 ```
 
 ```sql
-yugabyte=# select current_date, current_time(0), current_timestamp(0);
+yugabyte=# SELECT current_date, current_time(0), current_timestamp(0);
 ```
 
 ```output
@@ -880,7 +874,7 @@ SET
 ```
 
 ```sql
-yugabyte=# select current_date, current_time(0), current_timestamp(0);
+yugabyte=# SELECT current_date, current_time(0), current_timestamp(0);
 ```
 
 ```output
@@ -890,7 +884,7 @@ yugabyte=# select current_date, current_time(0), current_timestamp(0);
 ```
 
 ```sql
-yugabyte=# select '01-01-2019'::date;
+yugabyte=# SELECT '01-01-2019'::date;
 ```
 
 ```output
@@ -900,7 +894,7 @@ yugabyte=# select '01-01-2019'::date;
 ```
 
 ```sql
-yugabyte=# select to_char('01-01-2019'::date, 'DD-MON-YYYY');
+yugabyte=# SELECT to_char('01-01-2019'::date, 'DD-MON-YYYY');
 ```
 
 ```output
@@ -910,7 +904,7 @@ yugabyte=# select to_char('01-01-2019'::date, 'DD-MON-YYYY');
 ```
 
 ```sql
-yugabyte=# select to_char('05-03-2019'::date, 'DD-MON-YYYY');
+yugabyte=# SELECT to_char('05-03-2019'::date, 'DD-MON-YYYY');
 ```
 
 ```output
@@ -918,6 +912,8 @@ yugabyte=# select to_char('05-03-2019'::date, 'DD-MON-YYYY');
 -------------
  03-MAY-2019
 ```
+
+The following example illustrates the difficulty that can occur with dates:
 
 ```sql
 yugabyte=# SET DateStyle = 'Postgres, DMY';
@@ -928,7 +924,7 @@ SET
 ```
 
 ```sql
-yugabyte=# select to_char('05-03-2019'::date, 'DD-MON-YYYY');
+yugabyte=# SELECT to_char('05-03-2019'::date, 'DD-MON-YYYY');
 ```
 
 ```output
@@ -937,8 +933,10 @@ yugabyte=# select to_char('05-03-2019'::date, 'DD-MON-YYYY');
  05-MAR-2019
 ```
 
+The system expects a 'DMY' value, but the source is in the format 'MDY'. YugabyteDB doesn't know how to convert ambiguous cases, so be explicit as follows:
+
 ```sql
-yugabyte=# select to_char(to_date('05-03-2019', 'MM-DD-YYYY'), 'DD-MON-YYYY');
+yugabyte=# SELECT to_char(to_date('05-03-2019', 'MM-DD-YYYY'), 'DD-MON-YYYY');
 ```
 
 ```output
@@ -947,14 +945,12 @@ yugabyte=# select to_char(to_date('05-03-2019', 'MM-DD-YYYY'), 'DD-MON-YYYY');
  03-MAY-2019
 ```
 
-Best practise is to pass all text representations of date and time data types through a `TO_DATE` or `TO_TIMESTAMP` function. There is no 'to_time' function as its format is always fixed of 'HH24:MI:SS.ms', therefore be careful of AM/PM times and your milliseconds can also be thousandths of a second, so either 3 or 6 digits should be supplied.
-
-The final example above illustrates the difficulty that can occur with dates. The system is expecting a 'DMY' value but your source is of format 'MDY', therefore YugabyteDB doesn't know how to convert it in ambiguous cases, therefore be explicit as shown.
+It is recommended to pass all text representations of date and time data types through a `TO_DATE` or `TO_TIMESTAMP` function. There is no 'to_time' function as its format is always fixed of 'HH24:MI:SS.ms', therefore be careful of AM/PM times and your milliseconds can also be thousandths of a second, so either 3 or 6 digits should be supplied.
 
 ## Getting dirty - into the logs you go
 
 {{< note title="Note" >}}
-This is for those interested in getting into some of the finer points of control.
+The following is for those interested in some of the finer points of control.
 {{< /note >}}
 
 YugabyteDB has inherited a lot of capabilities similar to the PostgreSQL SQL API, and this explains why when you start to look under the hood, it is looks very much like PostgreSQL.
@@ -970,7 +966,7 @@ Expanded display is on.
 ```
 
 ```sql
-yugabyte=# select name, short_desc, coalesce(setting, reset_val) AS "setting_value", sourcefile
+yugabyte=# SELECT name, short_desc, coalesce(setting, reset_val) AS "setting_value", sourcefile
           from pg_catalog.pg_settings
           where name in('log_timezone', 'log_directory', 'log_filename', 'lc_time')
           order by name asc;
@@ -1035,7 +1031,7 @@ lc_time = 'en_US.UTF-8'                         # locale for time formatting
 default_text_search_config = 'pg_catalog.english'
 ```
 
-Make a backup of the original file and then change `datestyle = 'SQL, DMY'`, `timezone = 'GB'` (or any other timezone **name** you prefer) and save the file. You need to restart your YugabyteDB cluster using the shell command `./bin/yb-ctl restart` (and ensure you append any startup flags if you do this) for the changes to take effect.
+Make a backup of the original file and then change `datestyle = 'SQL, DMY'`, `timezone = 'GB'` (or any other time zone **name** you prefer) and save the file. You need to restart your YugabyteDB cluster for the changes to take effect.
 
 After the cluster is running as expected, do the following:
 
@@ -1059,7 +1055,7 @@ yugabyte=# SHOW timezone;
 ```
 
 ```sql
-yugabyte=# select current_date;
+yugabyte=# SELECT current_date;
 ```
 
 ```output

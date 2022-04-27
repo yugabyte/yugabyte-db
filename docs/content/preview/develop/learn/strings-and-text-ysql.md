@@ -35,23 +35,19 @@ showAsideToc: true
 
 ## Introduction
 
-Strings, character data types, or text. Manipulating and outputting text is a very important topic that is required for many different types of systems that you work with. This section describes the YugabyteDB SQL API's extensive text capabilities.
+Strings, character data types, or text are part of every conceivable system. Manipulating and outputting text is a very important topic that is required for many different types of systems that you work with. This section provides an overview of the YugabyteDB SQL API's extensive text capabilities.
 
 The examples use the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
 
-## About character data types
+## Character data types
 
-### Character data types
+With PostgreSQL, the use of different character data types has a historical aspect. YugabyteDB — being a more recent implementation — has no such history. Consider keeping your use of character data types simple, ideally just 'text', or 'varchar(n)' if you require a restricted length. Using text and then verifying the length of a character string allows you to develop your own approach to managing this scenario, rather than encountering errors by exceeding some arbitrary length.
 
-For character data types, see [Data types](/preview/api/ysql/datatypes/). Note that YugabyteDB implements the data type aliases and that is what is used here.
-
-With PostgreSQL, the use of different character data types has a historical aspect. YugabyteDB — being a more recent implementation — has no such history. Consider keeping your use of character data types simple, ideally just 'text', or 'varchar(n)' if you require a restricted length. Although it's your choice, using text and then verifying the length of a character string allows you to develop your own approach to managing this scenario, rather than encountering errors by exceeding some arbitrary length.
-
-{{< note title="Note" >}}
 If you use char(n), character(n), or varchar(n), then the limitation will be the number you assign, which cannot exceed 10,485,760. For unlimited length, use a character data type without a length description, such as 'text'. However, if you have specific requirements to ignore trailing spaces, then you may wish to consider using char(n).
-{{< /note >}}
 
-The following example shows a few ways to work with the different data types.
+For more information on character data types, refer to [Data types](/preview/api/ysql/datatypes/). Note that YugabyteDB implements the data type aliases and that is what is used here.
+
+The following example shows a few ways to work with different data types:
 
 ```sh
 ./bin/ysqlsh
@@ -122,22 +118,13 @@ yugabyte=# select length(a_text) as a_text, length(a_varchar) as a_varchar, leng
       4 |         4 |      1 |         4 |      3
 ```
 
-In the example above, notice that the column `b_char` does not contain a trailing space and this could impact your SQL. In addition, if you specify a maximum length on the column definition, the SQL can also generate errors, so you have to either manually truncate your input values or introduce error handling.
+Notice that the column `b_char` does not contain a trailing space and this could impact your SQL. In addition, if you specify a maximum length on the column definition, the SQL can also generate errors, so you have to either manually truncate your input values or introduce error handling.
 
 ### Casting
 
 When you are working with text that has been entered by users through an application, ensure that YugabyteDB understands that it is working with a text input. All values should be cast unless they can be trusted due to other validation measures that have already occurred.
 
-Start YSQL and you can see the impacts of casting.
-
-```sh
-./bin/ysqlsh
-```
-
-```output
-ysqlsh (11.2)
-Type "help" for help.
-```
+The following example shows the impacts of casting:
 
 ```sql
 yugabyte=# select cast(123 AS TEXT), cast('123' AS TEXT), 123::text, '123'::text;
@@ -162,11 +149,11 @@ yugabyte=# select tablename, hasindexes AS nocast, hasindexes::text AS casted
  sql_features   | f      | false
 ```
 
-In the last example above, the column 'hasindexes' is a `Boolean` data type and by casting it to `text`, you receive a text result of `true` or `false`.
+T he column 'hasindexes' is a `Boolean` data type and by casting it to `text`, you receive a text result of `true` or `false`.
 
 ## Manipulating text
 
-There are a lot of functions that can be applied to text. In the examples that follow, the functions are classified into logical groupings - in many cases the capability of the functions overlap and personal choice determines how you approach solving the problem.
+Many functions can be applied to text. In the examples that follow, the functions are classified into logical groupings - in many cases the capability of the functions overlap and personal choice determines how you approach solving the problem.
 
 The focus here is to quickly show how each of the functions can be used, along with some examples.
 
@@ -218,7 +205,9 @@ easy |  quoted   | double_quoted | empty_str | null_quoted
 
 Use `quote_ident` to parse identifiers in SQL like column names and `quote_nullable` as a string literal that may also be a null.
 
-You can use "dollar sign quoting" to parse raw text — any text contained in dollar sign quotations are treated as a raw literal. The starting and ending markers do not need to be identical, but must start and end with a dollar sign (`$`). See the examples below.
+### Parsing raw text
+
+You can use "dollar sign quoting" to parse raw text — any text enclosed in dollar sign (`$`) quotations are treated as a raw literal. The starting and ending markers do not need to be identical, but must start and end with a dollar sign. Consider the following examples:
 
 ```sql
 yb_demo=# select $$%&*$&$%7'\67458\''""""';;'\//\/\/\""'/'''''"""""'''''''''$$;
@@ -252,11 +241,11 @@ yb_demo=# select $$first$$ AS "F1", $$second$$ AS "F2";
  first | second
 ```
 
-#### Padding and trimming
+### Padding and trimming
 
-Some values need to be padded for formatting purposes, and `LPAD` and `RPAD` are meant for this purpose. They mean 'left pad' and 'right pad' respectively. They are normally used to fill with spaces but you could specify anything, including more than a single character. So you could pad with underscores (`_`) or spaced dots `. . .`, or anything you wish. You do not specify how much to pad, but the maximum length to pad. Therefore, if your value is already as long as your maximum length, then no padding is required. Note that this can cause a truncation if your field is longer than the maximum length specified.
+Some values need to be padded for formatting purposes, and `lpad()` and `rpad()` ('left pad' and 'right pad', respectively) are meant for this purpose. They are normally used with spaces, but you can pad using anything, including more than a single character. For example, you can pad with underscores (`_`) or spaced dots `. . .`. You do not specify how much to pad, but the maximum length to pad. Therefore, if your value is already as long as your maximum length, then no padding is required. Note that this can cause truncation if your field is longer than the maximum length specified.
 
-The reverse of padding is trimming, which removes spaces if found. The following examples use padding and trimming to achieve the results required.
+The reverse of padding is trimming, which removes spaces if found. The following examples use padding and trimming to achieve the results required:
 
 ```sql
 yb_demo=# select name, lpad(name, 10), rpad(name, 15) from users order by name limit 5;
@@ -354,9 +343,9 @@ yb_demo=# select x.RawDay, length(x.RawDay) AS RawLen, x.TrimDay, length(x.TrimD
  Tuesday   |      9 | Tuesday   |       7 | Tuesday   |        9 | Tuesday   |        7
 ```
 
-The final padding example above shows how you can center text and the trim example shows the impacts of the different trims on a value that is padded. Note that the 'Day' value is right-padded to 9 characters, which is why a left-trim has no impact on the field length at all, only the right-trim or a 'full' trim will remove spaces.
+The preceding example shows how you can center text and the trim example shows the impacts of the different trims on a value that is padded. Note that the 'Day' value is right-padded to 9 characters, which is why a left-trim has no impact on the field length at all; only the right-trim or a 'full' trim will remove spaces.
 
-#### Escaping
+### Escaping
 
 You can also state that a text value is 'escaped' by prefixing with an 'e' or 'E'. For example:
 
@@ -385,11 +374,13 @@ yb_demo=# select E'a\\b/c\u00B6' as escaped_txt, 'a\\b/c\u00B6' as raw_txt;
 `\n` refers to a new line, and `\t` is a tab, hence the formatted result.
 {{< /note >}}
 
-YugabyteDB also has `DECODE` and `ENCODE` for decoding and encoding from, or to, binary data. It caters for 'base64', 'hex' and 'escape' representations. Decode gives the output in `BYTEA` data type. Additionally, you can use the `TO_HEX` command to convert an ASCII number to its digital representation.
+### Encoding and converting text
 
-#### Joining strings
+YugabyteDB also has `DECODE` and `ENCODE` for decoding and encoding from, or to, binary data. It caters for 'base64', 'hex', and 'escape' representations. Decode gives the output in `BYTEA` data type. Additionally, you can use the `TO_HEX` command to convert an ASCII number to its digital representation.
 
-You can concatenate strings of text in several different ways. For robustness, you should ensure that everything being passed is interpreted as text (by casting) so that unexpected results do not appear in edge cases. The following examples show that YugabyteDB is lenient in passing in variables, but you should implement more robust casting for proper treatment of strings.
+### Joining strings
+
+You can concatenate strings of text in several different ways. For robustness, you should ensure that everything being passed is interpreted as text (by casting) so that unexpected results do not appear in edge cases. The following examples show that YugabyteDB is lenient in passing in variables, but you should implement more robust casting for proper treatment of strings:
 
 ```sql
 yb_demo=# select 'one' || '-' || 2 || '-one' AS "121";
@@ -497,9 +488,9 @@ yb_demo =# select left(vendor,1) AS V, string_agg(distinct(category), ', ' ORDER
  Z | Gizmo
 ```
 
-In the example above, you explore the `LEFT` function, but the `string_agg` function is best used by an input of a series or a set of data as done in SQL rows. The example shows how the aggregated string has its own order by compared to the outer SQL which is the vendors being classified A-Z.
+The preceding example uses the `LEFT` function, but the `string_agg` function is best used by an input of a series or a set of data as done in SQL rows. The example shows how the aggregated string has its own order by compared to the outer SQL which is the vendors being classified A-Z.
 
-There is also the `REVERSE` function that reverses the contents of text as shown in the next example.
+The `REVERSE` function reverses the contents of text as shown in the following example:
 
 ```sql
 yb_demo=# select reverse(to_char(current_date, 'DD-MON-YYYY'));
@@ -511,7 +502,9 @@ yb_demo=# select reverse(to_char(current_date, 'DD-MON-YYYY'));
  9102-LUJ-92
 ```
 
-You can use the `FORMAT` function parse user input as parameters to a SQL statement in order to minimise the impact of unexpected data that is typical of a SQL injection attack. The most popular method is to use the `EXECUTE` command in a procedure as this is not available at the YSQL command prompt, only in the YSQL PL/pgSQL environment. The `FORMAT` command is used to finalise the complete SQL statement and passed to `EXECUTE` to run. As you are not simulating YSQL PL/pgSQL here, let's illustrate how to use the `FORMAT` function only.
+### Parsing user input
+
+To minimise the impact of unexpected data that is typical of a SQL injection attack, you can use the `FORMAT` function to parse user input as parameters to a SQL statement. The most popular method is to use the `EXECUTE` command in a procedure as this is not available at the YSQL command prompt, only in the YSQL PL/pgSQL environment. The `FORMAT` command is used to finalise the complete SQL statement which is passed to `EXECUTE` to run. As you are not simulating YSQL PL/pgSQL here, the following example illustrates how to use the `FORMAT` function only:
 
 ```sql
 yb_demo=# select format('Hello %s, today''s date is %s', 'Jono', to_char(current_date, 'DD-MON-YYYY'), 'discarded');
@@ -543,11 +536,11 @@ yb_demo=# select format('SELECT %2$I, %3$I from %1$I where name = %4$L', 'users'
  SELECT birth_date, email from users where name = 'Brody O''Reilly'
 ```
 
-#### Substituting text
+### Substituting text
 
-Substituting text with other text can be a complex task as you need to fully understand the scope of the data that the functions can be subject to. A common occurrence is failure due to an unexpected value being passed through, like `NULL`, an empty string `''`, or a value that YugabyteDB would interpret as a different data type like `true` or `3`.
+Substituting text with other text can be a complex task, as you need to fully understand the scope of the data that the functions can be subject to. A common occurrence is failure due to an unexpected value being passed through, like `NULL`, an empty string `''`, or a value that YugabyteDB would interpret as a different data type like `true` or `3`.
 
-The treatment of nulls in mathematical operations is often problematic, as is string joins as joining a null to a value results in a null. Coalescing the inputs avoids these issues as shown in the following examples.
+The treatment of nulls in mathematical operations is often problematic, as are string joins as joining a null to a value results in a null. Coalescing the inputs avoids these issues as shown in the following examples:
 
 ```sql
 yb_demo=# select trunc(avg(coalesce(discount,0))::numeric,3) AS "COALESCED", trunc(avg(discount)::numeric,3) AS "RAW" from orders;
@@ -569,7 +562,9 @@ yb_demo=# select 'Hello ' || null AS GREETING, 'Goodbye ' || coalesce(null, 'Val
           | Goodbye Valued Customer
 ```
 
-The above shows how substituting when null can have a significant impact on the results you achieve or even the behaviour of your application. Below concentrates on changing existing text with other text.
+The preceding example shows how substituting when null can have a significant impact on the results you achieve, or even the behaviour of your application.
+
+The following example demonstrates ways to change existing text using other text.
 
 ```sql
 yb_demo=# select overlay(password placing 'XXXXXXXXXXXXXXX' from 1 for length(password)) AS SCRAMBLED from users limit 5;
@@ -615,11 +610,11 @@ yb_demo=# select replace('Gees I love Windows', 'Windows', 'Linux') AS OBVIOUS;
  Gees I love Linux
 ```
 
-The `REGEXP_REPLACE` function along with the other REGEX functions require an entire chapter to themselves with the sophistication that can be achieved - which is well beyond this scope of this introductory walk through. The example above strips out all characters of the alphabet and replaces them with an empty string. The 'g' flag is 'global' that results in the replace to occur throughout the entire string, without the 'g' flag the replace stops after the first substitution. Note that the result contains spaces which is why it appears odd. You might think that this example shows an extraction of non-alphabetical characters, but it is just replacing them with an empty string.
+The `REGEXP_REPLACE` function along with the other REGEX functions require an entire chapter to themselves given the sophistication that can be achieved. The preceding example strips out all characters of the alphabet and replaces them with an empty string. The 'g' flag is 'global', and results in the replacement occurring throughout the entire string; without the 'g' flag the replace stops after the first substitution. Note that the result contains spaces which is why it appears odd. You might think that this example shows an extraction of non-alphabetical characters, but it is just replacing them with an empty string.
 
-#### Extracting text
+### Extracting text
 
-There are several ways of extracting text from text, in some cases it might be part of 'cleaning' the text, note that removing leading or trailing spaces is covered by the trim functions shown above. The remaining functions here show how parts of text can be manipulated.
+There are several ways to extract text from text; in some cases it might be part of 'cleaning' the text. (Removing leading or trailing spaces is covered by the trim functions shown in a preceding section.) The remaining functions here show how parts of text can be manipulated.
 
 ```sql
 yb_demo=# select left('123456', 3);
@@ -697,11 +692,11 @@ yb_demo=# select replace(substr(email, position('@' in email)+1, (length(email)
 
 ```
 
-{{< note title="Note" >}}
-The command ```SUBSTRING``` has overloaded equivalents that accept POSIX expressions. The above example shows you the simple use of ```SUBSTRING``` which can also be used as ```SUBSTR```. therefore it is recommended to only use the full ```SUBSTRING``` command when using POSIX.
-{{< /note >}}
+The command `SUBSTRING` has overloaded equivalents that accept POSIX expressions. The preceding example shows a basic use of `SUBSTRING` (which can also be used as `SUBSTR`). It is recommended to only use the full `SUBSTRING` command when using POSIX.
 
-As stated above for ```REGEXP_REPLACE```, the full explanation of regular expressions requires its own comprehensive documentation that is not covered here. Here is an example illustrating its use.
+### Regular expressions
+
+A full description of regular expressions requires its own comprehensive documentation that is not covered here. The following example illustrates their use:
 
 ```sql
 yb_demo=# select name as Fullname, regexp_match(name, '(.*)(\s+)(.*)') AS "REGEXED Name",
@@ -720,9 +715,7 @@ yb_demo=# select name as Fullname, regexp_match(name, '(.*)(\s+)(.*)') AS "REGEX
  Mellie Wolf    | {Mellie," ",Wolf}    | Mellie     | Wolf
 ```
 
-{{< note title="Note" >}}
-In the example above, you are asking the 'name' column to be segmented by the existence of a space (`\s`) and then reporting the first and third set of text reported by the match. The regular expression returns a text array, not a text value, and thus you have to reference the array index to access the value as text. Note that this SQL would be very vulnerable to errors caused by data entry, including a middle name or missing either a first or last name would cause errors.
-{{< /note >}}
+In the preceding example, you are asking the 'name' column to be delimited by the existence of a space (`\s`) and then reporting the first and third set of text reported by the match. The regular expression returns a text array, not a text value, and thus you have to reference the array index to access the value as text. Note that this SQL would be very vulnerable to errors caused by data entry, including a middle name or missing either a first or last name would cause errors.
 
 Now, let's look at some manipulation and splitting of text so that you can process it in pieces. The following example uses a sample extract from a bank file that is used for processing payments. This example could apply if the entire file was uploaded as a single text entry into a table and you select it and then process it.
 
@@ -791,11 +784,11 @@ yb_demo=# select reverse(translate(replace(lower(i.input), ' ', ''),
  3r3hdr0wA3pyT
 ```
 
-The `TRANSLATE` command above replaces multiple different characters in a single command, which can be useful. In the example above, the 'a' is replaced with a 'A', and 'b' is replaced with the number '8', and so forth.
+The preceding `TRANSLATE` command replaces multiple different characters in a single command, which can be useful. In the example, the 'a' is replaced with a 'A', and 'b' is replaced with the number '8', and so forth.
 
-### Obtaining information about text
+## Obtaining information about text
 
-Rather than format or change the contents of text, you often might want to understand particular attributes of the text. The following examples use commands to return information about the text.
+Rather than format or change the contents of text, you often might want to understand particular attributes of the text. The following examples use commands to return information about the text:
 
 ```sql
 yb_demo=# select x.c AS CHAR, ascii(x.c) AS ASCII
@@ -912,7 +905,7 @@ yb_demo=# select m.name
 
 ## Something a bit more advanced
 
-If you like a bit of a challenge, below is an example that URL escapes a string. There is still some more room for tweaking in its current form, that is left for you to do.
+If you like a bit of a challenge, the following example URL escapes a string. There is some more room for tweaking in its current form, that is left for you to do.
 
 ```sql
 yugabyte=# select string_agg(case
@@ -929,7 +922,3 @@ yugabyte=# select string_agg(case
 ------------------------------------------------------------------------------------------------
  www.url.com%2fform%3fname%3d"My%20name"%26dob%3d"1%2f1%2f2000"%26email%3d"hello%40example.com"
 ```
-
-## Conclusion
-
-Text or strings are part of every conceivable system. YugabyteDB provides you with comprehensive capabilities to manage and manipulate all your text in the database.
