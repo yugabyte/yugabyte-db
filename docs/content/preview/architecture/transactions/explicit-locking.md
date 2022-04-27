@@ -21,7 +21,7 @@ This section explains how explicit locking works in YugabyteDB. The transactions
 The two primary mechanisms to achieve concurrency control are *optimistic* and *pessimistic*. Concurrency control in YugabyteDB can accommodate both of these depending on the scenario.
 
 
-DocDB exposes the ability to write [provisional records]() which is exercised by the query layer. Provisional records are used to order persist locks on rows in order to detect conflicts. Provisional records have a *priority* associated with them, which is a number. When two transactions conflict, the transaction with the lower priority is aborted.
+DocDB exposes the ability to write [provisional records](../distributed-txns/#provisional-records) which is exercised by the query layer. Provisional records are used to order persist locks on rows in order to detect conflicts. Provisional records have a *priority* associated with them, which is a number. When two transactions conflict, the transaction with the lower priority is aborted.
 
 ### Optimistic concurrency control
 
@@ -33,7 +33,7 @@ YugabyteDB opts for optimistic concurrency in the case of simple transactions. T
 
 ### Pessimistic concurrency control
 
-* **Pessimistic** - Block an operation of a transaction, if it may cause violation of the rules, until the possibility of violation disappears. Blocking operations is typically involved with performance reduction.
+**Pessimistic**: block an operation of a transaction, if it may cause violation of the rules, until the possibility of violation disappears. Blocking operations is typically involved with performance reduction.
 
 [Pessimistic locking](https://en.wikipedia.org/wiki/Record_locking) blocks a transaction if any of its operations would violate relational integrity if it executed. This means that as long as the first transaction that locked a row has not completed (either `COMMIT` or `ABORT`), no other transaction would be able to lock that row.
 
@@ -71,7 +71,7 @@ There is no limit on the number of rows that can be locked at a time. Row locks 
 
 ##### `FOR UPDATE`
 
-The `FOR UPDATE` lock causes the rows retrieved by the `SELECT` statement to be locked as though for an update. This prevents these rows from being subsequently locked, modified or deleted by other transactions until the current transaction ends. The following operations performed on a previously locked row as a part of other transactions will fail: `UPDATE`, `DELETE`, `SELECT FOR UPDATE`, `SELECT FOR NO KEY UPDATE`, `SELECT FOR SHARE` or `SELECT FOR KEY SHARE`.
+The `FOR UPDATE` lock causes the rows retrieved by the `SELECT` statement to be locked as though for an update. This prevents these rows from being subsequently locked, modified or deleted by other transactions until the current transaction ends. The following operations performed on a previously locked row as a part of other transactions will fail: `UPDATE`, `DELETE`, `SELECT FOR UPDATE`, `SELECT FOR NO KEY UPDATE`, `SELECT FOR SHARE`, or `SELECT FOR KEY SHARE`.
 
 
 {{< note title="Note" >}}
@@ -105,59 +105,56 @@ YugabyteDB still uses optimistic locking in the case of `FOR KEY SHARE`. Making 
 
 As an example, connect to a YugabyteDB cluster using `ysqlsh`. Create a table `t` and insert one row into it as shown below.
 
-```postgres
+```sql
 yugabyte=# CREATE TABLE t (k VARCHAR, v VARCHAR);
 yugabyte=# INSERT INTO t VALUES ('k1', 'v1');
 ```
 
-Next, connect two different instances of the ysqlsh shell to YugabyteDB. We will refer to these as `session #1` and `session #2` below.
+Next, connect two different instances of the ysqlsh shell to YugabyteDB. These are referred to as `session #1` and `session #2`.
 
-1. Run the following in `session #1` first. The example below uses an explicit row-level lock using `SELECT FOR UPDATE`, which use pessimistic concurrency control.
+1. Run the following in `session #1` first. The example uses an explicit row-level lock using `SELECT FOR UPDATE`, which use pessimistic concurrency control.
 
-```
-# SESSION #1
+   ```sql
+   /*  SESSION #1 */
+   
+   /*  Begin a new transaction in session #1 */
+   BEGIN;
+   
+   /*  Lock key k1 for updates */
+   SELECT * from t WHERE k='k1' FOR UPDATE;
+   ```
 
-# Begin a new transaction in session #1
-BEGIN;
-
-# Lock key k1 for updates.
-SELECT * from t WHERE k='k1' FOR UPDATE;
-
- k  | v
-----+----
- k1 | v1
-(1 row)
-```
+   ```output
+    k  | v
+   ----+----
+    k1 | v1
+   (1 row)
+   ```
 
 2. Before completing the transaction, try to update the same key in `session #2` using a simple update statement. This would use optimistic concurrency control, and therefore would fail right away. Seamlessly retrying this operation internally is a work in progress.
 
-```
-# SESSION #2
+   ```sql
+   /* SESSION #2 */
+   
+   /* Since row is locked by session #1, this update should fail */
+   UPDATE t SET v='v1.1' WHERE k='k1';
+   ```
 
-# Since row is locked by session #1, this update should fail.
-UPDATE t SET v='v1.1' WHERE k='k1';
+   ```output
+   ERROR:  Operation failed. Try again.: xxx Conflicts with higher priority transaction: yyy
+   ```
 
-ERROR:  Operation failed. Try again.: xxx Conflicts with higher priority transaction: yyy
-```
-
-{{< note title="Note" >}}
-
-If `session #1` had used optimistic concurrency control instead of an explicit row-lock, then this update would succeed in some of the attempts and the transaction in `session #1` would fail in those cases.
-
-{{</note >}}
-
+   <br><br>If `session #1` had used optimistic concurrency control instead of an explicit row-lock, then this update would succeed in some of the attempts and the transaction in `session #1` would fail in those cases.
 
 3. Update the row and commit the transaction in `session #1`. This should succeed.
 
-```
-# SESSION #1
-
-# Update should succeed since row was explicitly locked.
-UPDATE t SET v='v1.2' WHERE k='k1';
-UPDATE 1
-
-
-# Commit fails.
-COMMIT;
-
-```
+   ```sql
+   /*  SESSION #1 */
+   
+   /*  Update should succeed since row was explicitly locked */
+   UPDATE t SET v='v1.2' WHERE k='k1';
+   UPDATE 1
+   
+   /*  Commit fails */
+   COMMIT;
+   ```
