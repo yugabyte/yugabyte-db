@@ -41,6 +41,12 @@ public class RestoreBackupParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Alter load balancer state")
   public boolean alterLoadBalancer = true;
 
+  @ApiModelProperty(value = "Disable checksum")
+  public Boolean disableChecksum = false;
+
+  @ApiModelProperty(value = "Is tablespaces information included")
+  public Boolean useTablespaces = false;
+
   // The number of concurrent commands to run on nodes over SSH
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
   public int parallelism = 8;

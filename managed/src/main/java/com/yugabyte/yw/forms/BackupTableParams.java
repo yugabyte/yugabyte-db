@@ -43,6 +43,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Full Table type backup")
   public Boolean isFullBackup = false;
 
+  @ApiModelProperty(value = "Disable checksum")
+  public Boolean disableChecksum = false;
+
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
 

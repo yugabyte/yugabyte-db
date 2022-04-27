@@ -1312,6 +1312,10 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "disableChecksum" : {
+          "description" : "Disable checksum",
+          "type" : "boolean"
+        },
         "enableVerboseLogs" : {
           "description" : "Is verbose logging enabled",
           "type" : "boolean"
@@ -1624,6 +1628,10 @@
         "deviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
+        },
+        "disableChecksum" : {
+          "description" : "Disable checksum",
+          "type" : "boolean"
         },
         "enableVerboseLogs" : {
           "description" : "Is verbose logging enabled",
@@ -3771,6 +3779,10 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "disableChecksum" : {
+          "description" : "Disable checksum",
+          "type" : "boolean"
+        },
         "enableVerboseLogs" : {
           "description" : "Is verbose logging enabled",
           "type" : "boolean"
@@ -5002,6 +5014,10 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "disableChecksum" : {
+          "description" : "Disable checksum",
+          "type" : "boolean"
+        },
         "enableVerboseLogs" : {
           "description" : "Is verbose logging enabled",
           "type" : "boolean"
@@ -5093,6 +5109,10 @@
           "description" : "Universe UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
