@@ -139,9 +139,9 @@ The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \ 
---as yugabyte-platform-universe-management \ 
+--as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \ 
 {get|create|delete|list|patch} \ 
-{poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 **Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
@@ -158,10 +158,10 @@ The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
---as yugabyte-platform-universe-management \
+--as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
 --namespace {namespace} \
 {get|delete|list} \
-{poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 ### `kubeconfig` file
