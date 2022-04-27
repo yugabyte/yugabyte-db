@@ -3,7 +3,7 @@ on: [push]
 
 jobs:
   build:
-    name: postgresql-14-build
+    name: pg-14-build-test
     runs-on: ubuntu-latest
     steps:
       - name: Clone postgres repository
@@ -118,4 +118,4 @@ jobs:
             !src/pg_stat_monitor/tmp_check/**/backup/
             !src/pg_stat_monitor/tmp_check/**/pgdata/
           if-no-files-found: warn
-          retention-days: 1
+          retention-days: 3

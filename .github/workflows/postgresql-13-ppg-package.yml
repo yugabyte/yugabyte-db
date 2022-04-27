@@ -1,10 +1,10 @@
-name: postgresql-13-pgdg-package
+name: postgresql-13-ppg-package
 on: [push]
 
 jobs:
   build:
-    name: pg-13-pgdg-package-test
-    runs-on: ubuntu-latest
+    name: pg-13-ppg-package-test
+    runs-on: ubuntu-20.04
     steps:
       - name: Clone pg_stat_monitor repository
         uses: actions/checkout@v2
@@ -28,14 +28,22 @@ jobs:
           sudo /usr/bin/perl -MCPAN -e 'install String::Util'
           sudo /usr/bin/perl -MCPAN -e 'install Data::Str2Num'
 
-      - name: Install PG Distribution Postgresql 13
+      - name: Install percona-release script
         run: |
-          sudo wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          sudo apt update
-          sudo apt -y install postgresql-13 postgresql-server-dev-13
+          sudo apt-get -y update
+          sudo apt-get -y upgrade
+          sudo apt-get -y update
+          sudo apt-get install -y wget gnupg2 curl lsb-release
+          sudo wget https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+          sudo dpkg -i percona-release_latest.generic_all.deb
 
-      - name: Change sources owner to postgres
+      - name: Install Percona Distribution Postgresql 13
+        run: |
+          sudo percona-release setup ppg-13
+          sudo apt-get update -y
+          sudo apt-get install -y percona-postgresql-13 percona-postgresql-contrib percona-postgresql-server-dev-all
+
+      - name: Change src owner to postgres
         run: |
           sudo chown -R postgres:postgres src
 
@@ -51,7 +59,7 @@ jobs:
           echo "shared_preload_libraries = 'pg_stat_monitor'" | sudo tee -a /etc/postgresql/13/main/postgresql.conf
           sudo service postgresql start
           sudo psql -V
-          sudo -u postgres bash -c 'make installcheck USE_PGXS=1'
+          sudo -u postgres bash -c 'make installcheck USE_PGXS=1' 
         working-directory: src/pg_stat_monitor/
 
       - name: Change dir permissions on fail

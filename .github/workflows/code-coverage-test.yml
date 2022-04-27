@@ -1,16 +1,16 @@
-name: postgresql-13-build
-on: [push]
+name: code-coverage-test
+on: ["push", "pull_request"]
 
 jobs:
   build:
-    name: pg-13-build-test
+    name: coverage-test
     runs-on: ubuntu-latest
     steps:
       - name: Clone postgres repository
         uses: actions/checkout@v2
         with:
           repository: 'postgres/postgres'
-          ref: 'REL_13_STABLE'
+          ref: 'REL_14_STABLE'
 
       - name: Install dependencies
         run: |
@@ -18,7 +18,7 @@ jobs:
           sudo apt purge postgresql-client-common postgresql-common postgresql postgresql*
           sudo apt-get install libreadline6-dev systemtap-sdt-dev zlib1g-dev libssl-dev libpam0g-dev python-dev bison flex libipc-run-perl -y docbook-xsl docbook-xsl
           sudo apt-get install -y libxml2 libxml2-utils libxml2-dev libxslt-dev xsltproc libkrb5-dev libldap2-dev libsystemd-dev gettext tcl-dev libperl-dev
-          sudo apt-get install -y pkg-config clang-9 llvm-9 llvm-9-dev libselinux1-dev python-dev python3-dev uuid-dev liblz4-dev
+          sudo apt-get install -y pkg-config clang-9 llvm-9 llvm-9-dev libselinux1-dev python-dev python3-dev uuid-dev liblz4-dev lcov
           sudo rm -rf /var/lib/postgresql/
           sudo rm -rf /var/log/postgresql/
           sudo rm -rf /etc/postgresql/
@@ -38,22 +38,22 @@ jobs:
         run: |
           export PATH="/opt/pgsql/bin:$PATH"
           ./configure '--build=x86_64-linux-gnu' '--prefix=/usr' '--includedir=${prefix}/include' \
-            '--mandir=${prefix}/share/man' '--infodir=${prefix}/share/info' \
+            '--enable-coverage' '--mandir=${prefix}/share/man' '--infodir=${prefix}/share/info' \
             '--sysconfdir=/etc' '--localstatedir=/var' '--disable-silent-rules' \
             '--libdir=${prefix}/lib/x86_64-linux-gnu' \
             '--libexecdir=${prefix}/lib/x86_64-linux-gnu' '--disable-maintainer-mode' \
             '--disable-dependency-tracking' '--with-icu' '--with-tcl' '--with-perl' \
             '--with-python' '--with-pam' '--with-openssl' '--with-libxml' '--with-libxslt' \
-            'PYTHON=/usr/bin/python3' '--mandir=/usr/share/postgresql/13/man' \
-            '--docdir=/usr/share/doc/postgresql-doc-13' 'AWK=mawk' \
+            'PYTHON=/usr/bin/python3' '--mandir=/usr/share/postgresql/14/man' \
+            '--docdir=/usr/share/doc/postgresql-doc-14' \
             '--sysconfdir=/etc/postgresql-common' '--datarootdir=/usr/share/' \
-            '--datadir=/usr/share/postgresql/13' '--bindir=/usr/lib/postgresql/13/bin' \
+            '--datadir=/usr/share/postgresql/14' '--bindir=/usr/lib/postgresql/14/bin' \
             '--libdir=/usr/lib/x86_64-linux-gnu/' '--libexecdir=/usr/lib/postgresql/' \
-            '--includedir=/usr/include/postgresql/' '--with-extra-version= (Ubuntu 2:13-x.focal)' \
+            '--includedir=/usr/include/postgresql/' '--with-extra-version= (Ubuntu 2:14-x.focal)' \
             '--enable-nls' '--enable-thread-safety' '--enable-tap-tests' '--enable-debug' \
             '--enable-dtrace' '--disable-rpath' '--with-uuid=e2fs' '--with-gnu-ld' \
             '--with-pgport=5432' '--with-system-tzdata=/usr/share/zoneinfo' '--with-llvm' \
-            'LLVM_CONFIG=/usr/bin/llvm-config-9' 'CLANG=/usr/bin/clang-9' \
+            'LLVM_CONFIG=/usr/bin/llvm-config-11' 'CLANG=/usr/bin/clang-11' \
             '--with-systemd' '--with-selinux' 'MKDIR_P=/bin/mkdir -p' 'PROVE=/usr/bin/prove' \
             'TAR=/bin/tar' 'XSLTPROC=xsltproc --nonet' 'CFLAGS=-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fno-omit-frame-pointer' \
             'LDFLAGS=-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now' '--with-gssapi' '--with-ldap' \
@@ -64,8 +64,8 @@ jobs:
 
       - name: Start postgresql cluster
         run: |
-           /usr/lib/postgresql/13/bin/initdb -D /opt/pgsql/data
-           /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile start
+           /usr/lib/postgresql/14/bin/initdb -D /opt/pgsql/data
+           /usr/lib/postgresql/14/bin/pg_ctl -D /opt/pgsql/data -l logfile start
 
       - name: Clone pg_stat_monitor repository
         uses: actions/checkout@v2
@@ -74,23 +74,28 @@ jobs:
 
       - name: Build pg_stat_monitor
         run: |
-          export PATH="/usr/lib/postgresql/13/bin:$PATH"
-          sudo cp /usr/lib/postgresql/13/bin/pg_config /usr/bin
-          pg_config
+          export PATH="/usr/lib/postgresql/14/bin:$PATH"
+          sudo cp /usr/lib/postgresql/14/bin/pg_config /usr/bin
           make USE_PGXS=1
           sudo make USE_PGXS=1 install
         working-directory: src/pg_stat_monitor/
 
       - name: Load pg_stat_monitor library and Restart Server
         run: |
-          /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile stop
+          /usr/lib/postgresql/14/bin/pg_ctl -D /opt/pgsql/data -l logfile stop
           echo "shared_preload_libraries = 'pg_stat_monitor'" >> /opt/pgsql/data/postgresql.conf
-          /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile start
+          /usr/lib/postgresql/14/bin/pg_ctl -D /opt/pgsql/data -l logfile start
         working-directory: src/pg_stat_monitor/
 
-      - name: Start pg_stat_monitor_tests
+      - name: Start pg_stat_monitor_tests & Run code coverage
         run: |
           make installcheck
+          /usr/lib/postgresql/14/bin/psql -d postgres -p 5432 -c "\list"
+          make coverage-html
+          lcov --capture --directory . --output-file coverage/lcov.info
+          pip install cpp-coveralls
+          export COVERALLS_REPO_TOKEN="${{ secrets.COVERALL_PG_STAT_MONITOR_TOKEN }}"
+          coveralls --verbose
         working-directory: src/pg_stat_monitor/
 
       - name: Change dir permissions on fail
@@ -119,19 +124,4 @@ jobs:
             !src/pg_stat_monitor/tmp_check/**/backup/
             !src/pg_stat_monitor/tmp_check/**/pgdata/
           if-no-files-found: warn
-          retention-days: 1
-
-      - name: Start Server installcheck-world tests
-        run: |
-          make installcheck-world
-
-      - name: Report on installcheck-world test suites fail
-        uses: actions/upload-artifact@v2
-        if: ${{ failure() }}
-        with:
-          name: Regressions output files of failed testsuite, and postgresql log
-          path: |
-            **/regression.diffs
-            **/regression.out
-            src/pg_stat_monitor/logfile
           retention-days: 3
