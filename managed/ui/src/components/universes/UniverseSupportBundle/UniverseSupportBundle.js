@@ -1,9 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, {Fragment, useEffect, useState} from 'react';
+import React, {Fragment, useCallback, useEffect, useState} from 'react';
 import axios from "axios";
 import {connect, useDispatch, useSelector} from "react-redux";
-import {toast} from "react-toastify";
 import {FirstStep} from "./FirstStep/FirstStep";
 import {SecondStep} from "./SecondStep/SecondStep";
 import {ThirdStep} from "./ThirdStep/ThirdStep";
@@ -43,9 +42,24 @@ export const UniverseSupportBundle = (props) => {
   const dispatch = useDispatch();
   const [supportBundles] = useSelector(getSupportBundles);
 
+  const resetSteps = () => {
+    if(supportBundles && Array.isArray(supportBundles) && supportBundles.length === 0) {
+      setSteps(stepsObj.firstStep);
+    } else {
+      setSteps(stepsObj.thirdStep);
+    }
+  };
+
+  const listSupportBundle = useCallback((universeUUID) => {
+    dispatch(getSupportBundle(universeUUID)).then((response) => {
+      dispatch(setListSupportBundle(response.payload));
+    });
+  }, [dispatch]);
+
+
   useEffect(() => {
     listSupportBundle(universeDetails.universeUUID);
-  }, []);
+  }, [listSupportBundle, universeDetails.universeUUID]);
 
   useEffect(() => {
     if(supportBundles && Array.isArray(supportBundles) && supportBundles.length === 0) {
@@ -59,23 +73,7 @@ export const UniverseSupportBundle = (props) => {
       }
     }
 
-  }, [supportBundles]);
-
-  const resetSteps = () => {
-    if(supportBundles && Array.isArray(supportBundles) && supportBundles.length === 0) {
-      setSteps(stepsObj.firstStep);
-    } else {
-      setSteps(stepsObj.thirdStep);
-    }
-  }
-
-  const listSupportBundle = (universeUUID) => {
-    dispatch(getSupportBundle(universeUUID)).then((response) => {
-      dispatch(setListSupportBundle(response.payload));
-      resetSteps();
-    });
-
-  };
+  }, [supportBundles, listSupportBundle, universeDetails.universeUUID]);
 
   const saveSupportBundle = (universeUUID) => {
     dispatch(crateSupportBundle(universeUUID, payload)).then(() => {
@@ -95,7 +93,6 @@ export const UniverseSupportBundle = (props) => {
   }
 
   const handleDownloadBundle = (universeUUID, bundleUUID) => {
-    toast.success('Download initiated, once content downloaded you will be notified.');
     downloadSupportBundle(universeUUID, bundleUUID);
   }
 
