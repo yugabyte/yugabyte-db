@@ -1307,6 +1307,10 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "disableChecksum" : {
+          "description" : "Disable checksum",
+          "type" : "boolean"
+        },
         "enableVerboseLogs" : {
           "description" : "Is verbose logging enabled",
           "type" : "boolean"
@@ -1603,6 +1607,10 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "disableChecksum" : {
+          "description" : "Disable checksum",
+          "type" : "boolean"
+        },
         "enableVerboseLogs" : {
           "description" : "Is verbose logging enabled",
           "type" : "boolean"
@@ -1630,6 +1638,10 @@
         },
         "ignoreErrors" : {
           "description" : "Should table backup errors be ignored",
+          "type" : "boolean"
+        },
+        "isFullBackup" : {
+          "description" : "Full Table type backup",
           "type" : "boolean"
         },
         "keyspace" : {
@@ -1677,7 +1689,7 @@
           "type" : "string"
         },
         "regionLocations" : {
-          "description" : "per region locations",
+          "description" : "Per region locations",
           "items" : {
             "$ref" : "#/definitions/RegionLocations"
           },
@@ -3709,6 +3721,10 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "disableChecksum" : {
+          "description" : "Disable checksum",
+          "type" : "boolean"
+        },
         "enableVerboseLogs" : {
           "description" : "Is verbose logging enabled",
           "type" : "boolean"
@@ -3736,6 +3752,10 @@
         },
         "ignoreErrors" : {
           "description" : "Should table backup errors be ignored",
+          "type" : "boolean"
+        },
+        "isFullBackup" : {
+          "description" : "Full Table type backup",
           "type" : "boolean"
         },
         "keyspace" : {
@@ -3783,7 +3803,7 @@
           "type" : "string"
         },
         "regionLocations" : {
-          "description" : "per region locations",
+          "description" : "Per region locations",
           "items" : {
             "$ref" : "#/definitions/RegionLocations"
           },
@@ -4909,6 +4929,10 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "disableChecksum" : {
+          "description" : "Disable checksum",
+          "type" : "boolean"
+        },
         "enableVerboseLogs" : {
           "description" : "Is verbose logging enabled",
           "type" : "boolean"
@@ -5000,6 +5024,10 @@
           "description" : "Universe UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
