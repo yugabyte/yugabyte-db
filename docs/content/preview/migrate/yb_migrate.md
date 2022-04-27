@@ -1,14 +1,32 @@
-## Overview
+---
+title: Database Migration Service
+headerTitle: Database Migration Service
+linkTitle: Database Migration Service
+description: Overview of the yb_migrate database engine for migrating data and applications from other databases to YugabyteDB.
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+menu:
+  preview:
+    identifier: yb-migrate
+    parent: migrate
+    weight: 720
+isTocNested: true
+showAsideToc: true
+---
 
-yb_migrate is an open-source database migration engine provided by YugabyteDB. It is a command line executable program that helps in easily migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database.
+[yb_migrate](https://github.com/yugabyte/yb-db-migration) is an open-source database migration engine provided by YugabyteDB. It is a command line executable program that supports migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database. yb_migrate addresses both steps of a database migration - schema-migration and data-migration.
 
-yb_migrate takes care of both, schema-migration and data-migration, steps of a database migration.
+{{< note title="Note" >}}
 
-Currently, yb_migrate supports "offline" migration mode. The "online" migration mode is still in the development:
-- In the *offline migration* mode, the source database MUST not change during the migration. The offline migration is considered as "done" when all of the requested schema objects and data is migrated to the target database. 
-- In the *online migration* mode, the source database can continue to change. After the full initial migration, yb_migrate continues replicating source DB changes to the target DB. It's a continuously running process, until you decide to switch-over to the YugabyteDB database.
+yb_migrate supports `offline` migration mode. The `online` migration mode is currently under development.
+
+{{< /note >}}
+
+- In the *offline migration* mode, the source database must not change during the migration. The offline migration is considered done when all the requested schema objects and data is migrated to the target database.
+
+- In the *online migration* mode, the source database can continue to change. After the full initial migration, yb_migrate continues replicating source database changes to the target database. The process runs continuously, until you decide to switch-over to the YugabyteDB database.
 
 A typical migration workflow using yb_migrate consists of following steps:
+
 - Install yb_migrate on a "migrator machine".
 - Use the `yb_migrate generateReport` command to generate a Migration Assessment Report. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB.
 - Use the `yb_migrate export schema` command to convert Source Database schema to Postgres format.
@@ -81,9 +99,9 @@ Follow the steps given below, to setup a machine where you can run yb_migrate:
         ./yb_migrate_installer__ubuntu.sh
 
   The scripts are interactive--they can ask `Y` or `N` responses.
-  
+
   It is safe to execute the script multiple times. On each run, the script regenerates the `yb_migrate` executable based on the latest commit in the git repository.
-  
+
    If the script fails for some reason, check the `yb_migrate_installer.log` in the current working directory.
 
 - The script generates a `.yb_migrate_installer_bashrc` file in the home directory. Make sure to source the file so that correct environment variables are set:
@@ -121,7 +139,7 @@ Following sections provide details of each of the above steps.
         SOURCE_DB_SCHEMA=sakila
 
     Replace values of the above environment variables as per your database details.
-    
+
     SOURCE_DB_TYPE can be one of [`postgresql`, `mysql`, `oracle`].
 
 - If you want yb_migrate to connect to the source database over SSL, refer to [SSL Connectivity](#ssl-connectivity) in the References section.
@@ -303,7 +321,7 @@ Semantics of these arguments match with the similarly named arguments described 
 
 ### Oracle
 
-For Oracle, create a TNS alias that is configured to establish a secure connection with the server. You must then pass the TNS alias to yb_migrate as `--oracle-tns-alias` argument. yb_migrate uses the TNS alias to securely connect to the server. 
+For Oracle, create a TNS alias that is configured to establish a secure connection with the server. You must then pass the TNS alias to yb_migrate as `--oracle-tns-alias` argument. yb_migrate uses the TNS alias to securely connect to the server.
 
 When you pass the `--oracle-tns-alias` argument, you don't need to pass the `--source-db-host`, `--source-db-port`, and `--source-db-name` arguments to the yb_migrate.
 
