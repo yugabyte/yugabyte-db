@@ -61,6 +61,7 @@ public class Util {
   public static final String REDACT = "REDACTED";
   public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
   public static final String SYSTEM_PLATFORM_DB = "system_platform";
+  public static final int YB_SCHEDULER_INTERVAL = 2;
 
   public static final String AZ = "AZ";
   public static final String GCS = "GCS";
