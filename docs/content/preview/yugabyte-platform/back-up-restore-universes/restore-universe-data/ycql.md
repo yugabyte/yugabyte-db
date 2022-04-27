@@ -45,7 +45,7 @@ You can restore YugabyteDB universe YCQL data from a backup as follows:
     - **Storage Location**: Specify the storage location.
     - **Universe**: Select the YCQL universe to restore.
     - **Keyspace**: Specify the keyspace.
-    - **Table**: Specify the table to be restored. Note: The table name must be different than the backed up table name.
+    - **Table**: Specify the table to be restored. Note that the table name must be different than the backed up table name.
     - **Parallel Threads**: Default is `8`. This value can be changed to a value between `1` and `100`.
     - **KMS Configuration**: Optionally, if you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the universe keys referenced in the metadata file can be retrieved. If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the key registry on the restore universe with the required universe keys. The universe data files are restored as normal afterwards.
 
