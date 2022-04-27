@@ -46,6 +46,9 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Is SSE")
   public boolean sse = false;
 
+  @ApiModelProperty(value = "Disable checksum")
+  public Boolean disableChecksum = false;
+
   @ApiModelProperty(value = "Backup info")
   public List<KeyspaceTable> keyspaceTableList;
 
