@@ -342,6 +342,20 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
           tcp-yedis-port: "6379"
           tcp-ysql-port: "5433"
     ```
+    
+  - Overrides to run YugabyteDB as a non-root user:
+  
+    ```yml
+    podSecurityContext:
+      enabled: true
+      ## Set to false to stop the non-root user validation
+      runAsNonRoot: true
+      fsGroup: 10001
+      runAsUser: 10001
+      runAsGroup: 10001
+    ```
+  
+    <br>Note that you cannot change users during the Helm upgrades.
 
 Continue configuring your Kubernetes provider by clicking **Add Zone**, as per the following illustration:
 
