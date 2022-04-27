@@ -297,6 +297,17 @@ TEST_F(FsManagerTestBase, TestLogDirAlsoDeleted) {
   ASSERT_FALSE(is_dir);
 }
 
+TEST_F(FsManagerTestBase, MultiDriveWithoutMeta) {
+  auto paths = { GetTestPath("d1"), GetTestPath("d2") };
+  ReinitFsManager(paths, paths);
+  ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
+  ASSERT_OK(env_->DeleteRecursively(fs_manager()->GetRaftGroupMetadataDirs()[0]));
+
+  // Deleted tablet-meta should be created
+  ASSERT_OK(fs_manager()->CheckAndOpenFileSystemRoots());
+  ASSERT_OK(fs_manager()->ListTabletIds());
+}
+
 class FailedEmuEnv : public EnvWrapper {
  public:
   FailedEmuEnv() : EnvWrapper(Env::Default()) { }
