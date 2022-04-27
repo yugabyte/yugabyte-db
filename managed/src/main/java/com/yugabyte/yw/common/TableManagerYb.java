@@ -283,6 +283,9 @@ public class TableManagerYb extends DevopsBase {
     if (backupTableParams.useTablespaces) {
       commandArgs.add("--use_tablespaces");
     }
+    if (backupTableParams.disableChecksum) {
+      commandArgs.add("--disable_checksums");
+    }
   }
 
   private void addAdditionalCommands(
