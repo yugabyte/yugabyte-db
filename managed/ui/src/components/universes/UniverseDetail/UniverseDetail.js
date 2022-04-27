@@ -47,6 +47,7 @@ import './UniverseDetail.scss';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import Replication from '../../xcluster/Replication';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
+import {UniverseSupportBundle} from "../UniverseSupportBundle/UniverseSupportBundle";
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
 
@@ -212,6 +213,7 @@ class UniverseDetail extends Component {
       showRollingRestartModal,
       showUpgradeSystemdModal,
       showRunSampleAppsModal,
+      showSupportBundleModal,
       showGFlagsModal,
       showManageKeyModal,
       showDeleteUniverseModal,
@@ -676,6 +678,33 @@ class UniverseDetail extends Component {
                           }
                         />
                       )}
+
+
+                      {(featureFlags.test['supportBundle'] || featureFlags.released['supportBundle']) && (
+                        <>
+                          <MenuItem divider />
+                          {!universePaused && (
+                            <UniverseSupportBundle
+                              currentUniverse={currentUniverse.data}
+                              modal={modal}
+                              closeModal={closeModal}
+                              button={
+                                <YBMenuItem
+                                  disabled={updateInProgress}
+                                  onClick={showSupportBundleModal}
+                                >
+                                  <YBLabelWithIcon icon="fa fa-file-archive-o">
+                                    Support Bundles
+                                  </YBLabelWithIcon>
+                                </YBMenuItem>
+                              }
+                            />
+                          )}
+                          <MenuItem divider />
+                        </>
+                      )}
+
+
 
                       {!universePaused && (
                         <YBMenuItem

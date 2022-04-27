@@ -25,6 +25,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/ysql_tablegroup_manager.h"
 
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_service.h"
@@ -670,9 +671,8 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
 
           TRACE("Locking table");
           auto l = table_info->LockForRead();
-          // PG schema name is available for YSQL table only.
-          // Except '<uuid>.colocated.parent.uuid' table ID.
-          if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocatedParentTableId(entry.id())) {
+          // PG schema name is available for YSQL table only, except for colocation parent tables.
+          if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
             const string pg_schema_name = VERIFY_RESULT(GetPgSchemaName(table_info));
             VLOG(1) << "PG Schema: " << pg_schema_name << " for table " << table_info->ToString();
             backup_entry->set_pg_schema_name(pg_schema_name);
@@ -1547,7 +1547,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       SharedLock lock(mutex_);
       if (VERIFY_RESULT(CheckTableForImport(table, table_data))) {
         LOG_WITH_FUNC(INFO) << "Found existing table: '" << table->ToString() << "'";
-        if (meta.colocated() && IsColocatedParentTableId(table_data->old_table_id)) {
+        if (meta.colocated() && IsColocationParentTableId(table_data->old_table_id)) {
           // Parent colocated tables don't have partition info, so make sure to mark them.
           is_parent_colocated_table = true;
         }
@@ -1576,12 +1576,13 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
         // For YSQL, the table must be created via external call. Therefore, continue the search for
         // the table, this time checking for name matches rather than id matches.
 
-        if (meta.colocated() && IsColocatedParentTableId(table_data->old_table_id)) {
+        // TODO(alex): Handle tablegroups in #11632
+        if (meta.colocated() && IsColocatedDbParentTableId(table_data->old_table_id)) {
           // For the parent colocated table we need to generate the new_table_id ourselves
           // since the names will not match.
           // For normal colocated tables, we are still able to follow the normal table flow, so no
           // need to generate the new_table_id ourselves.
-          table_data->new_table_id = new_namespace_id + kColocatedParentTableIdSuffix;
+          table_data->new_table_id = GetColocatedDbParentTableId(new_namespace_id);
           is_parent_colocated_table = true;
         } else {
           if (!table_data->new_table_id.empty()) {
@@ -2774,19 +2775,21 @@ Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
         LOG(WARNING) << "CDC stream does not exist: " << stream_id;
       } else {
         auto ltm = stream->LockForRead();
-        bool active = (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE);
-        bool is_WAL = false;
-        for (const auto& option : ltm->pb.options()) {
-          if (option.key() == "record_format" && option.value() == "WAL") {
-            is_WAL = true;
+        if (req->has_force_delete() && req->force_delete() == false) {
+          bool active = (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE);
+          bool is_WAL = false;
+          for (const auto& option : ltm->pb.options()) {
+            if (option.key() == "record_format" && option.value() == "WAL") {
+              is_WAL = true;
+            }
           }
-        }
-        if (!req->force_delete() && is_WAL && active) {
-          return STATUS(NotSupported,
-                        "Cannot delete an xCluster Stream in replication. "
-                        "Use 'force_delete' to override",
-                        req->ShortDebugString(),
-                        MasterError(MasterErrorPB::INVALID_REQUEST));
+          if (is_WAL && active) {
+            return STATUS(NotSupported,
+                "Cannot delete an xCluster Stream in replication. "
+                "Use 'force_delete' to override",
+                req->ShortDebugString(),
+                MasterError(MasterErrorPB::INVALID_REQUEST));
+          }
         }
         streams.push_back(stream);
       }
@@ -3306,18 +3309,19 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
 
     // SETUP CONTINUES after this async call.
     Status s;
-    if (IsColocatedParentTableId(req->producer_table_ids(i))) {
+    if (IsColocatedDbParentTableId(req->producer_table_ids(i))) {
       auto tables_info = std::make_shared<std::vector<client::YBTableInfo>>();
-      s = cdc_rpc->client()->GetColocatedTabletSchemaById(
+      s = cdc_rpc->client()->GetColocatedTabletSchemaByParentTableId(
           req->producer_table_ids(i), tables_info,
           Bind(&enterprise::CatalogManager::GetColocatedTabletSchemaCallback, Unretained(this),
                ri->id(), tables_info, table_id_to_bootstrap_id));
     } else if (IsTablegroupParentTableId(req->producer_table_ids(i))) {
-      auto tablegroup_info = std::make_shared<std::vector<client::YBTableInfo>>();
+      auto tablegroup_id = GetTablegroupIdFromParentTableId(req->producer_table_ids(i));
+      auto tables_info = std::make_shared<std::vector<client::YBTableInfo>>();
       s = cdc_rpc->client()->GetTablegroupSchemaById(
-          req->producer_table_ids(i), tablegroup_info,
+          tablegroup_id, tables_info,
           Bind(&enterprise::CatalogManager::GetTablegroupSchemaCallback, Unretained(this),
-               ri->id(), tablegroup_info, req->producer_table_ids(i), table_id_to_bootstrap_id));
+               ri->id(), tables_info, tablegroup_id, table_id_to_bootstrap_id));
     } else {
       auto table_info = std::make_shared<client::YBTableInfo>();
       s = cdc_rpc->client()->GetTableSchemaById(
@@ -3685,8 +3689,9 @@ void CatalogManager::GetTablegroupSchemaCallback(
   // the tablegroup ID from table ID), we only do this call once and do validation afterward.
   TablegroupId consumer_tablegroup_id;
   {
-    const auto& result = FindTablegroupByTableId(*validated_consumer_tables.begin());
-    if (!result.has_value()) {
+    SharedLock lock(mutex_);
+    const auto* tablegroup = tablegroup_manager_->FindByTable(*validated_consumer_tables.begin());
+    if (!tablegroup) {
       std::string message =
           Format("No consumer tablegroup found for producer tablegroup: $0",
                  producer_tablegroup_id);
@@ -3694,7 +3699,7 @@ void CatalogManager::GetTablegroupSchemaCallback(
       LOG(ERROR) << message;
       return;
     }
-    consumer_tablegroup_id = result.value();
+    consumer_tablegroup_id = tablegroup->id();
   }
 
   // tables_in_consumer_tablegroup are the tables listed within the consumer_tablegroup_id.
@@ -3703,7 +3708,7 @@ void CatalogManager::GetTablegroupSchemaCallback(
   {
     GetTablegroupSchemaRequestPB req;
     GetTablegroupSchemaResponsePB resp;
-    req.mutable_parent_tablegroup()->set_id(consumer_tablegroup_id);
+    req.mutable_tablegroup()->set_id(consumer_tablegroup_id);
     Status status = GetTablegroupSchema(&req, &resp);
     if (!status.ok() || resp.has_error()) {
       std::string message = Format("Error when getting consumer tablegroup schema: $0",
@@ -3747,10 +3752,11 @@ void CatalogManager::GetTablegroupSchemaCallback(
                << producer_tablegroup_id << ": " << status;
   }
 
-  status = AddValidatedTableAndCreateCdcStreams(universe,
-                                                       table_bootstrap_ids,
-                                                       producer_tablegroup_id,
-                                                       consumer_tablegroup_id);
+  status = AddValidatedTableAndCreateCdcStreams(
+      universe,
+      table_bootstrap_ids,
+      GetTablegroupParentTableId(producer_tablegroup_id),
+      GetTablegroupParentTableId(consumer_tablegroup_id));
   if (!status.ok()) {
     LOG(ERROR) << "Found error while adding validated table to system catalog: "
                << producer_tablegroup_id << ": " << status;
@@ -3813,9 +3819,9 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     }
     // Store the parent table ids.
     producer_parent_table_ids.insert(
-        info.table_name.namespace_id() + kColocatedParentTableIdSuffix);
+        GetColocatedDbParentTableId(info.table_name.namespace_id()));
     consumer_parent_table_ids.insert(
-        resp.identifier().namespace_().id() + kColocatedParentTableIdSuffix);
+        GetColocatedDbParentTableId(resp.identifier().namespace_().id()));
   }
 
   // Verify that we only found one producer and one consumer colocated parent table id.

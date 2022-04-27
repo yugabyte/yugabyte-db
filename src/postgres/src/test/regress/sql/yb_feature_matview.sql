@@ -367,3 +367,12 @@ SELECT * FROM mv_collate_test_POSIX ORDER BY b;
 SELECT * FROM mv_collate_test_POSIX ORDER BY b COLLATE "en-US-x-icu";
 CREATE MATERIALIZED VIEW mv_collate_test_explicit_collation AS SELECT b COLLATE "en-US-x-icu" FROM collate_test_POSIX;
 SELECT * FROM mv_collate_test_explicit_collation ORDER BY b;
+
+-- Test EXPLAIN ANALYZE + CREATE MATERIALIZED VIEW AS.
+-- Use EXECUTE to hide the output since it won't be stable.
+DO $$
+BEGIN
+  EXECUTE 'EXPLAIN ANALYZE CREATE MATERIALIZED VIEW view_as_1 AS SELECT 1';
+END$$;
+
+SELECT * FROM view_as_1;

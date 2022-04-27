@@ -31,6 +31,7 @@ namespace master {
 using ZoneToDescMap = std::unordered_map<string, TSDescriptorVector>;
 
 struct Comparator;
+class SetPreferredZonesRequestPB;
 
 class CatalogManagerUtil {
  public:
@@ -101,6 +102,12 @@ class CatalogManagerUtil {
   // block string (C.R.Z format) should be proper prefix of another.
   // Validate placement information if passed.
   static CHECKED_STATUS IsPlacementInfoValid(const PlacementInfoPB& placement_info);
+
+  static CHECKED_STATUS SetPreferredZones(
+      const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info);
+
+  static void GetAllAffinitizedZones(
+      const ReplicationInfoPB* replication_info, vector<AffinitizedZonesSet>* affinitized_zones);
 
   template<class LoadState>
   static void FillTableLoadState(const scoped_refptr<TableInfo>& table_info, LoadState* state) {

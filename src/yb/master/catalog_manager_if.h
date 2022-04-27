@@ -115,8 +115,6 @@ class CatalogManagerIf {
 
   virtual bool IsUserTable(const TableInfo& table) const = 0;
 
-  virtual bool HasTablegroups() = 0;
-
   virtual NamespaceName GetNamespaceName(const NamespaceId& id) const = 0;
 
   virtual bool IsUserIndex(const TableInfo& table) const = 0;
@@ -150,7 +148,9 @@ class CatalogManagerIf {
 
   virtual bool IsUserCreatedTable(const TableInfo& table) const = 0;
 
-  virtual Result<BlacklistSet> BlacklistSetFromPB() const = 0;
+  virtual Status GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) = 0;
+
+  virtual Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const = 0;
 
   virtual void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo>>* types) = 0;
 

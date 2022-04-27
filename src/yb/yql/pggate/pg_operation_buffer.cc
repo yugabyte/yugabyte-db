@@ -332,9 +332,15 @@ class PgOperationBuffer::Impl {
                               size_t ops_count) {
     if (!ops.empty() && !(interceptor && (*interceptor)(std::move(ops), transactional))) {
       EnsureCapacity(&in_flight_ops_, buffering_settings_);
-      size_t kMaxInFlightOperations = buffering_settings_.max_in_flight_operations;
-      for (int64_t space_required = (InFlightOpsCount() + ops_count) - kMaxInFlightOperations;
-           space_required > 0;) {
+      // In case max_in_flight_operations < max_batch_size, the number of in-flight operations will
+      // be equal to max_batch_size after sending single buffer. So use max of these values for
+      // actual_max_in_flight_operations.
+      const auto actual_max_in_flight_operations = std::max(
+          buffering_settings_.max_in_flight_operations,
+          buffering_settings_.max_batch_size);
+      int64_t space_required = (InFlightOpsCount() + ops_count) - actual_max_in_flight_operations;
+      while (!in_flight_ops_.empty() &&
+             (space_required > 0 || in_flight_ops_.front().future.Ready())) {
         auto it = in_flight_ops_.begin();
         space_required -= it->keys.size();
         RETURN_NOT_OK(EnsureCompleted(++it));

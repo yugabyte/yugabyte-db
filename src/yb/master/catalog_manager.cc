@@ -150,6 +150,7 @@
 #include "yb/master/yql_triggers_vtable.h"
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
+#include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
 
 #include "yb/rpc/messenger.h"
@@ -762,6 +763,7 @@ CatalogManager::CatalogManager(Master* master)
       leader_ready_term_(-1),
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
       load_balance_policy_(std::make_unique<ClusterLoadBalancer>(this)),
+      tablegroup_manager_(std::make_unique<YsqlTablegroupManager>()),
       permissions_manager_(std::make_unique<PermissionsManager>(this)),
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
@@ -1926,13 +1928,12 @@ Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicat
 
 bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
   const auto& live_placement_info = replication_info.live_replicas();
-  if (!(live_placement_info.placement_blocks().empty() &&
-        live_placement_info.num_replicas() <= 0 &&
+  if (!(live_placement_info.placement_blocks().empty() && live_placement_info.num_replicas() <= 0 &&
         live_placement_info.placement_uuid().empty()) ||
       !replication_info.read_replicas().empty() ||
-      !replication_info.affinitized_leaders().empty()) {
-
-      return true;
+      !replication_info.affinitized_leaders().empty() ||
+      !replication_info.multi_affinitized_leaders().empty()) {
+    return true;
   }
   return false;
 }
@@ -3210,7 +3211,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   auto ns = VERIFY_RESULT(FindNamespace(req.namespace_()));
-  bool colocated;
+  bool is_colocated_via_database;
   NamespaceId namespace_id;
   NamespaceName namespace_name;
   {
@@ -3221,7 +3222,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
     namespace_id = ns->id();
     namespace_name = ns->name();
-    colocated = ns->colocated();
+    is_colocated_via_database = ns->colocated();
   }
 
   // For index table, find the table info
@@ -3238,21 +3239,25 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(indexed_table->LockForRead(), resp));
   }
 
-  // Determine if this table should be colocated. If not specified, the table should be colocated if
-  // and only if the namespace is colocated.
-  if (!req.colocated()) {
+  // Determine if this table should be colocated with its database.
+  if (req.has_is_colocated_via_database() && !req.is_colocated_via_database()) {
     // Opt out of colocation if the request says so.
-    colocated = false;
+    is_colocated_via_database = false;
   } else if (indexed_table && !indexed_table->colocated()) {
     // Opt out of colocation if the indexed table opted out of colocation.
-    colocated = false;
+    is_colocated_via_database = false;
   }
 
-  // TODO: If this is a colocated index table in a colocated database, convert any hash partition
-  // columns into range partition columns. This is because postgres does not know that this index
-  // table is in a colocated database. When we get to the "tablespaces" step where we store this
-  // into PG metadata, then PG will know if db/table is colocated and do the work there.
-  if ((colocated || req.has_tablegroup_id()) && IsIndex(req)) {
+  bool colocated = is_colocated_via_database || req.has_tablegroup_id();
+  SCHECK(!colocated || req.has_table_id(),
+         InvalidArgument, "Colocated table should specify a table ID");
+
+  // TODO: If this is a colocated index table, convert any hash partition columns into
+  // range partition columns.
+  // This is because postgres does not know that this index table is in a colocated database.
+  // When we get to the "tablespaces" step where we store this into PG metadata, then PG will know
+  // if db/table is colocated and do the work there.
+  if (colocated && IsIndex(req)) {
     for (auto& col_pb : *req.mutable_schema()->mutable_columns()) {
       col_pb.set_is_hash_key(false);
     }
@@ -3288,7 +3293,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return CreateCopartitionedTable(req, resp, rpc, schema, ns);
   }
 
-  if (colocated || req.has_tablegroup_id()) {
+  if (colocated) {
     // If the table is colocated, then there should be no hash partition columns.
     // Do the same for tables that are being placed in tablegroups.
     if (schema.num_hash_key_columns() > 0) {
@@ -3310,11 +3315,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  // Verify that custom placement policy has not been specified for colocated table.
+  // Verify that custom placement policy has not been specified for database-colocated table.
   const bool is_replication_info_set = IsReplicationInfoSet(req.replication_info());
-  if (is_replication_info_set && colocated) {
+  if (is_replication_info_set && is_colocated_via_database) {
     Status s = STATUS(InvalidArgument, "Custom placement policy should not be set for "
-      "colocated tables");
+      "tables colocated via database");
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }
 
@@ -3362,7 +3367,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Create partitions.
   PartitionSchema partition_schema;
   vector<Partition> partitions;
-  if (colocated || req.has_tablegroup_id()) {
+  if (colocated) {
     RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
     req.clear_partition_schema();
     num_tablets = 1;
@@ -3452,16 +3457,18 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   scoped_refptr<TableInfo> table;
   TabletInfos tablets;
-  bool tablets_exist;
-  bool tablegroup_tablets_exist = false;
+
+  // Whether the table is joining an existing colocation group - i.e. is a
+  // colocated non-parent table.
+  // Such tables will reuse tablets of their respective colocation group.
+  bool joining_colocation_group =
+      colocated && !IsColocationParentTableId(req.table_id());
 
   {
     LockGuard lock(mutex_);
     auto ns_lock = ns->LockForRead();
     TRACE("Acquired catalog manager lock");
 
-    tablets_exist =
-        colocated && colocated_tablet_ids_map_.find(ns->id()) != colocated_tablet_ids_map_.end();
     // Verify that the table does not exist.
     table = FindPtrOrNull(table_names_map_, {namespace_id, req.name()});
 
@@ -3484,7 +3491,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // 2. Allow Namespaces that are PREPARING under 2 situations
     //    2a. System Namespaces.
     //    2b. The parent table from a Colocated Namespace.
-    const auto parent_table_name = ns->id() + kColocatedParentTableNameSuffix;
+    const auto parent_table_name = GetColocatedDbParentTableName(ns->id());
     bool valid_ns_state = (ns->state() == SysNamespaceEntryPB::RUNNING) ||
       (ns->state() == SysNamespaceEntryPB::PREPARING &&
         (ns->name() == kSystemNamespaceName || req.name() == parent_table_name));
@@ -3497,99 +3504,111 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // Check whether this CREATE TABLE request which has a tablegroup_id is for a normal user table
     // or the request to create the parent table for the tablegroup. This is done by checking the
     // catalog manager maps.
-    if (req.has_tablegroup_id() &&
-        tablegroup_tablet_ids_map_.find(ns->id()) != tablegroup_tablet_ids_map_.end() &&
-        tablegroup_tablet_ids_map_[ns->id()].find(req.tablegroup_id()) !=
-        tablegroup_tablet_ids_map_[ns->id()].end()) {
-      tablegroup_tablets_exist = true;
+    YsqlTablegroupManager::TablegroupInfo* tablegroup = nullptr;
+    if (req.has_tablegroup_id()) {
+      tablegroup = tablegroup_manager_->Find(req.tablegroup_id());
+      if (tablegroup == nullptr && !IsTablegroupParentTableId(req.table_id())) {
+        Status s = STATUS_SUBSTITUTE(InvalidArgument, "Tablegroup with ID $0 does not exist",
+                                     req.tablegroup_id());
+        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+      }
     }
 
     // Generate colocation ID in advance in order to fail before CreateTableInMemory is called.
     ColocationId colocation_id = kColocationIdNotSet;
-    if (req.has_tablegroup_id() && tablegroup_tablets_exist) {
-      auto tablegroup = tablegroup_ids_map_[req.tablegroup_id()];
-
-      colocation_id = VERIFY_RESULT(
-          ConceiveColocationId(req, resp, [tablegroup](auto colocation_id) {
-            return tablegroup->HasChildTable(colocation_id);
-          }));
-    } else if (colocated && tablets_exist) {
-      auto tablet = colocated_tablet_ids_map_[ns->id()];
-      auto tablet_lock = tablet->LockForWrite();
-
-      std::set<ColocationId> colocation_ids;
-      if (!req.has_colocation_id()) {
-        for (const TableId& table_id : tablet_lock.data().pb.table_ids()) {
-          DCHECK(!table_id.empty());
-          const auto colocated_table_info = GetTableInfoUnlocked(table_id);
-          if (!colocated_table_info) {
-            // Needed because of #11129, should be replaced with DCHECK after the fix.
-            continue;
-          }
-          Schema colocated_table_schema;
-          RETURN_NOT_OK(colocated_table_info->GetSchema(&colocated_table_schema));
-          colocation_ids.insert(colocated_table_schema.colocation_id());
+    if (joining_colocation_group) {
+      if (tablegroup) {
+        colocation_id = VERIFY_RESULT(
+            ConceiveColocationId(req, resp, [tablegroup](auto colocation_id) {
+              return tablegroup->HasChildTable(colocation_id);
+            }));
+      } else {
+        CHECK(is_colocated_via_database);
+        if (colocated_db_tablets_map_.find(ns->id()) == colocated_db_tablets_map_.end()) {
+          Status s = STATUS_SUBSTITUTE(IllegalState,
+                                       "Database $0 doesn't have a colocation tablet!",
+                                       namespace_name);
+          return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
         }
-      }
+        auto tablet = colocated_db_tablets_map_[ns->id()];
+        auto tablet_lock = tablet->LockForWrite();
 
-      colocation_id = VERIFY_RESULT(
-          ConceiveColocationId(req, resp, [&colocation_ids](auto colocation_id) {
-            return ContainsKey(colocation_ids, colocation_id);
-          }));
+        std::set<ColocationId> colocation_ids;
+        if (!req.has_colocation_id()) {
+          for (const TableId& table_id : tablet_lock.data().pb.table_ids()) {
+            DCHECK(!table_id.empty());
+            const auto colocated_table_info = GetTableInfoUnlocked(table_id);
+            if (!colocated_table_info) {
+              // Needed because of #11129, should be replaced with DCHECK after the fix.
+              continue;
+            }
+            Schema colocated_table_schema;
+            RETURN_NOT_OK(colocated_table_info->GetSchema(&colocated_table_schema));
+            colocation_ids.insert(colocated_table_schema.colocation_id());
+          }
+        }
+
+        colocation_id = VERIFY_RESULT(
+            ConceiveColocationId(req, resp, [&colocation_ids](auto colocation_id) {
+              return ContainsKey(colocation_ids, colocation_id);
+            }));
+      }
     }
 
     RETURN_NOT_OK(CreateTableInMemory(
         req, schema, partition_schema, namespace_id, namespace_name, partitions, &index_info,
-        (!tablets_exist && !tablegroup_tablets_exist) ? &tablets : nullptr, resp, &table));
+        joining_colocation_group ? nullptr : &tablets, resp, &table));
 
-    // Section is executed when a table is either the parent table or a user table in a tablegroup.
+    // Section is executed when a table is either the parent table or a user table in a colocation
+    // group.
     // It additionally sets the table metadata (and tablet metadata if this is the parent table)
     // to have the colocated property so we can take advantage of code reuse.
-    if (req.has_tablegroup_id()) {
+    if (colocated) {
       table->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
-      if (tablegroup_tablets_exist) {
-        // If the table is not a tablegroup parent table, it performs a lookup for the proper tablet
-        // to place the table on as a child table.
-        auto tablet = tablegroup_tablet_ids_map_[ns->id()][req.tablegroup_id()];
-        RSTATUS_DCHECK(
-            tablet->colocated(), InternalError,
-            "The tablet for tablegroup should be colocated.");
-        tablets.push_back(tablet.get());
-        auto tablet_lock = tablet->LockForWrite();
-        tablet_lock.mutable_data()->pb.add_table_ids(table->id());
-        RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet));
-        tablet_lock.Commit();
 
-        auto tablegroup = tablegroup_ids_map_[req.tablegroup_id()];
+      if (!joining_colocation_group) {
+        // This is a dummy parent table of a newly created colocation group.
+        // It creates a dummy tablet for the colocation group along with updating the
+        // catalog manager maps.
+        tablets[0]->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
 
-        CHECK(colocation_id != kColocationIdNotSet);
-        table->mutable_metadata()->mutable_dirty()->
-            pb.mutable_schema()->mutable_colocated_table_id()->set_colocation_id(colocation_id);
+        if (is_colocated_via_database) {
+          RSTATUS_DCHECK(
+              table->IsColocatedDbParentTable(), InternalError,
+              "Expected colocated database to produce a colocation parent table");
+          RSTATUS_DCHECK_EQ(
+              tablets.size(), 1U, InternalError,
+              "Only one tablet should be created for each colocated database");
+          CHECK(table->id() == GetColocatedDbParentTableId(namespace_id))
+              << table->id() << ", " << namespace_id;
 
-        tablet->mutable_metadata()->StartMutation();
-        table->AddTablet(tablet);
-        tablegroup->AddChildTable(table->id(), colocation_id);
+          colocated_db_tablets_map_[ns->id()] = tablet_map_->find(tablets[0]->id())->second;
+        } else {
+          RSTATUS_DCHECK(
+              table->IsTablegroupParentTable(), InternalError,
+              "Expected tablegroup to produce a tablegroup parent table");
+          RSTATUS_DCHECK_EQ(
+              tablets.size(), 1U, InternalError,
+              "Only one tablet should be created for each tablegroup");
+          CHECK(table->id() == GetTablegroupParentTableId(req.tablegroup_id()))
+              << table->id() << ", " << req.tablegroup_id() << ", " << namespace_id;
 
-        table_tablegroup_ids_map_[table->id()] = tablegroup->id();
+          // Define a new tablegroup
+          DCHECK(tablegroup == nullptr);
+          tablegroup =
+              VERIFY_RESULT(tablegroup_manager_->Add(
+                  ns->id(), req.tablegroup_id(),
+                  tablet_map_->find(tablets[0]->id())->second));
+        }
       } else {
-        // If the table is a tablegroup parent table, it creates a dummy tablet for the tablegroup
-        // along with updating the catalog manager maps.
-        RSTATUS_DCHECK_EQ(
-            tablets.size(), 1U, InternalError,
-            "Only one tablet should be created for each tablegroup");
-        tablets[0]->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
-        // Update catalog manager maps for tablegroups
-        tablegroup_tablet_ids_map_[ns->id()][req.tablegroup_id()] =
-            tablet_map_->find(tablets[0]->id())->second;
-      }
-    } else if (colocated) {
-      table->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
-      // if the tablet already exists, add the tablet to tablets
-      if (tablets_exist) {
-        auto tablet = colocated_tablet_ids_map_[ns->id()];
+        // Adding a table to an existing colocation tablet.
+        auto tablet = is_colocated_via_database ?
+            colocated_db_tablets_map_[ns->id()] :
+            tablegroup->tablet();
         RSTATUS_DCHECK(
             tablet->colocated(), InternalError,
-            "The tablet for colocated database should be colocated.");
+            Format("Colocation group tablet $0 should be marked as colocated",
+                   tablet->id()));
         tablets.push_back(tablet.get());
 
         auto tablet_lock = tablet->LockForWrite();
@@ -3604,14 +3623,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
         tablet->mutable_metadata()->StartMutation();
         table->AddTablet(tablet);
-      } else {  // Record the tablet
-        RSTATUS_DCHECK_EQ(
-            tablets.size(), 1U, InternalError,
-            "Only one tablet should be created for each colocated database");
-        tablets[0]->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
-        colocated_tablet_ids_map_[ns->id()] = tablet_map_->find(tablets[0]->id())->second;
+
+        if (tablegroup) {
+          RETURN_NOT_OK(tablegroup->AddChildTable(table->id(), colocation_id));
+        }
       }
     }
+
     if (req.has_matview_pg_table_id()) {
       matview_pg_table_ids_map_[req.table_id()] = req.matview_pg_table_id();
     }
@@ -3651,8 +3669,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Inserted new table and tablet info into CatalogManager maps");
   VLOG_WITH_PREFIX(1) << "Inserted new table and tablet info into CatalogManager maps";
 
-  if (!tablets_exist && !tablegroup_tablets_exist) {
-    // Write Tablets to sys-tablets (in "preparing" state).
+  // Write tablets to sys-tablets.
+  // If new tablets are created, they will be in PREPARING state.
+  if (!joining_colocation_group) {
     for (const auto& tablet : tablets) {
       CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
     }
@@ -3694,7 +3713,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     tablet->mutable_metadata()->CommitMutation();
   }
 
-  if ((colocated && tablets_exist) || (req.has_tablegroup_id() && tablegroup_tablets_exist)) {
+  if (joining_colocation_group) {
     auto call =
         std::make_shared<AsyncAddTableToTablet>(master_, AsyncTaskPool(), tablets[0], table);
     table->AddTask(call);
@@ -5141,16 +5160,7 @@ Status CatalogManager::DeleteTableInternal(
       // Send a RemoveTableFromTablet() request to each
       // colocated parent tablet replica in the table.
       if (table.retained_by_snapshot_schedules.empty()) {
-        {
-          LockGuard lock(mutex_);
-          const auto it = table_tablegroup_ids_map_.find(table.info->id());
-          if (it != table_tablegroup_ids_map_.end()) {
-            const TablegroupId& tablegroup_id = it->second;
-            const auto& tablegroup = DCHECK_NOTNULL(tablegroup_ids_map_[tablegroup_id]);
-            tablegroup->DeleteChildTable(table.info->id());
-            table_tablegroup_ids_map_.erase(table.info->id());
-          }
-        }
+        RETURN_NOT_OK(TryRemoveFromTablegroup(table.info->id()));
         LOG(INFO) << "Notifying tablet with id "
                   << table.info->GetColocatedTablet()->tablet_id()
                   << " to remove this colocated table " << table.info->name()
@@ -6006,47 +6016,38 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 Status CatalogManager::GetTablegroupSchema(const GetTablegroupSchemaRequestPB* req,
                                            GetTablegroupSchemaResponsePB* resp) {
   VLOG(1) << "Servicing GetTablegroupSchema request for " << req->ShortDebugString();
-  if (!req->parent_tablegroup().has_id()) {
-    Status s = STATUS(InvalidArgument, "Invalid get tablegroup request (missing fields)");
+  if (!req->tablegroup().has_id()) {
+    Status s = STATUS(InvalidArgument, "Invalid GetTablegroupSchema request (missing ID)");
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
   }
 
-  const std::string& tablegroupId = req->parent_tablegroup().id();
-  if (!IsTablegroupParentTableId(tablegroupId)) {
-    Status s = STATUS(InvalidArgument, "Received a non tablegroup ID");
+  const std::string& tablegroup_id = req->tablegroup().id();
+  if (!IsIdLikeUuid(tablegroup_id)) {
+    Status s = STATUS_FORMAT(InvalidArgument, "Malformed tablegroup ID: $0", tablegroup_id);
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
   }
-
-  // Strip the suffix from the tablegroup ID request (since tablegroup_ids_map_
-  // only accepts the plain ID).
-  DCHECK(boost::algorithm::ends_with(tablegroupId, master::kTablegroupParentTableIdSuffix));
-  size_t tgid_len = tablegroupId.size() - strlen(master::kTablegroupParentTableIdSuffix);
-  TablegroupId tgid = tablegroupId.substr(0, tgid_len);
 
   // Lookup the tablegroup.
-  std::unordered_set<TableId> tablesInTablegroup;
+  std::unordered_set<TableId> table_ids;
   {
     SharedLock lock(mutex_);
 
-    if (tablegroup_ids_map_.find(tgid) == tablegroup_ids_map_.end()) {
-      return STATUS(NotFound, Substitute("Tablegroup not found for tablegroup id: $0",
-                                         req->parent_tablegroup().id()));
-    }
-    scoped_refptr<TablegroupInfo> tginfo = tablegroup_ids_map_[tgid];
-    tablesInTablegroup = tginfo->ChildTables();
+    const auto* tablegroup = tablegroup_manager_->Find(tablegroup_id);
+    SCHECK(tablegroup, NotFound, Substitute("Tablegroup with ID $0 not found", tablegroup_id));
+    table_ids = tablegroup->ChildTableIds();
   }
 
-  for (const auto& t : tablesInTablegroup) {
+  for (const auto& table_id : table_ids) {
     TRACE("Looking up table");
-    GetTableSchemaRequestPB schemaReq;
-    GetTableSchemaResponsePB schemaResp;
-    schemaReq.mutable_table()->set_table_id(t);
-    Status s = GetTableSchema(&schemaReq, &schemaResp);
-    if (!s.ok() || schemaResp.has_error()) {
+    GetTableSchemaRequestPB schema_req;
+    GetTableSchemaResponsePB schema_resp;
+    schema_req.mutable_table()->set_table_id(table_id);
+    Status s = GetTableSchema(&schema_req, &schema_resp);
+    if (!s.ok() || schema_resp.has_error()) {
       LOG(ERROR) << "Error while getting table schema: " << s;
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
     }
-    resp->add_get_table_schema_response_pbs()->Swap(&schemaResp);
+    resp->add_get_table_schema_response_pbs()->Swap(&schema_resp);
   }
 
   return Status::OK();
@@ -6065,7 +6066,7 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
     RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
   }
 
-  if (!parent_colocated_table->colocated() || !parent_colocated_table->IsColocatedParentTable()) {
+  if (!parent_colocated_table->colocated() || !parent_colocated_table->IsColocatedDbParentTable()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_TYPE,
                       STATUS(InvalidArgument, "Table provided is not a parent colocated table"));
   }
@@ -6210,22 +6211,6 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
   return Status::OK();
 }
 
-boost::optional<TablegroupId> CatalogManager::FindTablegroupByTableId(const TableId& table_id) {
-  SharedLock lock(mutex_);
-
-  for (const auto& tablegroup : tablegroup_ids_map_) {
-    const auto& tgid = tablegroup.first;
-    const auto& tginfo = tablegroup.second;
-    for (const auto& t : tginfo->ChildTables()) {
-      if (table_id == t) {
-        return boost::optional<TablegroupId>(tgid + kTablegroupParentTableIdSuffix);
-      }
-    }
-  }
-
-  return boost::none;
-}
-
 scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
   SharedLock lock(mutex_);
   return FindPtrOrNull(*table_ids_map_, table_id);
@@ -6337,8 +6322,7 @@ bool CatalogManager::IsUserCreatedTableUnlocked(const TableInfo& table) const {
   if (table.GetTableType() == PGSQL_TABLE_TYPE || table.GetTableType() == YQL_TABLE_TYPE) {
     if (!IsSystemTable(table) && !IsSequencesSystemTable(table) &&
         GetNamespaceNameUnlocked(table.namespace_id()) != kSystemNamespaceName &&
-        !table.IsColocatedParentTable() &&
-        !table.IsTablegroupParentTable()) {
+        !table.IsColocationParentTable()) {
       return true;
     }
   }
@@ -6363,17 +6347,8 @@ bool CatalogManager::IsUserIndexUnlocked(const TableInfo& table) const {
   return IsUserCreatedTableUnlocked(table) && !table.indexed_table_id().empty();
 }
 
-bool CatalogManager::IsTablegroupParentTableId(const TableId& table_id) const {
-  return table_id.find(kTablegroupParentTableIdSuffix) != std::string::npos;
-}
-
-bool CatalogManager::IsColocatedParentTableId(const TableId& table_id) const {
-  return table_id.find(kColocatedParentTableIdSuffix) != std::string::npos;
-}
-
 bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
-  if (table.GetTableType() == PGSQL_TABLE_TYPE && !table.IsColocatedParentTable()
-                                               && !table.IsTablegroupParentTable()) {
+  if (table.GetTableType() == PGSQL_TABLE_TYPE && !table.IsColocationParentTable()) {
     // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
     if (!IsPgsqlId(table.namespace_id()) || !IsPgsqlId(table.id())) {
       LOG(WARNING) << "Not PGSQL IDs " << table.namespace_id() << ", " << table.id();
@@ -7059,8 +7034,8 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
   }
 
   // Use the tablegroup id as the prefix for the parent table id.
-  const auto parent_table_id = req->id() + kTablegroupParentTableIdSuffix;
-  const auto parent_table_name = req->id() + kTablegroupParentTableNameSuffix;
+  const auto parent_table_id = GetTablegroupParentTableId(req->id());
+  const auto parent_table_name = GetTablegroupParentTableName(req->id());
   ctreq.set_name(parent_table_name);
   ctreq.set_table_id(parent_table_id);
   ctreq.mutable_namespace_()->set_name(req->namespace_name());
@@ -7079,7 +7054,7 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
     ctreq.mutable_schema()->mutable_table_properties()->set_is_transactional(true);
   }
 
-  // Create a parent table, which will create the tablet.
+  // Create a parent table, which will create the tablet and the tablegroup in-memory entity.
   Status s = CreateTable(&ctreq, &ctresp, rpc);
   resp->set_parent_table_id(ctresp.table_id());
   resp->set_parent_table_name(parent_table_name);
@@ -7093,16 +7068,7 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
   // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
   if (!s.ok() && !s.IsAlreadyPresent()) {
     LOG(WARNING) << "Tablegroup creation failed: " << s.ToString();
-    return s;
   }
-
-  // Update catalog manager maps
-  LockGuard lock(mutex_);
-  TRACE("Acquired catalog manager lock");
-  TablegroupInfo *tg = new TablegroupInfo(req->id(), req->namespace_id());
-  tablegroup_ids_map_[req->id()] = tg;
-  table_tablegroup_ids_map_[parent_table_id] = tg->id();
-
   return s;
 }
 
@@ -7115,14 +7081,14 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
   DeleteTableResponsePB dtresp;
 
   // Sanity check for PB fields
-  if (!req->has_id() || !req->has_namespace_id()) {
+  if (!req->has_id()) {
     Status s = STATUS(InvalidArgument, "Improper DELETE TABLEGROUP request (missing fields).");
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
   }
 
   // Use the tablegroup id as the prefix for the parent table id.
-  const auto parent_table_id = req->id() + kTablegroupParentTableIdSuffix;
-  const auto parent_table_name = req->id() + kTablegroupParentTableNameSuffix;
+  const auto parent_table_id = GetTablegroupParentTableId(req->id());
+  const auto parent_table_name = GetTablegroupParentTableName(req->id());
 
   dtreq.mutable_table()->set_table_name(parent_table_name);
   dtreq.mutable_table()->set_table_id(parent_table_id);
@@ -7130,20 +7096,25 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
 
   {
     SharedLock lock(mutex_);
-    const auto& tablegroup = tablegroup_ids_map_[req->id()];
-    // Tablegroup should be empty. In practice that means it would contain only the
-    // dummy parent table.
-    // TODO(alex): Rework tablegroup internals to track real tables.
-    if (tablegroup->NumChildTables() > 1) {
+    const auto* tablegroup = tablegroup_manager_->Find(req->id());
+
+    if (!tablegroup) {
+      return SetupError(
+          resp->mutable_error(),
+          MasterErrorPB::OBJECT_NOT_FOUND,
+          STATUS_FORMAT(InvalidArgument, "Tablegroup with ID $0 does not exist", req->id()));
+    }
+
+    if (!tablegroup->IsEmpty()) {
       return SetupError(
           resp->mutable_error(),
           MasterErrorPB::INVALID_REQUEST,
-          STATUS_FORMAT(InvalidArgument,
-                        "Cannot delete tablegroup, it still has $0 tables in it",
-                        tablegroup->NumChildTables() - 1));
+          STATUS(InvalidArgument, "Cannot delete tablegroup, it still has tables in it"));
     }
   }
 
+  // Delete the parent table.
+  // This will also delete the tablegroup tablet, as well as the tablegroup entity.
   Status s = DeleteTable(&dtreq, &dtresp, rpc);
   resp->set_parent_table_id(dtresp.table_id());
 
@@ -7152,13 +7123,6 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
     resp->mutable_error()->Swap(dtresp.mutable_error());
     return s;
   }
-
-  // Perform map updates.
-  LockGuard lock(mutex_);
-  TRACE("Acquired catalog manager lock");
-  tablegroup_ids_map_.erase(req->id());
-  tablegroup_tablet_ids_map_[req->namespace_id()].erase(req->id());
-  table_tablegroup_ids_map_.erase(parent_table_id);
 
   LOG(INFO) << "Deleted tablegroup " << req->id();
   return s;
@@ -7174,29 +7138,15 @@ Status CatalogManager::ListTablegroups(const ListTablegroupsRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
   }
 
-  if (tablegroup_tablet_ids_map_.find(req->namespace_id()) == tablegroup_tablet_ids_map_.end()) {
-    return STATUS(NotFound, "Tablegroups not found for namespace id: ", req->namespace_id());
-  }
+  const auto tablegroups =
+      VERIFY_RESULT(tablegroup_manager_->ListForDatabase(req->namespace_id()));
 
-  for (const auto& entry : tablegroup_tablet_ids_map_[req->namespace_id()]) {
-    const TablegroupId tgid = entry.first;
-    if (tablegroup_ids_map_.find(tgid) == tablegroup_ids_map_.end()) {
-      LOG(WARNING) << "Tablegroup info in " << req->namespace_id()
-                   << " not found for tablegroup id: " << tgid;
-      continue;
-    }
-    scoped_refptr<TablegroupInfo> tginfo = tablegroup_ids_map_[tgid];
-
+  for (const auto& tablegroup : tablegroups) {
     TablegroupIdentifierPB *tg = resp->add_tablegroups();
-    tg->set_id(tginfo->id());
-    tg->set_namespace_id(tginfo->namespace_id());
+    tg->set_id(tablegroup->id());
+    tg->set_namespace_id(tablegroup->database_id());
   }
   return Status::OK();
-}
-
-bool CatalogManager::HasTablegroups() {
-  SharedLock lock(mutex_);
-  return !tablegroup_ids_map_.empty();
 }
 
 Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
@@ -7329,14 +7279,14 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
   if (req->colocated()) {
     CreateTableRequestPB req;
     CreateTableResponsePB resp;
-    const auto parent_table_id = ns->id() + kColocatedParentTableIdSuffix;
-    const auto parent_table_name = ns->id() + kColocatedParentTableNameSuffix;
+    const auto parent_table_id = GetColocatedDbParentTableId(ns->id());
+    const auto parent_table_name = GetColocatedDbParentTableName(ns->id());
     req.set_name(parent_table_name);
     req.set_table_id(parent_table_id);
     req.mutable_namespace_()->set_name(ns->name());
     req.mutable_namespace_()->set_id(ns->id());
     req.set_table_type(GetTableTypeForDatabase(ns->database_type()));
-    req.set_colocated(true);
+    req.set_is_colocated_via_database(true);
 
     YBSchemaBuilder schemaBuilder;
     schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
@@ -7553,7 +7503,7 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
         // Verify system table created as well, if colocated.
         IsCreateTableDoneRequestPB table_req;
         IsCreateTableDoneResponsePB table_resp;
-        const auto parent_table_id = ns->id() + kColocatedParentTableIdSuffix;
+        const auto parent_table_id = GetColocatedDbParentTableId(ns->id());
         table_req.mutable_table()->set_table_id(parent_table_id);
         auto s = IsCreateTableDone(&table_req, &table_resp);
         resp->set_done(table_resp.done());
@@ -7926,6 +7876,8 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
 
     sys_tablet_info = tablet_map_->find(kSysCatalogTabletId)->second;
 
+    vector<pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> colocation_parents;
+
     // Populate tables and sys_table_ids.
     for (const TableInfoMap::value_type& entry : *table_ids_map_) {
       scoped_refptr<TableInfo> table = entry.second;
@@ -7946,12 +7898,21 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
       // For regular (indexed) table, insert table info and lock in the front of the list. Else for
       // index table, append them to the end. We do so so that we will commit and delete the indexed
       // table first before its indexes.
-      if (IsTable(l->pb)) {
+      //
+      // Colocation parent tables should be deleted last, so we store them separately and append to
+      // the end of the list later.
+      if (table->IsColocationParentTable()) {
+        colocation_parents.push_back({table, std::move(l)});
+      } else if (IsTable(l->pb)) {
         tables.insert(tables.begin(), {table, std::move(l)});
       } else {
         tables.push_back({table, std::move(l)});
       }
     }
+
+    tables.insert(tables.end(),
+                  std::make_move_iterator(colocation_parents.begin()),
+                  std::make_move_iterator(colocation_parents.end()));
   }
   // Remove the system tables from RAFT.
   TRACE("Sending system table delete RPCs");
@@ -7984,6 +7945,11 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   for (auto &table_and_lock : tables) {
     auto &table = table_and_lock.first;
     auto &l = table_and_lock.second;
+
+    if (l->pb.colocated() && !IsColocationParentTableId(table->id())) {
+      RETURN_NOT_OK(TryRemoveFromTablegroup(table->id()));
+    }
+
     // Cancel all table busywork and commit the DELETING change.
     l.Commit();
     table->AbortTasks();
@@ -9088,16 +9054,14 @@ Status CatalogManager::DeleteTabletsAndSendRequests(
   RETURN_NOT_OK(DeleteTabletListAndSendRequests(
       tablets, deletion_msg, retained_by_snapshot_schedules));
 
-  if (table->IsColocatedParentTable()) {
+  if (table->IsColocatedDbParentTable()) {
     LockGuard lock(mutex_);
-    colocated_tablet_ids_map_.erase(table->namespace_id());
+    colocated_db_tablets_map_.erase(table->namespace_id());
   } else if (table->IsTablegroupParentTable()) {
     // In the case of dropped tablegroup parent table, need to delete tablegroup info.
     LockGuard lock(mutex_);
-    const auto& tablegroup_id = table_tablegroup_ids_map_[table->id()];
-    tablegroup_ids_map_.erase(tablegroup_id);
-    tablegroup_tablet_ids_map_[table->namespace_id()].erase(tablegroup_id);
-    table_tablegroup_ids_map_.erase(table->id());
+    TablegroupId tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
+    RETURN_NOT_OK(tablegroup_manager_->Remove(tablegroup_id));
   }
   return Status::OK();
 }
@@ -10467,17 +10431,8 @@ Status CatalogManager::SetPreferredZones(
   auto cluster_config = ClusterConfig();
   auto l = cluster_config->LockForWrite();
   auto replication_info = l.mutable_data()->pb.mutable_replication_info();
-  replication_info->clear_affinitized_leaders();
 
-  for (const auto& cloud_info : req->preferred_zones()) {
-    const auto& placement_info = replication_info->live_replicas();
-    if (!CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(placement_info, cloud_info)) {
-      Status s = STATUS_FORMAT(InvalidArgument, "Placement info $0 does not contain cloud info $1",
-                               placement_info, TSDescriptor::generate_placement_id(cloud_info));
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
-    }
-    *replication_info->add_affinitized_leaders() = cloud_info;
-  }
+  RETURN_NOT_OK(CatalogManagerUtil::SetPreferredZones(req, replication_info));
 
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
 
@@ -10757,7 +10712,7 @@ Status CatalogManager::CollectTable(
   if (flags.Test(CollectFlag::kIncludeParentColocatedTable) && lock->pb.colocated()) {
     // If a table is colocated, add its parent colocated table as well.
     const auto parent_table_id =
-        table_description.namespace_info->id() + kColocatedParentTableIdSuffix;
+        GetColocatedDbParentTableId(table_description.namespace_info->id());
     auto result = parent_colocated_table_ids->insert(parent_table_id);
     if (result.second) {
       // We have not processed this parent table id yet, so do that now.
@@ -10937,55 +10892,59 @@ void CatalogManager::RebuildYQLSystemPartitions() {
 Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   auto l = ClusterConfig()->LockForRead();
 
-  const auto& affinitized_leaders = l->pb.replication_info().affinitized_leaders();
-  if (affinitized_leaders.empty()) {
+  vector<AffinitizedZonesSet> affinitized_zones;
+  RETURN_NOT_OK(GetAllAffinitizedZones(&affinitized_zones));
+
+  if (affinitized_zones.empty()) {
     return Status::OK();
   }
 
-  for (const CloudInfoPB& cloud_info : affinitized_leaders) {
-    // Do nothing if already in an affinitized zone.
-    if (CatalogManagerUtil::IsCloudInfoEqual(cloud_info, server_registration_.cloud_info())) {
-      return Status::OK();
-    }
-  }
-
-  // Not in affinitized zone, try finding a master to send a step down request to.
   std::vector<ServerEntryPB> masters;
   RETURN_NOT_OK(master_->ListMasters(&masters));
 
-  for (const ServerEntryPB& master : masters) {
-    auto master_cloud_info = master.registration().cloud_info();
-
-    for (const CloudInfoPB& config_cloud_info : affinitized_leaders) {
-      if (CatalogManagerUtil::IsCloudInfoEqual(config_cloud_info, master_cloud_info)) {
-        if (PREDICT_FALSE(
-            GetAtomicFlag(&FLAGS_TEST_crash_server_on_sys_catalog_leader_affinity_move))) {
-          LOG_WITH_PREFIX(FATAL) << "For test: Crashing the server instead of performing sys "
-                                    "catalog leader affinity move.";
-        }
-        YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
-            << "Sys catalog tablet is not in an affinitized zone, "
-            << "sending step down request to master uuid "
-            << master.instance_id().permanent_uuid()
-            << " in zone "
-            << TSDescriptor::generate_placement_id(master_cloud_info);
-        std::shared_ptr<TabletPeer> tablet_peer;
-        RETURN_NOT_OK(GetTabletPeer(sys_catalog_->tablet_id(), &tablet_peer));
-
-        consensus::LeaderStepDownRequestPB req;
-        req.set_tablet_id(sys_catalog_->tablet_id());
-        req.set_dest_uuid(sys_catalog_->tablet_peer()->permanent_uuid());
-        req.set_new_leader_uuid(master.instance_id().permanent_uuid());
-
-        consensus::LeaderStepDownResponsePB resp;
-        RETURN_NOT_OK(tablet_peer->consensus()->StepDown(&req, &resp));
-        if (resp.has_error()) {
-          YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10) << "Step down failed: "
-                                                    << resp.error().status().message();
-          break;
-        }
-        LOG_WITH_PREFIX(INFO) << "Successfully stepped down to new master";
+  for (const auto& zone_set : affinitized_zones) {
+    for (const CloudInfoPB& cloud_info : zone_set) {
+      // Do nothing if already on a high priority affinitized zone.
+      if (CatalogManagerUtil::IsCloudInfoEqual(cloud_info, server_registration_.cloud_info())) {
         return Status::OK();
+      }
+    }
+
+    // Try to find a master within this priority group of affinitized zones that we can step down
+    // to.
+    for (const ServerEntryPB& master : masters) {
+      auto master_cloud_info = master.registration().cloud_info();
+
+      for (const CloudInfoPB& config_cloud_info : zone_set) {
+        if (CatalogManagerUtil::IsCloudInfoEqual(config_cloud_info, master_cloud_info)) {
+          if (PREDICT_FALSE(
+                  GetAtomicFlag(&FLAGS_TEST_crash_server_on_sys_catalog_leader_affinity_move))) {
+            LOG_WITH_PREFIX(FATAL) << "For test: Crashing the server instead of performing sys "
+                                      "catalog leader affinity move.";
+          }
+          YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
+              << "Sys catalog tablet is not in an affinitized zone, "
+              << "sending step down request to master uuid "
+              << master.instance_id().permanent_uuid() << " in zone "
+              << TSDescriptor::generate_placement_id(master_cloud_info);
+          std::shared_ptr<TabletPeer> tablet_peer;
+          RETURN_NOT_OK(GetTabletPeer(sys_catalog_->tablet_id(), &tablet_peer));
+
+          consensus::LeaderStepDownRequestPB req;
+          req.set_tablet_id(sys_catalog_->tablet_id());
+          req.set_dest_uuid(sys_catalog_->tablet_peer()->permanent_uuid());
+          req.set_new_leader_uuid(master.instance_id().permanent_uuid());
+
+          consensus::LeaderStepDownResponsePB resp;
+          RETURN_NOT_OK(tablet_peer->consensus()->StepDown(&req, &resp));
+          if (resp.has_error()) {
+            YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
+                << "Step down failed: " << resp.error().status().message();
+            break;
+          }
+          LOG_WITH_PREFIX(INFO) << "Successfully stepped down to new master";
+          return Status::OK();
+        }
       }
     }
   }
@@ -10993,14 +10952,24 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   return STATUS(NotFound, "Couldn't step down to a master in an affinitized zone");
 }
 
-Result<BlacklistSet> CatalogManager::BlacklistSetFromPB() const {
+Status CatalogManager::GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) {
+  SysClusterConfigEntryPB config;
+  RETURN_NOT_OK(GetClusterConfig(&config));
+  auto& replication_info = config.replication_info();
+
+  CatalogManagerUtil::GetAllAffinitizedZones(&replication_info, affinitized_zones);
+
+  return Status::OK();
+}
+
+Result<BlacklistSet> CatalogManager::BlacklistSetFromPB(bool leader_blacklist) const {
   auto cluster_config = ClusterConfig();
   if (!cluster_config) {
     return STATUS(IllegalState, "Cluster config not found.");
   }
   auto l = cluster_config->LockForRead();
 
-  const auto& blacklist_pb = l->pb.server_blacklist();
+  const auto& blacklist_pb = leader_blacklist ? l->pb.leader_blacklist() : l->pb.server_blacklist();
   BlacklistSet blacklist_set;
   for (int i = 0; i < blacklist_pb.hosts_size(); i++) {
     blacklist_set.insert(HostPortFromPB(blacklist_pb.hosts(i)));
@@ -11100,6 +11069,15 @@ void CatalogManager::InitializeGlobalLoadState(
 std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
   yb::SharedLock<decltype(config_mutex_)> lock(config_mutex_);
   return cluster_config_;
+}
+
+Status CatalogManager::TryRemoveFromTablegroup(const TableId& table_id) {
+  LockGuard lock(mutex_);
+  auto* tablegroup = tablegroup_manager_->FindByTable(table_id);
+  if (tablegroup) {
+    RETURN_NOT_OK(tablegroup->RemoveChildTable(table_id));
+  }
+  return Status::OK();
 }
 
 }  // namespace master

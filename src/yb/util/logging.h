@@ -71,10 +71,9 @@
 // Example usage:
 //   YB_LOG_EVERY_N_SECS(WARNING, 1) << "server is low on memory" << THROTTLE_MSG;
 #define YB_LOG_EVERY_N_SECS(severity, n_secs) \
-  static yb::logging_internal::LogThrottler LOG_THROTTLER;  \
-  int num_suppressed = 0; \
-  if (LOG_THROTTLER.ShouldLog(n_secs, &num_suppressed)) \
-    BOOST_PP_CAT(GOOGLE_LOG_, severity)(num_suppressed).stream()
+  static yb::logging_internal::LogThrottler BOOST_PP_CAT(LOG_THROTTLER_, __LINE__); \
+  if (int num = BOOST_PP_CAT(LOG_THROTTLER_, __LINE__).ShouldLog(n_secs) ; num >= 0) \
+    BOOST_PP_CAT(GOOGLE_LOG_, severity)(num).stream()
 
 #define YB_LOG_WITH_PREFIX_EVERY_N_SECS(severity, n_secs) \
     YB_LOG_EVERY_N_SECS(severity, n_secs) << LogPrefix()
@@ -241,23 +240,23 @@ namespace logging_internal {
 // Internal implementation class used for throttling log messages.
 class LogThrottler {
  public:
-  LogThrottler() : num_suppressed_(0), last_ts_(0) {
+  LogThrottler() {
     ANNOTATE_BENIGN_RACE(&last_ts_, "OK to be sloppy with log throttling");
   }
 
-  bool ShouldLog(int n_secs, int* num_suppressed) {
+  // Returns the number of suppressed messages if it should log, otherwise -1.
+  int ShouldLog(int n_secs) {
     MicrosecondsInt64 ts = GetMonoTimeMicros();
     if (ts - last_ts_ < n_secs * 1e6) {
-      *num_suppressed = base::subtle::NoBarrier_AtomicIncrement(&num_suppressed_, 1);
-      return false;
+      base::subtle::NoBarrier_AtomicIncrement(&num_suppressed_, 1);
+      return -1;
     }
     last_ts_ = ts;
-    *num_suppressed = base::subtle::NoBarrier_AtomicExchange(&num_suppressed_, 0);
-    return true;
+    return base::subtle::NoBarrier_AtomicExchange(&num_suppressed_, 0);
   }
  private:
-  Atomic32 num_suppressed_;
-  uint64_t last_ts_;
+  Atomic32 num_suppressed_ = 0;
+  uint64_t last_ts_ = 0;
 };
 
 // Utility class that is used by YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY macros.

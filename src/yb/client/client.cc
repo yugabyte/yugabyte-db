@@ -708,26 +708,27 @@ Status YBClient::GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBT
   return data_->GetTableSchemaById(this, table_id, deadline, info, callback);
 }
 
-Status YBClient::GetTablegroupSchemaById(const TablegroupId& parent_tablegroup_table_id,
+Status YBClient::GetTablegroupSchemaById(const TablegroupId& tablegroup_id,
                                          std::shared_ptr<std::vector<YBTableInfo>> info,
                                          StatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->GetTablegroupSchemaById(this,
-                                        parent_tablegroup_table_id,
+                                        tablegroup_id,
                                         deadline,
                                         info,
                                         callback);
 }
 
-Status YBClient::GetColocatedTabletSchemaById(const TableId& parent_colocated_table_id,
-                                              std::shared_ptr<std::vector<YBTableInfo>> info,
-                                              StatusCallback callback) {
+Status YBClient::GetColocatedTabletSchemaByParentTableId(
+    const TableId& parent_colocated_table_id,
+    std::shared_ptr<std::vector<YBTableInfo>> info,
+    StatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  return data_->GetColocatedTabletSchemaById(this,
-                                             parent_colocated_table_id,
-                                             deadline,
-                                             info,
-                                             callback);
+  return data_->GetColocatedTabletSchemaByParentTableId(this,
+                                                         parent_colocated_table_id,
+                                                         deadline,
+                                                         info,
+                                                         callback);
 }
 
 Result<IndexPermissions> YBClient::GetIndexPermissions(
@@ -1036,136 +1037,20 @@ Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
                                   const std::string& tablegroup_id,
                                   const std::string& tablespace_id) {
-  CreateTablegroupRequestPB req;
-  CreateTablegroupResponsePB resp;
-  req.set_id(tablegroup_id);
-  req.set_namespace_id(namespace_id);
-  req.set_namespace_name(namespace_name);
-
-  if (!tablespace_id.empty()) {
-    req.set_tablespace_id(tablespace_id);
-  }
-
-  int attempts = 0;
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-
-  Status s = data_->SyncLeaderMasterRpc(
-      deadline, req, &resp, "CreateTablegroup", &MasterDdlProxy::CreateTablegroupAsync,
-      &attempts);
-
-  // This case should not happen but need to validate contents since fields are optional in PB.
-  if (!resp.has_parent_table_id() || !resp.has_parent_table_name()) {
-    return STATUS(NotFound, "Parent table information not found in CREATE TABLEGROUP response.");
-  }
-
-  const YBTableName table_name(YQL_DATABASE_PGSQL, namespace_name, resp.parent_table_name());
-
-  // Handle special cases based on resp.error().
-  if (resp.has_error()) {
-    LOG_IF(DFATAL, s.ok()) << "Expecting error status if response has error: " <<
-        resp.error().code() << " Status: " << resp.error().status().ShortDebugString();
-
-    if (resp.error().code() == master::MasterErrorPB::OBJECT_ALREADY_PRESENT && attempts > 1) {
-      // If the table already exists and the number of attempts is >
-      // 1, then it means we may have succeeded in creating the
-      // table, but client didn't receive the successful
-      // response (e.g., due to failure before the successful
-      // response could be sent back, or due to a I/O pause or a
-      // network blip leading to a timeout, etc...)
-      YBTableInfo info;
-
-      // A fix for https://yugabyte.atlassian.net/browse/ENG-529:
-      // If we've been retrying table creation, and the table is now in the process is being
-      // created, we can sometimes see an empty schema. Wait until the table is fully created
-      // before we compare the schema.
-      RETURN_NOT_OK_PREPEND(
-          data_->WaitForCreateTableToFinish(this, table_name, resp.parent_table_id(), deadline),
-          strings::Substitute("Failed waiting for table $0 to finish being created",
-                              table_name.ToString()));
-
-      RETURN_NOT_OK_PREPEND(
-          data_->GetTableSchema(this, table_name, deadline, &info),
-          strings::Substitute("Unable to check the schema of table $0", table_name.ToString()));
-
-      YBSchemaBuilder schemaBuilder;
-      schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
-      YBSchema ybschema;
-      CHECK_OK(schemaBuilder.Build(&ybschema));
-
-      if (!ybschema.Equals(info.schema)) {
-         string msg = Format("Table $0 already exists with a different "
-                             "schema. Requested schema was: $1, actual schema is: $2",
-                             table_name,
-                             internal::GetSchema(ybschema),
-                             internal::GetSchema(info.schema));
-        LOG_WITH_PREFIX(ERROR) << msg;
-        return STATUS(AlreadyPresent, msg);
-      }
-
-      return Status::OK();
-    }
-
-    return StatusFromPB(resp.error().status());
-  }
-
-  // Wait for create table to finish.
-  RETURN_NOT_OK_PREPEND(
-      data_->WaitForCreateTableToFinish(this, table_name, resp.parent_table_id(), deadline),
-      strings::Substitute("Failed waiting for parent table $0 to finish being created",
-                          table_name.ToString()));
-
-  return Status::OK();
+  return data_->CreateTablegroup(this,
+                                 deadline,
+                                 namespace_name,
+                                 namespace_id,
+                                 tablegroup_id,
+                                 tablespace_id);
 }
 
-Status YBClient::DeleteTablegroup(const std::string& namespace_id,
-                                  const std::string& tablegroup_id) {
-  DeleteTablegroupRequestPB req;
-  DeleteTablegroupResponsePB resp;
-  req.set_id(tablegroup_id);
-  req.set_namespace_id(namespace_id);
-
-  int attempts = 0;
+Status YBClient::DeleteTablegroup(const std::string& tablegroup_id) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-
-  Status s = data_->SyncLeaderMasterRpc(
-      deadline, req, &resp, "DeleteTablegroup", &MasterDdlProxy::DeleteTablegroupAsync,
-      &attempts);
-
-  // This case should not happen but need to validate contents since fields are optional in PB.
-  if (!resp.has_parent_table_id()) {
-    return STATUS(NotFound, "Parent table information not found in DELETE TABLEGROUP response.");
-  }
-
-  // Handle special cases based on resp.error().
-  if (resp.has_error()) {
-    LOG_IF(DFATAL, s.ok()) << "Expecting error status if response has error: " <<
-        resp.error().code() << " Status: " << resp.error().status().ShortDebugString();
-
-    if (resp.error().code() == master::MasterErrorPB::OBJECT_NOT_FOUND && attempts > 1) {
-      // A prior attempt to delete the table has succeeded, but
-      // appeared as a failure to the client due to, e.g., an I/O or
-      // network issue.
-      LOG_WITH_PREFIX(INFO) << "Parent table for tablegroup with ID " << tablegroup_id
-                            << " already deleted.";
-      return Status::OK();
-    } else {
-      return StatusFromPB(resp.error().status());
-    }
-  } else {
-    // Check the status only if the response has no error.
-    RETURN_NOT_OK(s);
-  }
-
-  // Spin until the table is deleted. Currently only waits till the table reaches DELETING state
-  // See github issue #5290
-  RETURN_NOT_OK_PREPEND(data_->WaitForDeleteTableToFinish(this,
-                                                          resp.parent_table_id(),
-                                                          deadline),
-      strings::Substitute("Failed waiting for parent table with id $0 to finish being deleted",
-                          resp.parent_table_id()));
-
-  LOG_WITH_PREFIX(INFO) << "Deleted parent table for tablegroup with ID " << tablegroup_id;
-  return Status::OK();
+  return data_->DeleteTablegroup(this,
+                                 deadline,
+                                 tablegroup_id);
 }
 
 Result<vector<master::TablegroupIdentifierPB>>
@@ -1192,7 +1077,6 @@ YBClient::ListTablegroups(const std::string& namespace_name) {
 
 Result<bool> YBClient::TablegroupExists(const std::string& namespace_name,
                                         const std::string& tablegroup_id) {
-
   for (const auto& tg : VERIFY_RESULT(ListTablegroups(namespace_name))) {
     if (tg.id().compare(tablegroup_id) == 0) {
       return true;

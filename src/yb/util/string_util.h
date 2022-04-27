@@ -101,6 +101,10 @@ bool IsDecimal(const Slice& s);
 // Whether the string is "true"/"false" (case-insensitive)
 bool IsBoolean(const Slice& s);
 
+// Whether the string is 32 lowercase hex characters like the one used as an ID for namespaces,
+// (non-special) tables, tablegroups, etc.
+bool IsIdLikeUuid(const Slice& s);
+
 using StringVector = std::vector<std::string>;
 StringVector StringSplit(const std::string& arg, char delim);
 

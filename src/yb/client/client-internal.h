@@ -168,6 +168,17 @@ class YBClient::Data {
                                               const std::string& table_id,
                                               CoarseTimePoint deadline);
 
+  CHECKED_STATUS CreateTablegroup(YBClient* client,
+                                  CoarseTimePoint deadline,
+                                  const std::string& namespace_name,
+                                  const std::string& namespace_id,
+                                  const std::string& tablegroup_id,
+                                  const std::string& tablespace_id);
+
+  CHECKED_STATUS DeleteTablegroup(YBClient* client,
+                                  CoarseTimePoint deadline,
+                                  const std::string& tablegroup_id);
+
   CHECKED_STATUS BackfillIndex(YBClient* client,
                                const YBTableName& table_name,
                                const TableId& table_id,
@@ -235,15 +246,16 @@ class YBClient::Data {
                                     std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback);
   CHECKED_STATUS GetTablegroupSchemaById(YBClient* client,
-                                         const TablegroupId& parent_tablegroup_table_id,
+                                         const TablegroupId& tablegroup_id,
                                          CoarseTimePoint deadline,
                                          std::shared_ptr<std::vector<YBTableInfo>> info,
                                          StatusCallback callback);
-  CHECKED_STATUS GetColocatedTabletSchemaById(YBClient* client,
-                                              const TableId& parent_colocated_table_id,
-                                              CoarseTimePoint deadline,
-                                              std::shared_ptr<std::vector<YBTableInfo>> info,
-                                              StatusCallback callback);
+  CHECKED_STATUS GetColocatedTabletSchemaByParentTableId(
+      YBClient* client,
+      const TableId& parent_colocated_table_id,
+      CoarseTimePoint deadline,
+      std::shared_ptr<std::vector<YBTableInfo>> info,
+      StatusCallback callback);
 
   Result<IndexPermissions> GetIndexPermissions(
       YBClient* client,

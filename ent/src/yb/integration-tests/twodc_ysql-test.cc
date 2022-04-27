@@ -57,6 +57,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_util.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/sys_catalog_initialization.h"
@@ -403,7 +404,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
                     Format("Unable to find tablegroup in namespace $0", namespace_name));
     }
 
-    return resp.tablegroups()[0].id() + master::kTablegroupParentTableIdSuffix;
+    return master::GetTablegroupParentTableId(resp.tablegroups()[0].id());
   }
 
   Status CreateTablegroup(Cluster* cluster,
@@ -846,7 +847,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   // Only need to add the colocated parent table id.
   setup_universe_req.mutable_producer_table_ids()->Reserve(1);
   setup_universe_req.add_producer_table_ids(
-      ns_resp.namespace_().id() + master::kColocatedParentTableIdSuffix);
+      master::GetColocatedDbParentTableId(ns_resp.namespace_().id()));
   auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client()->proxy_cache(),

@@ -82,6 +82,7 @@ class UDTypeInfo;
 class XClusterSplitDriverIf;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
+class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
 
@@ -121,6 +122,9 @@ using LeaderStepDownFailureTimes = std::unordered_map<TabletServerId, MonoTime>;
 using TabletReplicaMap = std::unordered_map<std::string, TabletReplica>;
 using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 using TabletInfoMap = std::map<TabletId, scoped_refptr<TabletInfo>>;
+struct cloud_hash;
+struct cloud_equal_to;
+using AffinitizedZonesSet = std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to>;
 using BlacklistSet = std::unordered_set<HostPort, HostPortHash>;
 using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
 

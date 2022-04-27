@@ -11,6 +11,7 @@ import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -76,42 +77,32 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
         config.getConsumerRegistry().getProducerMapMap();
 
     replicationGroups.forEach(
-        (replicationId, value) -> {
-          String[] uuidAndName = replicationId.split("_", 2);
-          if (uuidAndName.length != 2) {
+        (replicationGroupName, value) -> {
+          // Parse and get information for this replication group.
+          Optional<Pair<UUID, String>> sourceUuidAndConfigName =
+              maybeParseReplicationGroupName(replicationGroupName);
+          if (!sourceUuidAndConfigName.isPresent()) {
             log.warn(
-                "Unable to parse XClusterConfig: {}, expected format <sourceUniverseUUID>_<name>",
-                replicationId);
+                "Skipping {} because it does not conform to the Platform replication group naming",
+                replicationGroupName);
             return;
           }
-          UUID sourceUniverseUUID;
-          try {
-            sourceUniverseUUID = UUID.fromString(uuidAndName[0]);
-          } catch (Exception e) {
-            log.warn(
-                "Unable to parse {} as valid UUID for replication id: {}",
-                uuidAndName[0],
-                replicationId);
-            return;
-          }
-          String xClusterConfigName = uuidAndName[1];
-
-          foundXClusterConfigs.add(new Pair(sourceUniverseUUID, xClusterConfigName));
-
+          UUID sourceUniverseUUID = sourceUuidAndConfigName.get().getFirst();
+          String xClusterConfigName = sourceUuidAndConfigName.get().getSecond();
+          foundXClusterConfigs.add(sourceUuidAndConfigName.get());
+          // Get table ids for this replication group.
           Map<String, CdcConsumer.StreamEntryPB> tableMap = value.getStreamMapMap();
-
           Set<String> xClusterConfigTables =
               tableMap
                   .values()
                   .stream()
-                  .map(tableEntry -> tableEntry.getProducerTableId())
+                  .map(CdcConsumer.StreamEntryPB::getProducerTableId)
                   .collect(Collectors.toSet());
-
+          // Get the status of this replication group.
           XClusterConfigStatusType xClusterConfigStatus =
               value.getDisableStream()
                   ? XClusterConfigStatusType.Paused
                   : XClusterConfigStatusType.Running;
-
           log.info(
               "Found XClusterConfig({}) between source({}) and target({}): status({}), tables({})",
               xClusterConfigName,
@@ -120,10 +111,10 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
               xClusterConfigStatus,
               xClusterConfigTables);
 
+          // Create or update a row in the Platform database for this replication group.
           XClusterConfig xClusterConfig =
               XClusterConfig.getByNameSourceTarget(
                   xClusterConfigName, sourceUniverseUUID, targetUniverseUUID);
-
           if (xClusterConfig == null) {
             XClusterConfigCreateFormData createFormData = new XClusterConfigCreateFormData();
             createFormData.name = xClusterConfigName;

@@ -752,3 +752,14 @@ select count(*) from pg_class where relname = 'temp_view';
 -------
      0
 (1 row)
+
+-- Test EXPLAIN ANALYZE + CREATE TABLE AS. Use EXECUTE to hide the output since it won't be stable.
+DO $$
+BEGIN
+  EXECUTE 'EXPLAIN ANALYZE CREATE TABLE tbl_as_1 AS SELECT 1';
+END$$;
+SELECT * FROM tbl_as_1;
+ ?column?
+----------
+        1
+(1 row)

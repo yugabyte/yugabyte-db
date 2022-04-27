@@ -71,6 +71,8 @@ Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc,
 
   LOG(INFO) << "NumCPUs determined to be: " << base::NumCPUs();
 
+  DLOG(INFO) << "Process id: " << getpid();
+
   MemTracker::SetTCMallocCacheMemory();
 
   return Status::OK();

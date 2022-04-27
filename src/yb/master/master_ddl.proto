@@ -86,7 +86,7 @@ message CreateTableRequestPB {
   optional bool is_pg_shared_table = 15 [ default = false ];  // Is this a shared table?
 
   // Is this a colocated table? This field is only applicable for a colocated database.
-  optional bool colocated = 17 [ default = true ];
+  optional bool is_colocated_via_database = 17 [ default = true ];
 
   // This is only applicable for tablegroups. Eventually colocated will be deprecated.
   optional bytes tablegroup_id = 19;
@@ -200,7 +200,7 @@ message GetTableSchemaResponsePB {
   // For index table: information about this index.
   optional IndexInfoPB index_info = 12;
 
-  // True if table is colocated.
+  // True if table is colocated (including tablegroups, excluding YSQL system tables).
   optional bool colocated = 13;
 
   optional bool is_compatible_with_previous_version = 14 [default = false];
@@ -209,7 +209,7 @@ message GetTableSchemaResponsePB {
 }
 
 message GetTablegroupSchemaRequestPB {
-  required TablegroupIdentifierPB parent_tablegroup = 1;
+  required TablegroupIdentifierPB tablegroup = 1;
 }
 
 message GetTablegroupSchemaResponsePB {
@@ -527,7 +527,7 @@ message CreateTablegroupResponsePB {
 
 message DeleteTablegroupRequestPB {
   required bytes id = 1;
-  required bytes namespace_id = 2;
+  optional bytes namespace_id_UNUSED = 2 [ deprecated = true ];
 }
 
 message DeleteTablegroupResponsePB {
