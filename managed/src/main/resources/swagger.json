@@ -5250,6 +5250,11 @@
     "Schedule" : {
       "description" : "Backup schedule",
       "properties" : {
+        "backlogStatus" : {
+          "description" : "Backlog status of schedule arose due to conflicts",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "cronExpression" : {
           "description" : "Cron expression for the schedule",
           "type" : "string"
@@ -5274,6 +5279,12 @@
         "frequencyTimeUnit" : {
           "description" : "Time unit of frequency",
           "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
+        "nextScheduleTaskTime" : {
+          "description" : "Time on which schedule is expected to run",
+          "format" : "date-time",
+          "readOnly" : true,
           "type" : "string"
         },
         "runningState" : {
