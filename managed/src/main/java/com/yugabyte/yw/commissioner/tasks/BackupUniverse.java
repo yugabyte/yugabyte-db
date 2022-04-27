@@ -27,6 +27,7 @@ import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.prometheus.client.CollectorRegistry;
@@ -232,21 +233,27 @@ public class BackupUniverse extends UniverseTaskBase {
         || universe.getUniverseDetails().backupInProgress
         || universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().universePaused) {
-
       if (!universe.getUniverseDetails().universePaused) {
+        schedule.updateBacklogStatus(true);
+        log.debug("Schedule {} backlog status is set to true", schedule.scheduleUUID);
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
       }
 
+      String stateLogMsg = CommonUtils.generateStateLogMsg(universe, alreadyRunning);
       log.warn(
-          "Cannot run Backup task since the universe {} is currently {}",
+          "Cannot run Backup task on universe {} due to the state {}",
           taskParams.universeUUID.toString(),
-          "in a locked/paused state or has backup running");
+          stateLogMsg);
       return;
     }
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
+    if (schedule.getBacklogStatus()) {
+      schedule.updateBacklogStatus(false);
+      log.debug("Schedule {} backlog status is set to false", schedule.scheduleUUID);
+    }
     log.info(
         "Submitted task to backup table {}:{}, task uuid = {}.",
         taskParams.tableUUID,
