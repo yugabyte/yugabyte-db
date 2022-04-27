@@ -19,7 +19,7 @@ showAsideToc: true
 
 To secure your cluster from distributed denial-of-service (DDoS) and brute force password attacks, access to your clusters is restricted to IP addresses that you specify in IP allow lists. An IP allow list is a set of IP addresses and ranges that, when assigned to a cluster, grant access to connections made from those addresses; all other connections are ignored.
 
-**YugabyteDB Managed only allows client connections to clusters from addresses in IP allow lists that have been assigned to the cluster.**
+YugabyteDB Managed only allows client connections to clusters from addresses in IP allow lists that have been assigned to the cluster.
 
 Add IP allow lists for the following:
 
