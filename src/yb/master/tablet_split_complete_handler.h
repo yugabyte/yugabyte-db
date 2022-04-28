@@ -19,7 +19,7 @@
 
 #include "yb/common/entity_ids.h"
 
-#include "yb/master/catalog_entity_info.h"
+#include "yb/master/tablet_split_fwd.h"
 
 namespace yb {
 namespace master {

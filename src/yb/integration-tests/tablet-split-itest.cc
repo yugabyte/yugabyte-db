@@ -1926,7 +1926,7 @@ TEST_F(TabletSplitSingleServerITest, MaxFileSizeTTLTabletOnlyValidForManualSplit
   // Tablet should still be a valid candidate if ignore_ttl_validation is set to true
   // (e.g. for manual tablet splitting).
   ASSERT_OK(split_manager->ValidateSplitCandidateTablet(*source_tablet_info,
-      true /* ignore_ttl_validation */));
+      master::IgnoreTtlValidation::kTrue, master::IgnoreDisabledList::kTrue));
 }
 
 TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
@@ -1962,7 +1962,7 @@ TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
   // is true (e.g. in the case of manual tablet splitting).
   split_manager->MarkTtlTableForSplitIgnore(table_->id());
   ASSERT_OK(split_manager->ValidateSplitCandidateTable(table_info,
-      true /* ignore_disabled_list */));
+      master::IgnoreDisabledList::kTrue));
 }
 
 TEST_F(TabletSplitSingleServerITest, TabletServerOrphanedPostSplitData) {
