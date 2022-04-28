@@ -790,8 +790,12 @@ ExecDelete(ModifyTableState *mtstate,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
-		bool row_found = YBCExecuteDelete(resultRelationDesc, planSlot, estate,
-										  mtstate, changingPart);
+		bool row_found = YBCExecuteDelete(resultRelationDesc,
+										  planSlot,
+										  ((ModifyTable *) mtstate->ps.plan)->ybReturningColumns,
+										  mtstate->yb_fetch_target_tuple,
+										  estate->yb_es_is_single_row_modify_txn,
+										  changingPart);
 		if (!row_found)
 		{
 			/*
@@ -977,13 +981,15 @@ ldelete:;
 		}
 		else if (IsYBRelation(resultRelationDesc))
 		{
-			if (mtstate->yb_mt_is_single_row_update_or_delete)
+			if (mtstate->yb_fetch_target_tuple)
 			{
-				slot = planSlot;
+				slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
 			}
 			else
 			{
-				slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+				/* No target tuple means no need for junk filters. */
+				Assert(resultRelInfo->ri_junkFilter == NULL);
+				slot = planSlot;
 			}
 
 			delbuffer = InvalidBuffer;
@@ -1446,18 +1452,28 @@ ExecUpdate(ModifyTableState *mtstate,
 		bool is_pk_updated =
 			bms_overlap(YBGetTablePrimaryKeyBms(resultRelationDesc), actualUpdatedCols);
 
+		/*
+		 * TODO(alex): It probably makes more sense to pass a
+		 *             transformed slot instead of a plan slot? Note though
+		 *             that it can have tuple materialized already.
+		 */
+
+		ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
 		if (is_pk_updated)
 		{
-			YBCExecuteUpdateReplace(resultRelationDesc, planSlot, tuple, estate, mtstate);
+			YBCExecuteUpdateReplace(resultRelationDesc, planSlot, tuple);
 			row_found = true;
 		}
 		else
 		{
 			row_found = YBCExecuteUpdate(resultRelationDesc,
 										 planSlot,
+										 oldtuple,
 										 tuple,
 										 estate,
-										 mtstate,
+										 plan,
+										 mtstate->yb_fetch_target_tuple,
+										 estate->yb_es_is_single_row_modify_txn,
 										 actualUpdatedCols,
 										 canSetTag);
 		}
@@ -1472,9 +1488,12 @@ ExecUpdate(ModifyTableState *mtstate,
 			return NULL;
 		}
 
-		/* Update indices selectively if necessary, Single row updates do not affect indices */
+		/*
+		 * Update indices selectively if necessary, updates w/o fetched target tuple
+		 * do not affect indices.
+		 */
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo) &&
-		    !mtstate->yb_mt_is_single_row_update_or_delete)
+			mtstate->yb_fetch_target_tuple)
 		{
 			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 			List *no_update_index_list = ((ModifyTable *)mtstate->ps.plan)->no_update_index_list;
@@ -2733,7 +2752,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	mtstate->mt_plans = (PlanState **) palloc0(sizeof(PlanState *) * nplans);
 	mtstate->resultRelInfo = estate->es_result_relations + node->resultRelIndex;
-	mtstate->yb_mt_is_single_row_update_or_delete = YBCIsSingleRowUpdateOrDelete(node);
+	mtstate->yb_fetch_target_tuple = !YbCanSkipFetchingTargetTupleForModifyTable(node);
 
 	/* If modifying a partitioned table, initialize the root table info */
 	if (node->rootResultRelIndex >= 0)
@@ -3096,13 +3115,12 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 			case CMD_UPDATE:
 			case CMD_DELETE:
 				/*
-				 * If it's a YB single row UPDATE/DELETE we do not perform an
-				 * initial scan to populate the ybctid, so there is no junk
-				 * attribute to extract.
+				 * If it's a YB UPDATE/DELETE that didn't fetch the target tuple,
+				 * there is no junk attribute to extract.
 				 */
 				if (IsYBRelation(mtstate->resultRelInfo->ri_RelationDesc))
 				{
-					junk_filter_needed = !mtstate->yb_mt_is_single_row_update_or_delete;
+					junk_filter_needed = mtstate->yb_fetch_target_tuple;
 				}
 				else
 				{

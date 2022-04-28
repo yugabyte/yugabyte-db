@@ -30,6 +30,6 @@
 
 bool YBCIsSingleRowModify(PlannedStmt *pstmt);
 
-bool YBCIsSingleRowUpdateOrDelete(ModifyTable *modifyTable);
+bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
 
 bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);

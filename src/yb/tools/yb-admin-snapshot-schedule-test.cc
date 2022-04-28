@@ -1127,7 +1127,10 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, FailAfterMigration) {
 
   LOG(INFO) << "Insert new row into pb_yg_migration table";
   ASSERT_OK(conn.Execute(
-      "INSERT INTO pg_yb_migration (major, minor, name) VALUES (2147483640, 0, 'version n')"));
+      "BEGIN;\n"
+      "SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;\n"
+      "INSERT INTO pg_yb_migration (major, minor, name) VALUES (2147483640, 0, 'version n');\n"
+      "COMMIT;"));
   LOG(INFO) << "Assert restore for time " << time
             << " fails because of new row in pg_yb_migration";
 
