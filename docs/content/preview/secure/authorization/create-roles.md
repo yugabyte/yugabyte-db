@@ -104,7 +104,7 @@ You should see the following output:
 (4 rows)
 ```
 
-In the table above, note the following:
+In the table, note the following:
 
 * The `yugabyte` role is the built-in superuser.
 * The role `john` can login, and hence is a user. Note that `john` is not a superuser.
@@ -115,7 +115,7 @@ In the table above, note the following:
 
 Revoke roles using the [REVOKE](../../../api/ysql/the-sql-language/statements/dcl_revoke/) statement.
 
-In the above example, you can revoke the `engineering` role from the user `john` as follows:
+For example, you can revoke the `engineering` role from the user `john` as follows:
 
 ```sql
 yugabyte=# REVOKE engineering FROM john;
@@ -142,7 +142,7 @@ yugabyte     | t           | t        | {}
 
 Drop roles using the [DROP ROLE](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) statement.
 
-In the above example, you can drop the `developer` role with the following statement:
+For example, you can drop the `developer` role with the following statement:
 
 ```sql
 yugabyte=# DROP ROLE developer;

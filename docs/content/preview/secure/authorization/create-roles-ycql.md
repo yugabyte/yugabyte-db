@@ -116,7 +116,7 @@ In the table above, note the following:
 
 Revoke roles using the [REVOKE ROLE](../../../api/ycql/ddl_revoke_role/) command.
 
-In the above example, you can revoke the `engineering` role from the user `john` as follows:
+For example, you can revoke the `engineering` role from the user `john` as follows:
 
 ```cql
 cassandra@ycqlsh> REVOKE engineering FROM john;
@@ -143,7 +143,7 @@ cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_au
 
 Drop roles using the [DROP ROLE](../../../api/ycql/ddl_drop_role/) command.
 
-In the above example, you can drop the `developer` role with the following command:
+For example, you can drop the `developer` role with the following command:
 
 ```cql
 cassandra@ycqlsh> DROP ROLE IF EXISTS developer;
