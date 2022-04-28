@@ -852,7 +852,7 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
   }
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
-  auto [iter, inserted] = tables.emplace(table_id, new_table_info);
+  auto[iter, inserted] = tables.emplace(table_id, new_table_info);
   if (!inserted) {
     const auto& existing_table = *iter->second;
     VLOG_WITH_PREFIX(1) << "Updating to Schema version " << schema_version
@@ -1311,6 +1311,10 @@ const std::string& RaftGroupMetadata::indexed_table_id(const TableId& table_id) 
       primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
   const auto* index_info = table_info->index_info.get();
   return index_info ? index_info->indexed_table_id() : kEmptyString;
+}
+
+bool RaftGroupMetadata::is_index(const TableId& table_id) const {
+  return !indexed_table_id(table_id).empty();
 }
 
 bool RaftGroupMetadata::is_local_index(const TableId& table_id) const {
