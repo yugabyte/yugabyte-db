@@ -27,6 +27,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_backup.fwd.h"
+#include "yb/master/tablet_split_fwd.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
@@ -74,8 +75,6 @@ class SnapshotState;
 class SysCatalogTable;
 class SysConfigInfo;
 class SysRowEntries;
-class TabletSplitCompleteHandlerIf;
-class TabletSplitManager;
 class TSDescriptor;
 class TSManager;
 class UDTypeInfo;
@@ -87,7 +86,6 @@ class YsqlTablespaceManager;
 class YsqlTransactionDdl;
 
 struct CDCConsumerStreamInfo;
-struct SplitTabletIds;
 struct TableDescription;
 struct TabletReplica;
 struct TabletReplicaDriveInfo;
