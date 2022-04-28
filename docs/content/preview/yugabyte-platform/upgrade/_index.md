@@ -21,10 +21,23 @@ You can upgrade YugabyteDB Anywhere to a newer version.
     <a class="section-link icon-offset" href="upgrade-yp-replicated/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Upgrade YugabyteDB Anywhere using Replicated</div>
+        <div class="title">Upgrade using Replicated</div>
       </div>
       <div class="body">
         Use Replicated to upgrade YugabyteDB Anywhere
+      </div>
+    </a>
+  </div>
+
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="upgrade-yp-kubernetes/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Upgrade using Kubernetes</div>
+      </div>
+      <div class="body">
+        Use Kubernetes to upgrade YugabyteDB Anywhere
       </div>
     </a>
   </div>
