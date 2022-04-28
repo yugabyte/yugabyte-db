@@ -20,7 +20,13 @@
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/doc_key.h"
 
+#include "yb/util/flag_tags.h"
+
 DEFINE_int32(cdc_snapshot_batch_size, 250, "Batch size for the snapshot operation in CDC");
+TAG_FLAG(cdc_snapshot_batch_size, runtime);
+
+DEFINE_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");
+TAG_FLAG(stream_truncate_record, runtime);
 
 namespace yb {
 namespace cdc {
@@ -421,7 +427,6 @@ CHECKED_STATUS PopulateCDCSDKTruncateRecord(
   row_message = proto_record->mutable_row_message();
   row_message->set_op(RowMessage_Op_TRUNCATE);
   row_message->set_pgschema_name(schema.SchemaName());
-  row_message->mutable_truncate_request_info()->CopyFrom(msg->truncate());
 
   CDCSDKOpIdPB* cdc_sdk_op_id_pb;
 
@@ -722,8 +727,6 @@ Status GetChangesForCDCSDK(
         current_schema = **cached_schema;
       }
 
-      const auto& batch = msg->write().write_batch();
-
       switch (msg->op_type()) {
         case consensus::OperationType::UPDATE_TRANSACTION_OP:
           // Ignore intents.
@@ -752,7 +755,8 @@ Status GetChangesForCDCSDK(
           checkpoint_updated = true;
           break;
 
-        case consensus::OperationType::WRITE_OP:
+        case consensus::OperationType::WRITE_OP: {
+          const auto& batch = msg->write().write_batch();
           if (!batch.has_transaction()) {
             RETURN_NOT_OK(
                 PopulateCDCSDKWriteRecord(msg, stream_metadata, tablet_peer, resp, current_schema));
@@ -761,7 +765,8 @@ Status GetChangesForCDCSDK(
                 msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
             checkpoint_updated = true;
           }
-          break;
+        }
+        break;
 
         case consensus::OperationType::CHANGE_METADATA_OP: {
           RETURN_NOT_OK(SchemaFromPB(msg->change_metadata_request().schema(), &current_schema));
@@ -788,13 +793,15 @@ Status GetChangesForCDCSDK(
         break;
 
         case consensus::OperationType::TRUNCATE_OP: {
-          RETURN_NOT_OK(
-              PopulateCDCSDKTruncateRecord(msg, resp->add_cdc_sdk_proto_records(), current_schema));
-
-          SetCheckpoint(
-              msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
-          checkpoint_updated = true;
-        } break;
+          if (FLAGS_stream_truncate_record) {
+            RETURN_NOT_OK(PopulateCDCSDKTruncateRecord(
+                msg, resp->add_cdc_sdk_proto_records(), current_schema));
+            SetCheckpoint(
+                msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
+            checkpoint_updated = true;
+          }
+        }
+        break;
 
         default:
           // Nothing to do for other operation types.
