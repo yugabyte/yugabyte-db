@@ -2,25 +2,19 @@
 
 package com.yugabyte.yw.common;
 
-import com.google.inject.Singleton;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.common.Util;
-import java.time.Duration;
-import java.util.Iterator;
-import java.util.List;
-import java.util.ArrayList;
-import lombok.extern.slf4j.Slf4j;
+import com.azure.core.http.rest.PagedIterable;
+import com.azure.core.http.rest.PagedResponse;
 import com.azure.storage.blob.BlobClient;
-import com.azure.storage.blob.BlobClientBuilder;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.forms.BackupTableParams;
-import com.azure.storage.blob.models.DeleteSnapshotsOptionType;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobContainerClientBuilder;
 import com.azure.storage.blob.models.BlobItem;
-import com.azure.core.http.rest.PagedIterable;
-import com.azure.core.http.rest.PagedResponse;
 import com.azure.storage.blob.models.ListBlobsOptions;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.inject.Singleton;
+import java.time.Duration;
+import java.util.Iterator;
+import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
 @Slf4j
@@ -72,8 +66,7 @@ public class AZUtil {
         BlobContainerClient blobContainerClient =
             createBlobContainerClient(azureUrl, sasToken, container);
         ListBlobsOptions blobsOptions = new ListBlobsOptions().setMaxResultsPerPage(1);
-        PagedIterable<BlobItem> pagedIterable =
-            blobContainerClient.listBlobs(blobsOptions, Duration.ofMinutes(5));
+        blobContainerClient.listBlobs(blobsOptions, Duration.ofMinutes(5));
       } catch (Exception e) {
         log.error(
             String.format(

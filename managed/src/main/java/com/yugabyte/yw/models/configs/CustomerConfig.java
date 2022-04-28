@@ -1,14 +1,29 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.models;
+package com.yugabyte.yw.models.configs;
 
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_AZURE;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_GCS;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_S3;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.configs.data.CustomerConfigAlertsPreferencesData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigAlertsSmtpInfoData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigCallHomeData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -23,7 +38,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
@@ -65,11 +79,7 @@ public class CustomerConfig extends Model {
     CALLHOME,
 
     @EnumValue("PASSWORD_POLICY")
-    PASSWORD_POLICY,
-
-    // TODO: move metric and other configs to this table as well.
-    @EnumValue("OTHER")
-    OTHER;
+    PASSWORD_POLICY;
 
     public static boolean isValid(String type) {
       for (ConfigType t : ConfigType.values()) {
@@ -228,14 +238,23 @@ public class CustomerConfig extends Model {
     return createConfig(customerUUID, ConfigType.PASSWORD_POLICY, PASSWORD_POLICY, payload);
   }
 
-  public static CustomerConfig createConfig(
+  /**
+   * Creates customer config of the specified type but doesn't save it into DB.
+   *
+   * @param customerUUID
+   * @param type
+   * @param name
+   * @param payload
+   * @return
+   */
+  private static CustomerConfig createConfig(
       UUID customerUUID, ConfigType type, String name, JsonNode payload) {
     CustomerConfig customerConfig = new CustomerConfig();
     customerConfig.type = type;
     customerConfig.name = name;
     customerConfig.customerUUID = customerUUID;
     customerConfig.data = (ObjectNode) payload;
-    customerConfig.save();
+    customerConfig.configName = name + "-Default";
     return customerConfig;
   }
 
@@ -351,5 +370,53 @@ public class CustomerConfig extends Model {
     LOG.info("Customer config: transitioned from {} to {}", this.state, newState);
     this.state = newState;
     save();
+  }
+
+  @JsonIgnore
+  public CustomerConfigData getDataObject() {
+    Class<? extends CustomerConfigData> expectedClass = getDataClass(type, name);
+    if (expectedClass == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Unknown data type in configuration data. Type %s, name %s.", type, name));
+    }
+
+    ObjectMapper mapper = new ObjectMapper();
+    try {
+      return mapper.readValue(Json.stringify(getData()), expectedClass);
+    } catch (Exception e) {
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
+  }
+
+  // TODO: Should be removed later if we remove "ObjectNode data" and use
+  // @JsonSubTypes.
+  private static Class<? extends CustomerConfigData> getDataClass(ConfigType type, String name) {
+    if (type == ConfigType.STORAGE) {
+      if (NAME_S3.equals(name)) {
+        return CustomerConfigStorageS3Data.class;
+      } else if (NAME_GCS.equals(name)) {
+        return CustomerConfigStorageGCSData.class;
+      } else if (NAME_AZURE.equals(name)) {
+        return CustomerConfigStorageAzureData.class;
+      } else if (NAME_NFS.equals(name)) {
+        return CustomerConfigStorageNFSData.class;
+      }
+    } else if (type == ConfigType.ALERTS) {
+      if (ALERTS_PREFERENCES.equals(name)) {
+        return CustomerConfigAlertsPreferencesData.class;
+      } else if (SMTP_INFO.equals(name)) {
+        return CustomerConfigAlertsSmtpInfoData.class;
+      }
+    } else if (type == ConfigType.CALLHOME) {
+      if (CALLHOME_PREFERENCES.equals(name)) {
+        return CustomerConfigCallHomeData.class;
+      }
+    } else if (type == ConfigType.PASSWORD_POLICY) {
+      if (PASSWORD_POLICY.equals(name)) {
+        return CustomerConfigPasswordPolicyData.class;
+      }
+    }
+    return null;
   }
 }

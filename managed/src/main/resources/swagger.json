@@ -2746,7 +2746,7 @@
         },
         "type" : {
           "description" : "Config type",
-          "enum" : [ "STORAGE", "ALERTS", "CALLHOME", "PASSWORD_POLICY", "OTHER" ],
+          "enum" : [ "STORAGE", "ALERTS", "CALLHOME", "PASSWORD_POLICY" ],
           "example" : "STORAGE",
           "type" : "string"
         }
@@ -2801,7 +2801,7 @@
         },
         "type" : {
           "description" : "Config type",
-          "enum" : [ "STORAGE", "ALERTS", "CALLHOME", "PASSWORD_POLICY", "OTHER" ],
+          "enum" : [ "STORAGE", "ALERTS", "CALLHOME", "PASSWORD_POLICY" ],
           "example" : "STORAGE",
           "type" : "string"
         },

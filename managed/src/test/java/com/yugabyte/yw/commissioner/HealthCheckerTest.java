@@ -42,12 +42,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -236,6 +236,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     if (null == customerConfig) {
       // Setup alerting data.
       customerConfig = CustomerConfig.createAlertConfig(defaultCustomer.uuid, Json.toJson(data));
+      customerConfig.save();
     } else {
       customerConfig.data = (ObjectNode) Json.toJson(data);
       customerConfig.update();
