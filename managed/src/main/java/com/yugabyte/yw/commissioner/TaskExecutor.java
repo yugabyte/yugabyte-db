@@ -1053,7 +1053,7 @@ public class TaskExecutor {
               log.error("Ignoring error for " + subTaskGroup.toString(), e);
             } else {
               // Postpone throwing this error later when all the subgroups are done.
-              throw new RuntimeException(subTaskGroup.toString() + " failed.");
+              throw new RuntimeException(subTaskGroup.toString() + " failed.", e);
             }
             anyRe = e;
           }
@@ -1063,7 +1063,7 @@ public class TaskExecutor {
         subTaskGroups.clear();
       }
       if (anyRe != null) {
-        throw new RuntimeException("One or more SubTaskGroups failed while running.");
+        throw new RuntimeException("One or more SubTaskGroups failed while running.", anyRe);
       }
     }
 

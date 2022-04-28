@@ -111,22 +111,26 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
         Universe.saveDetails(
             result.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     if (providerType == Common.CloudType.onprem) {
-      String instanceType =
-          result.getUniverseDetails().nodeDetailsSet.iterator().next().cloudInfo.instance_type;
-      Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
-      for (NodeDetails node : result.getUniverseDetails().nodeDetailsSet) {
-        List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<>());
-        nodeNames.add(node.nodeName);
-        onpremAzToNodes.put(node.azUuid, nodeNames);
-      }
-      Map<String, NodeInstance> nodeMap = NodeInstance.pickNodes(onpremAzToNodes, instanceType);
-      for (NodeDetails node : result.getUniverseDetails().nodeDetailsSet) {
-        NodeInstance nodeInstance = nodeMap.get(node.nodeName);
-        if (nodeInstance != null) {
-          node.nodeUuid = nodeInstance.getNodeUuid();
-        }
-      }
-      result.save();
+      Universe.saveDetails(
+          result.universeUUID,
+          u -> {
+            String instanceType = u.getNodes().iterator().next().cloudInfo.instance_type;
+            Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
+            for (NodeDetails node : u.getNodes()) {
+              List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<>());
+              nodeNames.add(node.nodeName);
+              onpremAzToNodes.put(node.azUuid, nodeNames);
+            }
+            Map<String, NodeInstance> nodeMap =
+                NodeInstance.pickNodes(onpremAzToNodes, instanceType);
+            for (NodeDetails node : u.getNodes()) {
+              NodeInstance nodeInstance = nodeMap.get(node.nodeName);
+              if (nodeInstance != null) {
+                node.nodeUuid = nodeInstance.getNodeUuid();
+              }
+            }
+          },
+          false);
     }
 
     return result;
