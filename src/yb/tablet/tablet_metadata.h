@@ -238,6 +238,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   const std::string& indexed_table_id(const TableId& table_id = "") const;
 
+  bool is_index(const TableId& table_id = "") const;
+
   bool is_local_index(const TableId& table_id = "") const;
 
   bool is_unique_index(const TableId& table_id = "") const;

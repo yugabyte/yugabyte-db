@@ -9,24 +9,26 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+//
 
-#ifndef YB_MASTER_CDC_CONSUMER_SPLIT_DRIVER_H
-#define YB_MASTER_CDC_CONSUMER_SPLIT_DRIVER_H
+#ifndef YB_MASTER_TABLET_SPLIT_FWD_H
+#define YB_MASTER_TABLET_SPLIT_FWD_H
 
-#include "yb/common/entity_ids_types.h"
-#include "yb/master/tablet_split_fwd.h"
-#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace master {
 
-class CDCConsumerSplitDriverIf {
- public:
-  virtual ~CDCConsumerSplitDriverIf() {}
-  virtual CHECKED_STATUS UpdateCDCConsumerOnTabletSplit(const TableId& consumer_table_id,
-                                                        const SplitTabletIds& split_tablet_ids) = 0;
-};
+class TabletSplitCandidateFilterIf;
+class TabletSplitCompleteHandlerIf;
+class TabletSplitDriverIf;
+class TabletSplitManager;
+
+struct SplitTabletIds;
+
+YB_STRONGLY_TYPED_BOOL(ManualSplit);
 
 } // namespace master
 } // namespace yb
-#endif // YB_MASTER_CDC_CONSUMER_SPLIT_DRIVER_H
+
+#endif // YB_MASTER_TABLET_SPLIT_FWD_H

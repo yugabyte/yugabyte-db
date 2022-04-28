@@ -1177,6 +1177,10 @@ const std::string& RaftGroupMetadata::indexed_table_id(const TableId& table_id) 
   return index_info ? index_info->indexed_table_id() : kEmptyString;
 }
 
+bool RaftGroupMetadata::is_index(const TableId& table_id) const {
+  return !indexed_table_id(table_id).empty();
+}
+
 bool RaftGroupMetadata::is_local_index(const TableId& table_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   std::lock_guard<MutexType> lock(data_mutex_);

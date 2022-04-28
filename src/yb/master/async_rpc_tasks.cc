@@ -1324,7 +1324,7 @@ bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
 namespace {
 
 bool IsDefinitelyPermanentError(const Status& s) {
-  return s.IsInvalidArgument() || s.IsNotFound();
+  return s.IsInvalidArgument() || s.IsNotFound() || s.IsNotSupported();
 }
 
 } // namespace
@@ -1334,7 +1334,7 @@ bool IsDefinitelyPermanentError(const Status& s) {
 // ============================================================================
 AsyncGetTabletSplitKey::AsyncGetTabletSplitKey(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-    bool is_manual_split, DataCallbackType result_cb)
+    const ManualSplit is_manual_split, DataCallbackType result_cb)
     : AsyncTabletLeaderTask(master, callback_pool, tablet), result_cb_(result_cb) {
   req_.set_tablet_id(tablet_id());
   req_.set_is_manual_split(is_manual_split);

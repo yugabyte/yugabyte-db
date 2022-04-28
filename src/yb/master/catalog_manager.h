@@ -802,43 +802,43 @@ class CatalogManager :
     return *universe_key_client_;
   }
 
-  CHECKED_STATUS FlushSysCatalog(const FlushSysCatalogRequestPB* req,
-                                 FlushSysCatalogResponsePB* resp,
-                                 rpc::RpcContext* rpc);
+  Status FlushSysCatalog(const FlushSysCatalogRequestPB* req,
+                         FlushSysCatalogResponsePB* resp,
+                         rpc::RpcContext* rpc);
 
-  CHECKED_STATUS CompactSysCatalog(const CompactSysCatalogRequestPB* req,
-                                   CompactSysCatalogResponsePB* resp,
-                                   rpc::RpcContext* rpc);
+  Status CompactSysCatalog(const CompactSysCatalogRequestPB* req,
+                           CompactSysCatalogResponsePB* resp,
+                           rpc::RpcContext* rpc);
 
-  CHECKED_STATUS SplitTablet(const TabletId& tablet_id, bool is_manual_split) override;
+  Status SplitTablet(const TabletId& tablet_id, ManualSplit is_manual_split) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
-  CHECKED_STATUS SplitTablet(
+  Status SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc);
 
   // Deletes a tablet that is no longer serving user requests. This would require that the tablet
   // has been split and both of its children are now in RUNNING state and serving user requests
   // instead.
-  CHECKED_STATUS DeleteNotServingTablet(
+  Status DeleteNotServingTablet(
       const DeleteNotServingTabletRequestPB* req, DeleteNotServingTabletResponsePB* resp,
       rpc::RpcContext* rpc);
 
-  CHECKED_STATUS DdlLog(
+  Status DdlLog(
       const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
 
   // Test wrapper around protected DoSplitTablet method.
-  CHECKED_STATUS TEST_SplitTablet(
+  Status TEST_SplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info,
       docdb::DocKeyHash split_hash_code) override;
 
-  CHECKED_STATUS TEST_SplitTablet(
+  Status TEST_SplitTablet(
       const TabletId& tablet_id, const std::string& split_encoded_key,
       const std::string& split_partition_key) override;
 
-  CHECKED_STATUS TEST_IncrementTablePartitionListVersion(const TableId& table_id) override;
+  Status TEST_IncrementTablePartitionListVersion(const TableId& table_id) override;
 
   // Schedule a task to run on the async task thread pool.
-  CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) override;
+  Status ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task) override;
 
   // Time since this peer became master leader. Caller should verify that it is leader before.
   MonoDelta TimeSinceElectedLeader();
@@ -1319,12 +1319,12 @@ class CatalogManager :
 
   CHECKED_STATUS DoSplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
-      std::string split_partition_key, bool is_manual_split);
+      std::string split_partition_key, ManualSplit is_manual_split);
 
   // Splits tablet using specified split_hash_code as a split point.
   CHECKED_STATUS DoSplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code,
-      bool is_manual_split);
+      ManualSplit is_manual_split);
 
   // Calculate the total number of replicas which are being handled by servers in state.
   int64_t GetNumRelevantReplicas(const BlacklistPB& state, bool leaders_only);
@@ -1569,20 +1569,24 @@ class CatalogManager :
   // Performs the provided action with the sys catalog shared tablet instance, or sets up an error
   // if the tablet is not found.
   template <class Req, class Resp, class F>
-  CHECKED_STATUS PerformOnSysCatalogTablet(
-      const Req& req, Resp* resp, const F& f);
+  Status PerformOnSysCatalogTablet(const Req& req, Resp* resp, const F& f);
 
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(mutex_);
 
-  CHECKED_STATUS CollectTable(
+  Status CollectTable(
       const TableDescription& table_description,
       CollectFlags flags,
       std::vector<TableDescription>* all_tables,
       std::unordered_set<NamespaceId>* parent_colocated_table_ids);
 
+  Status SplitTablet(const scoped_refptr<TabletInfo>& tablet, ManualSplit is_manual_split);
+
   void SplitTabletWithKey(
       const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
-      const std::string& split_partition_key, bool is_manual_split);
+      const std::string& split_partition_key, ManualSplit is_manual_split);
+
+  Status ValidateSplitCandidate(
+      const scoped_refptr<TabletInfo>& tablet, ManualSplit is_manual_split);
 
   // From the list of TServers in 'ts_descs', return the ones that match any placement policy
   // in 'placement_info'. Returns error if there are insufficient TServers to match the
@@ -1602,7 +1606,7 @@ class CatalogManager :
 
   bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
 
-  CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
+  Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
 
   // Return the tablespaces in the system and their associated replication info from
   // pg catalog tables.
@@ -1620,7 +1624,7 @@ class CatalogManager :
   void ScheduleRefreshTablespaceInfoTask(const bool schedule_now = false);
 
   // Helper function to refresh the tablespace info.
-  CHECKED_STATUS DoRefreshTablespaceInfo();
+  Status DoRefreshTablespaceInfo();
 
   // Processes committed consensus state for specified tablet from ts_desc.
   // Returns true if tablet was mutated.
@@ -1643,7 +1647,7 @@ class CatalogManager :
   using ReportedTablets = std::vector<ReportedTablet>;
 
   // Process tablets batch while processing tablet report.
-  CHECKED_STATUS ProcessTabletReportBatch(
+  Status ProcessTabletReportBatch(
       TSDescriptor* ts_desc,
       bool is_incremental,
       ReportedTablets::iterator begin,

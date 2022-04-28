@@ -298,7 +298,11 @@ class ColumnSchema {
 };
 
 class ContiguousRow;
-const TableId kNoCopartitionTableId = "";
+extern const TableId kNoCopartitionTableId;
+
+// TODO(tsplit): default value must be revisit after #12190 and #12191 are fixed
+constexpr uint32_t kCurrentPartitionKeyVersion = 0;
+
 
 class TableProperties {
  public:
@@ -316,6 +320,7 @@ class TableProperties {
     // Ignoring num_tablets_.
     // Ignoring retain_delete_markers_.
     // Ignoring wal_retention_secs_.
+    // Ignoring partition_key_version_.
   }
 
   bool operator!=(const TableProperties& other) const {
@@ -347,6 +352,7 @@ class TableProperties {
     // Ignoring contain_counters_.
     // Ignoring retain_delete_markers_.
     // Ignoring wal_retention_secs_.
+    // Ignoring partition_key_version_.
     return true;
   }
 
@@ -434,6 +440,14 @@ class TableProperties {
     retain_delete_markers_ = retain_delete_markers;
   }
 
+  uint32_t partition_key_version() const {
+    return partition_key_version_;
+  }
+
+  void set_partition_key_version(uint32_t value) {
+    partition_key_version_ = value;
+  }
+
   void ToTablePropertiesPB(TablePropertiesPB *pb) const;
 
   static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb);
@@ -460,6 +474,7 @@ class TableProperties {
   bool use_mangled_column_name_ = false;
   int num_tablets_ = 0;
   bool is_ysql_catalog_table_ = false;
+  uint32_t partition_key_version_ = kCurrentPartitionKeyVersion;
 };
 
 typedef std::string PgSchemaName;
