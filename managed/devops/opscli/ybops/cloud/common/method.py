@@ -398,7 +398,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                 self.wait_for_host(args, use_default_port),
                 args.custom_ssh_port,
                 default_port=use_default_port)
-            host_info['ssh_user'] = DEFAULT_SSH_USER
+            host_info['ssh_user'] = self.extra_vars.get("ssh_user", DEFAULT_SSH_USER)
             retries = 0
             while not self.cloud.wait_for_startup_script(args, host_info) and retries < 5:
                 retries += 1
