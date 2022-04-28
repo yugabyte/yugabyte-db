@@ -15,11 +15,14 @@
 
 #include "yb/client/yb_table_name.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_bool(enable_ysql);
@@ -121,6 +124,28 @@ Status PgMiniTestBase::RestartCluster() {
 const std::shared_ptr<tserver::MiniTabletServer> PgMiniTestBase::PickPgTabletServer(
     const MiniCluster::MiniTabletServers& servers) {
   return RandomElement(servers);
+}
+
+HistogramMetricWatcher::HistogramMetricWatcher(
+  const server::RpcServerBase& server, const MetricPrototype& metric)
+    : server_(server), metric_(metric) {
+}
+
+Result<size_t> HistogramMetricWatcher::Delta(const DeltaFunctor& functor) const {
+  auto initial_values = VERIFY_RESULT(GetMetricCount());
+  RETURN_NOT_OK(functor());
+  return VERIFY_RESULT(GetMetricCount()) - initial_values;
+}
+
+Result<size_t> HistogramMetricWatcher::GetMetricCount() const {
+  const auto& metric_map = server_.metric_entity()->UnsafeMetricsMapForTests();
+  auto item = metric_map.find(&metric_);
+  SCHECK(item != metric_map.end(), IllegalState, "Metric not found");
+  const auto& metric = *item->second;
+  SCHECK_EQ(
+      MetricType::kHistogram, metric.prototype()->type(),
+      IllegalState, "Histogram metric is expected");
+  return down_cast<const Histogram&>(metric).TotalCount();
 }
 
 } // namespace pgwrapper

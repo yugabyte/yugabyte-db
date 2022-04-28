@@ -10,14 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <glog/logging.h>
-
-#include "yb/gutil/map-util.h"
+#include <memory>
+#include <string>
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/util/metrics.h"
 
+#include "yb/util/metrics.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
@@ -33,29 +36,21 @@ const std::string kConstraintName = "fk2pk";
 
 class PgFKeyTest : public PgMiniTestBase {
  protected:
-  using DeltaFunctor = std::function<Status()>;
+  void SetUp() override {
+    PgMiniTestBase::SetUp();
+    read_rpc_watcher_ = std::make_unique<HistogramMetricWatcher>(
+        *cluster_->mini_tablet_server(0)->server(),
+        METRIC_handler_latency_yb_tserver_TabletServerService_Read);
+  }
 
   size_t NumTabletServers() override {
     return 1;
   }
 
-  Result<uint64_t> ReadRPCCountDelta(const DeltaFunctor& functor) const {
-    const auto initial_count = GetReadRPCCount();
-    RETURN_NOT_OK(functor());
-    return GetReadRPCCount() - initial_count;
-  }
-
- private:
-  uint64_t GetReadRPCCount() const {
-    const auto metric_map =
-        cluster_->mini_tablet_server(0)->server()->metric_entity()->UnsafeMetricsMapForTests();
-    return down_cast<Histogram*>(FindOrDie(
-        metric_map,
-        &METRIC_handler_latency_yb_tserver_TabletServerService_Read).get())->TotalCount();
-  }
+  std::unique_ptr<HistogramMetricWatcher> read_rpc_watcher_;
 };
 
-CHECKED_STATUS InsertItems(
+Status InsertItems(
     PGConn* conn, const std::string& table, size_t first_item, size_t last_item) {
   return conn->ExecuteFormat(
       "INSERT INTO $0 SELECT s, s FROM generate_series($1, $2) AS s", table, first_item, last_item);
@@ -67,7 +62,7 @@ struct Options {
   size_t last_item = 100;
 };
 
-CHECKED_STATUS PrepareTables(PGConn* conn, const Options& options = Options()) {
+Status PrepareTables(PGConn* conn, const Options& options = Options()) {
   const char* table_type = options.temp_tables ? "TEMP TABLE" : "TABLE";
   RETURN_NOT_OK(conn->ExecuteFormat(
       "CREATE $0 $1(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS",
@@ -79,13 +74,13 @@ CHECKED_STATUS PrepareTables(PGConn* conn, const Options& options = Options()) {
   return InsertItems(conn, kFKTable, 1, options.last_item);
 }
 
-CHECKED_STATUS AddFKConstraint(PGConn* conn, bool skip_check = false) {
+Status AddFKConstraint(PGConn* conn, bool skip_check = false) {
   return conn->ExecuteFormat(
       "ALTER TABLE $0 ADD CONSTRAINT $1 FOREIGN KEY(pk) REFERENCES $2(k)$3",
       kFKTable, kConstraintName, kPKTable, skip_check ? " NOT VALID" : "");
 }
 
-CHECKED_STATUS CheckAddFKCorrectness(PGConn* conn, bool temp_tables) {
+Status CheckAddFKCorrectness(PGConn* conn, bool temp_tables) {
   const size_t pk_fk_item_delta = 10;
   const auto last_pk_item = FLAGS_ysql_session_max_batch_size - pk_fk_item_delta / 2;
   RETURN_NOT_OK(PrepareTables(conn,
@@ -114,7 +109,7 @@ CHECKED_STATUS CheckAddFKCorrectness(PGConn* conn, bool temp_tables) {
 TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(AddFKConstraintRPCCount)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(PrepareTables(&conn));
-  const auto add_fk_rpc_count = ASSERT_RESULT(ReadRPCCountDelta([&conn]() {
+  const auto add_fk_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta([&conn]() {
     return AddFKConstraint(&conn);
   }));
   ASSERT_EQ(add_fk_rpc_count, 2);
@@ -126,7 +121,7 @@ TEST_F(PgFKeyTest,
        YB_DISABLE_TEST_IN_TSAN(AddFKConstraintDelayedValidationRPCCount)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(PrepareTables(&conn));
-  const auto add_fk_rpc_count = ASSERT_RESULT(ReadRPCCountDelta([&conn]() {
+  const auto add_fk_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta([&conn]() {
     return AddFKConstraint(&conn, true /* skip_check */);
   }));
   ASSERT_EQ(add_fk_rpc_count, 0);
@@ -157,7 +152,7 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(AddFKConstraintWithTypeCast)) {
   ASSERT_OK(InsertItems(&conn, kFKTable, 21, 21));
   ASSERT_NOK(AddFKConstraint(&conn));
   ASSERT_OK(InsertItems(&conn, kPKTable, 21, 21));
-  const auto add_fk_rpc_count = ASSERT_RESULT(ReadRPCCountDelta([&conn]() {
+  const auto add_fk_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta([&conn]() {
     return AddFKConstraint(&conn);
   }));
   ASSERT_EQ(add_fk_rpc_count, 43);

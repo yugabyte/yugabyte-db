@@ -418,17 +418,40 @@ HandleYBStatus(YBCStatus status)
    HandleYBStatusAtErrorLevel(status, ERROR);
 }
 
-void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level) {
-	if (!status) {
-		return;
-	}
-	/* Copy the message to the current memory context and free the YBCStatus. */
-	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
-	char* msg_buf = DupYBStatusMessage(status, pg_err_code == ERRCODE_UNIQUE_VIOLATION);
+static const char*
+FetchUniqueConstraintName(Oid relation_id)
+{
+	const char* name = NULL;
+	Relation rel = RelationIdGetRelation(relation_id);
 
-	if (YBShouldReportErrorStatus()) {
-		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
+	if (!rel->rd_index && rel->rd_pkindex != InvalidOid)
+	{
+		Relation pkey = RelationIdGetRelation(rel->rd_pkindex);
+
+		name = pstrdup(RelationGetRelationName(pkey));
+
+		RelationClose(pkey);
 	}
+	else
+		name = pstrdup(RelationGetRelationName(rel));
+
+	RelationClose(rel);
+	return name;
+}
+
+void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level)
+{
+	if (!status)
+		return;
+
+	/* Build message in the current memory context. */
+	const char* msg_buf = BuildYBStatusMessage(
+			status, &FetchUniqueConstraintName);
+
+	if (YBShouldReportErrorStatus())
+		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
+
+	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
 	const uint16_t txn_err_code = YBCStatusTransactionError(status);
 	YBCFreeStatus(status);
 	ereport(error_level,
@@ -441,10 +464,11 @@ void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level) {
 void
 HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 {
-	if (!status) {
+	if (!status)
 		return;
-	}
-	if (YBCStatusIsNotFound(status)) {
+
+	if (YBCStatusIsNotFound(status))
+	{
 		*not_found = true;
 		YBCFreeStatus(status);
 		return;
@@ -460,33 +484,6 @@ HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 		return;
 
 	HandleYBStatus(status);
-}
-
-/*
- * Fetches relation's unique constraint name to specified buffer.
- * If relation is not an index and it has primary key the name of primary key index is returned.
- * In other cases, relation name is used.
- */
-static void
-FetchUniqueConstraintName(Oid relation_id, char* dest, size_t max_size)
-{
-	// strncat appends source to destination, so destination must be empty.
-	dest[0] = 0;
-	Relation rel = RelationIdGetRelation(relation_id);
-
-	if (!rel->rd_index && rel->rd_pkindex != InvalidOid)
-	{
-		Relation pkey = RelationIdGetRelation(rel->rd_pkindex);
-
-		strncat(dest, RelationGetRelationName(pkey), max_size);
-
-		RelationClose(pkey);
-	} else
-	{
-		strncat(dest, RelationGetRelationName(rel), max_size);
-	}
-
-	RelationClose(rel);
 }
 
 static const char*
@@ -529,7 +526,6 @@ YBInitPostgresBackend(
 		int count;
 		YbGetTypeTable(&type_table, &count);
 		YBCPgCallbacks callbacks;
-		callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;

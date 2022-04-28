@@ -656,16 +656,8 @@ Status PgSession::PatchStatus(const Status& status, const PgObjectIds& relations
   if (PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
     auto op_index = OpIndex::ValueFromStatus(status);
     if (op_index && *op_index < relations.size()) {
-      char constraint_name[0xFF];
-      constraint_name[sizeof(constraint_name) - 1] = 0;
-      pg_callbacks_.FetchUniqueConstraintName(relations[*op_index].object_oid,
-                                              constraint_name,
-                                              sizeof(constraint_name) - 1);
-      return STATUS(
-          AlreadyPresent,
-          Format("duplicate key value violates unique constraint \"$0\"", Slice(constraint_name)),
-          Slice(),
-          PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION));
+      return STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION))
+          .CloneAndAddErrorCode(RelationOid(relations[*op_index].object_oid));
     }
   }
   return status;
