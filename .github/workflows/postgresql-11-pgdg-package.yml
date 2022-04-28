@@ -3,7 +3,7 @@ on: [push]
 
 jobs:
   build:
-    name: postgresql-11-pgdg-package
+    name: pg-11-pgdg-package-test
     runs-on: ubuntu-18.04
     steps:
       - name: Clone pg_stat_monitor repository
@@ -28,18 +28,14 @@ jobs:
         run: |
           sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
           wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-          sudo apt-get update
-          sudo apt-get -y install postgresql-11
-          sudo apt-get update 
-          sudo apt-get -y install postgresql-client-11 
-          sudo apt-get update 
-          sudo apt install postgresql-server-dev-11
-          sudo chown -R postgres:postgres src/
+          sudo apt-get -y update
+          sudo apt-get -y install postgresql-11 postgresql-server-dev-11
+
+      - name: Change sources owner to postgres
+        run: sudo chown -R postgres:postgres src
 
       - name: Build pg_stat_monitor
         run: |
-          export PATH="/usr/lib/postgresql/11/bin:$PATH"
-          sudo cp /usr/lib/postgresql/11/bin/pg_config /usr/bin
           sudo make USE_PGXS=1
           sudo make USE_PGXS=1 install
         working-directory: src/pg_stat_monitor/
@@ -49,6 +45,7 @@ jobs:
           sudo service postgresql stop
           echo "shared_preload_libraries = 'pg_stat_monitor'" | sudo tee -a /etc/postgresql/11/main/postgresql.conf
           sudo service postgresql start
+          sudo psql -V
           sudo -u postgres bash -c 'make installcheck USE_PGXS=1'
         working-directory: src/pg_stat_monitor/
 
@@ -60,4 +57,4 @@ jobs:
           path: |
             src/pg_stat_monitor/regression.diffs
             src/pg_stat_monitor/logfile
-          retention-days: 1
+          retention-days: 3

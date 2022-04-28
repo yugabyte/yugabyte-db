@@ -3,7 +3,7 @@ on: [push]
 
 jobs:
   build:
-    name: pg11-test
+    name: pg-11-build-test
     runs-on: ubuntu-18.04
     steps:
       - name: Clone postgres repository
@@ -111,4 +111,4 @@ jobs:
             **/regression.diffs
             **/regression.out
             src/pg_stat_monitor/logfile
-          retention-days: 1
+          retention-days: 3
