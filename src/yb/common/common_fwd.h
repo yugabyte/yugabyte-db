@@ -66,6 +66,7 @@ struct TransactionOperationContext;
 struct TransactionStatusResult;
 
 using ColocationId = uint32_t;
+using SchemaVersion = uint32_t;
 
 using QLTypePtr = std::shared_ptr<QLType>;
 

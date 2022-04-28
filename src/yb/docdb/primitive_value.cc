@@ -933,8 +933,8 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
         return STATUS_FORMAT(Corruption, "Not enough bytes for UUID: $0", slice->size());
       }
       if (out) {
-        RETURN_NOT_OK((new(&out->uuid_val_) Uuid())->FromSlice(
-            *slice, boost::uuids::uuid::static_size()));
+        out->uuid_val_ = VERIFY_RESULT(Uuid::FromSlice(
+            slice->Prefix(boost::uuids::uuid::static_size())));
       }
       slice->remove_prefix(boost::uuids::uuid::static_size());
       type_ref = type;
