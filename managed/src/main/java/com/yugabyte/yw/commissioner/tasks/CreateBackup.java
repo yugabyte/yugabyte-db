@@ -24,8 +24,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -35,12 +35,12 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.CustomerConfig.ConfigState;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -128,7 +128,7 @@ public class CreateBackup extends UniverseTaskBase {
       } catch (CancellationException ce) {
         log.error("Aborting backups for task: {}", userTaskUUID);
         Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
-            .forEach((backup) -> backup.transitionState(BackupState.Stopped));
+            .forEach(backup -> backup.transitionState(BackupState.Stopped));
         throw ce;
       } catch (Throwable t) {
         if (params().alterLoadBalancer) {
