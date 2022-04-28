@@ -102,28 +102,6 @@ You should see an output similar to the following:
 
 The next step is to install YugabyteDB Anywhere.
 
-## Install required packages
-
-Liza: the following might need to replace the bullet point "Having YugabyteDB Anywhere airgapped install package. Contact Yugabyte Support for more information." In https://docs.yugabyte.com/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/#airgapped-hosts
-
-
-
-You need to install a number of packages using the package manager. Since the cluster nodes are airgapped, they do not have access to package repositories, and hence airgapped cluster creation fails. For now, we should provide a list of packages that should be installed either on the AMI, or available on an  accessible package repository, for installation to work. Below is a list of the necessary packages, along with some extra information about when it is necessary. All of this applies to 2.13.1.
-
-1. Chrony (if the user toggles Use TimeSync on during universe creation)
-2. Python-minimal (only on Ubuntu 18.04)
-3. Python-setuptools (only on Ubuntu 18.04)
-4. Python-six/Python2-six (the Python2 version of Six)
-5. policycoreutils-python (only on CentOS 7 and Oracle Linux 8)
-6. selinux-policy (only on Oracle Linux 8, **must be on an accessible package repository**)
-7. locales (only on Ubuntu)
-
-In 2.12, there is an additional requirement:
-
-1. ntpd (if the user toggles Use TimeSync off during universe creation)
-
-Some of these may change over time as we clean up some of these requirements like Python 2, I'll update accordingly.
-
 ## Set Up HTTPS (optional)
 
 Launch the Replicated UI via [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). Expect to see a warning stating that the connection to the server is not yet private. This condition is resolved once HTTPS for the Replicated Admin Console is set up in the next step. Proceed by clicking **Continue to Setup** **>** **ADVANCED** to bypass the warning and access the **Replicated Admin Console**, as shown in the following illustration:
