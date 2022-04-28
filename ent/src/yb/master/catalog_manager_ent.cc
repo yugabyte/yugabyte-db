@@ -357,7 +357,7 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       catalog_manager_->universe_replication_map_[ri->id()] = ri;
 
       // Add any failed universes to be cleared
-      if (l->pb.state() == SysUniverseReplicationEntryPB::FAILED ||
+      if (l->is_deleted_or_failed() ||
           l->pb.state() == SysUniverseReplicationEntryPB::DELETING ||
           GStringPiece(l->pb.producer_id()).ends_with(".ALTER")) {
         catalog_manager_->universes_to_clear_.push_back(ri->id());
@@ -4266,14 +4266,12 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
       original_lock.Commit();
   }
 
-  // Add universe to universes_to_clear_
+  // Add alter temp universe to GC.
   {
     LockGuard lock(mutex_);
     universes_to_clear_.push_back(universe->id());
   }
 
-  // TODO: universe_replication_map_.erase(universe->id()) at a later time.
-  //       TwoDCTest.AlterUniverseReplicationTables crashes due to undiagnosed race right now.
   LOG(INFO) << "Done with Merging " << universe->id() << " into " << original_universe->id();
 }
 
@@ -4898,12 +4896,19 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
     return STATUS(InvalidArgument, "Producer universe ID must be provided",
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
+  bool isAlterRequest = GStringPiece(req->producer_id()).ends_with(".ALTER");
 
   GetUniverseReplicationRequestPB universe_req;
   GetUniverseReplicationResponsePB universe_resp;
   universe_req.set_producer_id(req->producer_id());
 
-  RETURN_NOT_OK(GetUniverseReplication(&universe_req, &universe_resp, /* RpcContext */ nullptr));
+  auto s = GetUniverseReplication(&universe_req, &universe_resp, /* RpcContext */ nullptr);
+  // If the universe was deleted, we're done.  This is normal with ALTER tmp files.
+  if (s.IsNotFound()) {
+    resp->set_done(true);
+    return isAlterRequest ? Status::OK() : s;
+  }
+  RETURN_NOT_OK(s);
   if (universe_resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(universe_resp.error().status()));
   }
@@ -4912,9 +4917,9 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
   //  - For a regular SetupUniverseReplication, we want to wait for the universe to become ACTIVE.
   //  - For an AlterUniverseReplication, we need to wait until the .ALTER universe gets merged with
   //    the main universe - at which point the .ALTER universe is deleted.
-  bool isAlterRequest = GStringPiece(req->producer_id()).ends_with(".ALTER");
-  if ((!isAlterRequest && universe_resp.entry().state() == SysUniverseReplicationEntryPB::ACTIVE) ||
-      (isAlterRequest && universe_resp.entry().state() == SysUniverseReplicationEntryPB::DELETED)) {
+  auto terminal_state = isAlterRequest ? SysUniverseReplicationEntryPB::DELETED
+                                       : SysUniverseReplicationEntryPB::ACTIVE;
+  if (universe_resp.entry().state() == terminal_state) {
     resp->set_done(true);
     StatusToPB(Status::OK(), resp->mutable_replication_error());
     return Status::OK();
@@ -4945,9 +4950,9 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
       StatusToPB(STATUS(InternalError, "unknown error"), resp->mutable_replication_error());
     }
 
-    // Add universe to universes_to_clear_
+    // Add failed universe to GC now that we've responded to the user.
     {
-      SharedLock lock(mutex_);
+      LockGuard lock(mutex_);
       universes_to_clear_.push_back(universe->id());
     }
 
@@ -5135,7 +5140,7 @@ Status CatalogManager::ClearFailedUniverse() {
 
   std::string universe_id;
   {
-    SharedLock lock(mutex_);
+    LockGuard lock(mutex_);
 
     if (universes_to_clear_.empty()) {
       return Status::OK();
