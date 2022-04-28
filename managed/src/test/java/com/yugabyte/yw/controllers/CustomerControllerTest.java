@@ -17,15 +17,15 @@ import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Mockito.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
-import static play.test.Helpers.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
@@ -52,13 +52,13 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -209,7 +209,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     Result result =
         route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
     assertEquals(OK, result.status());
-    CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customer.uuid);
+    CustomerConfig.getCallhomeConfig(customer.uuid);
     CollectionLevel callhomeLevel = CustomerConfig.getCallhomeLevel(customer.uuid);
     assertEquals(CollectionLevel.LOW, callhomeLevel);
     JsonNode json = Json.parse(contentAsString(result));
@@ -293,7 +293,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     AlertingData alertingData = new AlertingData();
     alertingData.activeAlertNotificationIntervalMs = 5000;
-    CustomerConfig.createAlertConfig(customer.getUuid(), Json.toJson(alertingData));
+    CustomerConfig.createAlertConfig(customer.getUuid(), Json.toJson(alertingData)).save();
 
     String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
@@ -393,7 +393,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     Result result =
         route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
     assertEquals(OK, result.status());
-    CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customer.uuid);
+    CustomerConfig.getCallhomeConfig(customer.uuid);
     CollectionLevel callhomeLevel = CustomerConfig.getCallhomeLevel(customer.uuid);
     assertEquals(CollectionLevel.MEDIUM, callhomeLevel);
     assertAuditEntry(1, customer.uuid);
