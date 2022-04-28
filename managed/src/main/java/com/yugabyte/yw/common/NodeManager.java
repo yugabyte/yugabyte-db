@@ -184,7 +184,7 @@ public class NodeManager extends DevopsBase {
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
-      NodeInstance node = NodeInstance.getByName(nodeTaskParam.nodeName);
+      NodeInstance node = NodeInstance.getOrBadRequest(nodeTaskParam.nodeUuid);
       command.add("--node_metadata");
       command.add(node.getDetailsJson());
     }
@@ -1421,6 +1421,7 @@ public class NodeManager extends DevopsBase {
 
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
+    populateNodeUuidFromUniverse(universe, nodeTaskParam);
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     Path bootScriptFile = null;
@@ -2003,11 +2004,8 @@ public class NodeManager extends DevopsBase {
     return lowMemInstanceTypePrefixes.contains(instanceTypePrefix);
   }
 
-  private void addAdditionalInstanceTags(
-      Universe universe, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
-    Customer customer = Customer.get(universe.customerId);
-    tags.put("customer-uuid", customer.uuid.toString());
-    tags.put("universe-uuid", universe.universeUUID.toString());
+  // Set the nodeUuid in nodeTaskParam if it is not set.
+  private void populateNodeUuidFromUniverse(Universe universe, NodeTaskParams nodeTaskParam) {
     if (nodeTaskParam.nodeUuid == null) {
       NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
       if (nodeDetails != null) {
@@ -2018,6 +2016,13 @@ public class NodeManager extends DevopsBase {
       // This is for backward compatibility where node UUID is not set in the Universe.
       nodeTaskParam.nodeUuid = Util.generateNodeUUID(universe.universeUUID, nodeTaskParam.nodeName);
     }
+  }
+
+  private void addAdditionalInstanceTags(
+      Universe universe, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
+    Customer customer = Customer.get(universe.customerId);
+    tags.put("customer-uuid", customer.uuid.toString());
+    tags.put("universe-uuid", universe.universeUUID.toString());
     tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
   }
 
