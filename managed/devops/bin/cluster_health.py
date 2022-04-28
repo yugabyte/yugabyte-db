@@ -99,6 +99,13 @@ class Entry:
         self.metric_value = None
         self.has_error = None
         self.has_warning = None
+        self.ignore_result = False
+
+    def ignore_check(self):
+        self.has_error = False
+        self.has_warning = False
+        self.ignore_result = True
+        return self
 
     def fill_and_return_entry(self, details, has_error=False):
         return self.fill_and_return_entry(details, has_error, None)
@@ -375,8 +382,11 @@ class NodeChecker():
             return e.fill_and_return_entry([output], True)
 
         if output == 'File not found':
-            return e.fill_and_return_entry(
-                ["Certificate file {} not found".format(cert_path)], fail_if_not_found)
+            if fail_if_not_found:
+                return e.fill_and_return_entry(
+                    ["Certificate file {} not found".format(cert_path)], True)
+            else:
+                return e.ignore_check()
 
         try:
             ssl_date_fmt = r'%b %d %H:%M:%S %Y %Z'
@@ -470,7 +480,7 @@ class NodeChecker():
                                                  )
 
     def check_client_ca_certificate_expiration(self):
-        return self.check_certificate_expiration("Client",
+        return self.check_certificate_expiration("Client CA",
                                                  self.get_client_ca_certificate_path(),
                                                  False  # fail_if_not_found
                                                  )
@@ -987,8 +997,8 @@ class CheckCoordinator:
 
         entries = []
         for check in self.checks:
-            # TODO: we probably do not need to set a timeout, since SSH has one...
-            entries.append(check.result.get())
+            if not check.entry.ignore_result:
+                entries.append(check.entry)
         return entries
 
 
