@@ -24,7 +24,8 @@
 - name: Check if {{ util.name }} already exists
   become: yes
   become_method: sudo
-  become_user: "{{ user_name }}"
+  environment:
+    PATH: "{{ bin_path }}:{{ ansible_env.PATH }}"
   shell: "which {{ util.name }}"
   register: util_exists
   failed_when: False
