@@ -39,67 +39,90 @@ showAsideToc: true
 
 On a computer connected to the Internet, perform the following steps:
 
-Make a directory for downloading the binaries by executing the following command:
+- Make a directory for downloading the binaries by executing the following command:
 
-```sh
-$ sudo mkdir /opt/downloads
-```
+  ```sh
+  sudo mkdir /opt/downloads
+  ```
 
-Change the owner user for the directory by executing the following command:
+- Change the owner user for the directory by executing the following command:
 
-```sh
-$ sudo chown -R ubuntu:ubuntu /opt/downloads
-```
+  ```sh
+  sudo chown -R ubuntu:ubuntu /opt/downloads
+  ```
 
-Change to the directory by executing the following command:
+- Change to the directory by executing the following command:
 
-```sh
-$ cd /opt/downloads
-```
+  ```sh
+  cd /opt/downloads
+  ```
 
-Download the `replicated.tar.gz` file by executing the following command:
+- Download the `replicated.tar.gz` file by executing the following command:
 
-```sh
-$ wget --trust-server-names https://get.replicated.com/airgap
-```
+  ```sh
+  wget --trust-server-names https://get.replicated.com/airgap
+  ```
 
-Download the `yugaware` binary and change the following number, as required:
+- Download the `yugaware` binary and change the following number, as required:
 
-```sh
-$ wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugaware-{{< yb-version version="preview" format="build">}}-linux-x86_64.airgap
-```
+  ```sh
+  wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugaware-{{< yb-version version="preview" format="build">}}-linux-x86_64.airgap
+  ```
 
-Switch to the following directory:
+- Switch to the following directory:
 
-```sh
-$ cd /opt/downloads
-```
+  ```sh
+  cd /opt/downloads
+  ```
 
-Extract the `replicated` binary, as follows:
+- Extract the `replicated` binary, as follows:
 
-```sh
-$ tar xzvf replicated.tar.gz
-```
+  ```sh
+  tar xzvf replicated.tar.gz
+  ```
 
-Install Replicated. If multiple options appear, select the `eth0` network interface, as follows.
+- Install Replicated. If multiple options appear, select the `eth0` network interface, as follows:
 
-```sh
-$ cat ./install.sh | sudo bash -s airgap
-```
+  ```sh
+  cat ./install.sh | sudo bash -s airgap
+  ```
 
 The `yugaware` binary is installed using the Replicated UI after the Replicated installation completes.
 
 After Replicated finishes installing, ensure that it is running by executing the following command:
 
 ```sh
-$ sudo docker ps
+sudo docker ps
 ```
 
 You should see an output similar to the following:
 
+
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
 The next step is to install YugabyteDB Anywhere.
+
+## Install required packages
+
+Liza: the following might need to replace the bullet point "Having YugabyteDB Anywhere airgapped install package. Contact Yugabyte Support for more information." In https://docs.yugabyte.com/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/#airgapped-hosts
+
+
+
+You need to install a number of packages using the package manager. Since the cluster nodes are airgapped, they do not have access to package repositories, and hence airgapped cluster creation fails. For now, we should provide a list of packages that should be installed either on the AMI, or available on an  accessible package repository, for installation to work. Below is a list of the necessary packages, along with some extra information about when it is necessary. All of this applies to 2.13.1.
+
+1. Chrony (if the user toggles Use TimeSync on during universe creation)
+2. Python-minimal (only on Ubuntu 18.04)
+3. Python-setuptools (only on Ubuntu 18.04)
+4. Python-six/Python2-six (the Python2 version of Six)
+5. policycoreutils-python (only on CentOS 7 and Oracle Linux 8)
+6. selinux-policy (only on Oracle Linux 8, **must be on an accessible package repository**)
+7. locales (only on Ubuntu)
+
+In 2.12, there is an additional requirement:
+
+1. ntpd (if the user toggles Use TimeSync off during universe creation)
+
+Some of these may change over time as we clean up some of these requirements like Python 2, I'll update accordingly.
 
 ## Set Up HTTPS (optional)
 
