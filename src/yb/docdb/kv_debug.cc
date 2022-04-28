@@ -164,8 +164,7 @@ Result<std::string> DocDBValueToDebugStr(
       std::vector<std::string> intents;
       SubDocKey sub_doc_key;
       RETURN_NOT_OK(value.consume_byte(ValueEntryTypeAsChar::kUuid));
-      Uuid involved_tablet;
-      RETURN_NOT_OK(involved_tablet.FromSlice(value.Prefix(kUuidSize)));
+      auto involved_tablet = VERIFY_RESULT(Uuid::FromSlice(value.Prefix(kUuidSize)));
       value.remove_prefix(kUuidSize);
       RETURN_NOT_OK(value.consume_byte(KeyEntryTypeAsChar::kExternalIntents));
       for (;;) {

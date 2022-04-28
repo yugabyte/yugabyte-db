@@ -26,8 +26,7 @@ class UuidTest : public YBTest {
     Uuid uuid_orig = ASSERT_RESULT(Uuid::FromString(strval));
     std::string bytes;
     uuid_orig.ToBytes(&bytes);
-    Uuid uuid_new;
-    ASSERT_OK(uuid_new.FromBytes(bytes));
+    Uuid uuid_new = ASSERT_RESULT(Uuid::FromSlice(bytes));
 
     // Test encode and decode.
     std::string encoded_bytes;
@@ -150,24 +149,18 @@ TEST_F(UuidTest, TestErrors) {
   ASSERT_TRUE(empty_uuid.ok());
   ASSERT_EQ(*empty_uuid, Uuid::Nil());
 
-  Uuid uuid;
-  std::string bytes;
-  ASSERT_FALSE(uuid.FromBytes(bytes).ok());
-  bytes = "0";
-  ASSERT_FALSE(uuid.FromBytes(bytes).ok());
-  bytes = "012345";
-  ASSERT_FALSE(uuid.FromBytes(bytes).ok());
-  bytes = "111111111111111111"; // 17 bytes.
-  ASSERT_FALSE(uuid.FromBytes(bytes).ok());
+  ASSERT_NOK(Uuid::FromSlice(""));
+  ASSERT_NOK(Uuid::FromSlice("0"));
+  ASSERT_NOK(Uuid::FromSlice("012345"));
+  ASSERT_NOK(Uuid::FromSlice("111111111111111111")); // 17 bytes.
 
   // Test hex string
-  ASSERT_FALSE(uuid.FromHexString("123").ok());
-  ASSERT_FALSE(uuid.FromHexString("zz111111111111111111111111111111").ok());
+  ASSERT_NOK(Uuid::FromHexString("123"));
+  ASSERT_NOK(Uuid::FromHexString("zz111111111111111111111111111111"));
 }
 
 Result<Uuid> HexRoundTrip(const std::string& input) {
-  Uuid uuid;
-  RETURN_NOT_OK(uuid.FromHexString(input));
+  auto uuid = VERIFY_RESULT(Uuid::FromHexString(input));
   EXPECT_EQ(input, uuid.ToHexString());
   return uuid;
 }

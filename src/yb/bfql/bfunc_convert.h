@@ -984,9 +984,7 @@ CHECKED_STATUS ConvertBlobToUuid(PTypePtr source, RTypePtr target) {
     if (blob.size() != kSizeUuid) {
       return STATUS(QLError, "The blob string is not valid for UUID type.");
     }
-    Uuid target_val;
-    RETURN_NOT_OK(target_val.FromBytes(blob));
-    QLValue::set_uuid_value(target_val, &*target);
+    QLValue::set_uuid_value(VERIFY_RESULT(Uuid::FromSlice(blob)), &*target);
   }
   return Status::OK();
 }
@@ -1000,9 +998,7 @@ CHECKED_STATUS ConvertBlobToTimeuuid(PTypePtr source, RTypePtr target) {
     if (blob.size() != kSizeUuid) {
       return STATUS(QLError, "The blob string is not valid for UUID type.");
     }
-    Uuid target_val;
-    RETURN_NOT_OK(target_val.FromBytes(blob));
-    QLValue::set_timeuuid_value(target_val, &*target);
+    QLValue::set_timeuuid_value(VERIFY_RESULT(Uuid::FromSlice(blob)), &*target);
   }
   return Status::OK();
 }

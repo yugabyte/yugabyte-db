@@ -162,7 +162,7 @@ Status DecodeBoundaryValues(BoundaryValuesExtractor* extractor,
   if (extractor != nullptr) {
     if (values.has_user_frontier()) {
       out->user_frontier = extractor->CreateFrontier();
-      out->user_frontier->FromPB(values.user_frontier());
+      RETURN_NOT_OK(out->user_frontier->FromPB(values.user_frontier()));
     }
     for (const auto &user_value : values.user_values()) {
       UserBoundaryValuePtr decoded;
@@ -292,7 +292,7 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
     }
     if (pb.has_flushed_frontier()) {
       flushed_frontier_ = extractor->CreateFrontier();
-      flushed_frontier_->FromPB(pb.flushed_frontier());
+      RETURN_NOT_OK(flushed_frontier_->FromPB(pb.flushed_frontier()));
     }
   }
   if (pb.has_max_column_family()) {

@@ -353,8 +353,7 @@ CHECKED_STATUS PrepareApplyExternalIntentsBatch(
   auto input_value = original_input_value;
   DocHybridTimeBuffer doc_ht_buffer;
   RETURN_NOT_OK(input_value.consume_byte(KeyEntryTypeAsChar::kUuid));
-  Uuid status_tablet;
-  RETURN_NOT_OK(status_tablet.FromSlice(input_value.Prefix(kUuidSize)));
+  RETURN_NOT_OK(Uuid::FromSlice(input_value.Prefix(kUuidSize)));
   input_value.remove_prefix(kUuidSize);
   RETURN_NOT_OK(input_value.consume_byte(KeyEntryTypeAsChar::kExternalIntents));
   for (;;) {
