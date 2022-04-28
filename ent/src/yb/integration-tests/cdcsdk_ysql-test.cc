@@ -69,6 +69,8 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+DECLARE_bool(stream_truncate_record);
+
 namespace yb {
 
 using client::YBClient;
@@ -128,6 +130,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     RETURN_NOT_OK(CreateDatabase(&test_cluster_, db_name, true));
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(db_name));
     RETURN_NOT_OK(conn.ExecuteFormat("DROP DATABASE $0", kNamespaceName));
+    return Status::OK();
+  }
+
+  Status TruncateTable(Cluster* cluster, const std::vector<string>& table_ids) {
+    RETURN_NOT_OK(cluster->client_->TruncateTables(table_ids));
     return Status::OK();
   }
 
@@ -200,9 +207,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     set_checkpoint_rpc.set_deadline(deadline);
     PrepareSetCheckpointRequest(&set_checkpoint_req, stream_id, tablets);
 
-    return cdc_proxy_->SetCDCCheckpoint(set_checkpoint_req,
-                                        &set_checkpoint_resp,
-                                        &set_checkpoint_rpc);
+    return cdc_proxy_->SetCDCCheckpoint(
+        set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
   }
 
   void AssertKeyValue(const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value) {
@@ -227,8 +233,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return change_resp;
   }
 
-  void TestGetChanges(const uint32_t replication_factor,
-                      bool add_tables_without_primary_key = false) {
+  void TestGetChanges(
+      const uint32_t replication_factor, bool add_tables_without_primary_key = false) {
     ASSERT_OK(SetUpWithParams(replication_factor, 1, false));
 
     auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -237,8 +243,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       // Adding tables without primary keys, they should not disturb any CDC related processes.
       std::string tables_wo_pk[] = {"table_wo_pk_1", "table_wo_pk_2", "table_wo_pk_3"};
       for (const auto& table_name : tables_wo_pk) {
-        auto temp = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName,
-                                              table_name, 1 /* num_tablets */, false));
+        auto temp = ASSERT_RESULT(
+            CreateTable(&test_cluster_, kNamespaceName, table_name, 1 /* num_tablets */, false));
       }
     }
 
@@ -310,6 +316,35 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     }
 
     return resp;
+  }
+
+  void CheckRecord(
+      const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::ExpectedRecord expected_records,
+      uint32_t* count) {
+    // The count array stores counts of DDL, INSERT, TRUNCATE in that order.
+    switch (record.row_message().op()) {
+      case RowMessage::DDL: {
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        count[0]++;
+      } break;
+      case RowMessage::INSERT: {
+        AssertKeyValue(record, expected_records.key, expected_records.value);
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        count[1]++;
+      } break;
+      case RowMessage::TRUNCATE: {
+        count[2]++;
+      } break;
+      default:
+        ASSERT_FALSE(true);
+        break;
+    }
+  }
+
+  void CheckCount(const uint32_t* expected_count, uint32_t* count) {
+    for (int i = 0; i < 3; i++) {
+      ASSERT_EQ(expected_count[i], count[i]);
+    }
   }
 };
 
@@ -399,8 +434,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNeedSchemaInfoFlag)) {
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(test_client()->GetTablets(
-      table, 0, &tablets, /* partition_list_version = */ nullptr));
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
   std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
@@ -411,24 +445,77 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNeedSchemaInfoFlag)) {
   WriteRows(0 /* start */, 1 /* end */, &test_cluster_);
 
   // This is the first call to GetChanges, we will get a DDL record.
-  GetChangesResponsePB resp = ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, false,
-                                                                     true));
+  GetChangesResponsePB resp =
+      ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, false, true));
 
   // Write another row to the database with PK = 1.
   WriteRows(1 /* start */, 2 /* end */, &test_cluster_);
 
   // We will not get any DDL record here since this is not the first call and the flag
   // need_schema_info is also unset.
-  resp = ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, false, false,
-                                                &resp.cdc_sdk_checkpoint()));
+  resp = ASSERT_RESULT(
+      VerifyIfDDLRecordPresent(stream_id, tablets, false, false, &resp.cdc_sdk_checkpoint()));
 
   // Write another row to the database with PK = 2.
   WriteRows(2 /* start */, 3 /* end */, &test_cluster_);
 
   // We will get a DDL record since we have enabled the need_schema_info flag.
-  resp = ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, true, false,
-                                                &resp.cdc_sdk_checkpoint()));
+  resp = ASSERT_RESULT(
+      VerifyIfDDLRecordPresent(stream_id, tablets, true, false, &resp.cdc_sdk_checkpoint()));
 }
+
+// Insert a single row, truncate table, insert another row.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTruncateTable)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  ASSERT_OK(SetInitialCheckpoint(stream_id, tablets));
+
+  WriteRows(0 /* start */, 1 /* end */, &test_cluster_);
+  ASSERT_OK(TruncateTable(&test_cluster_, {table_id}));
+  WriteRows(1 /* start */, 2 /* end */, &test_cluster_);
+
+  // Calling Get Changes without enabling truncate flag.
+  // Expected records: (DDL, INSERT, INSERT).
+  GetChangesResponsePB resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // The count array stores counts of DDL, INSERT, TRUNCATE in that order.
+  const uint32_t expected_count_truncate_disable[] = {1, 2, 0};
+  uint32_t count_truncate_disable[] = {0, 0, 0};
+  ExpectedRecord expected_records_truncate_disable[] = {{0, 0}, {0, 1}, {1, 2}};
+  uint32_t record_size = resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records_truncate_disable[i], count_truncate_disable);
+  }
+  CheckCount(expected_count_truncate_disable, count_truncate_disable);
+
+  // Setting the flag true and calling Get Changes. This will enable streaming of truncate record.
+  // Expected records: (DDL, INSERT, TRUNCATE, INSERT).
+  FLAGS_stream_truncate_record = true;
+  resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // The count array stores counts of DDL, INSERT, TRUNCATE in that order.
+  const uint32_t expected_count_truncate_enable[] = {1, 2, 1};
+  uint32_t count_truncate_enable[] = {0, 0, 0};
+  ExpectedRecord expected_records_truncate_enable[] = {{0, 0}, {0, 1}, {0, 0}, {1, 2}};
+  record_size = resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records_truncate_enable[i], count_truncate_enable);
+  }
+  CheckCount(expected_count_truncate_enable, count_truncate_enable);
+
+  LOG(INFO) << "Got " << count_truncate_enable[0] << " ddl records, " << count_truncate_enable[1]
+            << " insert records and " << count_truncate_enable[2] << " truncate records";
+}
+
 }  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb
