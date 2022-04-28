@@ -14,13 +14,21 @@
 #ifndef YB_YQL_PGWRAPPER_PG_MINI_TEST_BASE_H
 #define YB_YQL_PGWRAPPER_PG_MINI_TEST_BASE_H
 
+#include <functional>
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
+#include "yb/util/result.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 namespace yb {
+namespace server {
+class RpcServerBase;
+}
+
 namespace pgwrapper {
 
 class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
@@ -67,6 +75,20 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
 
   std::unique_ptr<PgSupervisor> pg_supervisor_;
   HostPort pg_host_port_;
+};
+
+class HistogramMetricWatcher {
+ public:
+  using DeltaFunctor = std::function<Status()>;
+  HistogramMetricWatcher(const server::RpcServerBase& server, const MetricPrototype& metric);
+
+  Result<size_t> Delta(const DeltaFunctor& functor) const;
+
+ private:
+  Result<size_t> GetMetricCount() const;
+
+  const server::RpcServerBase& server_;
+  const MetricPrototype& metric_;
 };
 
 } // namespace pgwrapper

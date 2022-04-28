@@ -11,17 +11,14 @@
 // under the License.
 
 #include <chrono>
-#include <functional>
+#include <memory>
+#include <string>
 #include <thread>
 #include <unordered_map>
-
-#include "yb/gutil/casts.h"
-#include "yb/gutil/map-util.h"
 
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 
-#include "yb/util/metric_entity.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -38,12 +35,11 @@ namespace {
 
 class PgCatalogPerfTest : public PgMiniTestBase {
  protected:
-  using DeltaFunctor = std::function<Status()>;
-
-  Result<uint64_t> ReadRPCCountDelta(const DeltaFunctor& functor) const {
-    const auto initial_count = GetReadRPCCount();
-    RETURN_NOT_OK(functor());
-    return GetReadRPCCount() - initial_count;
+  void SetUp() override {
+    PgMiniTestBase::SetUp();
+    read_rpc_watcher_ = std::make_unique<HistogramMetricWatcher>(
+        *cluster_->mini_master()->master(),
+        METRIC_handler_latency_yb_tserver_TabletServerService_Read);
   }
 
   Result<uint64_t> CacheRefreshRPCCount() {
@@ -55,7 +51,7 @@ class PgCatalogPerfTest : public PgMiniTestBase {
     // So run simplest possible query which doesn't produce RPC in a loop until number of
     // RPC will be greater than 0.
     for (;;) {
-      const auto result = VERIFY_RESULT(ReadRPCCountDelta([&conn]() {
+      const auto result = VERIFY_RESULT(read_rpc_watcher_->Delta([&conn]() {
         return conn.Execute("ROLLBACK");
       }));
       if (result) {
@@ -66,14 +62,7 @@ class PgCatalogPerfTest : public PgMiniTestBase {
     return STATUS(RuntimeError, "Unreachable statement");
   }
 
- private:
-  uint64_t GetReadRPCCount() const {
-    const auto metric_map =
-        cluster_->mini_master()->master()->metric_entity()->UnsafeMetricsMapForTests();
-    return down_cast<Histogram*>(FindOrDie(
-        metric_map,
-        &METRIC_handler_latency_yb_tserver_TabletServerService_Read).get())->TotalCount();
-  }
+  std::unique_ptr<HistogramMetricWatcher> read_rpc_watcher_;
 };
 
 } // namespace
@@ -89,9 +78,9 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(StartupRPCCount)) {
     return Status::OK();
   };
 
-  const auto first_connect_rpc_count = ASSERT_RESULT(ReadRPCCountDelta(connector));
+  const auto first_connect_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta(connector));
   ASSERT_EQ(first_connect_rpc_count, 5);
-  const auto subsequent_connect_rpc_count = ASSERT_RESULT(ReadRPCCountDelta(connector));
+  const auto subsequent_connect_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta(connector));
   ASSERT_EQ(subsequent_connect_rpc_count, 2);
 }
 
