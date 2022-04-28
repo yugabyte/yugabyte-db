@@ -35,8 +35,7 @@ Intelligent -- AGE allows you to perform graph queries that are the basis for ma
 
 ## Installation
 
-- [Use a docker image - official ver.](https://hub.docker.com/r/sorrell/agensgraph-extension)
-- [Use a docker image - alpine ver.](https://hub.docker.com/r/sorrell/agensgraph-extension-alpine)
+- [Use a docker image - official ver.](https://hub.docker.com/r/apache/age)
 - [Installing from source](https://age.apache.org/#)
 
 ## Graph visualization tool for AGE
