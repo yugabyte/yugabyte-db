@@ -101,25 +101,25 @@ DROP TABLE temptest;
 -- test ON COMMIT DROP
 -- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
 
-BEGIN;
+-- BEGIN;
 
-CREATE TEMP TABLE temptest(col int) ON COMMIT DROP;
+-- CREATE TEMP TABLE temptest(col int) ON COMMIT DROP;
 
-INSERT INTO temptest VALUES (1);
-INSERT INTO temptest VALUES (2);
+-- INSERT INTO temptest VALUES (1);
+-- INSERT INTO temptest VALUES (2);
 
-SELECT * FROM temptest;
-COMMIT;
+-- SELECT * FROM temptest;
+-- COMMIT;
 
-SELECT * FROM temptest;
+-- SELECT * FROM temptest;
 
-BEGIN;
-CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
+-- BEGIN;
+-- CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
 
-SELECT * FROM temptest;
-COMMIT;
+-- SELECT * FROM temptest;
+-- COMMIT;
 
-SELECT * FROM temptest;
+-- SELECT * FROM temptest;
 
 -- ON COMMIT is only allowed for TEMP
 
