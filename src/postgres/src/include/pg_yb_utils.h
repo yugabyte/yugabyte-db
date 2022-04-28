@@ -501,6 +501,8 @@ YbGetTableDescAndProps(Oid table_oid,
  */
 bool YBIsSupportedLibcLocale(const char *localebuf);
 
+bool YBIsDeprecatedLibICUCollation(const char* collation_name);
+
 void YBTestFailDdlIfRequested();
 
 char *YBDetailSorted(char *input);

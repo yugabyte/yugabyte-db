@@ -1,0 +1,20 @@
+--
+-- Test case for unsupported collations
+--
+CREATE TABLE collate_test_fail(b text COLLATE "nds-x-icu");
+WARNING:  collation is deprecated
+LINE 1: CREATE TABLE collate_test_fail(b text COLLATE "nds-x-icu");
+                                              ^
+ERROR:  collation no longer supported and will be dropped in next release
+LINE 1: CREATE TABLE collate_test_fail(b text COLLATE "nds-x-icu");
+                                              ^
+CREATE COLLATION nds from "nds-x-icu";
+ERROR:  cannot create collation based on deprecated collation
+CREATE TABLE collate_test_fail (a int, b text);
+SELECT * from collate_test_fail where b like 'a'  COLLATE "nds-x-icu";
+WARNING:  collation is deprecated
+LINE 1: SELECT * from collate_test_fail where b like 'a'  COLLATE "n...
+                                                          ^
+ a | b
+---+---
+(0 rows)

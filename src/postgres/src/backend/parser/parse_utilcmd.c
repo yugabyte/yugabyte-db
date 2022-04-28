@@ -3812,6 +3812,8 @@ transformColumnType(CreateStmtContext *cxt, ColumnDef *column)
 	 * including any collation spec that might be present.
 	 */
 	Type		ctype = typenameType(cxt->pstate, column->typeName, NULL);
+	char	   *schemaname;
+	char	   *collation_name;
 
 	if (column->collClause)
 	{
@@ -3826,6 +3828,15 @@ transformColumnType(CreateStmtContext *cxt, ColumnDef *column)
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("collations are not supported by type %s",
 							format_type_be(HeapTupleGetOid(ctype))),
+					 parser_errposition(cxt->pstate,
+										column->collClause->location)));
+
+		/* deconstruct the name list */
+		DeconstructQualifiedName(column->collClause->collname, &schemaname, &collation_name);
+		if (IsYugaByteEnabled() && YBIsDeprecatedLibICUCollation(collation_name))
+			ereport(ERROR,
+					(errcode(ERRCODE_INDETERMINATE_COLLATION),
+					 errmsg("collation no longer supported and will be dropped in next release"),
 					 parser_errposition(cxt->pstate,
 										column->collClause->location)));
 	}

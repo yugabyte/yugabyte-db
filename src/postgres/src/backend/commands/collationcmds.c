@@ -117,8 +117,13 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 	{
 		Oid			collid;
 		HeapTuple	tp;
+		char		*schemaname;
+		char		*collation_name;
+		List		*name;
 
-		collid = get_collation_oid(defGetQualifiedName(fromEl), false);
+		name = defGetQualifiedName(fromEl);
+		collid = get_collation_oid(name, false);
+		DeconstructQualifiedName(name, &schemaname, &collation_name);
 		tp = SearchSysCache1(COLLOID, ObjectIdGetDatum(collid));
 		if (!HeapTupleIsValid(tp))
 			elog(ERROR, "cache lookup failed for collation %u", collid);
@@ -130,6 +135,10 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 
 		ReleaseSysCache(tp);
 
+		if (IsYugaByteEnabled() && YBIsDeprecatedLibICUCollation(collation_name))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("cannot create collation based on deprecated collation")));
 		/*
 		 * Copying the "default" collation is not allowed because most code
 		 * checks for DEFAULT_COLLATION_OID instead of COLLPROVIDER_DEFAULT,

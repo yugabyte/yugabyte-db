@@ -26,6 +26,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "pg_yb_utils.h"
 
 static int32 typenameTypeMod(ParseState *pstate, const TypeName *typeName,
 				Type typ);
@@ -497,9 +498,17 @@ LookupCollation(ParseState *pstate, List *collnames, int location)
 {
 	Oid			colloid;
 	ParseCallbackState pcbstate;
+	char	   *schemaname;
+	char	   *collation_name;
 
 	if (pstate)
 		setup_parser_errposition_callback(&pcbstate, pstate, location);
+
+	DeconstructQualifiedName(collnames, &schemaname, &collation_name);
+	if (IsYugaByteEnabled() && YBIsDeprecatedLibICUCollation(collation_name))
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("collation is deprecated")));
 
 	colloid = get_collation_oid(collnames, false);
 

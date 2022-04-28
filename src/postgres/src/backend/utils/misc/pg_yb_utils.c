@@ -1517,6 +1517,15 @@ yb_servers(PG_FUNCTION_ARGS)
   SRF_RETURN_DONE(funcctx);
 }
 
+bool YBIsDeprecatedLibICUCollation(const char* collation_name)
+{
+	if (strcmp(collation_name, "nds-x-icu") == 0 ||
+		strcmp(collation_name, "nds-DE-x-icu") == 0 ||
+		strcmp(collation_name, "nds-NL-x-icu") == 0)
+		return true;
+	return false;
+}
+
 bool YBIsSupportedLibcLocale(const char *localebuf) {
 	/*
 	 * For libc mode, Yugabyte only supports the basic locales.
