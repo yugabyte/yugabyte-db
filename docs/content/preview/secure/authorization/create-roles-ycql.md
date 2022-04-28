@@ -42,13 +42,13 @@ You can create roles with the [CREATE ROLE](../../../api/ycql/ddl_create_role/) 
 
 For example, to create a role `engineering` for an engineering team in an organization, do the following (add the `IF NOT EXISTS` clause in case the role already exists):
 
-```sql
+```cql
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS engineering;
 ```
 
 Roles that have `LOGIN` permissions are users. For example, create a user `john` as follows:
 
-```sql
+```cql
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
 ```
 
@@ -60,7 +60,7 @@ You can grant a role to another role (which can be a user), or revoke a role tha
 
 For example, you can grant the `engineering` role you created above to the user `john` as follows:
 
-```sql
+```cql
 cassandra@ycqlsh> GRANT engineering TO john;
 ```
 
@@ -74,13 +74,13 @@ For example, you can create a `developer` role that inherits all the permissions
 
 First, create the `developer` role.
 
-```sql
+```cql
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS developer;
 ```
 
 Next, `GRANT` the `engineering` role to the `developer` role.
 
-```sql
+```cql
 cassandra@ycqlsh> GRANT engineering TO developer;
 ```
 
@@ -88,7 +88,7 @@ cassandra@ycqlsh> GRANT engineering TO developer;
 
 You can list all the roles by running the following command:
 
-```sql
+```cql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
@@ -118,13 +118,13 @@ Revoke roles using the [REVOKE ROLE](../../../api/ycql/ddl_revoke_role/) command
 
 In the above example, you can revoke the `engineering` role from the user `john` as follows:
 
-```sql
+```cql
 cassandra@ycqlsh> REVOKE engineering FROM john;
 ```
 
 Listing all the roles now shows that `john` no longer inherits from the `engineering` role:
 
-```sql
+```cql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
@@ -145,13 +145,13 @@ Drop roles using the [DROP ROLE](../../../api/ycql/ddl_drop_role/) command.
 
 In the above example, you can drop the `developer` role with the following command:
 
-```sql
+```cql
 cassandra@ycqlsh> DROP ROLE IF EXISTS developer;
 ```
 
 The `developer` role is longer present when listing all the roles:
 
-```sql
+```cql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 

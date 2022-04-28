@@ -114,7 +114,7 @@ Here are some common authorization-related tasks. For more detailed information 
 
 For information on configuring authentication, refer to [Authentication](../../authentication/).
 
-### Creating users
+### Create users
 
 To add a new user, run the [`CREATE ROLE` statement](../../../api/ysql/the-sql-language/statements/dcl_create_role/) or its alias, the `CREATE USER` statement. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all of the YSQL statements on any of the database resources.
 

@@ -49,13 +49,13 @@ $ ./bin/ycqlsh -u cassandra -p cassandra
 
 Create a keyspace `dev_keyspace`.
 
-```sql
+```cql
 cassandra@ycqlsh> CREATE KEYSPACE IF NOT EXISTS dev_keyspace;
 ```
 
 Create the `dev_keyspace.integration_tests` table:
 
-```sql
+```cql
 CREATE TABLE dev_keyspace.integration_tests (
   id UUID PRIMARY KEY,
   time TIMESTAMP,
@@ -66,7 +66,7 @@ CREATE TABLE dev_keyspace.integration_tests (
 
 Next, create roles `engineering`, `developer`, `qa`, and `db_admin`.
 
-```sql
+```cql
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS engineering;
                  CREATE ROLE IF NOT EXISTS developer;
                  CREATE ROLE IF NOT EXISTS qa;
@@ -75,7 +75,7 @@ cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS engineering;
 
 Grant the `engineering` role to `developer`, `qa`, and `db_admin` roles, as they are all a part of the engineering organization.
 
-```sql
+```cql
 cassandra@ycqlsh> GRANT engineering TO developer;
                  GRANT engineering TO qa;
                  GRANT engineering TO db_admin;
@@ -83,7 +83,7 @@ cassandra@ycqlsh> GRANT engineering TO developer;
 
 List all the roles.
 
-```sql
+```cql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
@@ -105,7 +105,7 @@ You should see the following output:
 
 You can list all permissions granted to the various roles with the following command:
 
-```sql
+```cql
 cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
 ```
 
@@ -139,13 +139,13 @@ In this section, you grant permissions to each role.
 
 All members of engineering need to able to read data from any keyspace and table. Use the `GRANT SELECT` command to grant `SELECT` (or read) access on `ALL KEYSPACES` to the `engineering` role. This can be done as follows:
 
-```sql
+```cql
 cassandra@ycqlsh> GRANT SELECT ON ALL KEYSPACES TO engineering;
 ```
 
 Verify that the `engineering` role has `SELECT` permission as follows:
 
-```sql
+```cql
 cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
 ```
 
@@ -170,14 +170,14 @@ Granting the role `engineering` to any other role causes all those roles to inhe
 
 Both developers and QA should be able to modify data in existing tables in the keyspace `dev_keyspace`. They should be able to execute statements such as `INSERT`, `UPDATE`, `DELETE`, or `TRUNCATE` to modify data on existing tables. This can be done as follows:
 
-```sql
+```cql
 cassandra@ycqlsh> GRANT MODIFY ON KEYSPACE dev_keyspace TO developer;
                  GRANT MODIFY ON KEYSPACE dev_keyspace TO qa;
 ```
 
 Verify that the `developer` and `qa` roles have the appropriate `MODIFY` permission by running the following command.
 
-```sql
+```cql
 cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
 ```
 
@@ -202,13 +202,13 @@ In the resource hierarchy, "data" represents all keyspaces and "data/dev_keyspac
 
 QA should be able to alter the table `integration_tests` in the keyspace `dev_keyspace`. This can be done as follows.
 
-```sql
+```cql
 cassandra@ycqlsh> GRANT ALTER ON TABLE dev_keyspace.integration_tests TO qa;
 ```
 
 Run the following command to verify the permissions.
 
-```sql
+```cql
 cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
 ```
 
@@ -239,13 +239,13 @@ DB admins should be able to perform all operations on any keyspace. There are tw
 
 2. Grant ALL permissions to the "db_admin" role. Do the following:
 
-    ```sql
+    ```cql
     cassandra@ycqlsh> GRANT ALL ON ALL KEYSPACES TO db_admin;
     ```
 
     Run the following command to verify the permissions:
 
-    ```sql
+    ```cql
     cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
     ```
 
@@ -266,13 +266,13 @@ DB admins should be able to perform all operations on any keyspace. There are tw
 
 To revoke the `AUTHORIZE` permission from DB admins so that they can no longer change permissions for other roles, do the following:
 
-```sql
+```cql
 cassandra@ycqlsh> REVOKE AUTHORIZE ON ALL KEYSPACES FROM db_admin;
 ```
 
 Run the following command to verify the permissions.
 
-```sql
+```cql
 cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
 ```
 
