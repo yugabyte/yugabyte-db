@@ -341,8 +341,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                               &wal_root_dir);
     }
     auto table_info = std::make_shared<tablet::TableInfo>(
-        table_id, table.namespace_name(), table.table_name(), table.table_type(), schema,
-        IndexMap(table.indexes()),
+        tablet::Primary::kTrue, table_id, table.namespace_name(), table.table_name(),
+        table.table_type(), schema, IndexMap(table.indexes()),
         table.has_index_info() ? boost::optional<IndexInfo>(table.index_info()) : boost::none,
         table.schema_version(), partition_schema);
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);

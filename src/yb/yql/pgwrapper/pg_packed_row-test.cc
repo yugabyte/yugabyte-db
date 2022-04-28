@@ -11,7 +11,12 @@
 // under the License.
 //
 
+#include "yb/docdb/doc_read_context.h"
+
+#include "yb/rocksdb/db/db_impl.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -33,7 +38,7 @@ class PgPackedRowTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackedRow)) {
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT)"));
@@ -54,7 +59,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackedRow)) {
   ASSERT_EQ(value, "four, five");
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(RandomPackedRow)) {
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Random)) {
   constexpr int kModifications = 4000;
   constexpr int kKeys = 50;
 
@@ -144,7 +149,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(RandomPackedRow)) {
   }
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackedRowSchemaChange)) {
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SchemaChange)) {
   constexpr int kKey = 10;
   constexpr int kValue1 = 10;
 
@@ -166,6 +171,81 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackedRowSchemaChange)) {
   auto value = ASSERT_RESULT(conn.FetchValue<std::string>(
       Format("SELECT v3 FROM t WHERE key = $0", kKey)));
   ASSERT_EQ(value, "");
+}
+
+// Check that we GC old schemas. I.e. when there are no more packed rows with this schema version.
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SchemaGC)) {
+  constexpr int kModifications = 1200;
+
+  auto conn = ASSERT_RESULT(Connect());
+  std::map<int, int> columns; // Active columns. Maps to step when column was added.
+  int next_column_idx = 0;
+
+  std::mt19937_64 rng(42);
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  for (int i = 1; i <= kModifications; ++i) {
+    auto alter_schema = i % 25 == 0;
+    auto last_iteration = i == kModifications;
+    if (alter_schema) {
+      if (columns.empty() || RandomUniformBool(&rng)) {
+        columns.emplace(++next_column_idx, i);
+        ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t ADD COLUMN v$0 INT", next_column_idx));
+      } else {
+        auto it = columns.begin();
+        std::advance(it, RandomUniformInt<size_t>(0, columns.size() - 1));
+        ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t DROP COLUMN v$0", it->first));
+        columns.erase(it);
+      }
+    }
+
+    std::string expr = "INSERT INTO t (key";
+    std::string values = std::to_string(i);
+    for (const auto& p : columns) {
+      expr += Format(", v$0", p.first);
+      values += Format(", $0", p.first * kModifications + i);
+    }
+    expr += ") VALUES (";
+    expr += values;
+    expr += ")";
+    ASSERT_OK(conn.Execute(expr));
+
+    if (i % 100 == 0 || last_iteration) {
+      ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+      if (i % 400 == 0 || last_iteration) {
+        ASSERT_OK(cluster_->CompactTablets());
+      }
+    }
+
+    if (alter_schema || last_iteration) {
+      auto res = ASSERT_RESULT(conn.FetchMatrix(
+          "SELECT * FROM t", i, narrow_cast<int>(columns.size() + 1)));
+      for (int row = 0; row != i; ++row) {
+        int key = ASSERT_RESULT(GetValue<int>(res.get(), row, 0));
+        int idx = 0;
+        for (const auto& p : columns) {
+          auto is_null = PQgetisnull(res.get(), row, ++idx);
+          ASSERT_EQ(is_null, key < p.second);
+          if (is_null) {
+            continue;
+          }
+          auto value = ASSERT_RESULT(GetValue<int>(res.get(), row, idx));
+          ASSERT_EQ(value, p.first * kModifications + key);
+        }
+      }
+    }
+  }
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto& peer : peers) {
+    if (peer->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      continue;
+    }
+    auto files = peer->tablet()->doc_db().regular->GetLiveFilesMetaData();
+    auto table_info = peer->tablet_metadata()->primary_table_info();
+    ASSERT_EQ(table_info->doc_read_context->schema_packing_storage.SchemaCount(), 1);
+  }
 }
 
 } // namespace pgwrapper

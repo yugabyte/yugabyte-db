@@ -51,6 +51,11 @@ struct OverwriteData {
   }
 };
 
+Result<SchemaVersion> ParseValueHeader(Slice* value) {
+  value->consume_byte(); // TODO(packed_row) control_fields
+  return narrow_cast<SchemaVersion>(VERIFY_RESULT(util::FastDecodeUnsignedVarInt(value)));
+}
+
 struct PackedRowData {
   rocksdb::CompactionFeed& next_feed;
   SchemaPackingProvider schema_packing_provider;
@@ -59,21 +64,58 @@ struct PackedRowData {
   KeyBuffer key;
   DocHybridTime ht;
   uint64_t last_internal_component;
+
+  // All old_ fields are releated to original row packing.
+  // I.e. row state that had place before the compaction.
   ValueBuffer old_value;
   Slice old_value_slice;
-
-  bool repacking; // Are we started repacking the row.
-  Uuid active_cotable_id;
+  SchemaVersion old_schema_version;
   CompactionSchemaPacking old_packing;
+
+  bool repacking; // Whether we have started repacking the row.
+  Uuid active_cotable_id;
   CompactionSchemaPacking new_packing;
   boost::optional<RowPacker> packer;
 
+  // Schema version ranges for each found table.
+  // That could be a surprise, but when we are talking about range and use pair to represent range
+  // first usually means min value of the range, while second means max value of the range.
+  std::unordered_map<Uuid, std::pair<SchemaVersion, SchemaVersion>, UuidHash> used_schema_versions;
+
   PackedRowData(rocksdb::CompactionFeed* next_feed_, const SchemaPackingProvider& provider)
-      : next_feed(*next_feed_), schema_packing_provider(provider) {
+      : next_feed(*next_feed_), schema_packing_provider(provider),
+        // Use fake cotable id as default value.
+        // So we will trigger table change on the first record.
+        // The initial cotable id value does not matter, so we could pick random one.
+        active_cotable_id(CHECK_RESULT(Uuid::FromString("aad942d6-b0c7-41ca-b2b9-e6d809a8675f"))) {
   }
 
   bool active() const {
     return !key.empty();
+  }
+
+  Status UpdateMeta(rocksdb::FileMetaData* meta) {
+    if (!meta->smallest.user_frontier || !meta->largest.user_frontier) {
+      // Relevant in tests only.
+      return Status::OK();
+    }
+    auto& smallest = down_cast<ConsensusFrontier&>(*meta->smallest.user_frontier);
+    smallest.ResetSchemaVersion();
+    auto& largest = down_cast<ConsensusFrontier&>(*meta->largest.user_frontier);
+    largest.ResetSchemaVersion();
+    for (const auto& p : used_schema_versions) {
+      smallest.AddSchemaVersion(p.first, p.second.first);
+      largest.AddSchemaVersion(p.first, p.second.second);
+    }
+    return Status::OK();
+  }
+
+  // Handle packed row that was forwarded to underlying feed w/o changes.
+  Status ProcessForwardedPackedRow(const Slice& internal_key, Slice value) {
+    Uuid cotable_id = Uuid::Nil(); // TODO(packed_row) Decode cotable_id
+    auto schema_version = VERIFY_RESULT(ParseValueHeader(&value));
+    UsedSchemaVersion(cotable_id, schema_version);
+    return Status::OK();
   }
 
   Status ProcessPackedRow(
@@ -89,6 +131,20 @@ struct PackedRowData {
         sizeof(last_internal_component));
     old_value.Assign(value);
     old_value_slice = old_value.AsSlice();
+    old_schema_version = VERIFY_RESULT(ParseValueHeader(&old_value_slice));
+    Uuid cotable_id = Uuid::Nil(); // TODO(packed_row) Decode cotable_id
+    auto table_changed = active_cotable_id != cotable_id;
+    if (table_changed) {
+      new_packing = VERIFY_RESULT(schema_packing_provider(
+          cotable_id, /* schema_version = */ std::numeric_limits<SchemaVersion>::max()));
+      UsedSchemaVersion(cotable_id, new_packing.schema_version);
+      old_packing.schema_version = std::numeric_limits<SchemaVersion>::max();
+      packer.reset();
+      active_cotable_id = cotable_id;
+    }
+    if (old_schema_version != new_packing.schema_version) {
+      return StartRepacking();
+    }
     repacking = false;
     return Status::OK();
   }
@@ -118,20 +174,12 @@ struct PackedRowData {
   }
 
   Status StartRepacking() {
-    Uuid cotable_id = Uuid::Nil(); // TODO(packed_row) !!!
-    repacking = true;
-    old_value_slice.consume_byte(); // TODO(packed_row) control_fields
-    auto old_schema_version = narrow_cast<uint32_t>(
-        VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&old_value_slice)));
-    auto table_changed = active_cotable_id != cotable_id;
-    if (old_schema_version != old_packing.schema_version || table_changed) {
-      old_packing = VERIFY_RESULT(schema_packing_provider(cotable_id, old_schema_version));
+    if (old_schema_version != old_packing.schema_version) {
+      old_packing = VERIFY_RESULT(schema_packing_provider(active_cotable_id, old_schema_version));
     }
-    if (!packer || table_changed) {
-      new_packing = VERIFY_RESULT(schema_packing_provider(
-          cotable_id, /* schema_version = */ std::numeric_limits<uint32_t>::max()));
+    repacking = true;
+    if (!packer) {
       packer.emplace(new_packing.schema_version, *new_packing.schema_packing);
-      active_cotable_id = cotable_id;
     } else {
       packer->Restart();
     }
@@ -179,6 +227,16 @@ struct PackedRowData {
     VLOG(4) << "Keep value: " << column_value->ToDebugHexString();
     return packer->AddValue(column_id, *column_value);
   }
+
+  void UsedSchemaVersion(const Uuid& cotable_id, SchemaVersion version) {
+    auto it = used_schema_versions.find(cotable_id);
+    if (it == used_schema_versions.end()) {
+      used_schema_versions.emplace(cotable_id, std::make_pair(version, version));
+    } else {
+      it->second.first = std::min(it->second.first, version);
+      it->second.second = std::max(it->second.second, version);
+    }
+  }
 };
 
 class DocDBCompactionFeed : public rocksdb::CompactionFeed {
@@ -195,6 +253,10 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed {
   }
 
   Status Feed(const Slice& internal_key, const Slice& value) override;
+
+  Status UpdateMeta(rocksdb::FileMetaData* meta) {
+    return packed_row_.UpdateMeta(meta);
+  }
 
   Status PassToNextFeed(const Slice& key, const Slice& value) {
     RETURN_NOT_OK(packed_row_.Flush());
@@ -408,6 +470,12 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     overwrite_.push_back({prev_overwrite_ht, prev_exp});
     VLOG_WITH_FUNC(4)
         << "Feed to next because of history cutoff: " << ht.hybrid_time() << ", " << history_cutoff;
+    auto value_slice = value;
+    RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
+    if (DecodeValueEntryType(value_slice) == ValueEntryType::kPackedRow) {
+      // Check packed row version for rows left untouched.
+      RETURN_NOT_OK(packed_row_.ProcessForwardedPackedRow(internal_key, value_slice));
+    }
     return PassToNextFeed(internal_key, value);
   }
 
@@ -494,7 +562,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
         "Double packed rows: $0, $1", packed_row_.key.AsSlice().ToDebugHexString(),
         internal_key.ToDebugHexString()));
     return packed_row_.ProcessPackedRow(
-        internal_key, sub_key_ends_.back(), control_fields, value, ht);
+        internal_key, sub_key_ends_.back(), control_fields, value_slice, ht);
   }
 
   // If the entry has the TTL flag, delete the entry.
@@ -564,7 +632,49 @@ void DocDBCompactionFeed::AssignPrevSubDocKey(
   memcpy(prev_subdoc_key_.data() + same_bytes, data + same_bytes, size - same_bytes);
 }
 
-} // namespace
+// DocDB compaction feed. A new instance of this class is created for every compaction.
+class DocDBCompactionContext : public rocksdb::CompactionContext {
+ public:
+  DocDBCompactionContext(
+      rocksdb::CompactionFeed* next_feed,
+      HistoryRetentionDirective retention,
+      IsMajorCompaction is_major_compaction,
+      const KeyBounds* key_bounds,
+      const SchemaPackingProvider& schema_packing_provider);
+
+  ~DocDBCompactionContext() = default;
+
+  rocksdb::CompactionFeed* Feed() override {
+    return feed_.get();
+  }
+
+  // This indicates we don't have a cached TTL. We need this to be different from kMaxTtl
+  // and kResetTtl because a PERSIST call would lead to a cached TTL of kMaxTtl, and kResetTtl
+  // indicates no TTL in Cassandra.
+  const MonoDelta kNoTtl = MonoDelta::FromNanoseconds(-1);
+
+  // This is used to provide the history_cutoff timestamp to the compaction as a field in the
+  // ConsensusFrontier, so that it can be persisted in RocksDB metadata and recovered on bootstrap.
+  rocksdb::UserFrontierPtr GetLargestUserFrontier() const override;
+
+  // Returns an empty list when key_ranges_ is not set, denoting that the whole key range of the
+  // tablet should be considered live.
+  //
+  // When key_ranges_ is set, returns two live ranges:
+  // (1) A range covering any ApplyTransactionState records which may have been written
+  // (2) A range covering all valid keys in key_ranges_, i.e. all user data this tablet is
+  //     responsible for.
+  std::vector<std::pair<Slice, Slice>> GetLiveRanges() const override;
+
+  Status UpdateMeta(rocksdb::FileMetaData* meta) override {
+    return feed_->UpdateMeta(meta);
+  }
+
+ private:
+  HybridTime history_cutoff_;
+  const KeyBounds* key_bounds_;
+  std::unique_ptr<DocDBCompactionFeed> feed_;
+};
 
 DocDBCompactionContext::DocDBCompactionContext(
     rocksdb::CompactionFeed* next_feed,
@@ -600,6 +710,8 @@ std::vector<std::pair<Slice, Slice>> DocDBCompactionContext::GetLiveRanges() con
 
   return {first_range, second_range};
 }
+
+} // namespace
 
 // ------------------------------------------------------------------------------------------------
 

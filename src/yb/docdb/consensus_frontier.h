@@ -14,7 +14,14 @@
 #ifndef YB_DOCDB_CONSENSUS_FRONTIER_H
 #define YB_DOCDB_CONSENSUS_FRONTIER_H
 
+#include <unordered_map>
+
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/rocksdb/metadata.h"
+
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace docdb {
@@ -49,7 +56,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   void Update(const rocksdb::UserFrontier& rhs, rocksdb::UpdateUserValueType type) override;
   bool IsUpdateValid(const rocksdb::UserFrontier& rhs, rocksdb::UpdateUserValueType type) const
       override;
-  void FromPB(const google::protobuf::Any& pb) override;
+  Status FromPB(const google::protobuf::Any& pb) override;
   void FromOpIdPBDeprecated(const OpIdPB& pb) override;
   Slice Filter() const override;
 
@@ -72,10 +79,20 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
     hybrid_time_filter_ = value;
   }
 
-  HybridTime max_value_level_ttl_expiration_time() const
-      { return max_value_level_ttl_expiration_time_; }
-  void set_max_value_level_ttl_expiration_time(HybridTime ht)
-      { max_value_level_ttl_expiration_time_ = ht; }
+  void AddSchemaVersion(const Uuid& table_id, SchemaVersion version);
+  void ResetSchemaVersion();
+
+  // Merge current frontier with provided map, preferring min values.
+  void MakeExternalSchemaVersionsAtMost(
+      std::unordered_map<Uuid, SchemaVersion, UuidHash>* min_schema_versions) const;
+
+  HybridTime max_value_level_ttl_expiration_time() const {
+    return max_value_level_ttl_expiration_time_;
+  }
+
+  void set_max_value_level_ttl_expiration_time(HybridTime ht) {
+    max_value_level_ttl_expiration_time_ = ht;
+  }
 
  private:
   OpId op_id_;
@@ -92,6 +109,9 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   // TTL expiration (generated at write-time), table-level TTL is calculated at read-time based
   // on hybrid_time_. Only the largest frontier of this parameter is being used.
   HybridTime max_value_level_ttl_expiration_time_;
+
+  std::optional<SchemaVersion> primary_schema_version_;
+  std::unordered_map<Uuid, SchemaVersion, UuidHash> cotable_schema_versions_;
 };
 
 typedef rocksdb::UserFrontiersBase<ConsensusFrontier> ConsensusFrontiers;
@@ -110,6 +130,17 @@ inline void set_history_cutoff(HybridTime history_cutoff, ConsensusFrontiers* fr
   frontiers->Smallest().set_history_cutoff(history_cutoff);
   frontiers->Largest().set_history_cutoff(history_cutoff);
 }
+
+template <class PB>
+void AddTableSchemaVersion(
+    const Uuid& table_id, SchemaVersion schema_version, PB* pb) {
+  auto* out = pb->mutable_table_schema_version()->Add();
+  if (!table_id.IsNil()) {
+    out->set_table_id(table_id.cdata(), table_id.size());
+  }
+  out->set_schema_version(schema_version);
+}
+
 } // namespace docdb
 } // namespace yb
 

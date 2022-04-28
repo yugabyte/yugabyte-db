@@ -117,8 +117,8 @@ Result<std::shared_ptr<QLRowBlock>> LocalVTable::RetrieveData(
     RETURN_NOT_OK(SetColumnValue(kSystemLocalDataCenterColumn, cloud_info.placement_region(),
                                  &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalGossipGenerationColumn, 0, &row));
-    Uuid host_id;
-    RETURN_NOT_OK(host_id.FromHexString(entry.ts_info.tserver_instance().permanent_uuid()));
+    auto host_id = VERIFY_RESULT(Uuid::FromHexString(
+        entry.ts_info.tserver_instance().permanent_uuid()));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalHostIdColumn, host_id, &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalListenAddressColumn, private_ip, &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalNativeProtocolVersionColumn, "4", &row));

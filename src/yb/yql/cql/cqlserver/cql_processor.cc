@@ -889,7 +889,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash
     if (!ldap_auth_result.ok()) {
       return make_unique<ErrorResponse>(
           *request_, ErrorResponse::Code::SERVER_ERROR,
-          "Failed to authenticate using LDAP: " + yb::ToString(ldap_auth_result));
+          "Failed to authenticate using LDAP: " + ldap_auth_result.status().ToString());
     } else if (!*ldap_auth_result) {
       response = make_unique<ErrorResponse>(
           *request_, ErrorResponse::Code::BAD_CREDENTIALS,

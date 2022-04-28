@@ -71,19 +71,21 @@ extern const std::string kIntentsSubdir;
 extern const std::string kIntentsDBSuffix;
 extern const std::string kSnapshotsDirSuffix;
 
-  // Table info.
+YB_STRONGLY_TYPED_BOOL(Primary);
+
 struct TableInfo {
   // Table id, name and type.
   std::string table_id;
   std::string namespace_name;
   std::string table_name;
   TableType table_type;
+  Uuid cotable_id; // table_id as Uuid
 
   // The table schema, secondary index map, index info (for index table only) and schema version.
   const std::unique_ptr<docdb::DocReadContext> doc_read_context;
   std::unique_ptr<IndexMap> index_map;
   std::unique_ptr<IndexInfo> index_info;
-  uint32_t schema_version = 0;
+  SchemaVersion schema_version = 0;
 
   // Partition schema of the table.
   PartitionSchema partition_schema;
@@ -98,23 +100,25 @@ struct TableInfo {
   uint32_t wal_retention_secs = 0;
 
   TableInfo();
-  TableInfo(std::string table_id,
+  TableInfo(Primary primary,
+            std::string table_id,
             std::string namespace_name,
             std::string table_name,
             TableType table_type,
             const Schema& schema,
             const IndexMap& index_map,
             const boost::optional<IndexInfo>& index_info,
-            uint32_t schema_version,
+            SchemaVersion schema_version,
             PartitionSchema partition_schema);
   TableInfo(const TableInfo& other,
             const Schema& schema,
             const IndexMap& index_map,
             const std::vector<DeletedColumn>& deleted_cols,
-            uint32_t schema_version);
+            SchemaVersion schema_version);
+  TableInfo(const TableInfo& other, SchemaVersion min_schema_version);
   ~TableInfo();
 
-  CHECKED_STATUS LoadFromPB(const TableInfoPB& pb);
+  CHECKED_STATUS LoadFromPB(const TableId& primary_table_id, const TableInfoPB& pb);
   void ToPB(TableInfoPB* pb) const;
 
   std::string ToString() const {
@@ -239,7 +243,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   std::shared_ptr<IndexMap> index_map(const TableId& table_id = "") const;
 
-  uint32_t schema_version(const TableId& table_id = "") const;
+  SchemaVersion schema_version(const TableId& table_id = "") const;
 
   const std::string& indexed_table_id(const TableId& table_id = "") const;
 
@@ -321,7 +325,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   void SetSchema(const Schema& schema,
                  const IndexMap& index_map,
                  const std::vector<DeletedColumn>& deleted_cols,
-                 const uint32_t version,
+                 const SchemaVersion version,
                  const TableId& table_id = "");
 
   void SetPartitionSchema(const PartitionSchema& partition_schema);
@@ -338,7 +342,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
                 const IndexMap& index_map,
                 const PartitionSchema& partition_schema,
                 const boost::optional<IndexInfo>& index_info,
-                const uint32_t schema_version);
+                const SchemaVersion schema_version);
 
   void RemoveTable(const TableId& table_id);
 
@@ -450,6 +454,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   bool CleanupRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
 
   bool UsePartialRangeKeyIntents() const;
+
+  // versions is a map from table id to min schema version that should be kept for this table.
+  Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions);
 
  private:
   typedef simple_spinlock MutexType;

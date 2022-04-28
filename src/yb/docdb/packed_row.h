@@ -129,23 +129,34 @@ class SchemaPacking {
 class SchemaPackingStorage {
  public:
   SchemaPackingStorage();
+  explicit SchemaPackingStorage(const SchemaPackingStorage& rhs, SchemaVersion min_schema_version);
 
-  Result<const SchemaPacking&> GetPacking(uint32_t schema_version) const;
+  Result<const SchemaPacking&> GetPacking(SchemaVersion schema_version) const;
   Result<const SchemaPacking&> GetPacking(Slice* packed_row) const;
 
-  void AddSchema(uint32_t version, const Schema& schema);
+  void AddSchema(SchemaVersion version, const Schema& schema);
 
   CHECKED_STATUS LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
-  void ToPB(uint32_t skip_schema_version, google::protobuf::RepeatedPtrField<SchemaPackingPB>* out);
+
+  // Copy all schema packings except schema_version_to_skip to out.
+  void ToPB(
+      SchemaVersion schema_version_to_skip,
+      google::protobuf::RepeatedPtrField<SchemaPackingPB>* out);
+
+  size_t SchemaCount() const {
+    return version_to_schema_packing_.size();
+  }
+
+  bool HasVersionBelow(SchemaVersion version) const;
 
  private:
-  std::unordered_map<uint32_t, SchemaPacking> version_to_schema_packing_;
+  std::unordered_map<SchemaVersion, SchemaPacking> version_to_schema_packing_;
 };
 
 class RowPacker {
  public:
-  RowPacker(uint32_t version, std::reference_wrapper<const SchemaPacking> packing);
-  explicit RowPacker(const std::pair<uint32_t, const SchemaPacking&>& pair)
+  RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing);
+  explicit RowPacker(const std::pair<SchemaVersion, const SchemaPacking&>& pair)
       : RowPacker(pair.first, pair.second) {
   }
 
