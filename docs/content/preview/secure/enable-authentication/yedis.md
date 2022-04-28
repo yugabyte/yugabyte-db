@@ -7,7 +7,7 @@ headcontent: Enable Users in YEDIS.
 image: /images/section_icons/secure/authentication.png
 menu:
   preview:
-    name: Enable User Authentication
+    name: Enable user authentication
     identifier: enable-authentication-3-yedis
     parent: enable-authentication
     weight: 715

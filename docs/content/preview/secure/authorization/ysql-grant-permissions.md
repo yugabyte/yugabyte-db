@@ -38,6 +38,8 @@ Here is what you want to achieve from a role-based access control (RBAC) perspec
 - QA should be able to alter the `integration_tests` table in the database `dev_database`.
 - DB admins should be able to perform all operations on any database.
 
+The exercise assumes you have [enabled authentication for YSQL](../../enable-authentication/ysql/).
+
 ## 1. Create role hierarchy
 
 Connect to the cluster using a superuser role. For this tutorial, use the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
@@ -219,7 +221,6 @@ dev_database=# \du
  db_admin     | Superuser, Cannot login                                    | {engineering}
  developer    | Cannot login                                               | {engineering}
  engineering  | Cannot login                                               | {}
- john         |                                                            | {}
  postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  qa           | Cannot login                                               | {engineering}
  yb_extension | Cannot login                                               | {}
@@ -250,14 +251,9 @@ You should see the following output.
  db_admin     | Cannot login                                               | {engineering}
  developer    | Cannot login                                               | {engineering}
  engineering  | Cannot login                                               | {}
- john         |                                                            | {}
  postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  qa           | Cannot login                                               | {engineering}
  yb_extension | Cannot login                                               | {}
  yb_fdw       | Cannot login                                               | {}
  yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
 ```
-
-## Learn more
-
-Read more about [enabling authentication and connecting using a superuser role](../../enable-authentication/ysql/) in YugabyteDB clusters for YSQL.

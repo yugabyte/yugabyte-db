@@ -37,6 +37,8 @@ Here is what you want to achieve from a role-based access control (RBAC) perspec
 - QA should be able to alter the `integration_tests` table in the keyspace `dev_keyspace`.
 - DB admins should be able to perform all operations on any keyspace.
 
+The exercise assumes you have [enabled authentication for YCQL](../../enable-authentication/ycql/).
+
 ## 1. Create role hierarchy
 
 Connect to the cluster using a superuser role. Use the default `cassandra` user and connect to the cluster using `ycqlsh` as follows:
@@ -288,7 +290,3 @@ You should see the following output.
 ```
 
 The `AUTHORIZE` permission is no longer granted to the `db_admin` role.
-
-## Learn more
-
-Read more about [enabling authentication and connecting using a superuser role](../../enable-authentication/ycql/) in YugabyteDB clusters for YCQL.

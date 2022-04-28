@@ -7,7 +7,7 @@ headcontent: Enable Users in YCQL.
 image: /images/section_icons/secure/authentication.png
 menu:
   preview:
-    name: Enable User Authentication
+    name: Enable user authentication
     identifier: enable-authentication-2-ycql
     parent: enable-authentication
     weight: 715
@@ -41,7 +41,17 @@ YCQL authentication is based on roles. Roles can be created with superuser, non-
 
 ## 1. Enable YCQL authentication
 
-You can enable access control by starting the `yb-tserver` processes with the `--use_cassandra_authentication=true` flag. Your command should look similar to that shown below:
+### Start local clusters
+
+To enable YSQL authentication in your local YugabyteDB clusters, add the [--use_cassandra_authentication](../../../reference/configuration/yugabyted/#start) flag with the `yugabyted start` command, as follows:
+
+```sh
+$ ./bin/yugabyted start --use_cassandra_authentication=true
+```
+
+### Start YB-TServer services
+
+To enable YCQL authentication in deployable YugabyteDB clusters, start the `yb-tserver` processes with the [--use_cassandra_authentication](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag. Your command should look similar to the following:
 
 ```sh
 ./bin/yb-tserver \
@@ -74,7 +84,7 @@ cassandra@ycqlsh>
 
 Use the [CREATE ROLE command](../../../api/ycql/ddl_create_role/) to create a new role. Users are roles that have the `LOGIN` privilege granted to them. Roles created with the `SUPERUSER` option in addition to the `LOGIN` option have full access to the database. Superusers can run all the YCQL commands on any of the database resources.
 
-**NOTE:** By default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges, these need to be explicitly granted.
+Note that by default, creating a role does not grant the `LOGIN` or the `SUPERUSER` privileges, these need to be explicitly granted.
 
 ### Creating a user
 
@@ -84,7 +94,7 @@ For example, to create a regular user `john` with the password `PasswdForJohn` a
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
 ```
 
-If the role `john` already existed, the above statement will not error out since you have added the `IF NOT EXISTS` clause. To verify the user account just created, run the following query:
+If the role `john` already existed, the above statement will not error out as you have added the `IF NOT EXISTS` clause. To verify the user account just created, run the following query:
 
 ```sql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
@@ -105,7 +115,7 @@ You should see the following output.
 
 The `SUPERUSER` status should be given only to a limited number of users. Applications should generally not access the database using an account that has the superuser privilege.
 
-**NOTE** Only a role with the `SUPERUSER` privilege can create a new role with the `SUPERUSER` privilege, or grant it to an existing role.
+Only a role with the `SUPERUSER` privilege can create a new role with the `SUPERUSER` privilege, or grant it to an existing role.
 
 To create a superuser `admin` with the `LOGIN` privilege, run the following command using a superuser account:
 
@@ -260,9 +270,9 @@ cassandra@ycqlsh>  ALTER ROLE john WITH LOGIN = true;
 
 ## 6. Change default admin credentials
 
-It is highly recommended to change at least the default password for the superadmin user in real world deployments to keep the database cluster secure.
+It is highly recommended to change at least the default password for the superuser in real world deployments to keep the database cluster secure.
 
-As an example, let us say you want to change the `cassandra` user's password from `cassandra` to `new_password`. You can do that as follows:
+For example, to change the `cassandra` user password from `cassandra` to `new_password`, do the following:
 
 ```sql
 cassandra@ycqlsh> ALTER ROLE cassandra WITH PASSWORD = 'new_password';
@@ -270,8 +280,11 @@ cassandra@ycqlsh> ALTER ROLE cassandra WITH PASSWORD = 'new_password';
 
 Connecting to the cluster with the default password would no longer work:
 
-```output
+```sh
 $ bin/ycqlsh -u cassandra -p cassandra
+```
+
+```output
 Connection error:
   ... Provided username 'cassandra' and/or password are incorrect ...
 ```

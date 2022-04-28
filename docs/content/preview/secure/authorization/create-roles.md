@@ -1,5 +1,5 @@
 ---
-title: Manage users and roles in YSQL
+title: Manage users and roles
 linkTitle: Manage users and roles
 description: Manage users and roles in YSQL
 headcontent: Manage users and roles
