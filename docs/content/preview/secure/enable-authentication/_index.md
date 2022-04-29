@@ -16,6 +16,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
+Enabling user authentication in YSQL and YCQL requires setting the appropriate flags on server startup:
+
+- `--ysql_enable_auth=true` in YSQL
+- `--use_cassandra_authentication=true` in YCQL
+
+In YSQL, further fine-grained control over client authentication is provided by setting the `--ysql_hba_conf_csv` flag. You can define rules for access to localhost and remote clients based on IP addresses, authentication methods, and use of TLS (aka SSL) certificates.
+
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
