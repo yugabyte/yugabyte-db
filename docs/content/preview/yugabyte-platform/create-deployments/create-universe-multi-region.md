@@ -18,7 +18,7 @@ For example, you can deploy a universe across Oregon (US-West) and South Carolin
 
 ## Create the universe
 
-Before creating a universe, you need to configure a cloud provider, such as [Google Cloud Provider](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/) (GPC). When done, use the YugabyteDB Anywhere UI to navigate to **Universes**, click **Create Universe**, and enter the following sample values:
+Before creating a universe, you need to configure a cloud provider, such as [Google Cloud Provider](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/) (GCP). When done, use the YugabyteDB Anywhere UI to navigate to **Universes**, click **Create Universe**, and enter the following sample values:
 
 - In the **Name** field, enter **helloworld2**.
 
