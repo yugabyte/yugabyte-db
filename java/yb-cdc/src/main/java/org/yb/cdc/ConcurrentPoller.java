@@ -50,7 +50,7 @@ public class ConcurrentPoller {
   YBClient synClient;
 
   // We need the schema information in a DDL the very first time we send a getChanges request.
-  boolean needSchemaInfo = true;
+  boolean needSchemaInfo = false;
 
   public ConcurrentPoller(YBClient synClient,
                           AsyncYBClient client,
@@ -107,7 +107,13 @@ public class ConcurrentPoller {
     int finalWriteId = writeId;
     listTabletIdTableIdPair.forEach(entry ->
       checkPointMap.put(entry.getKey(), new Checkpoint(finalTerm, finalIndex,
-        "".getBytes(), finalWriteId, 0)));
+          "".getBytes(), finalWriteId, 0)));
+
+    for (AbstractMap.SimpleImmutableEntry<String, String> entry: listTabletIdTableIdPair) {
+      final YBTable table = tableIdToTable.get(entry.getValue());
+      asyncYBClient.setCheckpoint(table, streamId, entry.getKey(), 0, 0, true);
+    }
+
   }
 
   public void poll() throws Exception {

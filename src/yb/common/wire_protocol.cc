@@ -487,7 +487,7 @@ void SchemaToColumnPBs(const Schema& schema,
 }
 
 Result<UsePrivateIpMode> GetPrivateIpMode() {
-  for (auto i : kUsePrivateIpModeList) {
+  for (auto i : UsePrivateIpModeList()) {
     if (FLAGS_use_private_ip == ToCString(i)) {
       return i;
     }

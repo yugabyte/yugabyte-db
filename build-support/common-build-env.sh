@@ -188,13 +188,16 @@ readonly -a VALID_COMPILER_TYPES=(
   clang10
   clang11
   clang12
+  clang13
+  clang14
   zapcc
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
 readonly -a VALID_LINKING_TYPES=(
   dynamic
-  static
+  thin-lto
+  full-lto
 )
 make_regex_from_list VALID_LINKING_TYPES "${VALID_LINKING_TYPES[@]}"
 
@@ -382,7 +385,7 @@ set_build_root() {
     BUILD_ROOT+="-linuxbrew"
   fi
 
-  BUILD_ROOT+="-dynamic"
+  BUILD_ROOT+="-${YB_LINKING_TYPE:-dynamic}"
   if is_apple_silicon; then
     # Append the target architecture (x86_64 or arm64).
     BUILD_ROOT+=-${YB_TARGET_ARCH}
@@ -1964,7 +1967,6 @@ handle_predefined_build_root() {
     local _dash_linuxbrew=${BASH_REMATCH[$group_idx]}
 
     (( group_idx+=2 ))
-    # _linking_type is unused. We always use dynamic linking, but we plan to support static linking.
     # shellcheck disable=SC2034
     local _linking_type=${BASH_REMATCH[$group_idx]}
 
@@ -2000,6 +2002,17 @@ handle_predefined_build_root() {
   elif [[ $YB_COMPILER_TYPE != "$_compiler_type" ]]; then
     fatal "Compiler type from the build root ('$_compiler_type' from '$predefined_build_root') " \
           "does not match YB_COMPILER_TYPE ('$YB_COMPILER_TYPE')."
+  fi
+
+  if [[ -z ${YB_LINKING_TYPE:-} ]]; then
+    export YB_LINKING_TYPE=$_linking_type
+    if ! "$handle_predefined_build_root_quietly"; then
+      log "Automatically setting linking type to '$YB_LINKING_TYPE' based on predefined build" \
+          "root ('$basename')"
+    fi
+  elif [[ $YB_LINKING_TYPE != "$_linking_type" ]]; then
+    fatal "Compiler type from the build root ('$_linking_type' from '$predefined_build_root') " \
+          "does not match YB_LINKING_TYPE ('$YB_LINKING_TYPE')."
   fi
 
   local use_linuxbrew
@@ -2438,18 +2451,21 @@ set_prebuilt_thirdparty_url() {
         rm -f "$thirdparty_url_file_path"
       fi
       local is_linuxbrew_arg=""
+      local thirdparty_tool_cmd_line=(
+        "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
+        --save-thirdparty-url-to-file "$thirdparty_url_file_path"
+        --save-llvm-url-to-file "$llvm_url_file_path"
+        --compiler-type "$YB_COMPILER_TYPE"
+      )
       if [[ -n ${YB_USE_LINUXBREW:-} ]]; then
-        if [[ $YB_USE_LINUXBREW == "1" ]]; then
-          is_linuxbrew_arg="--is-linuxbrew=true"
-        else
-          is_linuxbrew_arg="--is-linuxbrew=false"
-        fi
+        # See arg_str_to_bool in Python code for how the boolean parameter is interpreted.
+        thirdparty_tool_cmd_line+=( "--is-linuxbrew=$YB_USE_LINUXBREW" )
       fi
-      "$YB_BUILD_SUPPORT_DIR/thirdparty_tool" \
-          --save-thirdparty-url-to-file "$thirdparty_url_file_path" \
-          --save-llvm-url-to-file "$llvm_url_file_path" \
-          --compiler-type "$YB_COMPILER_TYPE" \
-          $is_linuxbrew_arg
+      if [[ ${YB_LINKING_TYPE:-dynamic} != "dynamic" ]]; then
+        # Transform "thin-lto" or "full-lto" into "thin" or "full" respectively.
+        thirdparty_tool_cmd_line+=( "--lto=${YB_LINKING_TYPE%%-lto}" )
+      fi
+      "${thirdparty_tool_cmd_line[@]}"
       YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")
       export YB_THIRDPARTY_URL
       yb_thirdparty_url_origin=" (determined automatically based on the OS and compiler type)"
@@ -2582,7 +2598,7 @@ is_apple_silicon() {
 }
 
 should_use_lto() {
-  using_linuxbrew && [[ "${YB_COMPILER_TYPE}" == "clang12" && "${build_type}" == "release" ]]
+  using_linuxbrew && [[ "${YB_COMPILER_TYPE}" =~ "clang1[234]" && "${build_type}" == "release" ]]
 }
 
 # -------------------------------------------------------------------------------------------------

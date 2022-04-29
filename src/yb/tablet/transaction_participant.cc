@@ -93,6 +93,8 @@ DEFINE_bool(transactions_poll_check_aborted, true, "Check aborted transactions d
 
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
+DECLARE_int64(cdc_intent_retention_ms);
+
 METRIC_DEFINE_simple_counter(
     tablet, transaction_not_found, "Total number of missing transactions during load",
     yb::MetricUnit::kTransactions);
@@ -350,6 +352,22 @@ class TransactionParticipant::Impl
     }
   }
 
+  // Cleans the intents those are consumed by consumers.
+  void SetRetainOpId(const OpId& op_id) {
+    MinRunningNotifier min_running_notifier(&applier_);
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (cdc_sdk_min_checkpint_op_id_ != op_id) {
+      cdc_sdk_min_checkpint_op_id_expiration_ =
+          CoarseMonoClock::now() +
+          MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+    }
+    cdc_sdk_min_checkpint_op_id_ = op_id;
+
+    // If new op_id same as  cdc_sdk_min_checkpint_op_id_ it means already intent before it are
+    // already cleaned up, so no need call clean transactions, else call clean the transactions.
+    CleanTransactionsUnlocked(&min_running_notifier);
+  }
+
   // Cleans transactions that are requested and now is safe to clean.
   // See RemoveUnlocked for details.
   void CleanTransactionsUnlocked(MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
@@ -365,6 +383,7 @@ class TransactionParticipant::Impl
     int64_t min_request = running_requests_.empty() ? std::numeric_limits<int64_t>::max()
                                                     : running_requests_.front();
     HybridTime safe_time;
+    OpId checkpoint_op_id = GetLatestCheckPoint();
     while (!queue->empty()) {
       const auto& front = queue->front();
       if (front.request_id >= min_request) {
@@ -374,18 +393,18 @@ class TransactionParticipant::Impl
         break;
       }
       const auto& id = front.transaction_id;
-      RemoveIntentsData checkpoint;
       auto it = transactions_.find(id);
 
       if (it != transactions_.end() && !(**it).ProcessingApply()) {
         OpId op_id = (**it).GetOpId();
-        participant_context_.GetLastCDCedData(&checkpoint);
-        VLOG_WITH_PREFIX(2) << "Cleaning tx opid is " << op_id.ToString()
-                            << " checkpoint opid is " << checkpoint.op_id.ToString();
 
-        if (checkpoint.op_id < op_id) {
+        // If transaction op_id is greater than the CDCSDK checkpoint op_id.
+        // don't clean the intent as well as intent after this.
+        if (op_id > checkpoint_op_id) {
           break;
         }
+        VLOG_WITH_PREFIX(2) << "Cleaning tx opid is: " << op_id.ToString()
+                            << " checkpoint opid is: " << checkpoint_op_id.ToString();
         (**it).ScheduleRemoveIntents(*it);
         RemoveTransaction(it, front.reason, min_running_notifier);
       }
@@ -1123,16 +1142,11 @@ class TransactionParticipant::Impl
       const Transactions::iterator& it, RemoveReason reason,
       MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
     TransactionId txn_id = (**it).id();
-    RemoveIntentsData checkpoint;
+    OpId checkpoint_op_id = GetLatestCheckPoint();
     auto itr = transactions_.find(txn_id);
     OpId op_id = (**itr).GetOpId();
-    participant_context_.GetLastCDCedData(&checkpoint);
 
-    VLOG_WITH_PREFIX(2) << "Cleaning tx, data opid is " << op_id.ToString()
-              << " checkpoint opid is " << checkpoint.op_id.ToString();
-
-    if (running_requests_.empty() &&
-        (op_id < checkpoint.op_id)) {
+    if (running_requests_.empty() && op_id < checkpoint_op_id) {
       (**it).ScheduleRemoveIntents(*it);
       RemoveTransaction(it, reason, min_running_notifier);
       VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id << ", reason: " << reason
@@ -1458,6 +1472,12 @@ class TransactionParticipant::Impl
     }
   }
 
+  OpId GetLatestCheckPoint() REQUIRES(mutex_) {
+    return CoarseMonoClock::Now() < cdc_sdk_min_checkpint_op_id_expiration_
+               ? cdc_sdk_min_checkpint_op_id_
+               : OpId::Max();
+  }
+
   TransactionStatusResolver& AddStatusResolver() override EXCLUDES(status_resolvers_mutex_) {
     std::lock_guard<std::mutex> lock(status_resolvers_mutex_);
     status_resolvers_.emplace_back(
@@ -1560,6 +1580,9 @@ class TransactionParticipant::Impl
   LRUCache<TransactionId> cleanup_cache_{FLAGS_transactions_cleanup_cache_size};
 
   rpc::Poller poller_;
+
+  OpId cdc_sdk_min_checkpint_op_id_ = OpId::Max();
+  CoarseTimePoint cdc_sdk_min_checkpint_op_id_expiration_ = CoarseTimePoint::min();
 };
 
 TransactionParticipant::TransactionParticipant(
@@ -1727,6 +1750,10 @@ std::string TransactionParticipantContext::LogPrefix() const {
 
 HybridTime TransactionParticipantContext::Now() {
   return clock_ptr()->Now();
+}
+
+void TransactionParticipant::SetRetainOpId(const yb::OpId& op_id) const {
+  impl_->SetRetainOpId(op_id);
 }
 
 } // namespace tablet

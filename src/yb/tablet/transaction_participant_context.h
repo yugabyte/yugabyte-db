@@ -37,7 +37,7 @@ class TransactionParticipantContext {
 
   // Fills RemoveIntentsData with information about replicated state.
   virtual CHECKED_STATUS GetLastReplicatedData(RemoveIntentsData* data) = 0;
-  virtual void GetLastCDCedData(RemoveIntentsData* data) = 0;
+
   // Enqueue task to participant context strand.
   virtual void StrandEnqueue(rpc::StrandTask* task) = 0;
   virtual void UpdateClock(HybridTime hybrid_time) = 0;

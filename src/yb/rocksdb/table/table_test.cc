@@ -2438,7 +2438,7 @@ TEST_P(IndexBlockRestartIntervalTest, IndexBlockRestartInterval) {
   int index_block_restart_interval = GetParam();
 
   std::vector<boost::optional<KeyValueEncodingFormat>> formats_to_test;
-  for (const auto& format : kKeyValueEncodingFormatList) {
+  for (const auto& format : KeyValueEncodingFormatList()) {
     formats_to_test.push_back(format);
   }
   // Also test backward compatibility with SST files without

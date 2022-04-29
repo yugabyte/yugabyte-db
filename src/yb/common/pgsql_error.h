@@ -70,6 +70,21 @@ struct OpIndexTag : IntegralErrorTag<size_t> {
 
 typedef StatusErrorCodeImpl<OpIndexTag> OpIndex;
 
+struct RelationOidTag : IntegralErrorTag<unsigned int> {
+  // It is part of the wire protocol and should not be changed once released.
+  static constexpr uint8_t kCategory = 20;
+
+  static std::string ToMessage(Value value) {
+    return std::to_string(value);
+  }
+
+  static std::string DecodeToString(const uint8_t* source) {
+    return ToMessage(Decode(source));
+  }
+};
+
+typedef StatusErrorCodeImpl<RelationOidTag> RelationOid;
+
 } // namespace yb
 
 #endif // YB_COMMON_PGSQL_ERROR_H
