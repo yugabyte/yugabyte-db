@@ -1,9 +1,9 @@
 ---
-title: Manage Users and Roles in YCQL
-headerTitle: Manage Users and Roles
-linkTitle: Manage Users and Roles
-description: Manage Users and Roles in YCQL
-headcontent: Manage Users and Roles
+title: Manage users and roles
+headerTitle: Manage users and roles
+linkTitle: Manage users and roles
+description: Manage users and roles in YCQL
+headcontent: Manage users and roles
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -32,59 +32,63 @@ showAsideToc: true
 
 </ul>
 
-## 1. Create roles
+Roles in YCQL can represent individual users or a group of users. Users are a role that has login permissions.
 
-Create a role with a password. You can do this with the [CREATE ROLE](../../../api/ycql/ddl_create_role/) command.
+You manage roles and users using the CREATE ROLE, GRANT ROLE, REVOKE ROLE, and DROP ROLE statements.
 
-As an example, let us create a role `engineering` for an engineering team in an organization. Note that you add the `IF NOT EXISTS` clause in case the role already exists.
+## Create roles
 
-```sql
+You can create roles with the [CREATE ROLE](../../../api/ycql/ddl_create_role/) command.
+
+For example, to create a role `engineering` for an engineering team in an organization, do the following (add the `IF NOT EXISTS` clause in case the role already exists):
+
+```cql
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS engineering;
 ```
 
-Roles that have `LOGIN` permissions are users. As an example, you can create a user `john` as follows:
+Roles that have `LOGIN` permissions are users. For example, create a user `john` as follows:
 
-```sql
+```cql
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
 ```
 
 Read about [how to create users in YugabyteDB](../../enable-authentication/ycql/) in the authentication section.
 
-## 2. Grant roles
+## Grant roles
 
-You can grant a role to another role (which can be a user), or revoke a role that has already been granted. Executing the `GRANT` and the `REVOKE` operations requires the `AUTHORIZE` permission on the role being granted or revoked.
+You can grant a role to another role (which can be a user), or revoke a role that has already been granted. Executing the [GRANT ROLE](../../../api/ycql/ddl_grant_role/) and the [REVOKE ROLE](../../../api/ycql/ddl_revoke_role/) operations requires the `AUTHORIZE` permission on the role being granted or revoked.
 
-As an example, you can grant the `engineering` role you created above to the user `john` as follows:
+For example, you can grant the `engineering` role you created above to the user `john` as follows:
 
-```sql
+```cql
 cassandra@ycqlsh> GRANT engineering TO john;
 ```
 
-Read more about [granting roles](../../../api/ycql/ddl_grant_role/).
+Read more about [granting privileges](../ycql-grant-permissions/).
 
-## 3. Create a hierarchy of roles, if needed
+## Create a hierarchy of roles
 
 In YCQL, you can create a hierarchy of roles. The permissions of any role in the hierarchy flows downward.
 
-As an example, let us say that in the above example, you want to create a `developer` role that inherits all the permissions from the `engineering` role. You can achieve this as follows.
+For example, you can create a `developer` role that inherits all the permissions from the `engineering` role.
 
 First, create the `developer` role.
 
-```sql
+```cql
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS developer;
 ```
 
 Next, `GRANT` the `engineering` role to the `developer` role.
 
-```sql
+```cql
 cassandra@ycqlsh> GRANT engineering TO developer;
 ```
 
-## 4. List roles
+## List roles
 
 You can list all the roles by running the following command:
 
-```sql
+```cql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
@@ -108,19 +112,19 @@ In the table above, note the following:
 * The roles `engineering` and `developer` cannot login.
 * Both `john` and `developer` inherit the role `engineering`.
 
-## 5. Revoke roles
+## Revoke roles
 
-Roles can be revoked using the [REVOKE ROLE](../../../api/ycql/ddl_revoke_role/) command.
+Revoke roles using the [REVOKE ROLE](../../../api/ycql/ddl_revoke_role/) command.
 
-In the above example, you can revoke the `engineering` role from the user `john` as follows:
+For example, you can revoke the `engineering` role from the user `john` as follows:
 
-```sql
+```cql
 cassandra@ycqlsh> REVOKE engineering FROM john;
 ```
 
 Listing all the roles now shows that `john` no longer inherits from the `engineering` role:
 
-```sql
+```cql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
@@ -135,19 +139,19 @@ cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_au
 (4 rows)
 ```
 
-## 6. Drop roles
+## Drop roles
 
-Roles can be dropped with the [DROP ROLE](../../../api/ycql/ddl_drop_role/) command.
+Drop roles using the [DROP ROLE](../../../api/ycql/ddl_drop_role/) command.
 
-In the above example, you can drop the `developer` role with the following command:
+For example, you can drop the `developer` role with the following command:
 
-```sql
+```cql
 cassandra@ycqlsh> DROP ROLE IF EXISTS developer;
 ```
 
-The `developer` role would no longer be present upon listing all the roles:
+The `developer` role is no longer present when listing all the roles:
 
-```sql
+```cql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
 
