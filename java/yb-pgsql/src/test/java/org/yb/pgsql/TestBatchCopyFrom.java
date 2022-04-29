@@ -49,7 +49,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       "violates foreign key constraint";
   private static final String BATCH_TXN_SESSION_VARIABLE_NAME =
       "yb_default_copy_from_rows_per_transaction";
-  private static final int BATCH_TXN_SESSION_VARIABLE_DEFAULT_ROWS = 1000;
+  private static final int BATCH_TXN_SESSION_VARIABLE_DEFAULT_ROWS = 20000;
   private static final String DISABLE_TXN_WRITES_SESSION_VARIABLE_NAME =
       "yb_disable_transactional_writes";
   private static final String YB_ENABLE_UPSERT_MODE_VARIABLE_NAME =
@@ -479,7 +479,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
           INVALID_COPY_INPUT_ERROR_MSG);
       assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, expectedCopiedLines);
 
-      // reset session variable (attempt to copy default of 1000 rows)
+      // reset session variable
       statement.execute("RESET " + BATCH_TXN_SESSION_VARIABLE_NAME);
       assertOneRow(statement, "SHOW " + BATCH_TXN_SESSION_VARIABLE_NAME,
           String.valueOf(BATCH_TXN_SESSION_VARIABLE_DEFAULT_ROWS));
