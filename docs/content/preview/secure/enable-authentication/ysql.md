@@ -194,7 +194,7 @@ You should see a table output similar to the following:
 
 In this table, you can see that `postgres`, `admin`, and `yugabyte` users can log in and have `SUPERUSER` status.
 
-As an easier alternative, you can run the `\du` [meta-command](../../../admin/ysqlsh/#meta-commands) to see this information in a simpler, easier-to-read format:
+As an easier alternative, you can run the `\du` [meta-command](../../../admin/ysqlsh/#meta-commands) to see this information in a simpler format:
 
 ```sql
 yugabyte=# \du
