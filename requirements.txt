@@ -13,7 +13,7 @@ pygithub
 ruamel.yaml
 semantic-version
 six
-sys_detection
+sys-detection
 wheel
 yugabyte_pycommon
 compiler-identification

@@ -982,7 +982,7 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
 
 void RaftConsensus::ReportFailureDetectedTask() {
   auto scope_exit = ScopeExit([this] {
-    outstanding_report_failure_task_.clear(std::memory_order_release);
+    outstanding_report_failure_task_.store(false, std::memory_order_release);
   });
 
   MonoTime now;
@@ -1021,7 +1021,7 @@ void RaftConsensus::ReportFailureDetectedTask() {
 
 void RaftConsensus::ReportFailureDetected() {
   if (FLAGS_raft_disallow_concurrent_outstanding_report_failure_tasks &&
-      outstanding_report_failure_task_.test_and_set(std::memory_order_acq_rel)) {
+      outstanding_report_failure_task_.exchange(true, std::memory_order_acq_rel)) {
     VLOG(4)
         << "Returning from ReportFailureDetected as there is already an outstanding report task.";
   } else {
@@ -1030,7 +1030,7 @@ void RaftConsensus::ReportFailureDetected() {
         std::bind(&RaftConsensus::ReportFailureDetectedTask, shared_from_this()));
     WARN_NOT_OK(s, "Failed to submit failure detected task");
     if (!s.ok()) {
-      outstanding_report_failure_task_.clear(std::memory_order_release);
+      outstanding_report_failure_task_.store(false, std::memory_order_release);
     }
   }
 }

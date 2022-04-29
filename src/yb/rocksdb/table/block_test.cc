@@ -84,7 +84,7 @@ class BlockTest : public RocksDBTest {};
 
 // block test
 TEST_F(BlockTest, SimpleTest) {
-  for (auto key_value_encoding_format : kKeyValueEncodingFormatList) {
+  for (auto key_value_encoding_format : KeyValueEncodingFormatList()) {
     Random rnd(301);
     Options options = Options();
     std::unique_ptr<InternalKeyComparator> ic;
@@ -335,7 +335,7 @@ void CheckBlockContents(BlockContents contents,
 TEST_F(BlockTest, SimpleIndexHash) {
   const int kMaxKey = 100000;
 
-  for (auto key_value_encoding_format : kKeyValueEncodingFormatList) {
+  for (auto key_value_encoding_format : KeyValueEncodingFormatList()) {
     std::vector<std::string> keys;
     std::vector<std::string> values;
     GenerateRandomKVs(&keys, &values, 0 /* first key id */,
@@ -355,7 +355,7 @@ TEST_F(BlockTest, IndexHashWithSharedPrefix) {
   // for each prefix, there will be 5 keys starts with it.
   const int kPrefixGroup = 5;
 
-  for (auto key_value_encoding_format : kKeyValueEncodingFormatList) {
+  for (auto key_value_encoding_format : KeyValueEncodingFormatList()) {
     std::vector<std::string> keys;
     std::vector<std::string> values;
     // Generate keys with same prefix.
@@ -412,7 +412,7 @@ void CheckMiddleKey(
 TEST_F(BlockTest, GetMiddleKey) {
   const auto block_restart_interval = 1;
 
-  for (auto key_value_encoding_format : kKeyValueEncodingFormatList) {
+  for (auto key_value_encoding_format : KeyValueEncodingFormatList()) {
     const auto empty_block_middle_key =
         GetMiddleKey(key_value_encoding_format, /* num_keys =*/0, block_restart_interval);
     ASSERT_NOK(empty_block_middle_key) << empty_block_middle_key;
