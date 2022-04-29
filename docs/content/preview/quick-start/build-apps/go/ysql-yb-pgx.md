@@ -59,7 +59,6 @@ In this tutorial, you'll create a small Go application that connects to a Yugaby
 
 The first example demonstrates connection load balancing using the `pgx.Connect()` API, while the second uses the `pgxpool.Connect()` API.
 
-
 ## Prerequisites
 
 This tutorial assumes that:
@@ -74,7 +73,7 @@ The YugabyteDB PGX driver SSL/TLS configuration is the same as for the [YSQL PGX
 
 ### Go YugabyteDB driver
 
-The current release of the [Go YugabyteDB driver package (`pgx`)](https://pkg.go.dev/github.com/yugabyte/pgx) is v4, and requires Go modules.
+The current release of the [Go YugabyteDB driver package (`pgx`)](https://pkg.go.dev/github.com/yugabyte/pgx/v4) is v4, and requires Go modules.
 
 To install the package locally, run the following commands:
 
