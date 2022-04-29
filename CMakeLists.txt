@@ -74,6 +74,8 @@ endif()
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
   # Optimize for Graviton on Linux/aarch64 (not mac/arm64)
   ADD_CXX_FLAGS("-march=armv8.2-a+fp16+rcpc+dotprod+crypto")
+  ADD_CXX_FLAGS("-mtune=neoverse-n1")
+  ADD_CXX_FLAGS("-mno-outline-atomics")
 endif()
 
 if (NOT "$ENV{YB_TARGET_ARCH}" STREQUAL "" AND

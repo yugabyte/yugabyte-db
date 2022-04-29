@@ -45,7 +45,7 @@ class SequentialFileMirror : public SequentialFile {
     if (as.ok()) {
       std::unique_ptr<uint8_t[]> bscratch(new uint8_t[n]);
       Slice bslice;
-      size_t off = 0;
+      size_t off [[maybe_unused]] = 0;  // NOLINT
       size_t left = aslice.size();
       while (left) {
         Status bs = b_->Read(left, &bslice, bscratch.get());

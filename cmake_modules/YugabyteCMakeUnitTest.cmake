@@ -50,25 +50,28 @@ function(check_parse_build_root_basename
 endfunction()
 
 function(test_parse_build_root_basename)
-  # BUILD_ROOT_BASENAME                 BUILD_TYPE  COMPILER_TYPE LINK_TYPE USING_LINUXBREW
+  # BUILD_ROOT_BASENAME                  BUILD_TYPE  COMPILER_TYPE LINK_TYPE USING_LINUXBREW
   check_parse_build_root_basename(
-    "debug-clang-dynamic-ninja"         "debug"     "clang"       "dynamic" OFF)
+    "debug-clang-dynamic-ninja"          "debug"     "clang"       "dynamic"  OFF)
   check_parse_build_root_basename(
-    "release-gcc8-static-ninja"         "release"   "gcc8"        "static"  OFF)
+    "debug-clang-dynamic"                "debug"     "clang"       "dynamic"  OFF)
   check_parse_build_root_basename(
-    "debug-clang-dynamic"               "debug"     "clang"       "dynamic" OFF)
+    "asan-gcc9-dynamic-ninja"            "asan"      "gcc9"        "dynamic"  OFF)
   check_parse_build_root_basename(
-    "asan-gcc9-dynamic-ninja"           "asan"      "gcc9"        "dynamic" OFF)
+    "debug-clang-dynamic"                "debug"     "clang"       "dynamic"  OFF)
   check_parse_build_root_basename(
-    "debug-clang-dynamic"               "debug"     "clang"       "dynamic" OFF)
+    "tsan-clang11-dynamic"               "tsan"      "clang11"     "dynamic"  OFF)
   check_parse_build_root_basename(
-    "tsan-clang11-dynamic"              "tsan"      "clang11"     "dynamic" OFF)
+    "tsan-clang11-dynamic"               "tsan"      "clang11"     "dynamic"  OFF)
   check_parse_build_root_basename(
-    "tsan-clang11-dynamic"              "tsan"      "clang11"     "dynamic" OFF)
+    "release-clang12-linuxbrew-dynamic"  "release"   "clang12"     "dynamic"  ON)
   check_parse_build_root_basename(
-    "release-clang12-linuxbrew-dynamic" "release"   "clang12"     "dynamic" ON)
+    "release-clang12-linuxbrew-thin-lto" "release"   "clang12"     "thin-lto" ON)
   check_parse_build_root_basename(
-    "release-gcc5-linuxbrew-dynamic"    "release"   "gcc5"        "dynamic" ON)
+    "release-clang12-linuxbrew-full-lto" "release"   "clang12"     "full-lto" ON)
+
+  check_parse_build_root_basename(
+    "release-gcc5-linuxbrew-dynamic"     "release"   "gcc5"        "dynamic"  ON)
 endfunction()
 
 # -------------------------------------------------------------------------------------------------
