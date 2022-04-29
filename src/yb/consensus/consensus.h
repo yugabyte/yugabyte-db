@@ -148,7 +148,6 @@ struct LeaderElectionData {
 class Consensus {
  public:
   class ConsensusFaultHooks;
-
   Consensus() {}
   virtual ~Consensus() {}
 
@@ -308,8 +307,6 @@ class Consensus {
   virtual yb::OpId GetLastReceivedOpId() = 0;
 
   virtual yb::OpId GetLastCommittedOpId() = 0;
-
-  virtual yb::OpId GetLastCDCedOpId() = 0;
 
   virtual yb::OpId GetLastAppliedOpId() = 0;
 

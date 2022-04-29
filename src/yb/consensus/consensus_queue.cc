@@ -163,8 +163,6 @@ METRIC_DEFINE_gauge_int64(tablet, in_progress_ops, "Leader Operations in Progres
 
 const auto kCDCConsumerCheckpointInterval = FLAGS_cdc_checkpoint_opid_interval_ms * 1ms;
 
-const auto kCDCConsumerIntentRetention = FLAGS_cdc_intent_retention_ms * 1ms;
-
 std::string MajorityReplicatedData::ToString() const {
   return Format(
       "{ op_id: $0 leader_lease_expiration: $1 ht_lease_expiration: $2 num_sst_files: $3 }",
@@ -790,15 +788,6 @@ yb::OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
   // For log cache eviction, we only want to include CDC consumers that are actively polling.
   // If CDC consumer checkpoint has not been updated recently, we exclude it.
   if (CoarseMonoClock::Now() - cdc_consumer_op_id_last_updated_ <= kCDCConsumerCheckpointInterval) {
-    return cdc_consumer_op_id_;
-  } else {
-    return yb::OpId::Max();
-  }
-}
-
-yb::OpId PeerMessageQueue::GetCDCConsumerOpIdForIntentRemoval() {
-  std::shared_lock<rw_spinlock> l(cdc_consumer_lock_);
-  if (CoarseMonoClock::Now() - cdc_consumer_op_id_last_updated_ <= kCDCConsumerIntentRetention) {
     return cdc_consumer_op_id_;
   } else {
     return yb::OpId::Max();
