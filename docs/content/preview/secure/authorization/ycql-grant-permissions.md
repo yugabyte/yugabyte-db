@@ -168,7 +168,7 @@ Granting the role `engineering` to any other role causes all those roles to inhe
 
 ### Grant data modify access
 
-Both developers and QA should be able to modify data in existing tables in the keyspace `dev_keyspace`. They should be able to execute statements such as `INSERT`, `UPDATE`, `DELETE`, or `TRUNCATE` to modify data on existing tables. This can be done as follows:
+Developers and QA should be able to modify data in existing tables in the keyspace `dev_keyspace`. They should be able to execute statements such as `INSERT`, `UPDATE`, `DELETE`, or `TRUNCATE` to modify data on existing tables. This can be done as follows:
 
 ```cql
 cassandra@ycqlsh> GRANT MODIFY ON KEYSPACE dev_keyspace TO developer;
@@ -235,7 +235,7 @@ All Keyspaces (data) > keyspace (dev_keyspace) > table (integration_tests)
 
 DB admins should be able to perform all operations on any keyspace. There are two ways to achieve this:
 
-1. Grant DB admins the superuser permission. Doing this gives DB admins all permissions over all roles as well.
+1. Grant DB admins the [superuser](../../enable-authentication/ycql/#create-a-superuser) permission. Doing this gives DB admins all permissions over all roles as well.
 
 2. Grant ALL permissions to the "db_admin" role. Do the following:
 
