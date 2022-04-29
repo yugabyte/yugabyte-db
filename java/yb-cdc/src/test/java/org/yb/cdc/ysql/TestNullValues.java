@@ -315,6 +315,10 @@ public class TestNullValues extends CDCBaseClass {
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
 
+      // Set initial checkpoint flag as true, this will update the
+      // consumed op_id for the tablet in server.
+      testSubscriber.setCheckpoint(0, 0, true);
+
       // Insert a row with value of one column
       statement.execute("BEGIN;");
       statement.execute("INSERT INTO test (a, c) VALUES (1, 3);");
