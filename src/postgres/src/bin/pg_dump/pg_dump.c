@@ -1185,6 +1185,15 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	}
 
 	/*
+	 * Hack to avoid issue #12251 which fails if we perform "BEGIN" followed by
+	 * "SET TRANSACTION ISOLATION LEVEL" when yb_enable_read_committed_isolation
+	 * is true.
+	 *
+	 * TODO(Piyush): Remove this hack once the issue is fixed properly
+	 */
+	ExecuteSqlStatement(AH, "SET DEFAULT_TRANSACTION_ISOLATION TO 'repeatable read'");
+
+	/*
 	 * Start transaction-snapshot mode transaction to dump consistent data.
 	 */
 	ExecuteSqlStatement(AH, "BEGIN");
