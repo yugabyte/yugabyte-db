@@ -179,7 +179,7 @@ TEST_F(DocDBRocksDBUtilTest, RocksDBRateLimiter) {
 
   // Check `GetRocksDBRateLimiterSharingMode`
   {
-    for (auto mode : kRateLimiterSharingModeList) {
+    for (auto mode : RateLimiterSharingModeList()) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_sharing_mode) =
           ToString(mode);
       ASSERT_EQ(mode, GetRocksDBRateLimiterSharingMode());

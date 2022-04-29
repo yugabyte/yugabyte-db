@@ -179,7 +179,7 @@ namespace docdb {
 
   Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
     const std::string& flag_value) {
-    for (const auto& encoding_format : rocksdb::kKeyValueEncodingFormatList) {
+    for (const auto& encoding_format : rocksdb::KeyValueEncodingFormatList()) {
       if (flag_value == KeyValueEncodingFormatToString(encoding_format)) {
         return encoding_format;
       }

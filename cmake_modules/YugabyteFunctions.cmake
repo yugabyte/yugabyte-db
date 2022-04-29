@@ -404,6 +404,13 @@ macro(YB_SETUP_CLANG)
       endif()
       ADD_CXX_FLAGS("-isystem ${CLANG_INCLUDE_DIR}")
     endif()
+
+    if ("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "12.0.0")
+      ADD_LINKER_FLAGS("-fuse-ld=lld")
+    endif()
+    if ("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0")
+      ADD_LINKER_FLAGS("-lunwind")
+    endif()
   endif()
 
   ADD_CXX_FLAGS("-nostdinc++")
@@ -413,11 +420,6 @@ macro(YB_SETUP_CLANG)
   ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
   if(NOT EXISTS "${LIBCXX_DIR}/lib")
     message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
-  endif()
-
-  if("${COMPILER_VERSION}" MATCHES "^7[.]*" AND NOT USING_LINUXBREW)
-    # A special linker flag needed only with the Clang 7 build not using Linuxbrew.
-    ADD_LINKER_FLAGS("-lgcc_s")
   endif()
 endmacro()
 
@@ -704,11 +706,11 @@ function(parse_build_root_basename)
   # -----------------------------------------------------------------------------------------------
 
   set(YB_LINKING_TYPE "${CMAKE_MATCH_5}")
-  if(NOT "${YB_LINKING_TYPE}" MATCHES "^(static|dynamic)$")
+  if(NOT "${YB_LINKING_TYPE}" MATCHES "^(dynamic|thin-lto|full-lto)$")
     message(
         FATAL_ERROR
         "Invalid linking type from the build root basename '${YB_BUILD_ROOT_BASENAME}': "
-        "'${YB_LINKING_TYPE}'. Expected 'static' or 'dynamic'.")
+        "'${YB_LINKING_TYPE}'. Expected 'dynamic', 'thin-lto', or 'full-lto'.")
   endif()
   set(YB_LINKING_TYPE "${YB_LINKING_TYPE}" PARENT_SCOPE)
 
@@ -741,16 +743,22 @@ macro(enable_lto_if_needed)
     message(FATAL_ERROR "YB_BUILD_TYPE not defined")
   endif()
 
-  if("${YB_BUILD_TYPE}" STREQUAL "release" AND
-     "${COMPILER_FAMILY}" STREQUAL "clang" AND
-     "${YB_COMPILER_TYPE}" STREQUAL "clang12" AND
-     USING_LINUXBREW AND
-     NOT APPLE)
-    message("Enabling full LTO and lld linker")
+  if("${YB_LINKING_TYPE}" MATCHES "^(thin|full)-lto$")
+    message("Enabling ${CMAKE_MATCH_1} LTO based on linking type: ${YB_LINKING_TYPE}")
+    ADD_CXX_FLAGS("-flto=${CMAKE_MATCH_1} -fuse-ld=lld")
+  elseif("${YB_BUILD_TYPE}" STREQUAL "release" AND
+         "${YB_COMPILER_TYPE}" STREQUAL "clang12" AND
+         USING_LINUXBREW AND
+         NOT APPLE)
+    # We keep this special logic here until we incorporate the knowledge of linking type into our
+    # CI/CD pipeline.
+    message("Enabling full LTO and lld linker based on build type ${YB_BUILD_TYPE}, "
+            "compiler type ${YB_COMPILER_TYPE} and use of Linuxbrew")
     ADD_CXX_FLAGS("-flto=full -fuse-ld=lld")
   else()
     message("Not enabling LTO: "
             "YB_BUILD_TYPE=${YB_BUILD_TYPE}, "
+            "YB_LINKING_TYPE=${YB_LINKING_TYPE}, "
             "COMPILER_FAMILY=${COMPILER_FAMILY}, "
             "USING_LINUXBREW=${USING_LINUXBREW}, "
             "APPLE=${APPLE}")

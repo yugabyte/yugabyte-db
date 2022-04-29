@@ -62,7 +62,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
 
   std::string options = "";
-  for (auto flag : kListSnapshotsFlagList) {
+  for (auto flag : ListSnapshotsFlagList()) {
     options += Format(" [$0]", flag);
   }
   Register(
@@ -75,7 +75,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
           ToUpperCase(args[i], &uppercase_flag);
 
           bool found = false;
-          for (auto flag : kListSnapshotsFlagList) {
+          for (auto flag : ListSnapshotsFlagList()) {
             if (uppercase_flag == ToString(flag)) {
               flags.Set(flag);
               found = true;
@@ -662,7 +662,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               "Unable to bootstrap CDC producer");
         return Status::OK();
       });
-}
+}  // NOLINT -- a long function but that is OK
 
 }  // namespace enterprise
 }  // namespace tools

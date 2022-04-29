@@ -2778,7 +2778,7 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     TabletSplitSingleServerITest,
     TabletSplitSystemRecordsITest,
-    ::testing::ValuesIn(List(static_cast<Partitioning*>(nullptr))),
+    ::testing::ValuesIn(kPartitioningArray),
     TestParamToString<Partitioning>);
 
 }  // namespace yb
