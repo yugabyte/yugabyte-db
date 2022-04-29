@@ -1,9 +1,7 @@
 ---
-title: Enable Users in YCQL
-headerTitle: Enable Users in YCQL
-linkTitle: Enable Users in YCQL
-description: Enable Users in YCQL.
-headcontent: Enable Users in YCQL.
+title: Enable users in YCQL
+headerTitle: Enable users in YCQL
+description: Enable users in YCQL.
 image: /images/section_icons/secure/authentication.png
 menu:
   preview:
