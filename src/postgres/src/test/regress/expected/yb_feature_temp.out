@@ -103,29 +103,18 @@ SELECT * FROM temptest;
 DROP TABLE temptest;
 -- test ON COMMIT DROP
 -- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
-BEGIN;
-CREATE TEMP TABLE temptest(col int) ON COMMIT DROP;
-INSERT INTO temptest VALUES (1);
-INSERT INTO temptest VALUES (2);
-SELECT * FROM temptest;
- col
------
-   1
-   2
-(2 rows)
-
-COMMIT;
-ERROR:  Illegal state: Transaction for catalog table write operation 'pg_type' not found
-SELECT * FROM temptest;
-ERROR:  could not open file "base/13281/t2_16972": No such file or directory
-BEGIN;
-CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
-ERROR:  relation "temptest" already exists
-SELECT * FROM temptest;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
-COMMIT;
-SELECT * FROM temptest;
-ERROR:  could not open file "base/13281/t2_16972": No such file or directory
+-- BEGIN;
+-- CREATE TEMP TABLE temptest(col int) ON COMMIT DROP;
+-- INSERT INTO temptest VALUES (1);
+-- INSERT INTO temptest VALUES (2);
+-- SELECT * FROM temptest;
+-- COMMIT;
+-- SELECT * FROM temptest;
+-- BEGIN;
+-- CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
+-- SELECT * FROM temptest;
+-- COMMIT;
+-- SELECT * FROM temptest;
 -- ON COMMIT is only allowed for TEMP
 CREATE TABLE temptest(col int) ON COMMIT DELETE ROWS;
 ERROR:  ON COMMIT can only be used on temporary tables
@@ -297,7 +286,6 @@ DROP TABLE test;
 DROP TABLE x;
 -- test temp table deletion
 CREATE TEMP TABLE temptest (col int);
-ERROR:  relation "temptest" already exists
 \c
 SELECT * FROM temptest;
 ERROR:  relation "temptest" does not exist
@@ -335,7 +323,7 @@ CREATE TEMP TABLE temptest (k int PRIMARY KEY, v1 int, v2 int);
 CREATE UNIQUE INDEX ON temptest (v1);
 CREATE INDEX ON temptest USING hash (v2);
 \d temptest
-            Table "pg_temp_2.temptest"
+            Table "pg_temp_1.temptest"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  k      | integer |           | not null |

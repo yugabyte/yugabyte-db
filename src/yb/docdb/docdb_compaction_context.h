@@ -72,46 +72,6 @@ struct CompactionSchemaPacking {
 using SchemaPackingProvider = std::function<
     Result<CompactionSchemaPacking>(const Uuid& table_id, uint32_t schema_version)>;
 
-// DocDB compaction feed. A new instance of this class is created for every compaction.
-class DocDBCompactionContext : public rocksdb::CompactionContext {
- public:
-  DocDBCompactionContext(
-      rocksdb::CompactionFeed* next_feed,
-      HistoryRetentionDirective retention,
-      IsMajorCompaction is_major_compaction,
-      const KeyBounds* key_bounds,
-      const SchemaPackingProvider& schema_packing_provider);
-
-  ~DocDBCompactionContext() = default;
-
-  rocksdb::CompactionFeed* Feed() override {
-    return feed_.get();
-  }
-
-  // This indicates we don't have a cached TTL. We need this to be different from kMaxTtl
-  // and kResetTtl because a PERSIST call would lead to a cached TTL of kMaxTtl, and kResetTtl
-  // indicates no TTL in Cassandra.
-  const MonoDelta kNoTtl = MonoDelta::FromNanoseconds(-1);
-
-  // This is used to provide the history_cutoff timestamp to the compaction as a field in the
-  // ConsensusFrontier, so that it can be persisted in RocksDB metadata and recovered on bootstrap.
-  rocksdb::UserFrontierPtr GetLargestUserFrontier() const override;
-
-  // Returns an empty list when key_ranges_ is not set, denoting that the whole key range of the
-  // tablet should be considered live.
-  //
-  // When key_ranges_ is set, returns two live ranges:
-  // (1) A range covering any ApplyTransactionState records which may have been written
-  // (2) A range covering all valid keys in key_ranges_, i.e. all user data this tablet is
-  //     responsible for.
-  std::vector<std::pair<Slice, Slice>> GetLiveRanges() const override;
-
- private:
-  HybridTime history_cutoff_;
-  const KeyBounds* key_bounds_;
-  std::unique_ptr<rocksdb::CompactionFeed> feed_;
-};
-
 // A strategy for deciding how the history of old database operations should be retained during
 // compactions. We may implement this differently in production and in tests.
 class HistoryRetentionPolicy {

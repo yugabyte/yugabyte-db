@@ -140,8 +140,8 @@ Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
     RETURN_NOT_OK(SetColumnValue(kRack, cloud_info.placement_zone(), &row));
 
     // HostId.
-    Uuid host_id;
-    RETURN_NOT_OK(host_id.FromHexString(entry.ts_info.tserver_instance().permanent_uuid()));
+    auto host_id = VERIFY_RESULT(Uuid::FromHexString(
+        entry.ts_info.tserver_instance().permanent_uuid()));
     RETURN_NOT_OK(SetColumnValue(kHostId, host_id, &row));
     RETURN_NOT_OK(SetColumnValue(yb::master::kSystemTablesReleaseVersionColumn,
         yb::master::kSystemTablesReleaseVersion, &row));

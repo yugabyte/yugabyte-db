@@ -24,13 +24,17 @@ namespace docdb {
 struct DocReadContext {
   DocReadContext() = default;
 
-  DocReadContext(const Schema& schema_, uint32_t schema_version) : schema(schema_) {
+  DocReadContext(const Schema& schema_, SchemaVersion schema_version) : schema(schema_) {
     schema_packing_storage.AddSchema(schema_version, schema_);
   }
 
-  DocReadContext(const DocReadContext& rhs, const Schema& schema_, uint32_t schema_version)
+  DocReadContext(const DocReadContext& rhs, const Schema& schema_, SchemaVersion schema_version)
       : schema(schema_), schema_packing_storage(rhs.schema_packing_storage) {
     schema_packing_storage.AddSchema(schema_version, schema_);
+  }
+
+  DocReadContext(const DocReadContext& rhs, SchemaVersion min_schema_version)
+      : schema(rhs.schema), schema_packing_storage(rhs.schema_packing_storage, min_schema_version) {
   }
 
   template <class PB>
@@ -42,7 +46,7 @@ struct DocReadContext {
   }
 
   template <class PB>
-  void ToPB(uint32_t schema_version, PB* out) {
+  void ToPB(SchemaVersion schema_version, PB* out) {
     DCHECK(schema.has_column_ids());
     SchemaToPB(schema, out->mutable_schema());
     schema_packing_storage.ToPB(schema_version, out->mutable_old_schema_packings());

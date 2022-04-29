@@ -31,6 +31,11 @@ message ApplyExternalTransactionPB {
   optional fixed64 commit_hybrid_time = 2;
 }
 
+message TableSchemaVersionPB {
+  optional bytes table_id = 1;
+  optional uint32 schema_version = 2;
+}
+
 // A set of key/value pairs to be written into RocksDB.
 message KeyValueWriteBatchPB {
   repeated KeyValuePairPB write_pairs = 1;
@@ -48,6 +53,10 @@ message KeyValueWriteBatchPB {
   repeated ApplyExternalTransactionPB apply_external_transactions = 7;
 
   optional int64 ttl = 9;
+
+  // Table schema version used by this write batch.
+  // We could have writes to multiple cotables in a single write batch.
+  repeated TableSchemaVersionPB table_schema_version = 11;
 }
 
 message ConsensusFrontierPB {
@@ -56,6 +65,7 @@ message ConsensusFrontierPB {
   optional fixed64 history_cutoff = 3;
   optional fixed64 hybrid_time_filter = 4;
   optional fixed64 max_value_level_ttl_expiration_time = 5;
+  repeated TableSchemaVersionPB table_schema_version = 6;
 }
 
 message ApplyTransactionStatePB {

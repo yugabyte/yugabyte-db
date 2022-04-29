@@ -5536,9 +5536,7 @@ CHECKED_STATUS ApplyAlterSteps(server::Clock* clock,
   }
   if (current_pb.has_colocated() && current_pb.colocated()) {
     if (current_schema_pb.table_properties().is_ysql_catalog_table()) {
-      Uuid cotable_id;
-      RETURN_NOT_OK(cotable_id.FromHexString(req->table().table_id()));
-      builder.set_cotable_id(cotable_id);
+      builder.set_cotable_id(VERIFY_RESULT(Uuid::FromHexString(req->table().table_id())));
     }
     // Colocation ID is set in schema and cannot be altered.
   }

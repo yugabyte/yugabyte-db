@@ -356,13 +356,22 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
         log_prefix_(log_prefix) {}
 
   void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
+    auto& metadata = *CHECK_NOTNULL(tablet_.metadata());
     if (ci.is_full_compaction) {
-      auto& metadata = *CHECK_NOTNULL(tablet_.metadata());
       if (!metadata.has_been_fully_compacted()) {
         metadata.set_has_been_fully_compacted(true);
         ERROR_NOT_OK(metadata.Flush(), log_prefix_);
       }
     }
+    std::unordered_map<Uuid, SchemaVersion, UuidHash> table_id_to_min_schema_version;
+    for (const auto& file : db->GetLiveFilesMetaData()) {
+      if (!file.smallest.user_frontier) {
+        continue;
+      }
+      auto& smallest = down_cast<docdb::ConsensusFrontier&>(*file.smallest.user_frontier);
+      smallest.MakeExternalSchemaVersionsAtMost(&table_id_to_min_schema_version);
+    }
+    ERROR_NOT_OK(metadata.OldSchemaGC(table_id_to_min_schema_version), log_prefix_);
   }
 
  private:
@@ -768,7 +777,7 @@ Status Tablet::OpenKeyValueTablet() {
 }
 
 Result<docdb::CompactionSchemaPacking> Tablet::GetSchemaPacking(
-    const Uuid& uuid, uint32_t schema_version) {
+    const Uuid& uuid, SchemaVersion schema_version) {
   TableInfoPtr table_info;
   if (uuid.IsNil()) {
     table_info = metadata_->primary_table_info();
@@ -779,7 +788,7 @@ Result<docdb::CompactionSchemaPacking> Tablet::GetSchemaPacking(
     }
     table_info = *res;
   }
-  if (schema_version == std::numeric_limits<uint32_t>::max()) {
+  if (schema_version == std::numeric_limits<SchemaVersion>::max()) {
     // TODO(packed_row) Don't pick schema changed after retention interval.
     schema_version =  table_info->schema_version;
   }
@@ -1183,6 +1192,13 @@ Status Tablet::ApplyOperation(
         : docdb::ValueControlFields::kMaxTtl;
     frontiers_ptr->Largest().set_max_value_level_ttl_expiration_time(
         docdb::FileExpirationFromValueTTL(operation.hybrid_time(), ttl));
+    for (const auto& p : write_batch.table_schema_version()) {
+      // Since new frontiers does not contain schema version just add it there.
+      auto table_id = p.table_id().empty()
+          ? Uuid::Nil() : VERIFY_RESULT(Uuid::FromSlice(p.table_id()));
+      frontiers_ptr->Smallest().AddSchemaVersion(table_id, p.schema_version());
+      frontiers_ptr->Largest().AddSchemaVersion(table_id, p.schema_version());
+    }
   }
   return ApplyKeyValueRowOperations(
       batch_idx, write_batch, frontiers_ptr, hybrid_time, already_applied_to_regular_db);
@@ -1351,7 +1367,8 @@ Status Tablet::HandleRedisReadRequest(CoarseTimePoint deadline,
 }
 
 bool IsSchemaVersionCompatible(
-    uint32_t current_version, uint32_t request_version, bool compatible_with_previous_version) {
+    SchemaVersion current_version, SchemaVersion request_version,
+    bool compatible_with_previous_version) {
   if (request_version == current_version) {
     return true;
   }
