@@ -1,9 +1,7 @@
 ---
-title: Enable Users in YSQL
-headerTitle: Enable Users in YSQL
-linkTitle: Enable Users in YSQL
-description: Enable Users in YSQL.
-headcontent: Enable Users in YSQL.
+title: Enable users in YSQL
+headerTitle: Enable users in YSQL
+description: Enable users in YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
   preview:

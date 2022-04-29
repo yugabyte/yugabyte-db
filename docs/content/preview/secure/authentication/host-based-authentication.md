@@ -1,9 +1,8 @@
 ---
-title: Host-Based Authentication
-headerTitle: Host-Based Authentication
-linkTitle: Host-Based Authentication
-description: Manage access control for localhost, remote hosts, and clients.
-headcontent: Configure host-based access control for YSQL clients
+title: Host-based authentication
+headerTitle: Host-based authentication
+linkTitle: Host-based authentication
+description: Manage access control for localhost, remote hosts, and clients for YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
   preview:

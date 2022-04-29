@@ -148,7 +148,7 @@ For example, you can drop the `developer` role with the following statement:
 yugabyte=# DROP ROLE developer;
 ```
 
-The `developer` role is longer present when listing all the roles:
+The `developer` role is no longer present when listing all the roles:
 
 ```sql
 yugabyte=# SELECT rolname, rolcanlogin, rolsuper, memberof FROM pg_roles;

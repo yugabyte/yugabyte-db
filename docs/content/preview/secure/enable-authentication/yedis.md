@@ -1,9 +1,7 @@
 ---
-title: Enable Users in YEDIS
-headerTitle: Enable Users in YEDIS
-linkTitle: Enable Users in YEDIS
-description: Enable Users in YEDIS.
-headcontent: Enable Users in YEDIS.
+title: Enable users in YEDIS
+headerTitle: Enable users in YEDIS
+description: Enable users in YEDIS.
 image: /images/section_icons/secure/authentication.png
 menu:
   preview:

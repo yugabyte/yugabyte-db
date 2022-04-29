@@ -149,7 +149,7 @@ For example, you can drop the `developer` role with the following command:
 cassandra@ycqlsh> DROP ROLE IF EXISTS developer;
 ```
 
-The `developer` role is longer present when listing all the roles:
+The `developer` role is no longer present when listing all the roles:
 
 ```cql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;

@@ -137,7 +137,7 @@ In this section, you grant permissions to each role.
 
 ### Grant read access
 
-All members of engineering need to able to read data from any keyspace and table. Use the `GRANT SELECT` command to grant `SELECT` (or read) access on `ALL KEYSPACES` to the `engineering` role. This can be done as follows:
+All members of engineering need to be able to read data from any keyspace and table. Use the `GRANT SELECT` command to grant `SELECT` (or read) access on `ALL KEYSPACES` to the `engineering` role. This can be done as follows:
 
 ```cql
 cassandra@ycqlsh> GRANT SELECT ON ALL KEYSPACES TO engineering;
