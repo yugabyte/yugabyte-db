@@ -251,67 +251,12 @@ CREATE INDEX ON test_method ((h2, h1), r2 DESC, r1);
 CREATE UNIQUE INDEX ON test_method ((h1, (h2 % 8)) HASH, r2, r1);
 \d test_method
 
--- These should issue NOTICE and verify pg_get_indexdef() output doesn't have
--- NULLS FIRST/NULLS LAST
-CREATE INDEX ON test_method (h1 HASH NULLS FIRST);
-SELECT pg_get_indexdef('test_method_h1_idx'::regclass);
-CREATE INDEX ON test_method (h1 HASH NULLS LAST);
-SELECT pg_get_indexdef('test_method_h1_idx1'::regclass);
-CREATE INDEX ON test_method (h1 NULLS LAST);
-SELECT pg_get_indexdef('test_method_h1_idx2'::regclass);
-CREATE INDEX ON test_method (h1 NULLS LAST);
-SELECT pg_get_indexdef('test_method_h1_idx3'::regclass);
-CREATE INDEX ON test_method ((h1 % 8) HASH NULLS FIRST);
-SELECT pg_get_indexdef('test_method_expr_idx'::regclass);
-CREATE INDEX ON test_method ((h1 % 8) HASH NULLS LAST);
-SELECT pg_get_indexdef('test_method_expr_idx1'::regclass);
-CREATE INDEX ON test_method ((h1 % 8) NULLS FIRST);
-SELECT pg_get_indexdef('test_method_expr_idx2'::regclass);
-CREATE INDEX ON test_method ((h1 % 8) NULLS LAST);
-SELECT pg_get_indexdef('test_method_expr_idx3'::regclass);
-\d test_method
-DROP INDEX test_method_expr_idx;
-DROP INDEX test_method_expr_idx1;
-DROP INDEX test_method_expr_idx2;
-DROP INDEX test_method_expr_idx3;
-DROP INDEX test_method_h1_idx;
-DROP INDEX test_method_h1_idx1;
-DROP INDEX test_method_h1_idx2;
-DROP INDEX test_method_h1_idx3;
-
--- Test should not issue NOTICE
-CREATE INDEX ON test_method (r1 ASC NULLS FIRST, r2 ASC NULLS LAST);
-CREATE INDEX ON test_method (r1 DESC NULLS FIRST, r2 DESC NULLS LAST);
-
-CREATE DATABASE colocation_test colocated = true;
-\c colocation_test
-CREATE TABLE test_method (r1 int, r2 int, v1 int, v2 int,
-  PRIMARY KEY (r1, r2));
-CREATE INDEX ON test_method (r1 NULLS FIRST);
-CREATE INDEX ON test_method (r1 NULLS LAST);
-\d test_method
-\c yugabyte
-DROP DATABASE colocation_test;
-
-CREATE TABLEGROUP tbl_group;
-CREATE TABLE tbl_group_tbl (r1 int, r2 int, v1 int, v2 int,
-  PRIMARY KEY (r1, r2)) TABLEGROUP tbl_group;
-CREATE INDEX idx_tbl_group_tbl ON tbl_group_tbl (r1 NULLS FIRST);
-CREATE INDEX idx2_tbl_group_tbl ON tbl_group_tbl (r1 NULLS LAST);
-\d tbl_group_tbl
-DROP TABLE tbl_group_tbl;
-DROP TABLEGROUP tbl_group;
-
 -- These should fail
 CREATE INDEX ON test_method (h1 HASH, h2 HASH, r2, r1);
 CREATE INDEX ON test_method (r1, h1 HASH);
 CREATE INDEX ON test_method (() HASH);
 CREATE INDEX ON test_method (());
 CREATE INDEX ON test_method (r1 DESC, (h2, h1));
-CREATE INDEX ON test_method ((h1, h2) HASH NULLS FIRST);
-CREATE INDEX ON test_method ((h1, h2) HASH NULLS LAST);
-CREATE INDEX ON test_method ((h1 % 8, h2) HASH NULLS FIRST);
-CREATE INDEX ON test_method ((h1 % 8, h2) HASH NULLS LAST);
 
 INSERT INTO test_method VALUES
   (1, 1, 1, 1, 1, 11),
