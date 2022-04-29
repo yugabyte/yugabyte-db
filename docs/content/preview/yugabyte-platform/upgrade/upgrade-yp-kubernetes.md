@@ -1,8 +1,8 @@
 ---
-title: Upgrade YugabyteDB Anywhere using Kubernetes
-headerTitle: Upgrade YugabyteDB Anywhere using Kubernetes
-linkTitle: Upgrade using Kubernetes
-description: Use Kubernetes to upgrade YugabyteDB Anywhere
+title: Upgrade YugabyteDB Anywhere installation on Kubernetes
+headerTitle: Upgrade YugabyteDB Anywhere installation on Kubernetes
+linkTitle: Upgrade Kubernetes installation
+description: Upgrade YugabyteDB Anywhere installation on Kubernetes
 menu:
   preview:
     identifier: upgrade-yp-kubernetes
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-You can use [Kubernetes](https://kubernetes.io/) to upgrade your YugabyteDB Anywhere to a newer version.
+You can use [Helm](https://helm.sh/) to upgrade your YugabyteDB Anywhere installed on [Kubernetes](https://kubernetes.io/) to a newer version.
 
 To perform an upgrade to a specific version while preserving overrides you might have applied to your initial YugabyteDB Anywhere installation or previous upgrades, execute the following command:
 
@@ -20,4 +20,4 @@ To perform an upgrade to a specific version while preserving overrides you might
 helm upgrade yw-test yugabytedb/yugaware --version 2.13.0 -n yb-platform --reuse-values --wait
 ```
 
-If you do not wish to port your overrides, do not include `reuse-values`.
+If you do not wish to port your overrides, do not include `reuse-values`. Instead, you may choose to pass your existing overrides file by adding `--values custom-values.yaml` to your command during the upgrade.

@@ -34,10 +34,10 @@ You can upgrade YugabyteDB Anywhere to a newer version.
     <a class="section-link icon-offset" href="upgrade-yp-kubernetes/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Upgrade using Kubernetes</div>
+        <div class="title">Upgrade the Kubernetes installation</div>
       </div>
       <div class="body">
-        Use Kubernetes to upgrade YugabyteDB Anywhere
+        Upgrade YugabyteDB Anywhere installed on Kubernetes
       </div>
     </a>
   </div>
