@@ -41,7 +41,7 @@ You must be signed in as an Admin user to perform Admin tasks. Developer users c
         <div class="title">Manage billing</div>
       </div>
       <div class="body">
-        Manage your billing profile and payment methods.
+        Manage your billing profile and payment methods, as well as view your running costs and past invoices.
       </div>
     </a>
   </div>
