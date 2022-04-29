@@ -473,9 +473,12 @@ public class AsyncYBClient implements AutoCloseable {
 
   public Deferred<SetCheckpointResponse> setCheckpoint(YBTable table,
                                                        String streamId, String tabletId,
-                                                       long term, long index) {
+                                                       long term,
+                                                       long index,
+                                                       boolean initialCheckpoint) {
     checkIsClosed();
-    SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId, tabletId, term, index);
+    SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
+      tabletId, term, index, initialCheckpoint);
     Deferred d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
