@@ -290,7 +290,7 @@ You typically create universes by navigating to **Universes > Create universe > 
 
 ![Troubleshoot universe](/images/yb-platform/troubleshoot-uni-creation.png)<br>
 
-If you disable **Assign Public IP** during the universe creation, the process may fail under certain conditions, unless you either install the following packages on the Amazon Linux (AMI) or make them available on an accessible package repository:
+If you disable **Assign Public IP** during the universe creation, the process may fail under certain conditions, unless you either install the following packages on the machine image or make them available on an accessible package repository:
 
 - `chrony`, if you enabled **Use Time Sync** for the selected cloud provider.
 - `python-minimal`, if YugabyteDB Anywhere is installed on Ubuntu 18.04.
@@ -298,7 +298,7 @@ If you disable **Assign Public IP** during the universe creation, the process ma
 - `python-six` or `python2-six` (the Python2 version of Six).
 - `policycoreutils-python`, if YugabyteDB Anywhere is installed on CentOS 7 or Oracle Linux 8.
 - `selinux-policy` must be on an accessible package repository, if YugabyteDB Anywhere is installed on Oracle Linux 8.
-- locales, if YugabyteDB Anywhere is installed on Ubuntu.
+- `locales`, if YugabyteDB Anywhere is installed on Ubuntu.
 
 The preceding package requirements are applicable to YugabyteDB Anywhere version 2.13.1.0.
 
