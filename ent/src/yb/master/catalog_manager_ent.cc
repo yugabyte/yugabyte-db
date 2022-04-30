@@ -3933,6 +3933,7 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
 
   bool merge_alter = false;
   bool validated_all_tables = false;
+  std::vector<CDCConsumerStreamInfo> consumer_info;
   {
     auto l = universe->LockForWrite();
     if (l->is_deleted_or_failed()) {
@@ -3951,7 +3952,6 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
 
       auto& validated_tables = l->pb.validated_tables();
 
-      std::vector<CDCConsumerStreamInfo> consumer_info;
       consumer_info.reserve(l->pb.tables_size());
       for (const auto& table : validated_tables) {
         CDCConsumerStreamInfo info;
@@ -4002,17 +4002,19 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
   }
 
   if (validated_all_tables) {
-    // Also update the set of consumer tables.
-    LockGuard lock(mutex_);
-    auto l = universe->LockForRead();
-    for (const auto& table : l->pb.validated_tables()) {
-      xcluster_consumer_tables_to_stream_map_[table.second].emplace(universe->id(), *stream_id);
+    GStringPiece final_id(universe->id());
+    // If this is an 'alter', merge back into primary command now that setup is a success.
+    if (merge_alter) {
+      final_id.remove_suffix(sizeof(".ALTER")-1 /* exclude \0 ending */);
+      MergeUniverseReplication(universe, final_id.ToString());
     }
-  }
-
-  // If this is an 'alter', merge back into primary command now that setup is a success.
-  if (merge_alter) {
-    MergeUniverseReplication(universe);
+    // Update the in-memory cache of consumer tables.
+    LockGuard lock(mutex_);
+    for (const auto& info : consumer_info) {
+      auto c_table_id = info.consumer_table_id;
+      auto c_stream_id = info.stream_id;
+      xcluster_consumer_tables_to_stream_map_[c_table_id].emplace(final_id.ToString(), c_stream_id);
+    }
   }
 }
 
@@ -4191,24 +4193,19 @@ Status CatalogManager::InitCDCConsumer(
   return Status::OK();
 }
 
-void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationInfo> universe) {
+void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationInfo> universe,
+                                              std::string original_id) {
   // Merge back into primary command now that setup is a success.
-  GStringPiece original_producer_id(universe->id());
-  if (!original_producer_id.ends_with(".ALTER")) {
-    return;
-  }
-  original_producer_id.remove_suffix(sizeof(".ALTER")-1 /* exclude \0 ending */);
-  LOG(INFO) << "Merging CDC universe: " << universe->id()
-            << " into " << original_producer_id.ToString();
+  LOG(INFO) << "Merging CDC universe: " << universe->id() << " into " << original_id;
 
   scoped_refptr<UniverseReplicationInfo> original_universe;
   {
     SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
-    original_universe = FindPtrOrNull(universe_replication_map_, original_producer_id.ToString());
+    original_universe = FindPtrOrNull(universe_replication_map_, original_id);
     if (original_universe == nullptr) {
-      LOG(ERROR) << "Universe not found: " << original_producer_id.ToString();
+      LOG(ERROR) << "Universe not found: " << original_id;
       return;
     }
   }
@@ -4271,7 +4268,7 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
 
   // Add universe to universes_to_clear_
   {
-    SharedLock lock(mutex_);
+    LockGuard lock(mutex_);
     universes_to_clear_.push_back(universe->id());
   }
 
@@ -5072,7 +5069,7 @@ bool CatalogManager::IsTableCdcProducer(const TableInfo& table_info) const {
       auto s = entry.second->LockForRead();
       // for xCluster the first entry will be the table_id
       const auto& table_id = s->table_id();
-      if (!table_id.empty() && table_id.Get(0) == tid && !(s->is_deleting() || s->is_deleted())) {
+      if (!table_id.empty() && table_id.Get(0) == tid && !s->started_deleting()) {
         return true;
       }
     }
