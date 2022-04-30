@@ -216,8 +216,6 @@ class TabletPeer : public consensus::ConsensusContext,
 
   void GetLastReplicatedData(RemoveIntentsData* data) override;
 
-  void GetLastCDCedData(RemoveIntentsData* data) override;
-
   void GetTabletStatusPB(TabletStatusPB* status_pb_out);
 
   // Used by consensus to create and start a new ReplicaOperation.

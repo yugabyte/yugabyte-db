@@ -600,13 +600,14 @@ Status GetChangesForCDCSDK(
       VLOG(1) << "The first snapshot term " << data.op_id.term << "index  " << data.op_id.index
               << "time " << data.log_ht.ToUint64();
       // Update the CDCConsumerOpId.
-      {
-        std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
-        shared_consensus->UpdateCDCConsumerOpId(data.op_id);
-      }
-      if (txn_participant == nullptr || txn_participant->context() == nullptr)
+      std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
+      shared_consensus->UpdateCDCConsumerOpId(data.op_id);
+
+      if (txn_participant == nullptr || txn_participant->context() == nullptr) {
         return STATUS_SUBSTITUTE(
             Corruption, "Cannot read data as the transaction participant context is null");
+      }
+      txn_participant->SetRetainOpId(data.op_id);
       txn_participant->context()->GetLastReplicatedData(&data);
       time = ReadHybridTime::SingleTime(data.log_ht);
 
@@ -685,7 +686,6 @@ Status GetChangesForCDCSDK(
     }
     checkpoint_updated = true;
   } else {
-    OpId checkpoint_op_id;
     RequestScope request_scope;
 
     auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(
@@ -755,8 +755,9 @@ Status GetChangesForCDCSDK(
 
         case consensus::OperationType::WRITE_OP: {
           const auto& batch = msg->write().write_batch();
+
           if (!batch.has_transaction()) {
-            RETURN_NOT_OK(
+                RETURN_NOT_OK(
                 PopulateCDCSDKWriteRecord(msg, stream_metadata, tablet_peer, resp, current_schema));
 
             SetCheckpoint(
@@ -820,17 +821,17 @@ Status GetChangesForCDCSDK(
   checkpoint_updated ? resp->mutable_cdc_sdk_checkpoint()->CopyFrom(checkpoint)
                        : resp->mutable_cdc_sdk_checkpoint()->CopyFrom(from_op_id);
 
-  if (checkpoint_updated) {
-    VLOG(1) << "The checkpoint is updated " << resp->checkpoint().DebugString();
-  } else {
-    VLOG(1) << "The checkpoint is not updated " << resp->checkpoint().DebugString();
-  }
-
   if (last_streamed_op_id->index > 0) {
-    resp->mutable_checkpoint()->mutable_op_id()->set_term(last_streamed_op_id->term);
-    resp->mutable_checkpoint()->mutable_op_id()->set_index(last_streamed_op_id->index);
+    last_streamed_op_id->ToPB(resp->mutable_checkpoint()->mutable_op_id());
   }
-
+  if (checkpoint_updated) {
+    VLOG(1) << "The cdcsdk checkpoint is updated " << resp->cdc_sdk_checkpoint().ShortDebugString();
+    VLOG(1) << "The checkpoint is updated " << resp->checkpoint().ShortDebugString();
+  } else {
+    VLOG(1) << "The cdcsdk checkpoint is not  updated "
+            << resp->cdc_sdk_checkpoint().ShortDebugString();
+    VLOG(1) << "The checkpoint is not updated " << resp->checkpoint().ShortDebugString();
+  }
   return Status::OK();
 }
 

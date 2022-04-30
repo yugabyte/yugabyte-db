@@ -25,14 +25,16 @@ public class SetCheckpointRequest extends YRpc<SetCheckpointResponse>{
   private String tabletId;
   private long index;
   private long term;
+  private  boolean initialCheckpoint;
 
   public SetCheckpointRequest(YBTable table, String streamId,
-                              String tabletId, long term, long index) {
+                              String tabletId, long term, long index, boolean initialCheckpoint) {
     super(table);
     this.streamId = streamId;
     this.tabletId = tabletId;
     this.term = term;
     this.index = index;
+    this.initialCheckpoint = initialCheckpoint;
   }
 
   @Override
@@ -46,6 +48,7 @@ public class SetCheckpointRequest extends YRpc<SetCheckpointResponse>{
       .CDCCheckpointPB.newBuilder();
     builder.setCheckpoint(cBuilder.setOpId(Opid.OpIdPB.newBuilder().setIndex(this.index)
       .setTerm(this.term).build()).build());
+    builder.setInitialCheckpoint(this.initialCheckpoint);
     return toChannelBuffer(header, builder.build());
   }
 

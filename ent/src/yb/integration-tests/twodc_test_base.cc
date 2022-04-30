@@ -42,7 +42,7 @@ using tserver::enterprise::CDCConsumer;
 
 namespace enterprise {
 
-void TwoDCTestBase::Destroy() {
+void TwoDCTestBase::Destroy(bool cdc_sdk_enable) {
   LOG(INFO) << "Destroying CDC Clusters";
   if (consumer_cluster()) {
     if (consumer_cluster_.pg_supervisor_) {
@@ -61,7 +61,10 @@ void TwoDCTestBase::Destroy() {
   }
 
   producer_cluster_.client_.reset();
-  producer_cluster_.client_.reset();
+
+  if (cdc_sdk_enable) {
+    consumer_cluster_.client_.reset();
+  }
 }
 
 Status TwoDCTestBase::SetupUniverseReplication(
