@@ -1292,8 +1292,8 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
 
 TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
   YB_SKIP_TEST_IN_TSAN();
-  constexpr int kNTabletsPerTable = 1;
-  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  constexpr int kNT = 1; // Tablets per table.
+  std::vector<uint32_t> tables_vector = {kNT, kNT, kNT}; // Each entry is a table. (Currently 3)
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -1328,16 +1328,53 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
     }
   }
 
-  // 2. Setup replication.
+  // Set aside one table for AlterUniverseReplication.
+  std::shared_ptr<client::YBTable> producer_alter_table, consumer_alter_table;
+  producer_alter_table = producer_tables.back();
+  producer_tables.pop_back();
+  consumer_alter_table = consumer_tables.back();
+  consumer_tables.pop_back();
+
+  // 2a. Setup replication.
   ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
                                      kUniverseId, producer_tables));
 
-  // 3. Verify everything is setup correctly.
+  // Verify everything is setup correctly.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
       &get_universe_replication_resp));
   ASSERT_OK(CorrectlyPollingAllTablets(
-      consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
+      consumer_cluster(), narrow_cast<uint32_t>(producer_tables.size() * kNT)));
+
+  // 2b. Alter Replication
+  {
+    auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client()->proxy_cache(),
+        consumer_leader_mini_master->bound_rpc_addr());
+    master::AlterUniverseReplicationRequestPB alter_req;
+    master::AlterUniverseReplicationResponsePB alter_resp;
+    alter_req.set_producer_id(kUniverseId);
+    alter_req.add_producer_table_ids_to_add(producer_alter_table->id());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
+    ASSERT_FALSE(alter_resp.has_error());
+    // Wait until we have the new table listed in the existing universe config.
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          master::GetUniverseReplicationResponsePB tmp_resp;
+          RETURN_NOT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(),
+                                                  kUniverseId, &tmp_resp));
+          return tmp_resp.entry().tables_size() == static_cast<int64>(producer_tables.size() + 1);
+        },
+        MonoDelta::FromSeconds(kRpcTimeout), "Verify table created with alter."));
+
+    ASSERT_OK(CorrectlyPollingAllTablets(
+        consumer_cluster(), narrow_cast<uint32_t>((producer_tables.size() + 1) * kNT)));
+  }
+  producer_tables.push_back(producer_alter_table);
+  consumer_tables.push_back(consumer_alter_table);
 
   auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
     for (const auto& consumer_table : consumer_tables) {
@@ -1361,16 +1398,21 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 
   // Attempt to destroy the producer and consumer tables.
-  string producer_table_name = producer_tables[0]->name().ToString();
-  string producer_table_id = producer_tables[0]->id();
-  string consumer_table_name = consumer_tables[0]->name().ToString();
-  string consumer_table_id = consumer_tables[0]->id();
-  ASSERT_NOK(DeleteTable(&producer_cluster_, &producer_table_id));
-  ASSERT_NOK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+  for (size_t i = 0; i < producer_tables.size(); ++i) {
+    string producer_table_id = producer_tables[i]->id();
+    string consumer_table_id = consumer_tables[i]->id();
+    ASSERT_NOK(DeleteTable(&producer_cluster_, &producer_table_id));
+    ASSERT_NOK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+  }
 
-  FLAGS_enable_delete_truncate_xcluster_replicated_table = true;
-  ASSERT_OK(DeleteTable(&producer_cluster_, &producer_table_id));
-  ASSERT_OK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+
+  for (size_t i = 0; i < producer_tables.size(); ++i) {
+    string producer_table_id = producer_tables[i]->id();
+    string consumer_table_id = consumer_tables[i]->id();
+    ASSERT_OK(DeleteTable(&producer_cluster_, &producer_table_id));
+    ASSERT_OK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+  }
 }
 
 TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
