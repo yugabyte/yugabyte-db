@@ -682,7 +682,7 @@ bitand, nanvl, sinh, cosh, tanh, oracle.substr and oracle.mod.
 You might need to set search_path to 'oracle, pg_catalog, "$user", public'
 because oracle.substr, oracle.lpad, oracle.rpad, oracle.ltrim, oracle.rtrim, oracle.btrim, oracle.length are installed side-by-side with pg_catalog.substr, pg_catalog.lpad, pg_catalog.rpad, pg_catalog.ltrim, pg_catalog.rtrim, pg_catalog.btrim, pg_catalog.length respectively.
 
-Functions oracle.decode, oracle.greatest, oracle.least and oracle.mod must always be prefixed by the schema name even if the oracle is before pg_catalog in the search_path because these functions are implemented inside PostgreSQL parser and analyzer. Without the schema name the internal functions will always be used.
+Functions oracle.decode, oracle.greatest and oracle.least must always be prefixed by the schema name even if the oracle is before pg_catalog in the search_path because these functions are implemented inside PostgreSQL parser and analyzer. Without the schema name the internal functions will always be used.
 
 Note that in case of lpad and rpad, parameters string and fill can be of types CHAR, VARCHAR, TEXT, VARCHAR2 or NVARCHAR2 (note that the last two are orafce-provided types). The default fill character is a half-width space. Similarly for ltrim, rtrim and btrim.
 
