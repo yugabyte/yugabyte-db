@@ -652,7 +652,7 @@ This unit contains some assert functions.
 == Others functions
 
 This module contains implementation of functions: concat, nvl, nvl2, lnnvl, decode, greatest, least,
-bitand, nanvl, sinh, cosh, tanh and oracle.substr.
+bitand, nanvl, sinh, cosh, tanh, oracle.substr and oracle.mod.
 
 * oracle.substr(str text, start int, len int) - Oracle compatible substring
 * oracle.substr(str text, start int)          - Oracle compatible substring
@@ -677,6 +677,7 @@ bitand, nanvl, sinh, cosh, tanh and oracle.substr.
 * public.to_single_byte(text) - Convert all multi-byte characters to their corresponding single-byte characters
 * oracle.greatest(anyelement, anyelement[]) - Oracle compatibility greatest, return NULL on NULL input
 * oracle.least(anyelement, anyelement[]) - Oracle compatibility least, return NULL on NULL input
+* oracle.mod(int, int) - Oracle compatibility mod, If the second parameter is zero, it returns the first parameter
 
 You might need to set search_path to 'oracle, pg_catalog, "$user", public'
 because oracle.substr, oracle.lpad, oracle.rpad, oracle.ltrim, oracle.rtrim, oracle.btrim, oracle.length are installed side-by-side with pg_catalog.substr, pg_catalog.lpad, pg_catalog.rpad, pg_catalog.ltrim, pg_catalog.rtrim, pg_catalog.btrim, pg_catalog.length respectively.
