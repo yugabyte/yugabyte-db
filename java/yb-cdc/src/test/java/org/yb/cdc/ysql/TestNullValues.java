@@ -70,6 +70,7 @@ public class TestNullValues extends CDCBaseClass {
       // Creating one stream.
       CDCSubscriber testSubscriberProto = new CDCSubscriber(getMasterAddresses());
       testSubscriberProto.createStream("proto");
+      testSubscriberProto.setCheckpoint(0, 0, true);
 
       int dummyInsert = statement.executeUpdate(String.format("insert into test values (%d);",
         DEFAULT_KEY_VALUE));
