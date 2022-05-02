@@ -1,3 +1,5 @@
+**Prerequisites**
+
 Before you can peer with an AWS application VPC, you must have created at least one VPC in YugabyteDB Managed that uses AWS.
 
 You need the following details for the AWS application VPC you are peering with:
@@ -8,6 +10,8 @@ You need the following details for the AWS application VPC you are peering with:
 - VPC CIDR address
 
 To obtain these details, navigate to your AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region hosting the VPC you want to peer.
+
+**Add a connection**
 
 To create a peering connection, in YugabyteDB Managed do the following:
 

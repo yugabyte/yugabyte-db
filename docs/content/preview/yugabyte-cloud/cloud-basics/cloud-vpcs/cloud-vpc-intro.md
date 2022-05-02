@@ -41,7 +41,7 @@ There's no additional charge for using a VPC. In most cases, using a VPC will re
 
 If you need additional VPCs, contact {{<support-cloud>}}.
 
-## Before you start
+## Prerequisites
 
 Before setting up the VPC network, you'll need the following:
 

@@ -1,3 +1,5 @@
+**Prerequisites**
+
 Before you can peer with a GCP application VPC, you must have created at least one VPC in YugabyteDB Managed that uses GCP.
 
 You need the following details for the GCP application VPC you are peering with:
@@ -7,6 +9,8 @@ You need the following details for the GCP application VPC you are peering with:
 - VPC CIDR address
 
 To obtain these details, navigate to your GCP [VPC networks](https://console.cloud.google.com/networking/networks) page.
+
+**Add a connection**
 
 To create a peering connection, do the following:
 
