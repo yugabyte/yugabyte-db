@@ -67,11 +67,26 @@ struct HistoryRetentionDirective {
 struct CompactionSchemaPacking {
   uint32_t schema_version = std::numeric_limits<uint32_t>::max();
   std::shared_ptr<const docdb::SchemaPacking> schema_packing;
+  Uuid cotable_id;
 };
 
-using SchemaPackingProvider = std::function<
-    Result<CompactionSchemaPacking>(const Uuid& table_id, uint32_t schema_version)>;
+// Used to query latest possible schema version.
+constexpr SchemaVersion kLatestSchemaVersion = std::numeric_limits<SchemaVersion>::max();
 
+class SchemaPackingProvider {
+ public:
+  // Returns schema packing for provided cotable_id and schema version.
+  // If schema_version is kLatestSchemaVersion, then latest possible schema packing is returned.
+  virtual Result<CompactionSchemaPacking> CotablePacking(
+      const Uuid& table_id, uint32_t schema_version) = 0;
+
+  // Returns schema packing for provided colocation_id and schema version.
+  // If schema_version is kLatestSchemaVersion, then latest possible schema packing is returned.
+  virtual Result<CompactionSchemaPacking> ColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version) = 0;
+
+  virtual ~SchemaPackingProvider() = default;
+};
 // A strategy for deciding how the history of old database operations should be retained during
 // compactions. We may implement this differently in production and in tests.
 class HistoryRetentionPolicy {
@@ -83,7 +98,7 @@ class HistoryRetentionPolicy {
 std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
     const KeyBounds* key_bounds,
-    const SchemaPackingProvider& schema_packing_provider);
+    SchemaPackingProvider* schema_packing_provider);
 
 // A history retention policy that can be configured manually. Useful in tests. This class is
 // useful for testing and is thread-safe.

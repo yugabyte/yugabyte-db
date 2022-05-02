@@ -288,7 +288,7 @@ class DecodeDocKeyCallback {
 
   void SetHash(...) const {}
 
-  void SetCoTableId(const Uuid cotable_id) const {}
+  void SetCoTableId(const Uuid& cotable_id) const {}
 
   void SetColocationId(const ColocationId colocation_id) const {}
 
@@ -308,7 +308,7 @@ class DummyCallback {
 
   void SetHash(...) const {}
 
-  void SetCoTableId(const Uuid cotable_id) const {}
+  void SetCoTableId(const Uuid& cotable_id) const {}
 
   void SetColocationId(const ColocationId colocation_id) const {}
 
@@ -332,7 +332,7 @@ class EncodedSizesCallback {
 
   void SetHash(...) const {}
 
-  void SetCoTableId(const Uuid cotable_id) const {}
+  void SetCoTableId(const Uuid& cotable_id) const {}
 
   void SetColocationId(const ColocationId colocation_id) const {}
 
@@ -430,7 +430,8 @@ class DocKey::DecodeFromCallback {
       key_->hash_ = hash;
     }
   }
-  void SetCoTableId(const Uuid cotable_id) const {
+
+  void SetCoTableId(const Uuid& cotable_id) const {
     key_->cotable_id_ = cotable_id;
   }
 
@@ -885,9 +886,10 @@ Status SubDocKey::DecodeDocKeyAndSubKeyEnds(
       // shouldn't count as an end.
       slice.remove_prefix(id_size + 1);
     } else {
+      slice.remove_prefix(id_size);
       auto doc_key_size = VERIFY_RESULT(DocKey::EncodedSize(slice, DocKeyPart::kWholeDocKey));
       slice.remove_prefix(doc_key_size);
-      out->push_back(doc_key_size);
+      out->push_back(id_size + doc_key_size);
     }
   } else {
     slice.remove_prefix(out->back());
@@ -1229,7 +1231,7 @@ Result<bool> DocKeyDecoder::DecodeCotableId(Uuid* uuid) {
   }
 
   if (uuid) {
-    RETURN_NOT_OK(uuid->DecodeFromComparableSlice(Slice(input_.data(), kUuidSize)));
+    *uuid = VERIFY_RESULT(Uuid::FromComparable(input_.Prefix(kUuidSize)));
   }
   input_.remove_prefix(kUuidSize);
 

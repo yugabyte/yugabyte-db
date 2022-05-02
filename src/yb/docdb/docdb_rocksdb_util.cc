@@ -937,7 +937,7 @@ Status RocksDBPatcher::UpdateFileSizes() {
 Status ForceRocksDBCompact(rocksdb::DB* db) {
   RETURN_NOT_OK_PREPEND(
       db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
-      "Compact range failed:");
+      "Compact range failed");
   return Status::OK();
 }
 
