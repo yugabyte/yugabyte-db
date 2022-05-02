@@ -15,7 +15,7 @@ menu:
 
 The quickest way to get started with YugabyteDB is to [sign up for YugabyteDB Managed](http://cloud.yugabyte.com) and create a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.
 
-This quick start is also available as a video playlist on the Yugabyte YouTube channel: [YugabyteDB Managed Getting Started](https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJqisBVRDi6GAy8rhVo1xjc)
+This quick start is also available in the [YugabyteDB Managed Getting Started](https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJqisBVRDi6GAy8rhVo1xjc) playlist on the Yugabyte YouTube channel.
 
 ## Get started
 
