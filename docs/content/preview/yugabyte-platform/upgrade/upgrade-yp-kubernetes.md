@@ -14,7 +14,13 @@ showAsideToc: true
 
 You can use [Helm](https://helm.sh/) to upgrade your YugabyteDB Anywhere installed on [Kubernetes](https://kubernetes.io/) to a newer version.
 
-To perform an upgrade to a specific version while preserving overrides you might have applied to your initial YugabyteDB Anywhere installation or previous upgrades, execute the following command:
+Before running an upgrade, execute the following command to obtain the latest versions of YugabyteDB Anywhere from Helm charts:
+
+```sh
+helm repo update
+```
+
+To upgrade to a specific version while preserving overrides you might have applied to your initial YugabyteDB Anywhere installation or previous upgrades, execute the following command:
 
 ```sh
 helm upgrade yw-test yugabytedb/yugaware --version 2.13.0 -n yb-platform --reuse-values --wait
