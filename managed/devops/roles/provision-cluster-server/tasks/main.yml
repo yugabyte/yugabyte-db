@@ -73,6 +73,7 @@
     state: directory
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
+    recurse: yes
   with_items: "{{ mount_points.split(',') }}"
 
 - include_tasks: "setup-cgroup.yml"
