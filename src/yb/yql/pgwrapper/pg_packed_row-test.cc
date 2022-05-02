@@ -13,11 +13,15 @@
 
 #include "yb/docdb/doc_read_context.h"
 
+#include "yb/master/mini_master.h"
+
 #include "yb/rocksdb/db/db_impl.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
+#include "yb/util/range.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
@@ -36,6 +40,8 @@ class PgPackedRowTest : public PgMiniTestBase {
     FLAGS_history_cutoff_propagation_interval_ms = 1;
     PgMiniTestBase::SetUp();
   }
+
+  void TestCompaction(const std::string& expr_suffix);
 };
 
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
@@ -246,6 +252,67 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SchemaGC)) {
     auto table_info = peer->tablet_metadata()->primary_table_info();
     ASSERT_EQ(table_info->doc_read_context->schema_packing_storage.SchemaCount(), 1);
   }
+}
+
+void PgPackedRowTest::TestCompaction(const std::string& expr_suffix) {
+  constexpr int kKeys = 10;
+  constexpr size_t kValueLen = 32;
+
+  auto conn = ASSERT_RESULT(ConnectToDB("test"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE t1 (key INT PRIMARY KEY, value TEXT) $0", expr_suffix));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE t2 (key INT PRIMARY KEY, value INT) $0", expr_suffix));
+
+  std::mt19937_64 rng(42);
+
+  std::string t1;
+  std::string t2;
+  for (auto key : Range(kKeys)) {
+    if (key) {
+      t1 += ";";
+      t2 += ";";
+    }
+    auto t1_val = RandomHumanReadableString(kValueLen, &rng);
+    t1 += Format("$0,$1", key, t1_val);
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t1 (key, value) VALUES ($0, '')", key));
+    ASSERT_OK(conn.ExecuteFormat("UPDATE t1 SET value = '$1' WHERE key = $0", key, t1_val));
+
+    auto t2_val = RandomUniformInt<int32_t>(&rng);
+    t2 += Format("$0,$1", key, t2_val);
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t2 (key, value) VALUES ($0, 0)", key));
+    ASSERT_OK(conn.ExecuteFormat("UPDATE t2 SET value = $1 WHERE key = $0", key, t2_val));
+  }
+
+  for (int step = 0; step <= 2; ++step) {
+    SCOPED_TRACE(Format("Step: $0", step));
+
+    if (step == 1) {
+      ASSERT_OK(cluster_->FlushTablets());
+    } else if (step == 2) {
+      ASSERT_OK(cluster_->CompactTablets());
+    }
+
+    auto value = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY key", ",", ";"));
+    ASSERT_EQ(value, t1);
+    value = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t2 ORDER BY key", ",", ";"));
+    ASSERT_EQ(value, t2);
+  }
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(TableGroup)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test"));
+  conn = ASSERT_RESULT(ConnectToDB("test"));
+  ASSERT_OK(conn.Execute("CREATE TABLEGROUP tg"));
+
+  TestCompaction("TABLEGROUP tg");
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Colocated)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
+  TestCompaction("WITH (colocated = true)");
 }
 
 } // namespace pgwrapper
