@@ -18,6 +18,8 @@ showAsideToc: true
 
 Standard clusters support multi-node and highly available deployments and are suitable for production deployments.
 
+{{< youtube id="qYMcNzWotkI" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
+
 ## Features
 
 Standard clusters include the following features:
