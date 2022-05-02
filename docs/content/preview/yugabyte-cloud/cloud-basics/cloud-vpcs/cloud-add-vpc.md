@@ -22,7 +22,7 @@ To view VPC details, select a VPC in the list to display the **VPC Details** she
 
 To terminate a VPC, click the **Delete** icon for the VPC in the list you want to terminate, and then click **Terminate**. You can also terminate a VPC by clicking **Terminate VPC** in the **VPC Details** sheet. You can't terminate a VPC with active peering connections or clusters.
 
-## Create a VPC
+## Prerequisites
 
 To create a VPC in YugabyteDB Managed, you need to specify the following:
 
@@ -34,6 +34,8 @@ You'll also need to know the CIDR range for the application VPC with which you w
 
 - For AWS, navigate to the [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region hosting the VPC you want to peer.
 - For GCP, navigate to the [VPC networks](https://console.cloud.google.com/networking/networks) page.
+
+## Create a VPC
 
 To create a VPC, do the following:
 
@@ -55,6 +57,8 @@ The VPC's network name and project ID are automatically assigned. You'll need th
 
 You can [deploy your cluster](../../create-clusters/) in a VPC any time after it has been created.
 
+To deploy a cluster in a VPC:
+
 1. On the **Clusters** page, click **Add Cluster**.
 1. Choose **YugabyteDB Managed** and click **Next**.
 1. Choose the provider you used for your VPC.
@@ -68,5 +72,6 @@ For more information on creating clusters, refer to [Create a cluster](../../cre
 
 ## Next steps
 
-- [Create a peering connection and configure your cloud provider](../cloud-add-peering/)
+- [Create a peering connection](../cloud-add-peering/)
+- [Configure your cloud provider](../cloud-configure-provider/)
 - [Add the application VPC CIDR to the cluster IP allow list](../../../cloud-secure-clusters/add-connections/)
