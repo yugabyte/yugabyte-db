@@ -39,7 +39,7 @@ VPC peering is not supported in free clusters.
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./cloud-vpc-intro/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
         <div class="title">Overview</div>
       </div>
       <div class="body">
@@ -51,7 +51,7 @@ VPC peering is not supported in free clusters.
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./cloud-add-vpc/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
         <div class="title">VPCs</div>
       </div>
       <div class="body">
@@ -75,7 +75,7 @@ VPC peering is not supported in free clusters.
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./cloud-configure-provider/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
         <div class="title">Configure cloud provider</div>
       </div>
       <div class="body">
