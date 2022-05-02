@@ -323,7 +323,7 @@ CREATE TEMP TABLE temptest (k int PRIMARY KEY, v1 int, v2 int);
 CREATE UNIQUE INDEX ON temptest (v1);
 CREATE INDEX ON temptest USING hash (v2);
 \d temptest
-            Table "pg_temp_1.temptest"
+            Table "pg_temp_2.temptest"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  k      | integer |           | not null |
