@@ -2,6 +2,10 @@
 
 Below is the complete list of release notes for every version of ``pg_stat_monitor``.
 
+## 1.0.0
+
+Bump version from 1.0.0-rc.2 to 1.0.0.
+
 ## 1.0.0-rc.2
 
 ### Improvements
@@ -132,6 +136,7 @@ Column datname (string) was added (replacement for dbid).
 
 
 ## REL0_7_0_STABLE
+
 ### Improvements
 
 [PG-153](https://jira.percona.com/browse/PG-153): Capture and record the application_name executing the query.
