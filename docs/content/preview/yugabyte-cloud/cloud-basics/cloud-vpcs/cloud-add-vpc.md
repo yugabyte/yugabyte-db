@@ -55,7 +55,7 @@ The VPC's network name and project ID are automatically assigned. You'll need th
 
 ## Deploy a cluster in a VPC
 
-You can [deploy your cluster](../../create-clusters/) in a VPC any time after it has been created.
+You can deploy your cluster in a VPC any time after it has been created.
 
 To deploy a cluster in a VPC:
 
