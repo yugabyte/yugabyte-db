@@ -1124,7 +1124,7 @@ Sets the preferred availability zones (AZs) and regions. Tablet leaders are plac
 
 * By default, the transaction tablet leaders will not respect these preferred zones and will be balanced across all nodes. In the transaction path, there is a roundtrip from the user to the transaction status tablet serving the transaction - if the leader closest to the user is used rather than forcing a roundtrip to the preferred zone, then there will be efficiency improvements.
 
-* When picking leaders the order of precedence is placement information, leader blacklist and finally preferred zones.
+* Leader blacklisted nodes will not host any leaders irrespective of their preference.
 
 * affinitized_leaders in cluster configuration may be replaced with multi_affinitized_leaders.
 
