@@ -42,9 +42,10 @@ jobs:
           - name: "GCC 9, debug, CentOS 7 x86_64"
             os: ubuntu-20.04
             yb_build_args: --gcc9 --no-linuxbrew debug
-          - name: "GCC 9, release, CentOS 7 x86_64"
-            os: ubuntu-20.04
-            yb_build_args: --gcc9 --no-linuxbrew release
+          # Re-enable when https://github.com/yugabyte/yugabyte-db/issues/11712 is fixed  
+          # - name: "GCC 9, release, CentOS 7 x86_64"
+          #   os: ubuntu-20.04
+          #   yb_build_args: --gcc9 --no-linuxbrew release
           - name: "Clang 12, debug, CentOS 7 x86_64"
             os: ubuntu-20.04
             yb_build_args: --clang12 --no-linuxbrew debug
