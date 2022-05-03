@@ -64,7 +64,6 @@ class ExprResult<QLValuePB> {
 
   const QLValuePB& Value();
 
-  void MoveToJsonb(common::Jsonb* out);
 
   void MoveTo(QLValuePB* out);
 
@@ -88,8 +87,6 @@ class ExprResult<LWQLValuePB> {
       : arena_(template_result->arena_) {}
 
   const LWQLValuePB& Value();
-
-  void MoveToJsonb(common::Jsonb* out);
 
   void MoveTo(LWQLValuePB* out);
 
