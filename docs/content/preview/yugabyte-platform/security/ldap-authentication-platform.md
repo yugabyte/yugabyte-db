@@ -27,7 +27,7 @@ You enable LDAP authentication in the YugabyteDB cluster by setting the LDAP con
 
 This section describes how to configure YugabyteDB Anywhere to use an LDAP server such as Active Directory with TLS.
 
-For more information on LDAP in YugabyteDB, refer to [LDAP Authentication](../../../secure/authentication/ldap-authentication/).
+For more information on LDAP in YugabyteDB, refer to [LDAP authentication](../../../secure/authentication/ldap-authentication/).
 
 ## Bind to the LDAP server using TLS
 

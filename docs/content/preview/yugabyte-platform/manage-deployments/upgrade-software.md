@@ -1,7 +1,7 @@
 ---
 title: Upgrade the YugabyteDB software
 headerTitle: Upgrade the YugabyteDB software
-linkTitle: Upgrade YugabyteDB software
+linkTitle: Upgrade YugabyteDB
 description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software.
 menu:
   preview:

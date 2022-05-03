@@ -1,7 +1,7 @@
 ---
 title: Configure the Microsoft Azure cloud provider
 headerTitle: Configure the Microsoft Azure cloud provider
-linkTitle: Configure the cloud provider
+linkTitle: Configure cloud providers
 description: Configure the Microsoft Azure cloud provider
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/azure

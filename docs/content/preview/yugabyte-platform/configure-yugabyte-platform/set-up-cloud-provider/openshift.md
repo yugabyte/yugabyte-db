@@ -1,7 +1,7 @@
 ---
-title: Configure the OpenShift Cloud Provider
-headerTitle: Configure the OpenShift Cloud Provider
-linkTitle: Configure the cloud provider
+title: Configure the OpenShift cloud provider
+headerTitle: Configure the OpenShift cloud Pprovider
+linkTitle: Configure cloud providers
 description: Configure the OpenShift cloud provider
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/openshift

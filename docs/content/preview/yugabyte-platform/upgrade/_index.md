@@ -1,7 +1,7 @@
 ---
 title: Upgrade YugabyteDB Anywhere
 headerTitle: Upgrade YugabyteDB Anywhere
-linkTitle: Upgrade YugabyteDB Anywhere
+linkTitle: Upgrade
 description: Upgrade YugabyteDB Anywhere.
 image: /images/section_icons/manage/enterprise.png
 type: page

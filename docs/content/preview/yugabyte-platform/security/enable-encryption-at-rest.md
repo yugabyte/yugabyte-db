@@ -27,7 +27,7 @@ There are two types of keys that are used to encrypt data in YugabyteDB:
 - Universe key: The top-level symmetric key used to encrypt other keys and are common to the universe.
 - Data key: The symmetric key used to encrypt data. There is one data key generated per flushed file.
 
-For more information on the features, assumptions, design, data key management, universe keys, key rotations, master failures, and adding a node, see [Encryption At Rest in YugabyteDB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-encryption-at-rest.md).
+For more information on the features, assumptions, design, data key management, universe keys, key rotations, master failures, and adding a node, see [Encryption at rest in YugabyteDB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-encryption-at-rest.md).
 
 ## Enable encryption at rest during universe creation
 

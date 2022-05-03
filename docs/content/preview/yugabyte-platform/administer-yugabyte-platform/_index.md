@@ -1,7 +1,7 @@
 ---
 title: Administer YugabyteDB Anywhere
 headerTitle: Administer YugabyteDB Anywhere
-linkTitle: Administer YugabyteDB Anywhere
+linkTitle: Administer
 description: Administer YugabyteDB Anywhere
 image: /images/section_icons/manage/enterprise.png
 headcontent: Administer YugabyteDB Anywhere
@@ -26,9 +26,20 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
         <div class="title">Back up and restore YugabyteDB Anywhere</div>
       </div>
       <div class="body">
-        Back up and restore YugabyteDB Anywhere.
+        Back up and restore YugabyteDB Anywhere server.
       </div>
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="back-up-restore-yp/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Authenticate with LDAP</div>
+      </div>
+      <div class="body">
+        Use the YugabyteDB Anywhere to enable LDAP authentication for YugabyteDB Anywhere login.
+      </div>
+    </a>
+  </div>
 </div>

@@ -1,7 +1,7 @@
 ---
-title: Configure the Amazon Web Services (AWS) cloud provider
-headerTitle: Configure the Amazon Web Services (AWS) cloud provider
-linkTitle: Configure the cloud provider
+title: Configure the AWS cloud provider
+headerTitle: Configure the AWS cloud provider
+linkTitle: Configure cloud providers
 description: Configure the Amazon Web Services (AWS) cloud provider.
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
