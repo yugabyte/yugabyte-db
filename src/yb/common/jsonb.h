@@ -67,7 +67,6 @@ class Jsonb {
 
   explicit Jsonb(std::string&& jsonb);
 
-  void Assign(const std::string& jsonb);
   void Assign(std::string&& jsonb);
 
   // Creates a serialized jsonb string from plaintext json.
@@ -86,8 +85,9 @@ class Jsonb {
   // Returns a json string for serialized jsonb
   CHECKED_STATUS ToJsonString(std::string* json) const;
 
-  CHECKED_STATUS ApplyJsonbOperators(const QLJsonColumnOperationsPB& json_ops,
-                                     QLValue* result) const;
+  static CHECKED_STATUS ApplyJsonbOperators(const std::string &serialized_json,
+                                            const QLJsonColumnOperationsPB& json_ops,
+                                            QLValue* result);
 
   const std::string& SerializedJsonb() const;
 

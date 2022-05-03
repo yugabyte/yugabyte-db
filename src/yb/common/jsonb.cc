@@ -46,9 +46,6 @@ Jsonb::Jsonb(std::string&& jsonb)
     : serialized_jsonb_(std::move(jsonb)) {
 }
 
-void Jsonb::Assign(const std::string& jsonb) {
-  serialized_jsonb_ = jsonb;
-}
 
 void Jsonb::Assign(std::string&& jsonb) {
   serialized_jsonb_ = std::move(jsonb);
@@ -715,11 +712,13 @@ Status Jsonb::ApplyJsonbOperatorToObject(const Slice& jsonb, const QLJsonOperati
   return STATUS_SUBSTITUTE(NotFound, "Couldn't find key $0 in json document", search_key);
 }
 
-Status Jsonb::ApplyJsonbOperators(const QLJsonColumnOperationsPB& json_ops, QLValue* result) const {
+Status Jsonb::ApplyJsonbOperators(const std::string &serialized_json,
+                                  const QLJsonColumnOperationsPB& json_ops,
+                                  QLValue* result) {
   const int num_ops = json_ops.json_operations().size();
 
   Slice jsonop_result;
-  Slice operand(serialized_jsonb_);
+  Slice operand(serialized_json);
   JEntry element_metadata;
   for (int i = 0; i < num_ops; i++) {
     const QLJsonOperationPB &op = json_ops.json_operations().Get(i);
