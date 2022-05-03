@@ -103,6 +103,10 @@ class TwoDCTestBase : public YBTest {
   CHECKED_STATUS VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
       YBClient* consumer_client, const std::string& universe_id, int timeout);
 
+  CHECKED_STATUS VerifyUniverseReplicationFailed(MiniCluster* consumer_cluster,
+      YBClient* consumer_client, const std::string& producer_uuid,
+      master::IsSetupUniverseReplicationDoneResponsePB* resp);
+
   CHECKED_STATUS GetCDCStreamForTable(
       const std::string& table_id, master::ListCDCStreamsResponsePB* resp);
 

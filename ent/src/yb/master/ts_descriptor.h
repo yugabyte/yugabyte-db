@@ -27,12 +27,17 @@ class TabletServerServiceProxy;
 class TabletServerBackupServiceProxy;
 }
 
+namespace cdc {
+class CDCServiceProxy;
+}
+
 namespace master {
 namespace enterprise {
 
 typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
     tserver::TabletServerServiceProxy,
     tserver::TabletServerBackupServiceProxy,
+    cdc::CDCServiceProxy,
     consensus::ConsensusServiceProxy> ProxyTuple;
 
 } // namespace enterprise
