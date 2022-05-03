@@ -47,7 +47,6 @@ class QLExprResult {
  public:
   const QLValuePB& Value() const;
 
-  void MoveToJsonb(common::Jsonb* out);
 
   void MoveTo(QLValuePB* out);
 

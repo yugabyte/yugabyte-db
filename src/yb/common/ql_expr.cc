@@ -46,9 +46,8 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
       if (temp.IsNull()) {
         result_writer.SetNull();
       } else {
-        common::Jsonb jsonb;
-        temp.MoveToJsonb(&jsonb);
-        RETURN_NOT_OK(jsonb.ApplyJsonbOperators(json_ops, &result_writer.NewValue()));
+        RETURN_NOT_OK(common::Jsonb::ApplyJsonbOperators(
+            temp.Value().jsonb_value(), json_ops, &result_writer.NewValue()));
       }
       break;
     }
@@ -857,15 +856,6 @@ std::string QLTableRow::ToString(const Schema& schema) const {
   }
   ret.append("}");
   return ret;
-}
-
-void QLExprResult::MoveToJsonb(common::Jsonb* out) {
-  if (existing_value_) {
-    out->Assign(existing_value_->jsonb_value());
-    existing_value_ = nullptr;
-  } else {
-    out->Assign(std::move(*value_.mutable_value()->mutable_jsonb_value()));
-  }
 }
 
 const QLValuePB& QLExprResult::Value() const {
