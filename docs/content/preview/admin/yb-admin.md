@@ -1114,7 +1114,7 @@ $ curl -s http://<any-master-ip>:7000/cluster-config
 
 #### set_preferred_zones
 
-Sets the preferred availability zones (AZs) and regions. Tablet leaders are placed in alive and healthy nodes of the highest preference zones (preference 1). When no such node is available, then alive and healthy nodes from the next highest preferred zone are picked. Zones with no preference are equally eligible to host tablet leaders.
+Sets the preferred availability zones (AZs) and regions. Tablet leaders are placed in alive and healthy nodes of AZs in order of preference. When no healthy node is available in the most preferred AZs (preference value 1), then alive and healthy nodes from the next preferred AZs are picked. AZs with no preference are equally eligible to host tablet leaders.
 
 {{< note title="Note" >}}
 
@@ -1122,11 +1122,11 @@ Sets the preferred availability zones (AZs) and regions. Tablet leaders are plac
 
 * Having all tablet leaders reside in a single region reduces the number of network hops for the database to write transactions, which increases performance and reduces latency.
 
-* By default, the transaction tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction - using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
+* By default, the transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction - using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
 
 * Leader blacklisted nodes don't host any leaders irrespective of their preference.
 
-* affinitized_leaders in cluster configuration may be replaced with multi_affinitized_leaders.
+* Cluster configuration stores preferred zones in either affinitized_leaders or multi_affinitized_leaders object.
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
@@ -1144,6 +1144,8 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *cloud.region.zone*: Specifies the cloud, region, and zone. Default value is `cloud1.datacenter1.rack1`.
 * *preference*: Specifies the leader preference for a zone. Values have to be contiguous non-zero integers. Multiple zones can have the same value. Default value is 1.
+
+**Example**
 
 Suppose you have a deployment in the following regions: `gcp.us-west1.us-west1-a`, `gcp.us-west1.us-west1-b`, `gcp.asia-northeast1.asia-northeast1-a`, and `gcp.us-east4.us-east4-a`. Looking at the cluster configuration:
 
