@@ -33,7 +33,7 @@
 
 ## Overview
 
-**NOTE**: This is a beta release and is subject to further changes. We recommend using it in testing environments only.
+**NOTE**: This branch is constantly changing and used as our development branch. We recommend using it in testing environments only. The stable release can be found in the [REL1_0_STABLE](https://github.com/percona/pg_stat_monitor/tree/REL1_0_STABLE) branch. 
 
 The `pg_stat_monitor` is a **_Query Performance Monitoring_** tool for PostgreSQL. It attempts to provide a more holistic picture by providing much-needed query performance insights in a [single view](https://github.com/percona/pg_stat_monitor/blob/master/docs/REFERENCE.md).
 
