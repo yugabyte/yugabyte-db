@@ -1122,7 +1122,7 @@ Sets the preferred availability zones (AZs) and regions. Tablet leaders are plac
 
 * Having all tablet leaders reside in a single region will reduce the number of network hops for the database to write transactions and thus increase performance and reducing latency.
 
-* By default, the transaction tablet leaders will not respect these preferred zones and will be balanced across all nodes. In the transaction path, there is a roundtrip from the user to the transaction status tablet serving the transaction - if the leader closest to the user is used rather than forcing a roundtrip to the preferred zone, then there will be efficiency improvements.
+* By default, the transaction tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction - using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
 
 * Leader blacklisted nodes don't host any leaders irrespective of their preference.
 
