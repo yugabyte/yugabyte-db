@@ -225,7 +225,8 @@ To build `pg_stat_monitor` from source code, you require the following:
 * git
 * make
 * gcc
-* pg_config
+* postgresql-devel | postgresql-server-dev-all
+
 
 You can download the source code of the latest release of `pg_stat_monitor` from [the releases page on GitHub](https://github.com/Percona/pg_stat_monitor/releases) or using git:
 
