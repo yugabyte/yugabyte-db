@@ -1120,7 +1120,7 @@ Sets the preferred availability zones (AZs) and regions. Tablet leaders are plac
 
 * Make sure you've already run [`modify_placement_info`](#modify-placement-info) command beforehand.
 
-* Having all tablet leaders reside in a single region will reduce the number of network hops for the database to write transactions and thus increase performance and reducing latency.
+* Having all tablet leaders reside in a single region reduces the number of network hops for the database to write transactions, which increases performance and reduces latency.
 
 * By default, the transaction tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction - using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
 
