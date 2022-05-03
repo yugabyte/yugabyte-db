@@ -274,7 +274,9 @@ If the `database.server.name` connector configuration property has the value `db
       ]
   },
   "payload": { --> 5
-      "id": "1"
+      "id": {
+        "value":"1"
+      }
   },
 }
 ```
@@ -480,9 +482,15 @@ The following example shows the value portion of a change event that the connect
   "payload": { --> 3
     "before": null, --> 4
     "after": { --> 5
-      "id": 1,
-      "name": "Vaibhav Kushwaha",
-      "email": "vaibhav@example.com"
+      "id": {
+        "value":1
+      },
+      "name": {
+        "value":"Vaibhav Kushwaha"
+      },
+      "email": {
+        "value":"vaibhav@example.com"
+      }
     },
     "source": { --> 6
       "version": "1.7.0-SNAPSHOT",
@@ -536,9 +544,15 @@ The update event is as follows:
   "payload": {
     "before": null, --> 1
     "after": { --> 2
-      "id": 1,
-      "name": 'Vaibhav Kushwaha',
-      "email": "service@example.com"
+      "id": {
+        "value": 1
+      },
+      "name": {
+        "value": "Vaibhav Kushwaha"
+      },
+      "email": {
+        "value": "service@example.com"
+      }
     },
     "source": { --> 3
       "version": "1.7.0-SNAPSHOT",
@@ -603,7 +617,9 @@ DELETE FROM customers WHERE id = 1;
   "schema": {...},
   "payload": {
     "before": { --> 1
-      "id": 1,
+      "id": {
+        "value": 1
+      },
       "name": null,
       "email": null
     },
