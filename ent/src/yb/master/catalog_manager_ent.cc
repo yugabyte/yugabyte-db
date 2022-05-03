@@ -3178,6 +3178,67 @@ Status CatalogManager::UpdateCDCStream(const UpdateCDCStreamRequestPB *req,
   return Status::OK();
 }
 
+// Query if Bootstrapping is required for a CDC stream (e.g. Are we missing logs).
+Status CatalogManager::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
+                                           IsBootstrapRequiredResponsePB* resp,
+                                           rpc::RpcContext* rpc) {
+  LOG(INFO) << "IsBootstrapRequired from " << RequestorString(rpc) << ": " << req->DebugString();
+  RSTATUS_DCHECK(req->table_ids_size() > 0, InvalidArgument, "Table ID required");
+  RSTATUS_DCHECK(req->stream_ids_size() == 0 || req->stream_ids_size() == req->table_ids_size(),
+                 InvalidArgument, "Stream ID optional, but must match table IDs if specified");
+  bool streams_given = req->stream_ids_size() > 0;
+
+  std::map<std::shared_ptr<cdc::CDCServiceProxy>, std::list<std::string>> proxy_to_tablet;
+
+  for (int t = 0; t < req->table_ids_size(); ++t) {
+    // Find out the server : tablet mapping of the given table.
+    auto table_id = req->table_ids(t);
+    auto stream_id = streams_given ? req->stream_ids(t) : "";
+    bool bootstrap_required = false;
+    scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTableById(table_id));
+    RSTATUS_DCHECK(table != nullptr, NotFound, "Table ID not found: " + table_id);
+
+    for (const auto& tablet : table->GetTablets()) {
+      auto ts = VERIFY_RESULT(tablet->GetLeader());
+      std::shared_ptr<cdc::CDCServiceProxy> proxy;
+      RETURN_NOT_OK(ts->GetProxy(&proxy));
+      proxy_to_tablet[proxy].push_back(tablet->id());
+    }
+
+    // Make a batch call for IsBootstrapRequired on every relevant TServer.
+    for (auto& pair : proxy_to_tablet) {
+      cdc::IsBootstrapRequiredRequestPB tablet_req;
+      cdc::IsBootstrapRequiredResponsePB tablet_resp;
+      rpc::RpcController tablet_rpc;
+
+      for (auto& tablet_id : pair.second) {
+        tablet_req.add_tablet_ids(tablet_id);
+      }
+      if (!stream_id.empty()) {
+        tablet_req.set_stream_id(stream_id);
+      }
+
+      // TODO: Make this call Async to allow for parallelization and perf speedup.
+      auto& cdc_service = pair.first;
+      RETURN_NOT_OK(cdc_service->IsBootstrapRequired(tablet_req, &tablet_resp, &tablet_rpc));
+      if (tablet_resp.has_error()) {
+        RETURN_NOT_OK(StatusFromPB(tablet_resp.error().status()));
+      }
+      if (tablet_resp.bootstrap_required()) {
+        // Short circuit.  We don't need to continue if we we missing data on just one tablet.
+        bootstrap_required = true;
+        break;
+      }
+    }
+
+    auto new_result = resp->add_results();
+    new_result->set_table_id(table_id);
+    new_result->set_bootstrap_required(bootstrap_required);
+  }
+
+  return Status::OK();
+}
+
 /*
  * UniverseReplication is setup in 4 stages within the Catalog Manager
  * 1. SetupUniverseReplication: Validates user input & requests Producer schema.
@@ -3446,55 +3507,22 @@ Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
   return ts;
 }
 
-Status CatalogManager::IsBootstrapRequired(scoped_refptr<UniverseReplicationInfo> universe,
-                                           const TableId& producer_table,
-                                           const std::unordered_map<TableId, std::string>&
-                                           table_bootstrap_ids) {
+Status CatalogManager::IsBootstrapRequiredOnProducer(
+    scoped_refptr<UniverseReplicationInfo> universe, const TableId& producer_table,
+    const std::unordered_map<TableId, std::string>& table_bootstrap_ids) {
   if (!FLAGS_check_bootstrap_required) {
     return Status::OK();
   }
-  {
-    auto lock = universe->LockForRead();
-    auto master_addresses = lock->pb.producer_master_addresses();
-    auto cdc_rpc = VERIFY_RESULT(universe->GetOrCreateCDCRpcTasks(master_addresses));
+  auto master_addresses = universe->LockForRead()->pb.producer_master_addresses();
+  std::string bootstrap_id;
+  if (table_bootstrap_ids.count(producer_table) > 0) {
+    bootstrap_id = table_bootstrap_ids.at(producer_table);
+  }
 
-    std::string bootstrap_id = (table_bootstrap_ids.count(producer_table) > 0) ?
-      table_bootstrap_ids.at(producer_table) : std::string();
-
-    auto ybclient = cdc_rpc->client();
-    auto table = VERIFY_RESULT(ybclient->OpenTable(producer_table));
-
-    auto future = ybclient->LookupAllTabletsFuture(table,
-        CoarseMonoClock::Now() + MonoDelta::FromSeconds(30));
-
-    auto tablets = VERIFY_RESULT(future.get());
-    std::unordered_map<RemoteTabletServer*,
-                      std::list<RemoteTabletPtr>> ts_to_tablet;
-
-    for (auto& tablet : tablets) {
-      auto ts = VERIFY_RESULT(GetLeaderTServer(tablet));
-      ts_to_tablet[ts].push_back(tablet);
-    }
-
-    for (auto& pair : ts_to_tablet) {
-      auto cdc_service = GetCDCServiceProxy(pair.first);
-
-      cdc::IsBootstrapRequiredRequestPB req;
-      cdc::IsBootstrapRequiredResponsePB resp;
-      if (!bootstrap_id.empty()) req.set_stream_id(bootstrap_id);
-      for (auto& tablet : pair.second) {
-        req.add_tablet_ids(tablet->tablet_id());
-      }
-      rpc::RpcController rpc;
-
-      // TO DO: Make this call Async to allow for parallelization
-      RETURN_NOT_OK(cdc_service->IsBootstrapRequired(req, &resp, &rpc));
-      if (resp.has_error() || resp.bootstrap_required()) {
-        return STATUS(InternalError, Substitute(
-          "Error Missing Data in Logs. Bootstrap is required for producer $0",
-          universe->id()));
-      }
-    }
+  auto cdc_rpc = VERIFY_RESULT(universe->GetOrCreateCDCRpcTasks(master_addresses));
+  if (VERIFY_RESULT(cdc_rpc->client()->IsBootstrapRequired(producer_table, bootstrap_id))) {
+    return STATUS(IllegalState, Substitute(
+      "Error Missing Data in Logs. Bootstrap is required for producer $0", universe->id()));
   }
   return Status::OK();
 }
@@ -3613,9 +3641,9 @@ void CatalogManager::GetTableSchemaCallback(
     return;
   }
 
-  status = IsBootstrapRequired(universe, info->table_id, table_bootstrap_ids);
+  status = IsBootstrapRequiredOnProducer(universe, info->table_id, table_bootstrap_ids);
   if (!status.ok()) {
-    MarkUniverseReplicationFailed(universe, s);
+    MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while checking if bootstrap is required for table " << info->table_id
                << ": " << status;
   }
@@ -3745,9 +3773,10 @@ void CatalogManager::GetTablegroupSchemaCallback(
     return;
   }
 
-  Status status = IsBootstrapRequired(universe, producer_tablegroup_id, table_bootstrap_ids);
+  Status status = IsBootstrapRequiredOnProducer(universe,
+                                                producer_tablegroup_id, table_bootstrap_ids);
   if (!status.ok()) {
-    MarkUniverseReplicationFailed(universe, s);
+    MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while checking if bootstrap is required for table "
                << producer_tablegroup_id << ": " << status;
   }
@@ -3850,19 +3879,18 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     return;
   }
 
-  Status status = IsBootstrapRequired(universe,
-                                      *producer_parent_table_ids.begin(),
-                                      table_bootstrap_ids);
+  Status status = IsBootstrapRequiredOnProducer(universe, *producer_parent_table_ids.begin(),
+                                                table_bootstrap_ids);
   if (!status.ok()) {
-    MarkUniverseReplicationFailed(universe, s);
+    MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while checking if bootstrap is required for table "
                << *producer_parent_table_ids.begin() << ": " << status;
   }
 
   status = AddValidatedTableAndCreateCdcStreams(universe,
-                                                       table_bootstrap_ids,
-                                                       *producer_parent_table_ids.begin(),
-                                                       *consumer_parent_table_ids.begin());
+                                                table_bootstrap_ids,
+                                                *producer_parent_table_ids.begin(),
+                                                *consumer_parent_table_ids.begin());
   if (!status.ok()) {
     LOG(ERROR) << "Found error while adding validated table to system catalog: "
                << *producer_parent_table_ids.begin() << ": " << status;

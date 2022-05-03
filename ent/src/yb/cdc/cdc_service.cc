@@ -2776,14 +2776,13 @@ void CDCServiceImpl::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req
   RPC_CHECK_AND_RETURN_ERROR(req->tablet_ids_size() > 0,
                              STATUS(InvalidArgument,
                                     "Tablet ID is required to check for replication"),
-                             resp->mutable_error(),
-                             CDCErrorPB::INVALID_REQUEST,
-                             context);
+                             resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
   for (auto& tablet_id : req->tablet_ids()) {
     std::shared_ptr<tablet::TabletPeer> tablet_peer;
     auto s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);
     if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
+      LOG_WITH_FUNC(INFO) << "Not the leader for " << tablet_id << ".  Running proxy query.";
       TabletLeaderIsBootstrapRequired(req, resp, &context, tablet_peer);
       continue;
     }
@@ -2830,10 +2829,11 @@ void CDCServiceImpl::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req
                                                                 &schema,
                                                                 &schema_version);
 
+    // TODO: We should limit this to the specific Status error associated with missing logs.
     bool missing_logs = !log_result.ok();
     if (missing_logs) {
-      LOG(INFO) << "Bootstrap is required due to missing logs from tablet "
-                << tablet_peer->tablet_id();
+      LOG(INFO) << "Couldn't read " << next_index << ". Bootstrap required for tablet "
+                << tablet_peer->tablet_id() << ": " << log_result.ToString();
       resp->set_bootstrap_required(missing_logs);
     }
     if (tablet_metric) {
