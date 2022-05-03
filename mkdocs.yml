@@ -16,6 +16,8 @@ theme:
   name: material
   logo: _images/percona-logo.svg
   favicon: _images/percona-favicon.ico
+  custom_dir: docs/overrides
+
   palette:
 
     # Light mode
