@@ -33,8 +33,6 @@
 
 ## Overview
 
-**NOTE**: This is a beta release and is subject to further changes. We recommend using it in testing environments only.
-
 The `pg_stat_monitor` is a **_Query Performance Monitoring_** tool for PostgreSQL. It attempts to provide a more holistic picture by providing much-needed query performance insights in a [single view](https://github.com/percona/pg_stat_monitor/blob/master/docs/REFERENCE.md).
 
 `pg_stat_monitor` provides improved insights that allow database users to understand query origins, execution, planning statistics and details, query information, and metadata. This significantly improves observability, enabling users to debug and tune query performance. `pg_stat_monitor` is developed on the basis of `pg_stat_statements` as its more advanced replacement.
