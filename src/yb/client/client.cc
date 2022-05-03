@@ -189,6 +189,8 @@ using yb::master::GetCDCStreamRequestPB;
 using yb::master::GetCDCStreamResponsePB;
 using yb::master::UpdateCDCStreamRequestPB;
 using yb::master::UpdateCDCStreamResponsePB;
+using yb::master::IsBootstrapRequiredRequestPB;
+using yb::master::IsBootstrapRequiredResponsePB;
 using yb::master::GetMasterClusterConfigRequestPB;
 using yb::master::GetMasterClusterConfigResponsePB;
 using yb::master::CreateTransactionStatusTableRequestPB;
@@ -1464,6 +1466,28 @@ Status YBClient::UpdateCDCStream(const CDCStreamId& stream_id,
   UpdateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateCDCStream);
   return Status::OK();
+}
+
+Result<bool> YBClient::IsBootstrapRequired(const TableId& table_id,
+                                           const boost::optional<CDCStreamId>& stream_id) {
+  IsBootstrapRequiredRequestPB req;
+  IsBootstrapRequiredResponsePB resp;
+
+  req.add_table_ids(table_id);
+  if (stream_id) {
+    req.add_stream_ids(*stream_id);
+  }
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, IsBootstrapRequired);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  if (resp.results_size() != 1) {
+    return STATUS(IllegalState, Format("Expected 1 result, received: $0", resp.results_size()));
+  }
+
+  return resp.results(0).bootstrap_required();
 }
 
 Status YBClient::UpdateConsumerOnProducerSplit(
