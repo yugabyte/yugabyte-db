@@ -1128,7 +1128,7 @@ Sets the preferred availability zones (AZs) and regions. Tablet leaders are plac
 
 * affinitized_leaders in cluster configuration may be replaced with multi_affinitized_leaders.
 
-* Tablespaces do not inherit cluster level placement information, leader preference and read replica configurations.
+* Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
 {{< /note >}}
 
