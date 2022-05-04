@@ -241,7 +241,7 @@ Status MiniTabletServer::CompactTablets() {
   }
   return ForAllTablets(this, [](TabletPeer* tablet_peer) {
     if (tablet_peer->tablet()) {
-      tablet_peer->tablet()->ForceRocksDBCompactInTest();
+      tablet_peer->tablet()->TEST_ForceRocksDBCompact();
     }
     return Status::OK();
   });

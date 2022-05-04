@@ -97,14 +97,12 @@ class Uuid {
 
   std::string ToHexString() const;
 
-  // Decodes the Comparable UUID bytes into a lexical UUID.
-  CHECKED_STATUS DecodeFromComparable(const std::string& bytes);
-
   // Give a slice holding raw bytes in network byte order, build the appropriate UUID
   // object. If size_hint is specified, it indicates the number of bytes to decode from the slice.
   static Result<Uuid> FromSlice(const Slice& slice);
 
-  CHECKED_STATUS DecodeFromComparableSlice(const Slice& slice, size_t size_hint = 0);
+  // Decodes the Comparable UUID bytes.
+  static Result<Uuid> FromComparable(const Slice& slice);
 
   // For time UUIDs only.
   // This function takes a time UUID and generates a SHA hash for the MAC address bits.

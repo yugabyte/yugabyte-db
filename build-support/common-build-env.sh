@@ -2450,7 +2450,6 @@ set_prebuilt_thirdparty_url() {
       if [[ -f $thirdparty_url_file_path ]]; then
         rm -f "$thirdparty_url_file_path"
       fi
-      local is_linuxbrew_arg=""
       local thirdparty_tool_cmd_line=(
         "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
         --save-thirdparty-url-to-file "$thirdparty_url_file_path"
@@ -2598,7 +2597,7 @@ is_apple_silicon() {
 }
 
 should_use_lto() {
-  using_linuxbrew && [[ "${YB_COMPILER_TYPE}" =~ "clang1[234]" && "${build_type}" == "release" ]]
+  using_linuxbrew && [[ "${YB_COMPILER_TYPE}" =~ clang1[234] && "${build_type}" == "release" ]]
 }
 
 # -------------------------------------------------------------------------------------------------

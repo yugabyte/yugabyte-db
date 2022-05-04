@@ -70,6 +70,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void SetPublisher(rpc::Publisher service) override;
 
+  void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
+
  private:
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;

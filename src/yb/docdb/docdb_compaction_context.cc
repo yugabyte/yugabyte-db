@@ -32,6 +32,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
+using namespace std::literals;
 using std::shared_ptr;
 using std::unique_ptr;
 using std::unordered_set;
@@ -58,7 +59,7 @@ Result<SchemaVersion> ParseValueHeader(Slice* value) {
 
 struct PackedRowData {
   rocksdb::CompactionFeed& next_feed;
-  SchemaPackingProvider schema_packing_provider;
+  SchemaPackingProvider* schema_packing_provider; // Owned externally.
 
   ValueControlFields control_fields;
   KeyBuffer key;
@@ -73,7 +74,11 @@ struct PackedRowData {
   CompactionSchemaPacking old_packing;
 
   bool repacking; // Whether we have started repacking the row.
-  Uuid active_cotable_id;
+
+  // Use fake coprefix as default value.
+  // So we will trigger table change on the first record.
+  ByteBuffer<1 + kUuidSize> active_coprefix{"FAKE_PREFIX"s};
+
   CompactionSchemaPacking new_packing;
   boost::optional<RowPacker> packer;
 
@@ -82,12 +87,8 @@ struct PackedRowData {
   // first usually means min value of the range, while second means max value of the range.
   std::unordered_map<Uuid, std::pair<SchemaVersion, SchemaVersion>, UuidHash> used_schema_versions;
 
-  PackedRowData(rocksdb::CompactionFeed* next_feed_, const SchemaPackingProvider& provider)
-      : next_feed(*next_feed_), schema_packing_provider(provider),
-        // Use fake cotable id as default value.
-        // So we will trigger table change on the first record.
-        // The initial cotable id value does not matter, so we could pick random one.
-        active_cotable_id(CHECK_RESULT(Uuid::FromString("aad942d6-b0c7-41ca-b2b9-e6d809a8675f"))) {
+  PackedRowData(rocksdb::CompactionFeed* next_feed_, SchemaPackingProvider* provider)
+      : next_feed(*next_feed_), schema_packing_provider(provider) {
   }
 
   bool active() const {
@@ -111,18 +112,21 @@ struct PackedRowData {
   }
 
   // Handle packed row that was forwarded to underlying feed w/o changes.
-  Status ProcessForwardedPackedRow(const Slice& internal_key, Slice value) {
-    Uuid cotable_id = Uuid::Nil(); // TODO(packed_row) Decode cotable_id
+  // coprefix_len - length of coprefix in internal_key.
+  Status ProcessForwardedPackedRow(const Slice& internal_key, Slice value, size_t coprefix_len) {
     auto schema_version = VERIFY_RESULT(ParseValueHeader(&value));
-    UsedSchemaVersion(cotable_id, schema_version);
-    return Status::OK();
+    return UpdateCoprefix(internal_key.Prefix(coprefix_len), schema_version);
   }
 
   Status ProcessPackedRow(
-      const Slice& internal_key, size_t doc_key_size, const ValueControlFields& row_control_fields,
-      const Slice& value, const DocHybridTime& row_doc_ht) {
-    VLOG_WITH_FUNC(4) << "Key: " << internal_key.ToDebugHexString() << ", value "
-                      << value.ToDebugHexString();
+      const Slice& internal_key, size_t coprefix_len, size_t doc_key_size,
+      const ValueControlFields& row_control_fields, const Slice& value,
+      const DocHybridTime& row_doc_ht) {
+    VLOG_WITH_FUNC(4) << "Key: " << internal_key.ToDebugHexString() << ", coprefix_len: "
+                      << coprefix_len << ", value: " << value.ToDebugHexString() << ", row_doc_ht: "
+                      << row_doc_ht;
+    RETURN_NOT_OK(UpdateCoprefix(internal_key.Prefix(coprefix_len), kLatestSchemaVersion));
+
     control_fields = row_control_fields;
     key.Assign(internal_key.cdata(), doc_key_size);
     ht = row_doc_ht;
@@ -132,16 +136,6 @@ struct PackedRowData {
     old_value.Assign(value);
     old_value_slice = old_value.AsSlice();
     old_schema_version = VERIFY_RESULT(ParseValueHeader(&old_value_slice));
-    Uuid cotable_id = Uuid::Nil(); // TODO(packed_row) Decode cotable_id
-    auto table_changed = active_cotable_id != cotable_id;
-    if (table_changed) {
-      new_packing = VERIFY_RESULT(schema_packing_provider(
-          cotable_id, /* schema_version = */ std::numeric_limits<SchemaVersion>::max()));
-      UsedSchemaVersion(cotable_id, new_packing.schema_version);
-      old_packing.schema_version = std::numeric_limits<SchemaVersion>::max();
-      packer.reset();
-      active_cotable_id = cotable_id;
-    }
     if (old_schema_version != new_packing.schema_version) {
       return StartRepacking();
     }
@@ -175,7 +169,8 @@ struct PackedRowData {
 
   Status StartRepacking() {
     if (old_schema_version != old_packing.schema_version) {
-      old_packing = VERIFY_RESULT(schema_packing_provider(active_cotable_id, old_schema_version));
+      old_packing = VERIFY_RESULT(schema_packing_provider->CotablePacking(
+          new_packing.cotable_id, old_schema_version));
     }
     repacking = true;
     if (!packer) {
@@ -237,6 +232,39 @@ struct PackedRowData {
       it->second.second = std::max(it->second.second, version);
     }
   }
+
+  // Updates current coprefix. Coprefix is located at start of the key and identifies cotable or
+  // colocation.
+  Status UpdateCoprefix(Slice coprefix, SchemaVersion schema_version) {
+    if (coprefix == active_coprefix.AsSlice()) {
+      return Status::OK();
+    }
+    RETURN_NOT_OK(Flush());
+    active_coprefix = coprefix;
+    if (coprefix.empty()) {
+      new_packing = VERIFY_RESULT(schema_packing_provider->CotablePacking(
+          Uuid::Nil(), kLatestSchemaVersion));
+    } else if (coprefix.TryConsumeByte(KeyEntryTypeAsChar::kColocationId)) {
+      if (coprefix.size() != sizeof(ColocationId)) {
+        return STATUS_FORMAT(Corruption, "Wrong colocation size: $0", coprefix.ToDebugHexString());
+      }
+      uint32_t colocation_id = BigEndian::Load32(coprefix.data());
+      new_packing = VERIFY_RESULT(schema_packing_provider->ColocationPacking(
+          colocation_id, kLatestSchemaVersion));
+    } else if (coprefix.TryConsumeByte(KeyEntryTypeAsChar::kTableId)) {
+      auto cotable_id = VERIFY_RESULT(Uuid::FromComparable(coprefix));
+      new_packing = VERIFY_RESULT(schema_packing_provider->CotablePacking(
+          cotable_id, kLatestSchemaVersion));
+    } else {
+      return STATUS_FORMAT(Corruption, "Wrong coprefix: $0", coprefix.ToDebugHexString());
+    }
+    UsedSchemaVersion(
+        new_packing.cotable_id,
+        schema_version == kLatestSchemaVersion ? new_packing.schema_version : schema_version);
+    old_packing.schema_version = kLatestSchemaVersion;
+    packer.reset();
+    return Status::OK();
+  }
 };
 
 class DocDBCompactionFeed : public rocksdb::CompactionFeed {
@@ -246,7 +274,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed {
       HistoryRetentionDirective retention,
       IsMajorCompaction is_major_compaction,
       const KeyBounds* key_bounds,
-      const SchemaPackingProvider& schema_packing_provider)
+      SchemaPackingProvider* schema_packing_provider)
       : next_feed_(*next_feed), retention_(std::move(retention)), key_bounds_(key_bounds),
         is_major_compaction_(is_major_compaction),
         packed_row_(next_feed, schema_packing_provider) {
@@ -369,11 +397,18 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   // The number of initial components (including cotable_id, document key and subkeys) that this
   // SubDocKey shares with previous one. This does not care about the hybrid_time field.
-  size_t num_shared_components = sub_key_ends_.size();
-  VLOG_WITH_FUNC(4) << "Old sub_key_ends: " << AsString(sub_key_ends_) << ", same bytes: "
-                    << same_bytes;
-  while (num_shared_components > 0 && sub_key_ends_[num_shared_components - 1] > same_bytes) {
-    --num_shared_components;
+  size_t num_shared_components;
+  if (!same_bytes) {
+    // There is special case, when we move from key w/o cotable to key with cotable.
+    // sub_key_ends_[0] will be 0, and logic below would never update it.
+    num_shared_components = 0;
+  } else {
+    num_shared_components = sub_key_ends_.size();
+    VLOG_WITH_FUNC(4) << "Old sub_key_ends: " << AsString(sub_key_ends_) << ", same bytes: "
+                      << same_bytes;
+    while (num_shared_components > 0 && sub_key_ends_[num_shared_components - 1] > same_bytes) {
+      --num_shared_components;
+    }
   }
 
   VLOG_WITH_FUNC(4) << "num_shared_components: " << num_shared_components << ", overwrite: "
@@ -474,7 +509,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
     if (DecodeValueEntryType(value_slice) == ValueEntryType::kPackedRow) {
       // Check packed row version for rows left untouched.
-      RETURN_NOT_OK(packed_row_.ProcessForwardedPackedRow(internal_key, value_slice));
+      RETURN_NOT_OK(packed_row_.ProcessForwardedPackedRow(
+          internal_key, value_slice, sub_key_ends_[0]));
     }
     return PassToNextFeed(internal_key, value);
   }
@@ -562,7 +598,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
         "Double packed rows: $0, $1", packed_row_.key.AsSlice().ToDebugHexString(),
         internal_key.ToDebugHexString()));
     return packed_row_.ProcessPackedRow(
-        internal_key, sub_key_ends_.back(), control_fields, value_slice, ht);
+        internal_key, sub_key_ends_[0], sub_key_ends_.back(), control_fields, value_slice, ht);
   }
 
   // If the entry has the TTL flag, delete the entry.
@@ -640,7 +676,7 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
       HistoryRetentionDirective retention,
       IsMajorCompaction is_major_compaction,
       const KeyBounds* key_bounds,
-      const SchemaPackingProvider& schema_packing_provider);
+      SchemaPackingProvider* schema_packing_provider);
 
   ~DocDBCompactionContext() = default;
 
@@ -681,7 +717,7 @@ DocDBCompactionContext::DocDBCompactionContext(
     HistoryRetentionDirective retention,
     IsMajorCompaction is_major_compaction,
     const KeyBounds* key_bounds,
-    const SchemaPackingProvider& schema_packing_provider)
+    SchemaPackingProvider* schema_packing_provider)
     : history_cutoff_(retention.history_cutoff),
       key_bounds_(key_bounds),
       feed_(std::make_unique<DocDBCompactionFeed>(
@@ -718,7 +754,7 @@ std::vector<std::pair<Slice, Slice>> DocDBCompactionContext::GetLiveRanges() con
 std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
     const KeyBounds* key_bounds,
-    const SchemaPackingProvider& schema_packing_provider) {
+    SchemaPackingProvider* schema_packing_provider) {
   return std::make_shared<rocksdb::CompactionContextFactory>(
       [retention_policy, key_bounds, schema_packing_provider](
       rocksdb::CompactionFeed* next_feed, const rocksdb::CompactionContextOptions& options) {

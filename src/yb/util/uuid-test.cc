@@ -31,8 +31,7 @@ class UuidTest : public YBTest {
     // Test encode and decode.
     std::string encoded_bytes;
     uuid_orig.EncodeToComparable(&encoded_bytes);
-    Uuid decoded_uuid_new;
-    ASSERT_OK(decoded_uuid_new.DecodeFromComparable(encoded_bytes));
+    Uuid decoded_uuid_new = ASSERT_RESULT(Uuid::FromComparable(encoded_bytes));
 
     // Test string conversion.
     std::string strval_new;

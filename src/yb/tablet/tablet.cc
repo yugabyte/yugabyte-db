@@ -676,7 +676,7 @@ Status Tablet::OpenKeyValueTablet() {
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
   rocksdb_options.compaction_context_factory = docdb::CreateCompactionContextFactory(
-      retention_policy_, &key_bounds_, std::bind(&Tablet::GetSchemaPacking, this, _1, _2));
+      retention_policy_, &key_bounds_, metadata_.get());
 
   rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
     if (mem_table_flush_filter_factory_) {
@@ -774,33 +774,6 @@ Status Tablet::OpenKeyValueTablet() {
                         << ", obj: " << db;
 
   return Status::OK();
-}
-
-Result<docdb::CompactionSchemaPacking> Tablet::GetSchemaPacking(
-    const Uuid& uuid, SchemaVersion schema_version) {
-  TableInfoPtr table_info;
-  if (uuid.IsNil()) {
-    table_info = metadata_->primary_table_info();
-  } else {
-    auto res = metadata_->GetTableInfo(uuid.ToString());
-    if (!res.ok()) {
-      return STATUS_FORMAT(Corruption, "Cannot find table info for: $0", uuid);
-    }
-    table_info = *res;
-  }
-  if (schema_version == std::numeric_limits<SchemaVersion>::max()) {
-    // TODO(packed_row) Don't pick schema changed after retention interval.
-    schema_version =  table_info->schema_version;
-  }
-  auto packing = table_info->doc_read_context->schema_packing_storage.GetPacking(schema_version);
-  if (!packing.ok()) {
-    return STATUS_FORMAT(Corruption, "Cannot find packing for table: $0, schema version: $1",
-                         table_info->table_id, schema_version);
-  }
-  return docdb::CompactionSchemaPacking {
-    .schema_version = schema_version,
-    .schema_packing = rpc::SharedField(table_info, packing.get_ptr()),
-  };
 }
 
 void Tablet::RegularDbFilesChanged() {
@@ -3207,7 +3180,7 @@ bool Tablet::ShouldDisableLbMove() {
   return metadata_->schema()->has_colocation_id();
 }
 
-void Tablet::ForceRocksDBCompactInTest() {
+void Tablet::TEST_ForceRocksDBCompact() {
   CHECK_OK(ForceFullRocksDBCompact());
 }
 

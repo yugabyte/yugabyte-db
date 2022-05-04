@@ -181,6 +181,7 @@ public class TaskExecutor {
         log.debug("Found task: {}", className);
       } catch (ClassNotFoundException e) {
         log.error("Could not find task for task type " + taskType, e);
+        throw new RuntimeException(e);
       }
     }
     TASK_TYPE_TO_CLASS_MAP = ImmutableBiMap.copyOf(typeMap);

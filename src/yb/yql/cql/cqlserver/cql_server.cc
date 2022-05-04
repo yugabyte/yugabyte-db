@@ -78,6 +78,10 @@ CQLServer::CQLServer(const CQLServerOptions& opts,
       tserver_(tserver) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<CQLConnectionContext>(
       FLAGS_cql_rpc_memory_limit, mem_tracker()->parent()));
+
+  if (tserver_) {
+    tserver_->RegisterCertificateReloader(std::bind(&CQLServer::ReloadKeysAndCertificates, this));
+  }
 }
 
 Status CQLServer::Start() {

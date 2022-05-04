@@ -1126,6 +1126,8 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 	/* Assume the worst. */
 	*is_catalog_version_increment = true;
 	*is_breaking_catalog_change = true;
+
+	bool is_ddl = true;
 	Node *parsetree = GetActualStmtNode(pstmt);
 
 	NodeTag node_tag = nodeTag(parsetree);
@@ -1152,7 +1154,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 		}
 		case T_ViewStmt: // CREATE VIEW
 		{
@@ -1166,12 +1168,12 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 				YbIsSystemNamespaceByName(castNode(ViewStmt, parsetree)->view->schemaname))
 			{
 				*is_breaking_catalog_change = false;
-				return true;
+				break;
 			}
 
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 		}
 
 		case T_CompositeTypeStmt: // CREATE TYPE
@@ -1211,7 +1213,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 *		  order to correctly invalidate negative cache entries
 			 */
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 		}
 		case T_CreateStmt:
 		{
@@ -1228,7 +1230,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 */
 			if (stmt->partbound != NULL) {
 				*is_breaking_catalog_change = false;
-				return true;
+				break;
 			}
 
 			/*
@@ -1241,7 +1243,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 				YbIsSystemNamespaceByName(stmt->relation->schemaname))
 			{
 				*is_breaking_catalog_change = false;
-				return true;
+				break;
 			}
 
 			foreach (lc, stmt->constraints)
@@ -1259,7 +1261,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 					 * have to force a transaction abort on PG side.
 					 */
 					*is_breaking_catalog_change = false;
-					return true;
+					break;
 				}
 			}
 
@@ -1269,7 +1271,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 		}
 		case T_CreateSeqStmt:
 		{
@@ -1280,7 +1282,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			{
 				*is_catalog_version_increment = false;
 			}
-			return true;
+			break;
 		}
 		case T_CreateFunctionStmt:
 		{
@@ -1290,7 +1292,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			{
 				*is_catalog_version_increment = false;
 			}
-			return true;
+			break;
 		}
 
 		// All T_Drop... tags from nodes.h:
@@ -1300,11 +1302,11 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_DropSubscriptionStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropUserMappingStmt:
-			return true;
+			break;
 
 		case T_DropStmt:
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 
 		case T_DropdbStmt:
 		    /*
@@ -1312,7 +1314,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * so nothing to do on the cache side.
 			 */
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 
 		// All T_Alter... tags from nodes.h:
 		case T_AlterCollationStmt:
@@ -1350,7 +1352,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_ReassignOwnedStmt:
 		/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
 		case T_RenameStmt:
-			return true;
+			break;
 
 		case T_AlterTableStmt:
 		{
@@ -1360,7 +1362,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			if (cmd->subtype == AT_AddColumn || cmd->subtype == AT_DropColumn) {
 				*is_breaking_catalog_change = false;
 			}
-			return true;
+			break;
 		}
 
 		// T_Grant...
@@ -1369,14 +1371,14 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			/* Grant (add permission) is not a breaking change, but revoke is. */
 			GrantStmt *stmt = castNode(GrantStmt, parsetree);
 			*is_breaking_catalog_change = !stmt->is_grant;
-			return true;
+			break;
 		}
 		case T_GrantRoleStmt:
 		{
 			/* Grant (add permission) is not a breaking change, but revoke is. */
 			GrantRoleStmt *stmt = castNode(GrantRoleStmt, parsetree);
 			*is_breaking_catalog_change = !stmt->is_grant;
-			return true;
+			break;
 		}
 
 		// T_Index...
@@ -1387,23 +1389,35 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * transactions so we don't have to force a transaction abort on PG side.
 			 */
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 
 		case T_VacuumStmt:
 			/* Vacuum with analyze updates relation and attribute statistics */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
+			is_ddl = castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
+			break;
 
 		case T_RefreshMatViewStmt:
-			return true;
+			break;
 
 		default:
 			/* Not a DDL operation. */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return false;
+			is_ddl = false;
+			break;
 	}
+
+	/*
+	 * For DDL, it does not make sense to get breaking catalog change without
+	 * catalog version increment.
+	 */
+	Assert(!(is_ddl &&
+			 *is_breaking_catalog_change &&
+			 !*is_catalog_version_increment));
+
+	return is_ddl;
 }
 
 static void YBTxnDdlProcessUtility(
