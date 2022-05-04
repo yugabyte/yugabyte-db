@@ -2162,7 +2162,7 @@ _PG_init(void)
     DefineCustomStringVariable(
         "pgaudit.role",
 
-        "Specifies the master role to use for object audit logging.  Muliple "
+        "Specifies the master role to use for object audit logging.  Multiple "
         "audit roles can be defined by granting them to the master role. This "
         "allows multiple groups to be in charge of different aspects of audit "
         "logging.",
