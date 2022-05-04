@@ -18,7 +18,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -35,6 +34,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.text.StringSubstitutor;
 import org.slf4j.Logger;
@@ -51,8 +51,7 @@ public class ShellProcessHandler {
 
   private final play.Configuration appConfig;
   private final boolean cloudLoggingEnabled;
-
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  private final ShellLogsManager shellLogsManager;
 
   static final Pattern ANSIBLE_FAIL_PAT =
       Pattern.compile(
@@ -63,13 +62,13 @@ public class ShellProcessHandler {
   static final Pattern PYTHON_ERROR_PAT =
       Pattern.compile("(<yb-python-error>)(.*?)(</yb-python-error>)", Pattern.DOTALL);
   static final String ANSIBLE_IGNORING = "ignoring";
-  static final String COMMAND_OUTPUT_LOGS_DELETE = "yb.logs.cmdOutputDelete";
   static final String YB_LOGS_MAX_MSG_SIZE = "yb.logs.max_msg_size";
 
   @Inject
-  public ShellProcessHandler(play.Configuration appConfig) {
+  public ShellProcessHandler(play.Configuration appConfig, ShellLogsManager shellLogsManager) {
     this.appConfig = appConfig;
     this.cloudLoggingEnabled = appConfig.getBoolean("yb.cloud.enabled");
+    this.shellLogsManager = shellLogsManager;
   }
 
   public ShellResponse run(
@@ -138,9 +137,11 @@ public class ShellProcessHandler {
     File tempErrorFile = null;
     long startMs = 0;
     Process process = null;
+    UUID processUUID = context.getUuid() != null ? context.getUuid() : UUID.randomUUID();
     try {
-      tempOutputFile = File.createTempFile("shell_process_out", "tmp");
-      tempErrorFile = File.createTempFile("shell_process_err", "tmp");
+      Pair<File, File> logFiles = shellLogsManager.createFilesForProcess(processUUID);
+      tempOutputFile = logFiles.getLeft();
+      tempErrorFile = logFiles.getRight();
       pb.redirectOutput(tempOutputFile);
       pb.redirectError(tempErrorFile);
       startMs = System.currentTimeMillis();
@@ -224,14 +225,7 @@ public class ShellProcessHandler {
           response.description,
           status,
           response.durationMs);
-      if (runtimeConfigFactory.globalRuntimeConf().getBoolean(COMMAND_OUTPUT_LOGS_DELETE)) {
-        if (tempOutputFile != null && tempOutputFile.exists()) {
-          tempOutputFile.delete();
-        }
-        if (tempErrorFile != null && tempErrorFile.exists()) {
-          tempErrorFile.delete();
-        }
-      }
+      shellLogsManager.onProcessStop(processUUID);
     }
 
     return response;
