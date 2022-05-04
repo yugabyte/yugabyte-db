@@ -1437,15 +1437,19 @@ Status CDCServiceImpl::SetInitialCheckPoint(
       CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   // Update the minimum checkpoint op_id for LEADER for intent cleanup for CDCSDK Stream type.
-  auto txn_participant = tablet_peer->tablet()->transaction_participant();
-  if (txn_participant == nullptr) {
-    return STATUS_FORMAT(
-        InternalError, "Cannot read data as the transaction participant context is null");
+  if (tablet_op_id.cdc_sdk_op_id != OpId::Max()) {
+    auto txn_participant = tablet_peer->tablet()->transaction_participant();
+    if (txn_participant == nullptr) {
+      return STATUS_FORMAT(
+          InternalError, "Cannot read data as the transaction participant context is null");
+    }
+    txn_participant->SetRetainOpId(tablet_op_id.cdc_sdk_op_id);
+    // Even if the flag is enable_update_local_peer_min_index is set, for the first time
+    // we need to set it to follower too.
+    return UpdatePeersCdcMinReplicatedIndex(tablet_id, tablet_op_id);
   }
-  txn_participant->SetRetainOpId(tablet_op_id.cdc_sdk_op_id);
-  // Even if the flag is enable_update_local_peer_min_index is set, for the first time
-  // we need to set it to follower too.
-  return UpdatePeersCdcMinReplicatedIndex(tablet_id, tablet_op_id);
+
+  return Status::OK();
 }
 
 Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
@@ -1557,7 +1561,7 @@ void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
       WARN_NOT_OK(
           UpdatePeersCdcMinReplicatedIndex(tablet_id, tablet.second),
           "UpdatePeersCdcMinReplicatedIndex failed");
-    } else {
+    } else if (tablet.second.cdc_sdk_op_id != OpId::Max()) {
       auto txn_participant = tablet_peer->tablet()->transaction_participant();
       if (txn_participant == nullptr) {
         continue;
@@ -1859,11 +1863,15 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
     return STATUS(TryAgain, "Tablet peer is not ready to set its log cdc index");
   }
   RETURN_NOT_OK(tablet_peer->set_cdc_min_replicated_index(replicated_index));
-  auto txn_participant = tablet_peer->tablet()->transaction_participant();
-  if (txn_participant == nullptr) {
-    return STATUS(InternalError, "Cannot read data as the transaction participant context is null");
+
+  if (cdc_sdk_replicated_op != OpId::Max()) {
+    auto txn_participant = tablet_peer->tablet()->transaction_participant();
+    if (txn_participant == nullptr) {
+      return STATUS(
+          InternalError, "Cannot read data as the transaction participant context is null");
+    }
+    txn_participant->SetRetainOpId(cdc_sdk_replicated_op);
   }
-  txn_participant->SetRetainOpId(cdc_sdk_replicated_op);
 
   return Status::OK();
 }
