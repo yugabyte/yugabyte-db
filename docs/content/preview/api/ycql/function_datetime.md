@@ -140,7 +140,7 @@ ycqlsh:example> INSERT INTO test_min (k, v) VALUES (1, now());
 ```sql
 ycqlsh:ybdemo> select k, v, totimestamp(v) from test_min;
 ```
-```sql
+```output
  k | v                                    | totimestamp(v)
 ---+--------------------------------------+---------------------------------
  1 | dc79344c-cb79-11ec-915e-5219fa422f77 | 2022-05-04 07:14:39.205000+0000
@@ -154,7 +154,7 @@ ycqlsh:ybdemo> select k, v, totimestamp(v) from test_min;
 ycqlsh:ybdemo> SELECT * FROM test_min WHERE v > minTimeUUID('2022-04-04 13:42:00+0000');
 ```
 
-```sql
+```output
  k | v
 ---+--------------------------------------
  1 | dc79344c-cb79-11ec-915e-5219fa422f77
@@ -164,7 +164,7 @@ ycqlsh:ybdemo> SELECT * FROM test_min WHERE v > minTimeUUID('2022-04-04 13:42:00
 
 ## maxTimeUUID(<timestamp>)
 
-This function generates corresponding (`TIMEUUID`) with maximum node/clock component so that it includes all regular 
+This function generates corresponding (`TIMEUUID`) with maximum clock component so that it includes all regular 
 `TIMEUUID` with that timestamp when comparing with another `TIMEUUID`.
 
 
@@ -184,10 +184,10 @@ ycqlsh:example> INSERT INTO test_max (k, v) VALUES (1, now());
 ```
 
 ```sql
-ycqlsh:ybdemo> select k, v, totimestamp(v) from test_max;
+ycqlsh:ybdemo> SELECT k, v, totimestamp(v) from test_max;
 ```
 
-```sql
+```output
  k | v                                    | totimestamp(v)
 ---+--------------------------------------+---------------------------------
  1 | e9261bcc-395a-11eb-9edc-112a0241eb23 | 2020-12-08 13:40:18.636000+0000
@@ -198,10 +198,10 @@ ycqlsh:ybdemo> select k, v, totimestamp(v) from test_max;
 #### Select using maxTimeUUID()
 
 ```sql
-ycqlsh:ybdemo> SELECT * FROM test_min WHERE v <= maxTimeUUID('2022-05-05 00:34:32+0000');
+ycqlsh:ybdemo> SELECT * FROM test_max WHERE v <= maxTimeUUID('2022-05-05 00:34:32+0000');
 ```
 
-```sql
+```output
  k | v
 ---+--------------------------------------
  1 | dc79344c-cb79-11ec-915e-5219fa422f77
