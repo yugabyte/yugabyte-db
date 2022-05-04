@@ -64,14 +64,19 @@ export interface IBackup {
   onDemand: boolean;
   createTime: number;
   updateTime: number;
+  completionTime: number;
   expiryTime: number;
   responseList: Keyspace_Table[];
   sse: boolean;
+  totalBackupSizeInBytes?: number;
 }
 
 export interface IUniverse {
   universeUUID: string;
   name: string;
+  universeDetails: {
+    universePaused: boolean;
+  };
 }
 
 export enum RESTORE_ACTION_TYPE {
