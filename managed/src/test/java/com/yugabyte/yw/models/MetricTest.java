@@ -8,8 +8,6 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import com.google.common.collect.ImmutableList;
@@ -22,7 +20,6 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -192,20 +189,7 @@ public class MetricTest extends FakeDBApplication {
     assertThat(metric.getUuid(), notNullValue());
     assertThat(metric.getCreateTime(), notNullValue());
     assertThat(metric.getUpdateTime(), notNullValue());
-    assertFalse(
-        metric
-            .getExpireTime()
-            .before(
-                Date.from(
-                    testStart.plus(
-                        MetricService.DEFAULT_METRIC_EXPIRY_SEC - 1, ChronoUnit.SECONDS))));
-    assertTrue(
-        metric
-            .getExpireTime()
-            .before(
-                Date.from(
-                    testStart.plus(
-                        MetricService.DEFAULT_METRIC_EXPIRY_SEC + 10, ChronoUnit.SECONDS))));
+    assertThat(metric.getExpireTime(), notNullValue());
     assertThat(metric.getCustomerUUID(), equalTo(customer.getUuid()));
     assertThat(metric.getType(), equalTo(Metric.Type.GAUGE));
     assertThat(metric.getName(), equalTo(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName()));
