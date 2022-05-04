@@ -24,8 +24,12 @@ interface BackupDeleteProps {
 }
 
 export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible, onHide }) => {
+  const queryClient = useQueryClient();
   const delBackup = useMutation((backupList: IBackup[]) => deleteBackup(backupList), {
-    onSuccess: () => onHide(),
+    onSuccess: () => {
+      onHide();
+      queryClient.invalidateQueries('backups');
+    },
     onError: () => {
       toast.error('Unable to delete backup');
       onHide();
