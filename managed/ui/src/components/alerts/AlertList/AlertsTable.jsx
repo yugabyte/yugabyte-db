@@ -12,7 +12,7 @@ import { isAvailable } from '../../../utils/LayoutUtils';
 import './AlertsTable.scss';
 import { toast } from 'react-toastify';
 import { Label } from 'react-bootstrap';
-import {timeFormatter} from "../../../utils/TableFormatters";
+import { timeFormatter } from '../../../utils/TableFormatters';
 
 const DEFAULT_SORT_COLUMN = 'createTime';
 const DEFAULT_SORT_DIRECTION = 'DESC';
@@ -47,7 +47,7 @@ export default function AlertsTable({ filters, customer }) {
         const resp = await api.getAlert(variables.uuid);
 
         queryClient.invalidateQueries('alerts');
-        toast.success('Acknowledged!.');
+        toast.success('Acknowledged!');
         if (alertDetails !== null) {
           setAlertDetails(resp);
         }
@@ -68,7 +68,7 @@ export default function AlertsTable({ filters, customer }) {
 
   const setSortOptions = (sortType, sortDirection) => {
     resetPage();
-    let sortColumn = sortType === 'labels' ? 'sourceName' : sortType;
+    const sortColumn = sortType === 'labels' ? 'sourceName' : sortType;
     setSortType(sortColumn);
     setSortDirection(sortDirection.toUpperCase());
   };
@@ -167,7 +167,7 @@ export default function AlertsTable({ filters, customer }) {
               >
                 Status
               </TableHeaderColumn>
-              { isAvailable(customer.currentCustomer.data.features, 'alert.list.actions') && (
+              {isAvailable(customer.currentCustomer.data.features, 'alert.list.actions') && (
                 <TableHeaderColumn
                   dataField="message"
                   columnClassName="no-border name-column"

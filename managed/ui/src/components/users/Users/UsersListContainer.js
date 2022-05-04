@@ -83,7 +83,8 @@ function mapStateToProps(state) {
   return {
     customer: state.customer.currentCustomer,
     users: state.customer.users,
-    modal: state.modal
+    modal: state.modal,
+    passwordValidationInfo: state.customer.passwordValidationInfo
   };
 }
 
