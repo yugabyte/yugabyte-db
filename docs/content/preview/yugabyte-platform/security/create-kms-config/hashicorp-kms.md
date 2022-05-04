@@ -68,7 +68,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
 
   For additional configuration options, see [Parameters](https://www.vaultproject.io/docs/configuration#parameters).
 
-- Initialize the vault server by following instructions provided in [operator init](https://www.vaultproject.io/docs/commands/operator/init).
+- Initialize the vault server by following instructions provided in [Operator init](https://www.vaultproject.io/docs/commands/operator/init).
 
 - Allow access to the vault by following instructions provided in [Unsealing](https://www.vaultproject.io/docs/concepts/seal#unsealing).
 
@@ -133,7 +133,7 @@ You can create a new KMS configuration that uses HashiCorp Vault as follows:
     - **Secret Engine** — This is a read-only field with its value set to `transit`. It identifies the secret engine.
     - **Mount Path** — Specify the path to the secret engine within the vault. The default value is `transit/`.<br><br>
 
-    ![Create config](/images/yp/security/hashicorp-config.png)<br>
+    ![Create config](/images/yp/security/hashicorp-config.png)<br><br>
 
 1. Click **Save**. Your new configuration should appear in the list of configurations.
 
