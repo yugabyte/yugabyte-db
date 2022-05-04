@@ -1,16 +1,15 @@
 ---
-title: Go ORMs
-linkTitle: Go ORMs
-description: Go ORMs for YSQL
-headcontent: Go ORMs for YSQL
+title: Use an ORM
+linkTitle: Use an ORM
+description: Go ORM support for YugabyteDB
+headcontent: Go ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Go ORMs
     identifier: pg-orm
     parent: go-drivers
     weight: 400
-isTocNested: true
+isTocNested: false
 showAsideToc: true
 ---
 
@@ -36,7 +35,7 @@ showAsideToc: true
 
 ## CRUD Operations with PG ORM
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page under the Quick Start section.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using go-pg.
 
@@ -51,7 +50,7 @@ import (
 )
 ```
 
-### Step 2: Connect to YugabyteDB database
+### Step 2: Set up the database connection
 
 Go applications can connect to the YugabyteDB database using the `pg.Connect()` function.
 

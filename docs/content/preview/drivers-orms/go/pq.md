@@ -1,16 +1,14 @@
 ---
-title: Go drivers
-linkTitle: Go drivers
+title: Connect an app
+linkTitle: Connect an app
 description: Go drivers for YSQL
-headcontent: Go drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Go drivers
     identifier: pq-driver
     parent: go-drivers
     weight: 400
-isTocNested: true
+isTocNested: false
 showAsideToc: true
 ---
 
@@ -52,7 +50,7 @@ import (
 )
 ```
 
-### Step 2: Connect to YugabyteDB database
+### Step 2: Set up the database connection
 
 Go applications can connect to YugabyteDB using the `sql.Open()` function. The `sql` package includes all the functions or structs required for working with YugabyteDB.
 

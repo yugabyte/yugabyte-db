@@ -1,7 +1,6 @@
 ---
 title: Go drivers and ORMs
 headerTitle: Go
-headcontent: Prerequisites and CRUD examples for building applications in Golang.
 linkTitle: Go
 description: Go Drivers and ORMs support for YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -15,16 +14,28 @@ showAsideToc: true
 ---
 The following projects can be used to implement Golang applications using the YugabyteDB YSQL API.
 
-| Project (* Recommended) | Type | Support | Examples |
+## Supported Projects
+
+| Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
+| ------- | ------------------------ | ------------------------ | ---------------------|
+| PGX Driver [Recommended] | [Documentation](pgx)<br />[Hello World App](/preview/quick-start/build-apps/go/ysql-pgx/)<br /> [Reference Page](../../reference/drivers/go/pgx-reference/) | [v4](https://pkg.go.dev/github.com/yugabyte/pgx/v4) | 2.8 and above
+| PQ Driver | [Documentation](pq)<br />[Hello World App](/preview/quick-start/build-apps/go/ysql-pq/)<br />[Reference Page](../../reference/drivers/go/pq-reference/) | [v1.10.2](https://github.com/lib/pq/releases/tag/v1.10.2) | 2.6 and above
+
+| Project | Documentation and Guides | Example Apps |
+| ------- | ------------------------ | ------------ |
+| GORM [Recommended] | [Documentation](gorm) | [Hello World](../../quick-start/build-apps/go/ysql-gorm) |
+| GO-PG | [Documentation](pg) | [Hello World](../../quick-start/build-apps/go/ysql-pg) |
+
+<!-- | Project (* Recommended) | Type | Support | Examples |
 | :------ | :--- | :------ | :------- |
 | [PGX Driver*](pgx) | Driver | Full | [Hello World](../../quick-start/build-apps/go/ysql-pgx) <br />[CRUD](pgx) |
 | [PQ Driver](pq) | Go Driver | Full | [Hello World](../../quick-start/build-apps/go/ysql-pq) <br />[CRUD](pq) |
 | [GORM*](gorm) | ORM |  Full | [Hello World](../../quick-start/build-apps/go/ysql-gorm) <br />[CRUD](gorm) |
-| [GO-PG](pg) | ORM | Full | [Hello World](../../quick-start/build-apps/go/ysql-pg) <br />[CRUD](pg) |
+| [GO-PG](pg) | ORM | Full | [Hello World](../../quick-start/build-apps/go/ysql-pg) <br />[CRUD](pg) | -->
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
-For fully-runnable code snippets and explanations of common operations, see the project page **CRUD** example. Before running CRUD examples, make sure you have installed the prerequisites.
+For fully-runnable code snippets and explanations of common operations, see the **example apps**. Before running the example apps, make sure you have installed the prerequisites.
 
 For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/go/pgx-reference/) pages.
 

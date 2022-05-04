@@ -1,16 +1,14 @@
 ---
-title: Go drivers
-linkTitle: Go drivers
+title: Connect an app
+linkTitle: Connect an app
 description: Go drivers for YSQL
-headcontent: Go drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Go drivers
     identifier: pgx-driver
     parent: go-drivers
     weight: 400
-isTocNested: true
+isTocNested: false
 showAsideToc: true
 ---
 
@@ -38,7 +36,7 @@ The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and a
 
 ## CRUD operations with PGX driver
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pgx) page under the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pgx) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PGX driver.
 
@@ -52,7 +50,7 @@ import (
 )
 ```
 
-### Step 2: Connect to YugabyteDB database
+### Step 2: Set up the database connection
 
 Go applications can connect to the YugabyteDB database using the `pgx.Connect()` function. The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
 
@@ -119,7 +117,7 @@ The `conn.Exec()` function also returns an `error` object which, if not `nil`, n
 
 Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
-### Step 4:  Read and write data
+### Step 4: Read and write data
 
 #### Insert data
 
