@@ -31,7 +31,7 @@ You can enable encryption in transit (TLS) during universe creation and change t
 
 YugabyteDB Anywhere can create self-signed certificates for each universe. These certificates may be shared between universes within a single instance of YugabyteDB Anywhere. The certificate name has the following format:
 
-`yb-environment-universe_name`, where *environment* is the environment type (either `dev`, `stg`, `demo`, or `prod`) that was used during the tenant registration (admin user creation), and *universe-name* is the provided universe name. YugabyteDB Anywhere generates the root certificate, root private key, and node-level certificates, (assuming node-to-node encryption is enabled), and then provisions those artifacts to the database nodes any time nodes are created or added to the cluster. The following three files are copied to each node:
+`yb-environment-universe_name`, where *environment* is the environment type (either `dev`, `stg`, `demo`, or `prod`) that was used during the tenant registration (admin user creation), and *universe-name* is the provided universe name. YugabyteDB Anywhere generates the root certificate, root private key, and node-level certificates (assuming node-to-node encryption is enabled), and then provisions those artifacts to the database nodes any time nodes are created or added to the cluster. The following three files are copied to each node:
 
 1. The root certificate (`ca.cert`).
 1. The node certificate (`node.ip_address.crt`).
@@ -102,7 +102,7 @@ When you create a universe, you can enable TLS using your own certificates, as f
 1. Select an existing certificate from the **Root Certificate** list and then select the certificate that you have uploaded.
 1. Create the universe.
 
-You can also modify TLS settings for an existing universe by navigating to **Universes**, opening a specific universe, clicking **Actions > Edit Security > Encryption in-Transit** to open the **TLS Configuration** dialog, and then following the procedure described in [Use YugabyteDB Anywhere-generated certificates to enable TLS](#how-to-use-yugabytedb-anywhere-generated-certificates-to-enable-tls) for an existing universe.
+You can also modify TLS settings for an existing universe by navigating to **Universes**, opening a specific universe, clicking **Actions > Edit Security > Encryption in-Transit** to open the **TLS Configuration** dialog, and then following the procedure described in [Use YugabyteDB Anywhere-generated certificates to enable TLS](#use-yugabytedb-anywhere-generated-certificates-to-enable-tls) for an existing universe.
 
 ## Custom CA-signed self-provided certificates
 

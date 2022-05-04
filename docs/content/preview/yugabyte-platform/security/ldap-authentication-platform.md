@@ -132,7 +132,7 @@ Consider the following example:
     exampledb=# \conninfo
     ```
 
-    Expect the followingn output:
+    Expect the following output:
     
     ```output
     You are connected to database "exampledb" as user "adam" on host "localhost" at port "5433".
