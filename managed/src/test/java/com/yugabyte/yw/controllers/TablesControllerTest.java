@@ -245,7 +245,9 @@ public class TablesControllerTest extends FakeDBApplication {
                 () -> tablesController.listTables(customer.uuid, u1.universeUUID))
             .getResult();
     assertEquals(503, r.status());
-    assertEquals("Expected error. Masters are not currently queryable.", contentAsString(r));
+    assertEquals(
+        "Expected error. Masters are not currently queryable.",
+        Json.parse(contentAsString(r)).get("error").asText());
     assertAuditEntry(0, customer.uuid);
   }
 
