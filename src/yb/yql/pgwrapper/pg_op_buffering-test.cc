@@ -114,14 +114,26 @@ TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(GeneralOptimization)) {
       "  INSERT INTO $0 VALUES (123);" \
       "END$$$$;",
       kTable));
-  const auto proc_insert_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta([&conn]() {
+  auto proc_insert_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta([&conn]() {
+    return conn.Execute("CALL test()");
+  }));
+  ASSERT_EQ(proc_insert_rpc_count, 1);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE OR REPLACE PROCEDURE test() LANGUAGE sql AS $$$$" \
+      "  INSERT INTO $0 SELECT s FROM generate_series(1001, 1005) AS s; " \
+      "  INSERT INTO $0 VALUES (1011), (1012), (1013);" \
+      "  INSERT INTO $0 VALUES (1021);" \
+      "  INSERT INTO $0 VALUES (1022);" \
+      "  INSERT INTO $0 VALUES (1023);$$$$", kTable));
+  proc_insert_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta([&conn]() {
     return conn.Execute("CALL test()");
   }));
   ASSERT_EQ(proc_insert_rpc_count, 1);
 }
 
 // The test checks that buffering mechanism splits operations into batches with respect to
-// 'ysql_session_max_batch_size' configuration parameter. This paramenter can be changed via GUC.
+// 'ysql_session_max_batch_size' configuration parameter. This parameter can be changed via GUC.
 TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(MaxBatchSize)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(CreateTable(&conn));
@@ -134,6 +146,26 @@ TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(MaxBatchSize)) {
         [&conn, start = i * 100 + 1, end = i * 100 + items_for_insert]() {
           return conn.ExecuteFormat(
               "INSERT INTO $0 SELECT s FROM generate_series($1, $2) as s", kTable, start, end);
+        }));
+    ASSERT_EQ(write_rpc_count, std::ceil(static_cast<double>(items_for_insert) / max_batch_size));
+  }
+
+  ASSERT_OK(conn.ExecuteFormat("truncate $0", kTable));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE OR REPLACE PROCEDURE f(first integer, last integer) "
+      "LANGUAGE plpgsql "
+      "as $$body$$ "
+      "BEGIN "
+      "  FOR i in first..last LOOP "
+      "    INSERT INTO $0 VALUES (i); "
+      "  END LOOP; "
+      "END; "
+      "$$body$$;", kTable));
+  for (size_t i = 0; i < max_insert_count; ++i) {
+    const auto items_for_insert = i + 1;
+    const auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta(
+        [&conn, start = i * 100 + 1, end = i * 100 + items_for_insert]() {
+          return conn.ExecuteFormat("CALL f($0, $1)", start, end);
         }));
     ASSERT_EQ(write_rpc_count, std::ceil(static_cast<double>(items_for_insert) / max_batch_size));
   }
