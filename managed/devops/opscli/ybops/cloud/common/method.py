@@ -1224,7 +1224,9 @@ class AbstractAccessMethod(AbstractMethod):
         self.parser.add_argument("--key_file_path", required=True, help="Key file path")
         self.parser.add_argument("--public_key_file", required=False, help="Public key filename")
         self.parser.add_argument("--private_key_file", required=False, help="Private key filename")
-        self.parser.add_argument("--delete_remote", action="store_true")
+        self.parser.add_argument("--delete_remote", action="store_true", help="Delete from cloud")
+        self.parser.add_argument("--ignore_auth_failure", action="store_true",
+                                 help="Ignore cloud auth failure")
 
     def validate_key_files(self, args):
         public_key_file = args.public_key_file
