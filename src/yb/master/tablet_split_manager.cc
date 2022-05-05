@@ -85,6 +85,9 @@ DEFINE_bool(sort_automatic_tablet_splitting_candidates, true,
             "Whether we should sort candidates for new automatic tablet splits, so the largest "
             "candidates are picked first.");
 
+DEFINE_bool(force_tablet_split_of_cdcsdk_tables, false,
+            "When set, it allows force splitting of tables even is CDC SDK is enabled");
+
 namespace yb {
 namespace master {
 
@@ -212,6 +215,20 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         "Tablet splitting is not supported for tables that are a part of"
         " a CDC stream, tablet_id: $0", table.id());
   }
+
+  // Check if this table is part of a cdc-sdk stream.
+  if (PREDICT_TRUE(!FLAGS_force_tablet_split_of_cdcsdk_tables) && filter_->IsCdcSdkEnabled(table)) {
+    VLOG(1) << Substitute(
+        "Tablet splitting is not supported for tables that are a part of"
+        " a CDCSDK stream, table_id: $0",
+        table.id());
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a CDCSDK stream, tablet_id: $0",
+        table.id());
+  }
+
   if (table.GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     VLOG(1) << Format("Tablet splitting is not supported for transaction status tables, "
                       "table_id: $0", table.id());
