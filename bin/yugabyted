@@ -18,6 +18,7 @@ import traceback
 import uuid
 import tempfile
 import tarfile
+import operator
 from datetime import datetime
 from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
 from threading import Thread
@@ -68,6 +69,8 @@ BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
 SLACK_LINK = "https://www.yugabyte.com/slack"
 COMMUNITY_REWARDS_LINK = "https://www.yugabyte.com/community-rewards/"
 HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
+YUGABYTED_LINK = "https://docs.yugabyte.com/preview/reference/configuration/yugabyted/"
+YUGABYTED_START = "https://docs.yugabyte.com/preview/reference/configuration/yugabyted/#start"
 DEFAULT_DEMO_DATABASE = "northwind"
 SAMPLE_DATA_LINKS = {
     "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
@@ -107,6 +110,66 @@ LINUX_PREREQS_CMDS = {
 MAC_PREREQS_CMDS = {
 }
 CONFIG_LINK = "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config"
+
+# Help Message Constants
+PREFIX = {
+    'yugabyted' : "YugabyteDB command-line interface for creating" +
+                    " and configuring YugabyteDB cluster.",
+    'start' : "Install YugabyteDB and start a single node cluster.\n\n" +
+                "Use --join flag to join other nodes that are part of the same cluster.",
+    'stop' : "",
+    'destroy' : "",
+    'status' : "",
+    'version' : "",
+    'collect_logs' : "",
+    'connect' : "",
+    'connect ycql' : "",
+    'connect ysql' : "",
+    'demo' : "",
+    'demo connect' : "",
+    'demo destroy' : "",
+}
+
+USAGE = {
+    'yugabyted' : "yugabyted [command] [flags]",
+    'start' : "yugabyted start [flags]",
+    'stop' : "yugabyted stop [flags]",
+    'destroy' : "yugabyted destroy [flags]",
+    'status' : "yugabyted status [flags]",
+    'version' : "yugabyted version [flags]",
+    'collect_logs' : "yugabyted collect_logs [flags]",
+    'connect' : "yugabyted connect [command] [flags]",
+    'connect ycql' : "yugabyted connect ycql [flags]",
+    'connect ysql' : "yugabyted connect ysql [flags]",
+    'demo' : "yugabyted demo [command] [flags]",
+    'demo connect' : "yugabyted demo connect [flags]",
+    'demo destroy' : "yugabyted demo destroy [flags]",
+}
+
+EXAMPLE = {
+    'start' : "# Create a single-node local cluster:\n" +
+              "yugabyted start\n\n"+
+              "# Create a single-node locally and join other nodes " +
+              "that are part of the same cluster:\n" +
+              "yugabyted start -join=host:port,[host:port]\n\n",
+    'stop' : "",
+    'destroy' : "",
+    'status' : "",
+    'version' : "",
+    'collect_logs' : "",
+}
+
+EPILOG_COMMON = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
+
+EPILOG_SPECIFIC = {
+    'start' : "Use conf file to configure advanced flags. Learn more about advanced flags " +
+                "refer to the docs page: {}.\n\n".format(YUGABYTED_START),
+    'stop' : "",
+    'destroy' : "",
+    'status' : "",
+    'version' : "",
+    'collect_logs' : "",
+}
 
 # YugabyteDB configs.
 IP_ANY = "0.0.0.0"
@@ -220,6 +283,16 @@ def find_version_metadata_location(version_file):
 
     return search_file_in_paths(dir_candidates, version_file)
 
+# Creates the Head Title for yugabyted CLI
+def get_cli_title():
+    title = Output.make_green(Output.make_green("Yugabyted CLI") + ": YugabyteDB command line")
+    extra_len = len(Output.make_green(""))
+    div_line = "+" + "-" * 98 + "+" + "\n"
+    cli_title = div_line
+    cli_title += ("| {:^" + str(105 + extra_len) + "} |\n").format(title)
+    cli_title += div_line
+    return cli_title
+
 class ControlScript(object):
     def __init__(self):
         self.configs = None
@@ -238,7 +311,7 @@ class ControlScript(object):
         Output.print_and_log("Starting {}...".format(SCRIPT_NAME))
         self.set_env_vars()
 
-        if self.configs.temp_data.get("daemon"):
+        if self.configs.temp_data.get("background"):
             # In daemon mode, self.daemonize() forks. The child process then executes
             # normal control flow. The parent process waits for the child process until
             # a status message can be printed to the terminal and then exits within daemonize.
@@ -624,7 +697,7 @@ class ControlScript(object):
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
     def start_processes(self):
-        bind_ip = self.configs.saved_data.get("listen")
+        bind_ip = self.configs.saved_data.get("advertise_address")
         advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
@@ -790,6 +863,10 @@ class ControlScript(object):
                 # Persist the config after successful start
                 self.configs.save_configs()
                 Output.update_animation("YugabyteDB Started")
+                if join_ip:
+                    Output.print_and_log(Output.ANIMATION_SUCCESS +
+                            " Node joined a running cluster with UUID {}"
+                            .format(self.configs.saved_data.get("universe_uuid")))
             else:
                 for name in ("master", "tserver"):
                     process = self.processes.get(name)
@@ -812,11 +889,11 @@ class ControlScript(object):
 
             if is_first_run:
                 status = self.get_status_string() + \
-                    "{} {} started successfully! To load a sample dataset, " \
+                    "{} YugabyteDB started successfully! To load a sample dataset, " \
                     "try '{} demo'.\n" \
                     "{} Join us on Slack at {}\n" \
                     "{} Claim your free t-shirt at {}\n".format(
-                        Output.ROCKET, SCRIPT_NAME, SCRIPT_NAME, Output.PARTY,
+                        Output.ROCKET, SCRIPT_NAME, Output.PARTY,
                         Output.make_underline(SLACK_LINK), Output.SHIRT,
                         Output.make_underline(COMMUNITY_REWARDS_LINK))
 
@@ -825,7 +902,7 @@ class ControlScript(object):
 
                 Output.print_out(status)
 
-                if self.configs.temp_data.get("daemon"):
+                if self.configs.temp_data.get("background"):
                     # Let original process know daemon was successful so it can exit.
                     # This is to display the initial status message.
                     self.script.daemon_success.put(1)
@@ -1123,7 +1200,7 @@ class ControlScript(object):
 
         # The master was not in the current list of masters
         # and we have a valid join_ip
-        bind_ip = self.configs.saved_data.get("listen")
+        bind_ip = self.configs.saved_data.get("advertise_address")
         master_addrs = "{}:{}".format(join_ip,
                     self.configs.saved_data.get("master_rpc_port"))
         master_uuids = [ m[0] for m in YBAdminProxy.get_masters(master_addrs) ]
@@ -1227,7 +1304,10 @@ class ControlScript(object):
 
     # Returns pretty output table.
     def get_status_string(self):
+        join_ip = self.configs.saved_data.get("join")
         advertise_ip = self.advertise_ip()
+        master_addrs = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                      self.configs.saved_data.get("master_rpc_port"))
 
         ycql_port = self.configs.saved_data.get("ycql_port")
         cql_hostname_param = ""
@@ -1256,9 +1336,10 @@ class ControlScript(object):
             # the leader election
             # In case of manual start or some other route, we can have a smaller timeout
             if self.wait_get_all_masters(timeout=10):
-                status = "Running. Leader Master is present"
+                status = "Running."
             else:
-                status = "Running. No leader master yet"
+                status = "Status command timed out as YugabyteDB \"yb-master\" " + \
+                            "process is not responding."
 
 
         ysql_flags = " {} {} -U {} -d {}".format(ysql_hostname_param, ysql_port_param,
@@ -1279,6 +1360,7 @@ class ControlScript(object):
 
         status_info = [
             (Output.make_yellow("Status"), status),
+            (Output.make_yellow("Replication Factor"), YBAdminProxy.get_cluster_rf(master_addrs)),
         ]
         console_desc = "Web console"
         if self.configs.temp_data.get("ui"):
@@ -1399,7 +1481,7 @@ class ControlScript(object):
                             config_log_dir, args.log_dir))
 
             args.ui = self.parse_bool(args.ui)
-            args.daemon = self.parse_bool(args.daemon)
+            args.background = self.parse_bool(args.background)
             if args.callhome is not None:
                 args.callhome = self.parse_bool(args.callhome)
             elif os.environ.get("YB_DISABLE_CALLHOME") is not None:
@@ -1429,7 +1511,7 @@ class ControlScript(object):
                 Output.print_out('WARNING: UI disabled - Java 1.8 or higher is required.')
                 args.ui = False
 
-            self.configs.temp_data["daemon"] = args.daemon
+            self.configs.temp_data["background"] = args.background
             self.configs.temp_data["ui"] = args.ui
             self.configs.temp_data["initial_scripts_dir"] = args.initial_scripts_dir
 
@@ -1463,37 +1545,45 @@ class ControlScript(object):
         common_parser = argparse.ArgumentParser(add_help=False)
         common_parser.add_argument(
             "--config", help="{} configuration file path".format(
-                              SCRIPT_NAME))
+                              SCRIPT_NAME), metavar="")
         # TODO: Refactor data_dir to be a list for multi-node. How should the config file and
         # data dir be set for local mulit-node setups? Note: daemon mode may be affected.
         common_parser.add_argument(
-            "--data_dir", help="Directory where {} will store data.".format(SCRIPT_NAME))
+            "--data_dir", help="Directory where {} will store data.".format(SCRIPT_NAME),
+                metavar="")
         common_parser.add_argument(
             "--base_dir", help="Directory under which {} will store data, conf and logs".format(
-                SCRIPT_NAME))
+                SCRIPT_NAME), metavar="")
 
-        start_msg = "To start {}, run '{}'.\n\n".format(
-            SCRIPT_NAME, Output.make_green("{} start".format(SCRIPT_NAME)))
+        start_msg = "To start YugabyteDB cluster, run '{}'.\n\n".format(
+            Output.make_green("{} start".format(SCRIPT_NAME)))
+        start_msg += "Find more information at: {}".format(Output.make_underline(YUGABYTED_LINK))
         parser = PrettyArgParser(description=start_msg)
         all_parsers = {"default": parser}
-        subparsers = parser.add_subparsers(dest="parser")
+        subparsers = parser.add_subparsers(dest="parser", metavar="")
         subparsers.required = True
         for cmd, description in (
-                ("start", "Start {}.".format(SCRIPT_NAME)),
-                ("stop", "Stop running {}.".format(SCRIPT_NAME)),
-                ("destroy", "Destroy {} cluster and remove data.".format(SCRIPT_NAME)),
-                ("status", "Print status of {}.".format(SCRIPT_NAME)),
-                ("version", "Version of {}.".format(SCRIPT_NAME)),
+                ("start", "Start YugabyteDB cluster."),
+                ("stop", "Stop running YugabyteDB cluster."),
+                ("destroy", "Destroy YugabyteDB cluster and remove data."),
+                ("status", "Print status of YugabyteDB cluster."),
+                ("version", "Release version of YugabyteDB cluster."),
                 ("collect_logs", "Collect and package logs for troubleshooting.")):
-            subparser = subparsers.add_parser(cmd, help=description, parents=[common_parser])
+            example = ""
+            if EXAMPLE[cmd]:
+                example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
+            subparser = subparsers.add_parser(cmd, description=example,
+                                                help=description, parents=[common_parser])
+            subparser.epilog = EPILOG_SPECIFIC[cmd] + EPILOG_COMMON
             func = getattr(self, cmd, None)
             subparser.set_defaults(func=func)
             all_parsers[cmd] = subparser
 
         # Add ysql and ycql CLI options
-        connect = subparsers.add_parser("connect", help="Connect to an API through the CLI.")
+        connect = subparsers.add_parser("connect",
+                    help="Connect to YugabyteDB cluster through the CLI.")
         all_parsers["connect"] = connect
-        connect_subparser = connect.add_subparsers(dest="parser")
+        connect_subparser = connect.add_subparsers(dest="parser", metavar="")
         connect_subparser.required = True
         for api in YUGABYTE_API_CLIENT_PROGRAMS:
             cur_parser = connect_subparser.add_parser(
@@ -1506,7 +1596,7 @@ class ControlScript(object):
 
         demo_parser = subparsers.add_parser("demo", help="Load and interact with preset demo data.")
         all_parsers["demo"] = demo_parser
-        demo_subparsers = demo_parser.add_subparsers(dest="parser")
+        demo_subparsers = demo_parser.add_subparsers(dest="parser", metavar="")
         demo_subparsers.required = True
         for cmd, description in (
                 ("connect", "Connect to the demo database."),
@@ -1521,53 +1611,54 @@ class ControlScript(object):
         for cmd in ("collect_logs",):
             cur_parser = all_parsers[cmd]
             cur_parser.add_argument(
-                "--stdout", help="Redirect the logs.tar.gz file's content to stdout. Ex: \
-                docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
+                "--stdout", help="Redirect the logs.tar.gz file's content to stdout. Ex: "+
+                "docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
                 action="store_true", default=False)
 
         # Commands that can alter configuration file.
         for cmd in ("start",):
             cur_parser = all_parsers[cmd]
             cur_parser.add_argument(
-                "--log_dir", help="Directory to store {} logs.".format(SCRIPT_NAME))
+                "--log_dir", help="Directory to store {} logs.".format(SCRIPT_NAME), metavar="")
             cur_parser.add_argument(
-                "--ycql_port", help="Port on which YCQL will run.")
+                "--ycql_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--ysql_port", help="Port on which YSQL will run.")
+                "--ysql_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--master_rpc_port", help="Port on which yb-master will listen for RPCs.")
+                "--master_rpc_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--tserver_rpc_port", help="Port on which yb-tserver will listen for RPCs.")
+                "--tserver_rpc_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--master_webserver_port", help="Port on which yb-master webserver will run.")
+                "--master_webserver_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--tserver_webserver_port", help="Port on which yb-tserver webserver will run.")
+                "--tserver_webserver_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--webserver_port", help="Port on which main webserver will run.")
+                "--webserver_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--listen",
-                help="IP address or local hostname on which {} will listen.".format(SCRIPT_NAME))
+                "--advertise_address",
+                help="IP address or local hostname on which {} will listen.".format(SCRIPT_NAME),
+                metavar="")
             cur_parser.add_argument(
-                "--join", help="IP address to which this process will join".format(SCRIPT_NAME))
+                "--join", help="IP address to which this process will join".format(SCRIPT_NAME),
+                metavar="")
             cur_parser.add_argument(
-                "--daemon", choices=BOOL_CHOICES, default="true", metavar="BOOL",
+                "--background", choices=BOOL_CHOICES, default="true", metavar="",
                 help="Runs {} in the background as a daemon. Does not persist on restart. "
                      "Default true.".format(SCRIPT_NAME))
             cur_parser.add_argument(
-                "--callhome", choices=BOOL_CHOICES, metavar="BOOL",
-                help="Enable or disable callhome feature that sends analytics data to Yugabyte. "
-                     "Default true.")
+                "--callhome", choices=BOOL_CHOICES,
+                help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--ui", choices=BOOL_CHOICES, default="false", metavar="BOOL",
+                "--ui", choices=BOOL_CHOICES, default="false", metavar="",
                 help="Toggle enabling or disabling webserver UI. Default false.")
             cur_parser.add_argument(
-                "--ysql_enable_auth", choices=BOOL_CHOICES, metavar="BOOL",
+                "--ysql_enable_auth", choices=BOOL_CHOICES,
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--use_cassandra_authentication", choices=BOOL_CHOICES, metavar="BOOL",
+                "--use_cassandra_authentication", choices=BOOL_CHOICES,
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--initial_scripts_dir", help="Directory from where yugabyted reads initialization scripts")
+                "--initial_scripts_dir", help=argparse.SUPPRESS)
 
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -1613,7 +1704,7 @@ class ControlScript(object):
             Output.log_error_and_exit(traceback.format_exc())
 
     def advertise_ip(self):
-        bind_ip = self.configs.saved_data.get("listen")
+        bind_ip = self.configs.saved_data.get("advertise_address")
         return bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
 
     def master_port(self):
@@ -1683,7 +1774,7 @@ class Configs(object):
             "tserver_webserver_port": DEFAULT_TSERVER_WEBSERVER_PORT,
             "ysql_port": DEFAULT_YSQL_PORT,
             "ycql_port": DEFAULT_YCQL_PORT,
-            "listen": DEFAULT_BIND_IP,
+            "advertise_address": DEFAULT_BIND_IP,
             "webserver_port": DEFAULT_WEBSERVER_PORT,
             "universe_uuid": str(uuid.uuid4()),
             "node_uuid": str(uuid.uuid4()),
@@ -1700,7 +1791,7 @@ class Configs(object):
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
             "demo_db": DEFAULT_DEMO_DATABASE,
-            "daemon": True,
+            "background": True,
             "ui": False,
             "initial_scripts_dir": "",
             "collect_logs_stdout": False,
@@ -2045,7 +2136,7 @@ class Diagnostics(object):
             if p.start_time:
                 payload["{}_start_time".format(p.name)] = p.start_time
 
-        bind_ip = self.configs.saved_data.get("listen")
+        bind_ip = self.configs.saved_data.get("advertise_address")
         advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
 
         master_addrs = "{}:{}".format(
@@ -2116,12 +2207,33 @@ class YBAdminProxy(object):
     # Returns the cluster_uuid for this universe
     @staticmethod
     def get_cluster_uuid(master_addrs):
+        cluster_config = YBAdminProxy.get_cluster_config(master_addrs)
+        if cluster_config:
+            return cluster_config['clusterUuid']
+        else:
+            return None
+
+    # Returns the rf for this universe
+    @staticmethod
+    def get_cluster_rf(master_addrs):
+        cluster_config = YBAdminProxy.get_cluster_config(master_addrs)
+        if cluster_config:
+            if cluster_config.has_key("replicationInfo"):
+                return cluster_config["replicationInfo"]["liveReplicas"]["numReplicas"]
+            else:
+                return 1
+        else:
+            return None
+
+    # Returns the cluster config for this universe
+    @staticmethod
+    def get_cluster_config(master_addrs):
         cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "get_universe_config"]
         out, err, ret_code = run_process(cmd)
         if ret_code:
             return None
         try:
-            return json.loads(out)['clusterUuid']
+            return json.loads(out)
         except Exception:
             return None
 
@@ -2550,10 +2662,10 @@ class Output(object):
     # Only attempt to write to stdout while we have access to console.
     console_access = True
 
-    ANIMATION_SUCCESS = 0
-    ANIMATION_FAIL = -1
+    ANIMATION_SUCCESS = '\u2705'
+    ANIMATION_FAIL = '\u274C'
     ANIMATION_RUNNING = 1
-    ANIMATION_WARNING = 2
+    ANIMATION_WARNING = '\u26A0'
     # Tuple of (animation_status, animation_message) to ensure atomicity.
     animation_status = (ANIMATION_SUCCESS, "")
     animation_thread = None
@@ -2584,11 +2696,6 @@ class Output(object):
 
         def animate():
             loading_symbols = ['/', '-', '\\', '|']
-            end_symbols = {
-                Output.ANIMATION_SUCCESS: '\u2705',
-                Output.ANIMATION_FAIL: '\u274C',
-                Output.ANIMATION_WARNING: '\u26A0',
-            }
             line_len = 0
             i = 0
             running = True
@@ -2597,7 +2704,7 @@ class Output(object):
                 if status == Output.ANIMATION_RUNNING:
                     symbol = loading_symbols[i]
                 else:
-                    symbol = end_symbols[status]
+                    symbol = status
                     running = False
 
                 line = "\r{} {}".format(symbol, msg)
@@ -2708,10 +2815,9 @@ class Output(object):
 
 # Class to customize argparse output.
 class PrettyArgParser(argparse.ArgumentParser):
-    epilog = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
     def __init__(self, **kwargs):
         kwargs["formatter_class"] = PrettyHelpFormatter
-        kwargs["epilog"] = self.epilog
+        kwargs["epilog"] = EPILOG_COMMON
         super(PrettyArgParser, self).__init__(**kwargs)
         self._positionals.title = Output.make_yellow("Commands")
         self._optionals.title = Output.make_yellow("Flags")
@@ -2724,14 +2830,51 @@ class PrettyArgParser(argparse.ArgumentParser):
 
 
 # Class that capitalizes argparse help message.
-class PrettyHelpFormatter(argparse.HelpFormatter):
-    # Change the "Usage: "  string to yellow
+class PrettyHelpFormatter(argparse.RawTextHelpFormatter):
+    # Add prefix of cli title and change "Usage" to yellow
+    # Add usage according to the command from which help is called
     def add_usage(self, usage, actions, groups, prefix=None):
+        cmd = ('%(prog)s' % dict(prog=self._prog)).split()
+        if len(cmd) > 2 and cmd[1].isalpha() and cmd[-1].isalpha():
+            cmd = cmd[1] + " " +cmd[-1]
+        else:
+            cmd = cmd.pop()
         if prefix is None:
-            prefix = Output.make_yellow('Usage: ')
+            prefix = get_cli_title()
+            prefix += PREFIX[cmd] + "\n\n"
+            prefix += Output.make_yellow('Usage') + ": "
+        if usage is None:
+            usage = USAGE[cmd]
         super(PrettyHelpFormatter, self).add_usage(
             usage, actions, groups, prefix)
 
+    # Sort the flags in alphabetical order for the help message
+    def add_arguments(self, actions):
+        actions = sorted(actions, key=operator.attrgetter('option_strings'))
+        super(PrettyHelpFormatter, self).add_arguments(actions)
+
+    # Remove the help under "Command" section which had all command inside curly braces
+    def _format_action(self, action):
+        result = super(PrettyHelpFormatter,
+                       self)._format_action(action)
+        if isinstance(action, argparse._SubParsersAction):
+            return "%*s%s" % (self._current_indent, "", result.lstrip())
+        return result
+
+    # Remove the help under "Command" section which had all command inside curly braces
+    def _iter_indented_subactions(self, action):
+        if isinstance(action, argparse._SubParsersAction):
+            try:
+                get_subactions = action._get_subactions
+            except AttributeError:
+                pass
+            else:
+                for subaction in get_subactions():
+                    yield subaction
+        else:
+            for subaction in super(PrettyHelpFormatter,
+                                   self)._iter_indented_subactions(action):
+                yield subaction
 
 # Returns key-value pairs of input dict. Independent of python version.
 def get_kv(map):
