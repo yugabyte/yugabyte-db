@@ -444,6 +444,7 @@ public class AccessManager extends DevopsBase {
     if (deleteRemote) {
       commandArgs.add("--delete_remote");
     }
+    commandArgs.add("--ignore_auth_failure");
     JsonNode response = execAndParseCommandRegion(regionUUID, "delete-key", commandArgs);
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());

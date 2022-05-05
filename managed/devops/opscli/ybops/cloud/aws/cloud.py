@@ -136,7 +136,14 @@ class AwsCloud(AbstractCloud):
 
     def delete_key_pair(self, args):
         for region, client in self._get_clients(args.region).items():
-            client.KeyPair(args.key_pair_name).delete()
+            try:
+                client.KeyPair(args.key_pair_name).delete()
+            except ClientError as e:
+                code = e.response['Error']['Code']
+                if code == 'AuthFailure' and args.ignore_auth_failure:
+                    logging.warn("Ignoring error: {}".format(str(e)))
+                else:
+                    raise e
 
     def add_key_pair(self, args):
         """
