@@ -16,6 +16,18 @@ menu:
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="db-migration-engine/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <div class="title">Database migration engine</div>
+      </div>
+      <div class="body">
+        Use the yb_migrate database engine to migrate data and applications from other databases to YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="migration-process-overview/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
@@ -38,6 +50,5 @@ menu:
       </div>
     </a>
   </div>
-
 
 </div>
