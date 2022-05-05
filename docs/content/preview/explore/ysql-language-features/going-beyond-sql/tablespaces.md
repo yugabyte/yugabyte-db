@@ -211,13 +211,17 @@ yugabyte=# SELECT * FROM multi_region_table;
 Time: 337.154 ms
 ```
 
-{{< tip title="Note" >}}
+## Leader Preference
 
-The location of the leader can also play a role in the preceding latency, and the numbers can differ
-based on how far the leader is from the client node. However, controlling leader affinity
-is not supported via tablespaces yet. This feature is tracked [here](https://github.com/yugabyte/yugabyte-db/issues/8100).
+Having all tablet leaders reside closer to the user reduces the number of network hops, which reduces latency and increases performance. Leader preference allows you to specify the zones where you want the leaders to be placed when the system is stable and during outage of the preferred zones. You can specify non-zero contiguous integer values for each zone. When multiple zones have the same preference the leaders will be evenly balanced between them.x`
 
-{{< /tip >}}
+```sql
+CREATE TABLESPACE us_east_region_tablespace
+  WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
+    {"cloud":"aws","region":"us-east-1","zone":"us-east-1a","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"aws","region":"us-east-1","zone":"us-east-1b","min_num_replicas":1,"leader_preference":2},
+    {"cloud":"aws","region":"us-east-1","zone":"us-east-1c","min_num_replicas":1}]}');
+```
 
 ## Indexes
 
@@ -283,7 +287,7 @@ The following features will be supported in upcoming releases:
 
 * Using `ALTER TABLE` to change the `TABLESPACE` specified for a table.
 * Support `ALTER TABLESPACE`.
-* Setting read replica placements and affinitized leaders using tablespaces.
+* Setting read replica placements using tablespaces.
 * Setting tablespaces for colocated tables and databases.
 
 ## Conclusion
