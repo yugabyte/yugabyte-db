@@ -1752,6 +1752,16 @@ public class NodeManager extends DevopsBase {
           if (taskParam.useSystemd) {
             commandArgs.add("--systemd_services");
           }
+          if (taskParam.checkVolumesAttached) {
+            UniverseDefinitionTaskParams.Cluster cluster =
+                universe.getCluster(taskParam.placementUuid);
+            if (cluster != null
+                && cluster.userIntent.deviceInfo != null
+                && cluster.userIntent.providerType != Common.CloudType.onprem) {
+              commandArgs.add("--num_volumes");
+              commandArgs.add(String.valueOf(cluster.userIntent.deviceInfo.numVolumes));
+            }
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }

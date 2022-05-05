@@ -92,7 +92,8 @@ class SshParamikoClient:
         return_code = stdout.channel.recv_exit_status()
         if return_code != 0:
             error = stderr.read().decode()
-            raise RuntimeError('Command returned error code {}: {}'.format(command, error))
+            raise RuntimeError('Command \'{}\' returned error code {}: {}'
+                               .format(command, return_code, error))
         output = stdout.read().decode()
         return output
 
@@ -116,6 +117,7 @@ class SshParamikoClient:
         return_code = stdout.channel.recv_exit_status()
         if return_code != 0:
             error = stderr.read().decode()
-            raise RuntimeError('Command returned error code {}: {}'.format(command, error))
+            raise RuntimeError('Command \'{}\' returned error code {}: {}'
+                               .format(command, return_code, error))
         output = stdout.read().decode()
         return output

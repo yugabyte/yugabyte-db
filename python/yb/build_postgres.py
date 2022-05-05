@@ -54,6 +54,7 @@ from yb.common_util import (
     shlex_join,
     check_arch,
     is_macos_arm64,
+    is_macos,
 )
 from yb import compile_commands
 from yb.compile_commands import (
@@ -273,6 +274,20 @@ class PostgresBuilder(YbBuildToolBase):
             with open(makefile_global_path, 'w') as makefile_global_out_f:
                 makefile_global_out_f.write("\n".join(new_makefile_lines) + "\n")
 
+    def is_clang(self) -> bool:
+        return self.compiler_type.startswith('clang')
+
+    def is_clang_version_at_least(self, min_major_version: int) -> bool:
+        if not self.is_clang():
+            return False
+        try:
+            return int(self.compiler_type[5:]) >= min_major_version
+        except ValueError:
+            return False
+
+    def is_gcc(self) -> bool:
+        return self.compiler_type.startswith('gcc')
+
     def set_env_vars(self, step: str) -> None:
         if step not in BUILD_STEPS:
             raise RuntimeError(
@@ -299,7 +314,7 @@ class PostgresBuilder(YbBuildToolBase):
             '-Werror=int-conversion',
         ]
 
-        if is_clang:
+        if self.is_clang():
             additional_c_cxx_flags += [
                 '-Wno-builtin-requires-header',
                 '-Wno-shorten-64-to-32',
@@ -313,13 +328,14 @@ class PostgresBuilder(YbBuildToolBase):
             ]
 
             if self.build_type == 'release':
-                if is_clang:
+                if self.is_clang():
                     additional_c_cxx_flags += [
                         '-Wno-error=array-bounds',
-                        '-Wno-error=gnu-designator'
+                        '-Wno-error=gnu-designator',
                     ]
-                if is_gcc:
+                if self.is_gcc():
                     additional_c_cxx_flags += ['-Wno-error=strict-overflow']
+
             if self.build_type == 'asan':
                 additional_c_cxx_flags += [
                     '-fsanitize-recover=signed-integer-overflow',
@@ -335,7 +351,7 @@ class PostgresBuilder(YbBuildToolBase):
             for source_path in get_absolute_path_aliases(self.postgres_src_dir)
         ]
 
-        if is_gcc:
+        if self.is_gcc():
             additional_c_cxx_flags.append('-Wno-error=maybe-uninitialized')
 
         for var_name in ['CFLAGS', 'CXXFLAGS']:

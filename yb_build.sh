@@ -217,6 +217,11 @@ Test options:
     generated. Only works in non-release mode.
   --cmake-unit-tests
     Run our unit tests for CMake code. This should be much faster than running the build.
+  --lto <lto_type>, --thin-lto, --full-lto, --no-lto
+    LTO (link time optimization) type, e.g. "thin" (faster to link) or "full" (faster code; see
+    https://llvm.org/docs/LinkTimeOptimization.html and https://clang.llvm.org/docs/ThinLTO.html).
+    Can also be specified by setting environment variable YB_LINKING_TYPE to thin-lto or full-lto.
+    Set YB_LINKING_TYPE to 'dynamic' to disable LTO.
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -1111,6 +1116,26 @@ while [[ $# -gt 0 ]]; do
     ;;
     --cmake-unit-tests)
       run_cmake_unit_tests=true
+    ;;
+    --thin-lto)
+      export YB_LINKING_TYPE=thin-lto
+    ;;
+    --full-lto)
+      export YB_LINKING_TYPE=full-lto
+    ;;
+    --lto)
+      if [[ ! $2 =~ ^(thin|full|none) ]]; then
+        fatal "Invalid LTO type: $2"
+      fi
+      if [[ $2 == "none" ]]; then
+        export YB_LINKING_TYPE=dynamic
+      else
+        export YB_LINKING_TYPE=$2-lto
+      fi
+      shift
+    ;;
+    --no-lto)
+      export YB_LINKING_TYPE=dynamic
     ;;
     --export-compile-commands|--ccmds)
       export YB_EXPORT_COMPILE_COMMANDS=1

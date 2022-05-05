@@ -95,8 +95,7 @@ CHECKED_STATUS CombineExternalIntents(
 
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_state.transaction_id()));
   SCHECK_EQ(transaction_state.tablets().size(), 1, InvalidArgument, "Wrong tablets number");
-  Uuid status_tablet;
-  RETURN_NOT_OK(status_tablet.FromHexString(transaction_state.tablets()[0]));
+  auto status_tablet = VERIFY_RESULT(Uuid::FromHexString(transaction_state.tablets()[0]));
 
   Provider provider(status_tablet, &pairs, out->Add());
   docdb::CombineExternalIntents(txn_id, &provider);

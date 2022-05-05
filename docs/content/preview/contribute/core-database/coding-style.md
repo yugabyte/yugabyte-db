@@ -287,6 +287,30 @@ Similarly, for variable declarations and definitions:
   int *a = nullptr;
 ```
 
+### Pointer vs reference as returned value
+
+When a function never returns `nullptr` we should prefer returning references over pointers.
+
+It has the following advantages:
+* It is pretty clear to the user of the function that it would never return `nullptr`, and they do not have to check for it.
+* It works perfectly with our policy to pass read-write arguments as pointers, because the caller will add `&` while passing the result of such function to another call:
+  ```
+  DoSomething(..., &GetX());
+  ```
+* It is clear that returned reference is not owned by the caller. Also, we could avoid cases when ownership is taken by mistake.
+  Consider the following examples, where `GetP()` returns pointer and `GetR()` returns reference:
+  ```
+  // No compilation error. It is useful for refactoring.
+  std::unique_ptr<P> p = GetP();
+  ```
+  ```
+  auto p = GetP();
+  p->foo(); // It is unclear for the caller whether p is stored as smart pointer and owned by him or returned as raw pointer and owner by someone else.
+  ...
+  auto& r = GetR(); // Would not even compile without &, so it is pretty clear that r is reference and not owner by the caller.
+  r.foo();
+  ```
+
 ### Get prefix for getters
 
 Some C++ coding styles (such as Google's) use the `Get` prefix for functions returning a value, and some don't (Boost, STL). In YugabyteDB code it is allowed to either use or not use the `Get` prefix.

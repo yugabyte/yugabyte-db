@@ -34,15 +34,6 @@ namespace pggate {
 
 namespace {
 
-// Fetches relation's unique constraint name to specified buffer.
-// If relation is not an index and it has primary key the name of primary key index is returned.
-// In other cases, relation name is used.
-//
-// Not implemented for tools.
-void FetchUniqueConstraintName(PgOid relation_id, char* dest, size_t max_size) {
-  CHECK(false) << "Not implemented";
-}
-
 YBCPgMemctx GetCurrentToolYbMemctx() {
   static YBCPgMemctx tool_memctx = nullptr;
 
@@ -122,7 +113,6 @@ CHECKED_STATUS PrepareInitPgGateBackend() {
             << ", postgres_auth_key: " << shared_data.postgres_auth_key();
 
   YBCPgCallbacks callbacks;
-  callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
   callbacks.GetCurrentYbMemctx = &GetCurrentToolYbMemctx;
   YBCInitPgGateEx(YBCEmptyTypeEntityTable, 0, callbacks, &context);
 

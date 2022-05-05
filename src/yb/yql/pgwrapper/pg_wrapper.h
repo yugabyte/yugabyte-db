@@ -27,6 +27,12 @@ namespace yb {
 
 class Thread;
 
+namespace tserver {
+
+class TabletServerIf;
+
+} // namespace tserver
+
 namespace pgwrapper {
 
 // Returns the root directory of our PostgreSQL installation.
@@ -68,6 +74,8 @@ class PgWrapper {
   CHECKED_STATUS PreflightCheck();
 
   CHECKED_STATUS Start();
+
+  Status ReloadConfig();
 
   void Kill();
 
@@ -115,7 +123,7 @@ YB_DEFINE_ENUM(PgProcessState,
 // Starts a separate thread to monitor the child process.
 class PgSupervisor {
  public:
-  explicit PgSupervisor(PgProcessConf conf);
+  explicit PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver);
   ~PgSupervisor();
 
   CHECKED_STATUS Start();
@@ -125,6 +133,8 @@ class PgSupervisor {
   const PgProcessConf& conf() const {
     return conf_;
   }
+
+  Status ReloadConfig();
 
  private:
   CHECKED_STATUS ExpectStateUnlocked(PgProcessState state);

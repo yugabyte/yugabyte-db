@@ -18,6 +18,8 @@ After [creating a free cluster](../qs-add/) and [connecting to the cluster](../q
 
 When you connect to your cluster using Cloud Shell with the YSQL API, the shell window incorporates a quick start guide, with a series of pre-built queries for you to run.
 
+{{< youtube id="01owTbmSDe8" title="Explore distributed SQL in YugabyteDB Managed" >}}
+
 ## Run the tutorial
 
 After entering your password, do the following to start the tutorial (creating a database is optional):

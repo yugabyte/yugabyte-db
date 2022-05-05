@@ -133,7 +133,7 @@ class UserFrontier {
   bool Dominates(const UserFrontier& rhs, UpdateUserValueType update_type) const;
 
   virtual void FromOpIdPBDeprecated(const yb::OpIdPB& op_id) = 0;
-  virtual void FromPB(const google::protobuf::Any& pb) = 0;
+  virtual yb::Status FromPB(const google::protobuf::Any& pb) = 0;
 
   virtual ~UserFrontier() {}
 

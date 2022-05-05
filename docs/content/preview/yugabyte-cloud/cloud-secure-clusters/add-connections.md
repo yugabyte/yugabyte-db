@@ -17,7 +17,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-To secure your cluster from distributed denial-of-service (DDoS) and brute force password attacks, access to your clusters is restricted to IP addresses that you specify in IP allow lists. An IP allow list is a set of IP addresses and ranges that, when assigned to a cluster, grant access to connections made from those addresses; all other connections are ignored. YugabyteDB Managed only allows client connections to clusters from addresses in IP allow lists that have been assigned to the cluster.
+To secure your cluster from distributed denial-of-service (DDoS) and brute force password attacks, access to your clusters is restricted to IP addresses that you specify in IP allow lists. An IP allow list is a set of IP addresses and ranges that, when assigned to a cluster, grant access to connections made from those addresses; all other connections are ignored.
+
+YugabyteDB Managed only allows client connections to clusters from addresses in IP allow lists that have been assigned to the cluster.
 
 Add IP allow lists for the following:
 
@@ -34,6 +36,10 @@ Each entry can either be a single IP address, a CIDR-notated range of addresses,
 For development and learning, you can use the range 0.0.0.0/0 to allow connections from any address. Do not use this for sensitive or production data.
 
 The IP allow lists assigned to a cluster are listed under **Network Access** on the cluster **Settings** tab.
+
+## Limitations
+
+- AWS clusters are limited to a maximum of 30 allow list rules. Each IP address or CIDR entry in an allow list is considered a rule. For example, an allow list with 15 comma-delimited IP addresses has 15 rules.
 
 ## Assign an IP allow list to a cluster
 

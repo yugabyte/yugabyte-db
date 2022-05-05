@@ -1,7 +1,7 @@
 ---
-title: Authentication Methods in YugabyteDB
-headerTitle: Authentication Methods
-linkTitle: Authentication Methods
+title: Authentication methods in YugabyteDB
+headerTitle: Authentication methods
+linkTitle: Authentication methods
 description: Verify that users and clients are who they say they are.
 headcontent: Verify that users and clients are who they say they are.
 image: /images/section_icons/secure/authorization.png
@@ -26,7 +26,7 @@ The various methods for authenticating users supported by YugabyteDB are listed 
     <a class="section-link icon-offset" href="password-authentication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Password Authentication</div>
+        <div class="title">Password authentication</div>
       </div>
       <div class="body">
           Authenticate using <code>MD5</code> or <code>SCRAM-SHA-256</code> authentication methods.
@@ -38,7 +38,7 @@ The various methods for authenticating users supported by YugabyteDB are listed 
     <a class="section-link icon-offset" href="ldap-authentication-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">LDAP Authentication</div>
+        <div class="title">LDAP authentication</div>
       </div>
       <div class="body">
           Use an external LDAP service to perform client authentication.
@@ -50,7 +50,7 @@ The various methods for authenticating users supported by YugabyteDB are listed 
     <a class="section-link icon-offset" href="host-based-authentication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Host-Based Authentication</div>
+        <div class="title">Host-based authentication</div>
       </div>
       <div class="body">
         Fine-grained authentication for local and remote clients based on IP addresses.
@@ -62,10 +62,10 @@ The various methods for authenticating users supported by YugabyteDB are listed 
     <a class="section-link icon-offset" href="trust-authentication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Trust Authentication</div>
+        <div class="title">Trust authentication</div>
       </div>
       <div class="body">
-          Allow client to connect using a database user name.
+          Allow clients to connect using a database user name.
       </div>
     </a>
   </div>

@@ -241,7 +241,7 @@ Status MiniTabletServer::CompactTablets() {
   }
   return ForAllTablets(this, [](TabletPeer* tablet_peer) {
     if (tablet_peer->tablet()) {
-      tablet_peer->tablet()->ForceRocksDBCompactInTest();
+      tablet_peer->tablet()->TEST_ForceRocksDBCompact();
     }
     return Status::OK();
   });
@@ -305,7 +305,7 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
   pair<PartitionSchema, Partition> partition = tablet::CreateDefaultPartition(schema_with_ids);
 
   auto table_info = std::make_shared<tablet::TableInfo>(
-      table_id, ns_id, table_id, table_type, schema_with_ids, IndexMap(),
+      tablet::Primary::kTrue, table_id, ns_id, table_id, table_type, schema_with_ids, IndexMap(),
       boost::none /* index_info */, 0 /* schema_version */, partition.first);
 
   return ResultToStatus(server_->tablet_manager()->CreateNewTablet(

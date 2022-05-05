@@ -748,10 +748,11 @@ class TestUserFrontier : public UserFrontier {
 
   void FromOpIdPBDeprecated(const yb::OpIdPB& op_id) override {}
 
-  void FromPB(const google::protobuf::Any& pb) override {
+  Status FromPB(const google::protobuf::Any& pb) override {
     UserBoundaryValuePB value;
     pb.UnpackTo(&value);
     value_ = value.tag();
+    return Status::OK();
   }
 
   Slice Filter() const override {

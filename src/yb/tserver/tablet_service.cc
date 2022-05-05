@@ -1262,8 +1262,8 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   VLOG(1) << "Full request: " << req->DebugString();
 
   auto table_info = std::make_shared<tablet::TableInfo>(
-      req->table_id(), req->namespace_name(), req->table_name(), req->table_type(), schema,
-      IndexMap(),
+      tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),
+      req->table_type(), schema, IndexMap(),
       req->has_index_info() ? boost::optional<IndexInfo>(req->index_info()) : boost::none,
       0 /* schema_version */, partition_schema);
   std::vector<SnapshotScheduleId> snapshot_schedules;

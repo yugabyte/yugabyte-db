@@ -56,7 +56,7 @@ You can back up the YugabyteDB Anywhere server as follows:
   kubectl exec --namespace <k8s_namespace> -it <k8s_pod> -c yugaware -- cat /opt/yugabyte/yugaware/README.md
   ```
 
-  *k8s_namespace* specifies the Kubernetes namespace where the YugabyteDB Anywhere pod is running.<br>
+  <br>*k8s_namespace* specifies the Kubernetes namespace where the YugabyteDB Anywhere pod is running.<br>
   *k8s_pod* specifies the name of the YugabyteDB Anywhere kubernetes pod.
 
 - Run the `yb_platform_backup.sh` script using the `create` command, as follows:
@@ -65,7 +65,7 @@ You can back up the YugabyteDB Anywhere server as follows:
   ./yb_platform_backup.sh create --output <output_path> --k8s_namespace <k8s_namespace> --k8s_pod <k8s_pod> [--exclude_releases --verbose]
   ```
 
-  *backup* is the command to run the backup of the YugabyteDB Anywhere server.<br>
+  <br>*backup* is the command to run the backup of the YugabyteDB Anywhere server.<br>
 
   *output_path* specifies the location for the output backup archive.<br>
 
@@ -97,7 +97,7 @@ To restore the YugabyteDB Anywhere content from your saved backup, perform the f
     kubectl exec --namespace <k8s_namespace> -it <k8s_pod> -c yugaware -- cat /opt/yugabyte/yugaware/README.md
     ```
 
-    *k8s_namespace* specifies the Kubernetes namespace where the YugabyteDB Anywhere pod is running.<br>
+    <br>*k8s_namespace* specifies the Kubernetes namespace where the YugabyteDB Anywhere pod is running.<br>
 
     *k8s_pod* specifies the name of the YugabyteDB Anywhere Kubernetes pod.
 
@@ -107,7 +107,7 @@ To restore the YugabyteDB Anywhere content from your saved backup, perform the f
     ./yb_platform_backup.sh restore --input <input_path> --k8s_namespace <k8s_namespace> --k8s_pod <k8s_pod> [--verbose]
     ```
 
-    *restore* restores the YugabyteDB Anywhere server content.<br>
+    <br>*restore* restores the YugabyteDB Anywhere server content.<br>
 
     *input_path* is the path to the `.tar.gz` backup file to restore.<br>
 

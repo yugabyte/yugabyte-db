@@ -19,8 +19,10 @@
 #include <array>
 #include <random>
 
+#include <boost/functional/hash.hpp>
 #include <boost/uuid/uuid.hpp>
 
+#include "yb/util/cast.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -89,24 +91,18 @@ class Uuid {
     bytes->append(reinterpret_cast<char *>(output), kUuidSize);
   }
 
-  // Given a string holding the raw bytes in network byte order, it builds the appropriate
-  // UUID object.
-  CHECKED_STATUS FromBytes(const std::string& bytes);
-
   // Given a string representation of uuid in hex where the bytes are in host byte order, build
   // an appropriate UUID object.
-  CHECKED_STATUS FromHexString(const std::string& hex_string);
+  static Result<Uuid> FromHexString(const std::string& hex_string);
 
   std::string ToHexString() const;
 
-  // Decodes the Comparable UUID bytes into a lexical UUID.
-  CHECKED_STATUS DecodeFromComparable(const std::string& bytes);
-
   // Give a slice holding raw bytes in network byte order, build the appropriate UUID
   // object. If size_hint is specified, it indicates the number of bytes to decode from the slice.
-  CHECKED_STATUS FromSlice(const Slice& slice, size_t size_hint = 0);
+  static Result<Uuid> FromSlice(const Slice& slice);
 
-  CHECKED_STATUS DecodeFromComparableSlice(const Slice& slice, size_t size_hint = 0);
+  // Decodes the Comparable UUID bytes.
+  static Result<Uuid> FromComparable(const Slice& slice);
 
   // For time UUIDs only.
   // This function takes a time UUID and generates a SHA hash for the MAC address bits.
@@ -170,6 +166,10 @@ class Uuid {
 
   const uint8_t* data() const {
     return boost_uuid_.data;
+  }
+
+  const char* cdata() const {
+    return pointer_cast<const char*>(data());
   }
 
   size_t size() const {
@@ -266,6 +266,12 @@ class Uuid {
   }
 
 };
+
+inline size_t hash_value(const Uuid& uuid) {
+  return hash_value(uuid.impl());
+}
+
+using UuidHash = boost::hash<Uuid>;
 
 } // namespace yb
 

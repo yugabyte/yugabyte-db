@@ -136,7 +136,17 @@ void SchemaPacking::ToPB(SchemaPackingPB* out) const {
 
 SchemaPackingStorage::SchemaPackingStorage() = default;
 
-Result<const SchemaPacking&> SchemaPackingStorage::GetPacking(uint32_t schema_version) const {
+SchemaPackingStorage::SchemaPackingStorage(
+    const SchemaPackingStorage& rhs, SchemaVersion min_schema_version) {
+  for (const auto& [version, packing] : rhs.version_to_schema_packing_) {
+    if (version < min_schema_version) {
+      continue;
+    }
+    version_to_schema_packing_.emplace(version, packing);
+  }
+}
+
+Result<const SchemaPacking&> SchemaPackingStorage::GetPacking(SchemaVersion schema_version) const {
   auto it = version_to_schema_packing_.find(schema_version);
   if (it == version_to_schema_packing_.end()) {
     return STATUS_FORMAT(NotFound, "Schema packing not found: $0", schema_version);
@@ -146,10 +156,10 @@ Result<const SchemaPacking&> SchemaPackingStorage::GetPacking(uint32_t schema_ve
 
 Result<const SchemaPacking&> SchemaPackingStorage::GetPacking(Slice* packed_row) const {
   auto version = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(packed_row));
-  return GetPacking(narrow_cast<uint32_t>(version));
+  return GetPacking(narrow_cast<SchemaVersion>(version));
 }
 
-void SchemaPackingStorage::AddSchema(uint32_t version, const Schema& schema) {
+void SchemaPackingStorage::AddSchema(SchemaVersion version, const Schema& schema) {
   auto inserted = version_to_schema_packing_.emplace(
       std::piecewise_construct,
       std::forward_as_tuple(version),
@@ -173,7 +183,7 @@ Status SchemaPackingStorage::LoadFromPB(
 }
 
 void SchemaPackingStorage::ToPB(
-    uint32_t skip_schema_version, google::protobuf::RepeatedPtrField<SchemaPackingPB>* out) {
+    SchemaVersion skip_schema_version, google::protobuf::RepeatedPtrField<SchemaPackingPB>* out) {
   for (const auto& version_and_packing : version_to_schema_packing_) {
     if (version_and_packing.first == skip_schema_version) {
       continue;;
@@ -184,7 +194,16 @@ void SchemaPackingStorage::ToPB(
   }
 }
 
-RowPacker::RowPacker(uint32_t version, std::reference_wrapper<const SchemaPacking> packing)
+bool SchemaPackingStorage::HasVersionBelow(SchemaVersion version) const {
+  for (const auto& p : version_to_schema_packing_) {
+    if (p.first < version) {
+      return true;
+    }
+  }
+  return false;
+}
+
+RowPacker::RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing)
     : packing_(packing) {
   size_t prefix_len = packing_.prefix_len();
   result_.Reserve(1 + kMaxVarint32Length + prefix_len);

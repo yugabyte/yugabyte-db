@@ -23,6 +23,7 @@ import { YCQLTableList, YSQLTableList } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { TABLE_TYPE_MAP } from '../common/IBackup';
 import { isFunction } from 'lodash';
+import { formatBytes } from '../../xcluster/ReplicationUtils';
 interface BackupDetailsProps {
   backup_details: IBackup | null;
   onHide: () => void;
@@ -148,7 +149,13 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </div>
               <div>
                 <div className="header-text">Duration</div>
-                <div>{calculateDuration(backup_details.createTime, backup_details.updateTime)}</div>
+                <div>
+                  {calculateDuration(backup_details.createTime, backup_details.completionTime)}
+                </div>
+              </div>
+              <div>
+                <div className="header-text">Size</div>
+                <div>{formatBytes(backup_details.totalBackupSizeInBytes ?? 0)}</div>
               </div>
               <div className="details-storage-config">
                 <div className="header-text">Storage Config</div>

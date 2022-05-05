@@ -77,7 +77,7 @@ public class TestCheckpoint extends CDCBaseClass {
 
       long cpTerm = 2;
       long cpIndex = 9;
-      SetCheckpointResponse setResp = testSubscriber.setCheckpoint(cpTerm, cpIndex);
+      SetCheckpointResponse setResp = testSubscriber.setCheckpoint(cpTerm, cpIndex, true);
       if (setResp == null) {
         LOG.error("Cannot set checkpoint, null response received as SetCheckpointResponse");
       }
@@ -115,7 +115,7 @@ public class TestCheckpoint extends CDCBaseClass {
         fail();
       }
 
-      SetCheckpointResponse setResp = testSubscriber.setCheckpoint(1, -3);
+      SetCheckpointResponse setResp = testSubscriber.setCheckpoint(1, -3, true);
 
       GetCheckpointResponse respAfterSetting = testSubscriber.getCheckpoint();
 
@@ -150,7 +150,7 @@ public class TestCheckpoint extends CDCBaseClass {
       long cpTerm = 1;
       long cpIndex = 7;
 
-      SetCheckpointResponse resp = testSubscriber.setCheckpoint(cpTerm, cpIndex);
+      SetCheckpointResponse resp = testSubscriber.setCheckpoint(cpTerm, cpIndex, true);
 
       // Checkpoint will be set to the specified value,
       // we are just checking if checkpoint can be set in IMPLICIT mode.

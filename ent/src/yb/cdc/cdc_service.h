@@ -77,6 +77,15 @@ struct TabletCheckpoint {
   }
 };
 
+// Maintain each tablet minimum checkpoint info for
+// log cache eviction as well as for intent cleanup.
+struct TabletCDCCheckpointInfo {
+  OpId cdc_op_id = OpId::Max();
+  OpId cdc_sdk_op_id = OpId::Max();
+};
+
+using TabletOpIdMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
+
 class CDCServiceImpl : public CDCServiceIf {
  public:
   CDCServiceImpl(tserver::TSTabletManager* tablet_manager,
@@ -122,9 +131,9 @@ class CDCServiceImpl : public CDCServiceIf {
                           GetCDCDBStreamInfoResponsePB* resp,
                           rpc::RpcContext context) override;
 
-  CHECKED_STATUS UpdateCdcReplicatedIndexEntry(const string& tablet_id,
-                                               int64 replicated_index,
-                                               boost::optional<int64> replicated_term);
+  CHECKED_STATUS UpdateCdcReplicatedIndexEntry(
+      const string& tablet_id, int64 replicated_index, boost::optional<int64> replicated_term,
+      const OpId& cdc_sdk_replicated_op);
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
@@ -215,6 +224,8 @@ class CDCServiceImpl : public CDCServiceIf {
                                  rpc::RpcContext* context,
                                  const std::shared_ptr<tablet::TabletPeer>& peer);
 
+  void UpdateTabletPeersWithMinReplicatedIndex(const TabletOpIdMap& tablet_min_checkpoint_map);
+
   Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
 
   void TabletLeaderIsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
@@ -238,8 +249,9 @@ class CDCServiceImpl : public CDCServiceIf {
   OpId GetMinAppliedCheckpointForTablet(const std::string& tablet_id,
                                         const client::YBSessionPtr& session);
 
-  CHECKED_STATUS UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id, int64_t min_index,
-                                                  int64_t min_term = -1);
+  CHECKED_STATUS UpdatePeersCdcMinReplicatedIndex(
+      const TabletId& tablet_id,
+      const TabletCDCCheckpointInfo& cdc_checkpoint_min);
 
   // Used as a callback function for parallelizing async cdc rpc calls.
   // Given a finished tasks counter, and the number of total rpc calls
@@ -297,6 +309,12 @@ class CDCServiceImpl : public CDCServiceIf {
       const CreateCDCStreamRequestPB* req,
       CreateCDCStreamResponsePB* resp,
       CoarseTimePoint deadline);
+
+  Result<TabletOpIdMap> PopulateTabletCheckPointInfo(const TabletId& input_tablet_id = "");
+
+  Status SetInitialCheckPoint(
+      const OpId& checkpoint, const string& tablet_id,
+      const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
   rpc::Rpcs rpcs_;
 

@@ -652,8 +652,7 @@ struct PgCatalogTableData {
   uint32_t pg_table_oid;
 
   CHECKED_STATUS SetTableId(const TableId& table_id) {
-    Uuid cotable_id;
-    RETURN_NOT_OK(cotable_id.FromHexString(table_id));
+    Uuid cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
     prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
     cotable_id.EncodeToComparable(&prefix[1]);
     pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
