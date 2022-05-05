@@ -42,7 +42,8 @@ public class CreateTable extends AbstractTaskBase {
   private static final Pattern YSQLSH_CREATE_TABLE_SUCCESS =
       Pattern.compile("Command output:.*CREATE TABLE", Pattern.DOTALL);
   private static final long RETRY_DELAY_SEC = 30;
-  private static final long MAX_TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(10);
+  private static final long MIN_RETRY_COUNT = 3;
+  private static final long TOTAL_ATTEMPTS_DURATION_SEC = TimeUnit.MINUTES.toSeconds(10);
 
   // To use for the Cassandra client
   private Cluster cassandraCluster;
@@ -88,8 +89,8 @@ public class CreateTable extends AbstractTaskBase {
 
     boolean tableCreated = false;
     int attempt = 0;
-    Instant timeout = Instant.now().plusSeconds(MAX_TIMEOUT_SEC);
-    while (Instant.now().isBefore(timeout) || attempt < 3) {
+    Instant timeout = Instant.now().plusSeconds(TOTAL_ATTEMPTS_DURATION_SEC);
+    while (Instant.now().isBefore(timeout) || attempt < MIN_RETRY_COUNT) {
       NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
       ShellResponse response =
           nodeUniverseManager.runYsqlCommand(
