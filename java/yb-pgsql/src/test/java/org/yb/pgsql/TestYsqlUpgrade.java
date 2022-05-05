@@ -499,6 +499,14 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       stmtTpl.execute(createSharedIndexSql);
       LOG.info("Created shared index {}", sharedIndexName);
 
+      // Create index concurrently is not supported for system catalog.
+      String sharedIndexNameConcurrently = sharedIndexName + "_concurrently";
+      String createConcurrentIndexSql = "CREATE INDEX CONCURRENTLY " + sharedIndexNameConcurrently
+          + " ON pg_catalog." + sharedRelName + " (v ASC)"
+          + " WITH (table_oid = " + newSysOid() + ")";
+      runInvalidQuery(stmtTpl, createConcurrentIndexSql,
+          "CREATE INDEX CONCURRENTLY is currently not supported for system catalog");
+
       // Checking index flags.
       String indexFlagsSql = "SELECT indislive, indisready, indisvalid FROM pg_index"
           + " WHERE indexrelid = '" + sharedIndexName + "'::regclass";
