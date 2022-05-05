@@ -1,13 +1,12 @@
 ---
-title: C# ORMs
-linkTitle: C# ORMs
-description: EntityFramework ORM support for YugabyteDB
-headcontent: EntityFramework ORM support for YugabyteDB
+title: Use an ORM
+linkTitle: Use an ORM
+description: C# ORM support for YugabyteDB
+headcontent: C# ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: C# ORMs
-    identifier: entityframework-orm
+    identifier: csharp-orm
     parent: csharp-drivers
     weight: 600
 isTocNested: true
@@ -43,7 +42,7 @@ If you are using Visual Studio IDE, follow these steps:
 To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
 
 ```csharp
-dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL 
+dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL
 ```
 
 or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql.EntityFrameworkCore.PostgreSQL) for EntityFramework.

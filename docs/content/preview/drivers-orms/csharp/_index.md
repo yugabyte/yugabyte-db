@@ -1,7 +1,6 @@
 ---
 title: C# drivers and ORMs
 headerTitle: C#
-headcontent: Build applications for YugabyteDB in C#.
 linkTitle: C#
 description: C# Drivers and ORMs support for YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -13,16 +12,26 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-The following projects are recommended for implementing C# applications using the YugabyteDB YSQL API.
+The following projects can be used to implement C# applications using the YugabyteDB YSQL API.
 
-| Project | Type | Support | Examples |
+## Supported Projects
+
+| Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
+| ------- | ------------------------ | ------------------------ | ---------------------|
+| PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql) <br /> [Hello World App](/preview/quick-start/build-apps/csharp/ysql)<br /> [Reference Page](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and above
+
+| Project | Documentation and Guides | Example Apps |
+| ------- | ------------------------ | ------------ |
+| Entity Framework ORM | [Documentation](entityframework) | [Hello World App](/preview/quick-start/build-apps/csharp/ysql-entity-framework/) |
+
+<!-- | Project | Type | Support | Examples |
 | :------ | :--- | :-------| :------- |
 | [PostgreSQL Npgsql](postgres-npgsql) | C# Driver | Full | [Hello World](/preview/quick-start/build-apps/csharp/ysql)<br />[CRUD](postgres-npgsql) |
-| [EntityFramework](entityframework) | ORM |  Full | [Hello World](/preview/quick-start/build-apps/csharp/ysql-entity-framework/)<br />[CRUD](entityframework) |
+| [EntityFramework](entityframework) | ORM |  Full | [Hello World](/preview/quick-start/build-apps/csharp/ysql-entity-framework/)<br />[CRUD](entityframework) | -->
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
-For fully-runnable code snippets and explanations of common operations, see the project page **CRUD** example. Before running CRUD examples, make sure you have installed the prerequisites.
+For fully-runnable code snippets and explanations of common operations, see the **example apps**. Before running the example apps, make sure you've installed the prerequisites.
 
 For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/csharp/postgres-npgsql-reference/) pages.
 

@@ -1,16 +1,14 @@
 ---
-title: C# drivers
-linkTitle: C# drivers
+title: Connect an app
+linkTitle: Connect an app
 description: C# drivers for YSQL
-headcontent: C# drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: C# drivers
     identifier: postgres-npgsql-driver
     parent: csharp-drivers
     weight: 400
-isTocNested: true
+isTocNested: false
 showAsideToc: true
 ---
 
@@ -129,7 +127,7 @@ namespace Yugabyte_CSharp_Demo
                 empPrepCmd.Parameters["@EmployeeId"].Value = 1;
                 NpgsqlDataReader reader = empPrepCmd.ExecuteReader();
 
-                Console.WriteLine("Query returned:\nName\tAge\tLanguage"); 
+                Console.WriteLine("Query returned:\nName\tAge\tLanguage");
                 while (reader.Read())
                 {
                     Console.WriteLine("{0}\t{1}\t{2}", reader.GetString(0), reader.GetInt32(1), reader.GetString(2));
