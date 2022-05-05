@@ -46,6 +46,7 @@ const ScanKeyword cypher_keywords[] = {
     {"asc", ASC, RESERVED_KEYWORD},
     {"ascending", ASCENDING, RESERVED_KEYWORD},
     {"by", BY, RESERVED_KEYWORD},
+    {"call", CALL, RESERVED_KEYWORD},
     {"case", CASE, RESERVED_KEYWORD},
     {"coalesce", COALESCE, RESERVED_KEYWORD},
     {"contains", CONTAINS, RESERVED_KEYWORD},
@@ -84,7 +85,8 @@ const ScanKeyword cypher_keywords[] = {
     {"when", WHEN, RESERVED_KEYWORD},
     {"where", WHERE, RESERVED_KEYWORD},
     {"with", WITH, RESERVED_KEYWORD},
-    {"xor", XOR, RESERVED_KEYWORD}
+    {"xor", XOR, RESERVED_KEYWORD},
+    {"yield", YIELD, RESERVED_KEYWORD}
 };
 
 const int num_cypher_keywords = lengthof(cypher_keywords);

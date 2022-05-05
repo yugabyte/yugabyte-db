@@ -79,7 +79,7 @@
 /* keywords in alphabetical order */
 %token <keyword> ALL ANALYZE AND AS ASC ASCENDING
                  BY
-                 CASE COALESCE CONTAINS CREATE
+                 CALL CASE COALESCE CONTAINS CREATE
                  DELETE DESC DESCENDING DETACH DISTINCT
                  ELSE END_P ENDS EXISTS EXPLAIN
                  FALSE_P
@@ -95,6 +95,7 @@
                  VERBOSE
                  WHEN WHERE WITH
                  XOR
+                 YIELD
 
 /* query */
 %type <node> stmt
@@ -129,6 +130,10 @@
 
 /* MERGE clause */
 %type <node> merge
+
+/* CALL ... YIELD clause */
+%type <node> call_stmt yield_item
+%type <list> yield_item_list
 
 /* common */
 %type <node> where_opt
@@ -317,6 +322,45 @@ cypher_stmt:
         }
     ;
 
+call_stmt:
+    CALL expr_func_norm
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("CALL not supported yet"),
+                     ag_scanner_errposition(@1, scanner)));
+        }
+    | CALL expr_func_norm YIELD yield_item_list where_opt
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("CALL... [YIELD] not supported yet"),
+                     ag_scanner_errposition(@1, scanner)));
+        }
+    ;
+
+yield_item_list:
+    yield_item
+        {
+            $$ = list_make1($1);
+        }
+    | yield_item_list ',' yield_item
+        {
+            $$ = lappend($1, $3);
+        }
+    ;
+
+yield_item:
+    expr AS var_name
+        {
+
+        }
+    | expr
+        {
+
+        }
+    ;
+
 semicolon_opt:
     /* empty */
     | ';'
@@ -412,6 +456,7 @@ updating_clause:
     | remove
     | delete
     | merge
+    | call_stmt
     ;
 
 cypher_varlen_opt:
@@ -1865,6 +1910,7 @@ safe_keywords:
     | ASC        { $$ = pnstrdup($1, 3); }
     | ASCENDING  { $$ = pnstrdup($1, 9); }
     | BY         { $$ = pnstrdup($1, 2); }
+    | CALL       { $$ = pnstrdup($1, 4); }
     | CASE       { $$ = pnstrdup($1, 4); }
     | COALESCE   { $$ = pnstrdup($1, 8); }
     | CONTAINS   { $$ = pnstrdup($1, 8); }
@@ -1899,6 +1945,7 @@ safe_keywords:
     | WHERE      { $$ = pnstrdup($1, 5); }
     | WITH       { $$ = pnstrdup($1, 4); }
     | XOR        { $$ = pnstrdup($1, 3); }
+    | YIELD      { $$ = pnstrdup($1, 5); }
     ;
 
 conflicted_keywords:
