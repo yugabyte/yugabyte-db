@@ -4,7 +4,7 @@
 
 
 
-[![Coverage Status](https://coveralls.io/repos/github/percona/pg_stat_monitor/badge.svg)](https://coveralls.io/github/percona/pg_stat_monitor)
+[![Coverage Status](https://coveralls.io/repos/github/percona/pg_stat_monitor/badge.svg?branch=main)](https://coveralls.io/github/percona/pg_stat_monitor?branch=main)
 
 # pg_stat_monitor: Query Performance Monitoring Tool for PostgreSQL
 
