@@ -1169,6 +1169,7 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 
 	switch (stmt->renameType)
 	{
+		case OBJECT_INDEX:
 		case OBJECT_TABLE:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  relationId,
