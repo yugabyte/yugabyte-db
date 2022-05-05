@@ -94,7 +94,6 @@ PREREQS_ERROR_MSGS = {
     'max_user_processes' :'max user processes ulimits value set low.' \
         ' Please set soft and hard limits to {}.'.format(MAX_PROC[OS_NAME]),
     'transparent_hugepages' :'Transparent hugepages disabled. Please enable transparent_hugepages.',
-    'loopback' :'Six loopback IPs are required. Please add six loopback addresses.',
     'ntp' :'ntp package missing. We recommend installing ntp package.'
 }
 QUICK_START_LINKS = {
@@ -106,7 +105,6 @@ LINUX_PREREQS_CMDS = {
     'ntp' : 'ntpd'
 }
 MAC_PREREQS_CMDS = {
-    'loopback' : 'ifconfig lo0'
 }
 CONFIG_LINK = "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config"
 
@@ -489,18 +487,6 @@ class ControlScript(object):
         prereqs_warn = set()
         prereqs_failed_flag = False
         prereqs_warn_flag = False
-
-        loopback_check = run_process(shlex
-                .split(MAC_PREREQS_CMDS.get('loopback')))
-        loopback_check_flag = False
-        for loopback_address in REQUIRED_LOOPBACK_ADDRESSES:
-            check = re.findall(loopback_address+".*$",loopback_check[0],re.MULTILINE)
-            if not check:
-                loopback_check_flag = True
-                break
-        if loopback_check_flag:
-            prereqs_warn.add('loopback')
-            prereqs_warn_flag = True
 
         return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn)
 
