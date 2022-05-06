@@ -2,6 +2,7 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -23,30 +24,36 @@ public class NodeUniverseManager extends DevopsBase {
   public static final String CERTS_DIR = "/yugabyte-tls-config";
   public static final String K8S_CERTS_DIR = "/opt/certs/yugabyte";
 
+  private final KeyLock<UUID> universeLock = new KeyLock<>();
+
   @Override
   protected String getCommandType() {
     return null;
   }
 
-  public synchronized ShellResponse downloadNodeLogs(
+  public ShellResponse downloadNodeLogs(
       NodeDetails node, Universe universe, String targetLocalFile) {
-    List<String> actionArgs = new ArrayList<>();
-    actionArgs.add("--yb_home_dir");
-    actionArgs.add(getYbHomeDir(node, universe));
-    actionArgs.add("--target_local_file");
-    actionArgs.add(targetLocalFile);
-    return executeNodeAction(UniverseNodeAction.DOWNLOAD_LOGS, universe, node, actionArgs);
+    universeLock.acquireLock(universe.getUniverseUUID());
+    try {
+      List<String> actionArgs = new ArrayList<>();
+      actionArgs.add("--yb_home_dir");
+      actionArgs.add(getYbHomeDir(node, universe));
+      actionArgs.add("--target_local_file");
+      actionArgs.add(targetLocalFile);
+      return executeNodeAction(UniverseNodeAction.DOWNLOAD_LOGS, universe, node, actionArgs);
+    } finally {
+      universeLock.releaseLock(universe.getUniverseUUID());
+    }
   }
 
-  public synchronized ShellResponse runCommand(
-      NodeDetails node, Universe universe, String command) {
+  public ShellResponse runCommand(NodeDetails node, Universe universe, String command) {
     List<String> actionArgs = new ArrayList<>();
     actionArgs.add("--command");
     actionArgs.add(command);
     return executeNodeAction(UniverseNodeAction.RUN_COMMAND, universe, node, actionArgs);
   }
 
-  public synchronized ShellResponse runYbAdminCommand(
+  public ShellResponse runYbAdminCommand(
       NodeDetails node, Universe universe, String ybAdminCommand, long timeoutSec) {
     List<String> command = new ArrayList<>();
     command.add("/usr/bin/timeout");
@@ -65,12 +72,12 @@ public class NodeUniverseManager extends DevopsBase {
     return runCommand(node, universe, String.join(" ", command));
   }
 
-  public synchronized ShellResponse runYsqlCommand(
+  public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand) {
     return runYsqlCommand(node, universe, dbName, ysqlCommand, YSQL_COMMAND_DEFAULT_TIMEOUT_SEC);
   }
 
-  public synchronized ShellResponse runYsqlCommand(
+  public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
     List<String> command = new ArrayList<>();
     command.add("timeout");
