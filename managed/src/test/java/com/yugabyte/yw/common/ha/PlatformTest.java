@@ -29,7 +29,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeApi;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Users;
@@ -100,7 +99,9 @@ public class PlatformTest extends FakeDBApplication {
 
   @After
   public void tearDown() throws IOException {
-    Util.listFiles(backupDir, PlatformReplicationHelper.BACKUP_FILE_PATTERN).forEach(File::delete);
+    com.yugabyte.yw.common.utils.FileUtils.listFiles(
+            backupDir, PlatformReplicationHelper.BACKUP_FILE_PATTERN)
+        .forEach(File::delete);
     backupDir.toFile().delete();
     stopRemoteApp();
   }
