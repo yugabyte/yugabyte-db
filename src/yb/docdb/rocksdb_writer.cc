@@ -452,7 +452,7 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
   apply_state().ToPB(&pb);
   pb.set_commit_ht(commit_ht_.ToUint64());
   faststring encoded_pb;
-  pb_util::SerializeToString(pb, &encoded_pb);
+  RETURN_NOT_OK(pb_util::SerializeToString(pb, &encoded_pb));
   char string_value_type = ValueEntryTypeAsChar::kString;
   std::array<Slice, 2> value_parts = {{
     Slice(&string_value_type, 1),
