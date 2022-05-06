@@ -211,7 +211,7 @@ yugabyte=# SELECT * FROM multi_region_table;
 Time: 337.154 ms
 ```
 
-## Leader Preference
+## Leader preference
 
 Having all tablet leaders reside closer to the user reduces the number of network hops, which reduces latency and increases performance. Leader preference allows you to specify the zones where you want the leaders to be placed when the system is stable and during outage of the preferred zones. You can specify non-zero contiguous integer values for each zone. When multiple zones have the same preference the leaders will be evenly balanced between them.
 
