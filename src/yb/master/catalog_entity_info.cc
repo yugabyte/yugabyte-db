@@ -41,6 +41,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_util.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/gutil/map-util.h"
@@ -777,23 +778,30 @@ bool TableInfo::UsesTablespacesForPlacement() const {
   bool is_transaction_table_using_tablespaces =
       l->pb.table_type() == TRANSACTION_STATUS_TABLE_TYPE &&
       l->pb.has_transaction_table_tablespace_id();
-  bool is_regular_pgsql_table =
-      l->pb.table_type() == PGSQL_TABLE_TYPE && !IsColocatedUserTable() &&
+  bool is_regular_ysql_table =
+      l->pb.table_type() == PGSQL_TABLE_TYPE &&
       l->namespace_id() != kPgSequencesDataNamespaceId &&
-      !IsColocatedParentTable();
-  return is_transaction_table_using_tablespaces || is_regular_pgsql_table;
+      !IsColocatedUserTable() &&
+      !IsColocationParentTable();
+  return is_transaction_table_using_tablespaces ||
+         is_regular_ysql_table ||
+         IsTablegroupParentTable();
+}
+
+bool TableInfo::IsColocationParentTable() const {
+  return IsColocationParentTableId(table_id_);
+}
+
+bool TableInfo::IsColocatedDbParentTable() const {
+  return IsColocatedDbParentTableId(table_id_);
 }
 
 bool TableInfo::IsTablegroupParentTable() const {
-  return id().find(master::kTablegroupParentTableIdSuffix) != std::string::npos;
-}
-
-bool TableInfo::IsColocatedParentTable() const {
-  return id().find(master::kColocatedParentTableIdSuffix) != std::string::npos;
+  return IsTablegroupParentTableId(table_id_);
 }
 
 bool TableInfo::IsColocatedUserTable() const {
-  return colocated() && !IsColocatedParentTable() && !IsTablegroupParentTable();
+  return colocated() && !IsColocationParentTable();
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
@@ -889,63 +897,6 @@ bool NamespaceInfo::colocated() const {
 
 string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
-}
-
-// ================================================================================================
-// TablegroupInfo
-// ================================================================================================
-
-TablegroupInfo::TablegroupInfo(TablegroupId tablegroup_id, NamespaceId namespace_id) :
-                               tablegroup_id_(tablegroup_id), namespace_id_(namespace_id) {}
-
-void TablegroupInfo::AddChildTable(const TableId& table_id, ColocationId colocation_id) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  if (ContainsKey(table_map_.left, table_id)) {
-    LOG(WARNING) << "Tablegroup " << tablegroup_id_ << " already contains a table with ID "
-                 << table_id;
-  } else if (ContainsKey(table_map_.right, colocation_id)) {
-    LOG(WARNING) << "Tablegroup " << tablegroup_id_ << " already contains a table with "
-                 << "colocation ID " << colocation_id;
-  } else {
-    table_map_.insert(TableMap::value_type(table_id, colocation_id));
-  }
-}
-
-void TablegroupInfo::DeleteChildTable(const TableId& table_id) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  auto left_map = table_map_.left;
-  if (ContainsKey(left_map, table_id)) {
-    left_map.erase(table_id);
-  } else {
-    LOG(WARNING) << "Tablegroup " << tablegroup_id_ << " does not contains a table with ID "
-                 << table_id;
-  }
-}
-
-bool TablegroupInfo::HasChildTables() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return !table_map_.empty();
-}
-
-
-bool TablegroupInfo::HasChildTable(ColocationId colocation_id) const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return ContainsKey(table_map_.right, colocation_id);
-}
-
-
-std::size_t TablegroupInfo::NumChildTables() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return table_map_.size();
-}
-
-std::unordered_set<TableId> TablegroupInfo::ChildTables() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  std::unordered_set<TableId> result;
-  for (auto iter = table_map_.left.begin(), iend = table_map_.left.end(); iter != iend; ++iter) {
-    result.insert(iter->first);
-  }
-  return result;
 }
 
 // ================================================================================================

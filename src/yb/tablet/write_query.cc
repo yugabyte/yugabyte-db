@@ -26,6 +26,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/docdb/conflict_resolution.h"
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/packed_row.h"
@@ -278,6 +279,9 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
   auto& metadata = *tablet().metadata();
   DVLOG(2) << "Schema version for  " << metadata.table_name() << ": " << metadata.schema_version();
 
+  docdb::AddTableSchemaVersion(
+      Uuid::Nil(), metadata.schema_version(), request().mutable_write_batch());
+
   const auto& ql_write_batch = client_request_->ql_write_batch();
 
   doc_ops_.reserve(ql_write_batch.size());
@@ -355,6 +359,8 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
                  table_info->schema_version,
                  req.schema_version()));
     } else {
+      docdb::AddTableSchemaVersion(
+          table_info->cotable_id, table_info->schema_version, request().mutable_write_batch());
       if (doc_ops_.empty()) {
         // Use the value of is_ysql_catalog_table from the first operation in the batch.
         txn_op_ctx = VERIFY_RESULT(tablet().CreateTransactionOperationContext(
@@ -364,7 +370,7 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
       }
       auto write_op = std::make_unique<docdb::PgsqlWriteOperation>(
           req,
-          *table_info->doc_read_context.get(),
+          *table_info->doc_read_context,
           txn_op_ctx);
       RETURN_NOT_OK(write_op->Init(resp));
       doc_ops_.emplace_back(std::move(write_op));

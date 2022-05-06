@@ -46,6 +46,8 @@ class TabletServer : public yb::tserver::TabletServer {
 
   CHECKED_STATUS ReloadKeysAndCertificates() override;
 
+  void RegisterCertificateReloader(CertificateReloader reloader) override;
+
  protected:
   CHECKED_STATUS RegisterServices() override;
   CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
@@ -55,6 +57,7 @@ class TabletServer : public yb::tserver::TabletServer {
   CHECKED_STATUS CreateCDCConsumer() REQUIRES(cdc_consumer_mutex_);
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
+  std::vector<CertificateReloader> certificate_reloaders_;
 
   // CDC consumer.
   mutable std::mutex cdc_consumer_mutex_;

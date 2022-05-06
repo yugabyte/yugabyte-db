@@ -517,9 +517,8 @@ Status PgClientSession::DropTablegroup(
     const PgDropTablegroupRequestPB& req, PgDropTablegroupResponsePB* resp,
     rpc::RpcContext* context) {
   const auto id = PgObjectId::FromPB(req.tablegroup_id());
-  const auto status = client().DeleteTablegroup(
-      GetPgsqlNamespaceId(id.database_oid),
-      GetPgsqlTablegroupId(id.database_oid, id.object_oid));
+  const auto status =
+      client().DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid));
   if (status.IsNotFound()) {
     return Status::OK();
   }

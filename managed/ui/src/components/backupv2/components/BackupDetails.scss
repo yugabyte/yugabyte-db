@@ -59,6 +59,26 @@
         min-width: 150px;
         margin-top: 10px;
       }
+
+      .details-storage-config {
+        flex: 0 0 100%;
+
+        .assign-config-msg {
+          margin-top: 8px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: $YB_BANNER_WARNING_BACKGROUND;
+          padding: 5px 8px;
+          font-size: 12px;
+          border-radius: 4px;
+          button {
+            height: 30px;
+            padding: 7px 10px;
+            font-size: 12px;
+          }
+        }
+      }
     }
 
     .header-text {

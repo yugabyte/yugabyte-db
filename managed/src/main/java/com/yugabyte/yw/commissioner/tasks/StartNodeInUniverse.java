@@ -138,9 +138,13 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
               new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Update all server conf files with new master information.
       if (masterAdded) {
+        // Update all server conf files with new master information.
         createMasterInfoUpdateTask(universe, currentNode);
+
+        // Update the master addresses on the target universes whose source universe belongs to
+        // this task.
+        createXClusterConfigUpdateMasterAddressesTask();
       }
 
       // Update node state to running

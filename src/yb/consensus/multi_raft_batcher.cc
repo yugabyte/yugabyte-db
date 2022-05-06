@@ -25,23 +25,17 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-// NOTE: For tests set this value to ~10ms
-DEFINE_int32(multi_raft_heartbeat_interval_ms, 10,
-             "The heartbeat interval for batch Raft replication.");
-TAG_FLAG(multi_raft_heartbeat_interval_ms, experimental);
-TAG_FLAG(multi_raft_heartbeat_interval_ms, hidden);
 
-// TODO: Add MultiRaftUpdateConsensus to metrics.yml when flag is turned on
-DEFINE_bool(enable_multi_raft_heartbeat_batcher, false,
-            "Whether to enable the batching of raft heartbeats.");
-TAG_FLAG(enable_multi_raft_heartbeat_batcher, experimental);
-TAG_FLAG(enable_multi_raft_heartbeat_batcher, hidden);
+DEFINE_bool(enable_multi_raft_heartbeat_batcher, true,
+            "If true, enables multi-Raft batching of raft heartbeats.");
 
-// NOTE: For tests set this value to 1
-DEFINE_uint64(multi_raft_batch_size, 1,
-              "Maximum batch size for a multi-raft consensus payload.");
-TAG_FLAG(multi_raft_batch_size, experimental);
-TAG_FLAG(multi_raft_batch_size, hidden);
+DEFINE_uint64(multi_raft_heartbeat_interval_ms, 50,
+              "The heartbeat interval for batch Raft replication.");
+TAG_FLAG(multi_raft_heartbeat_interval_ms, advanced);
+
+DEFINE_uint64(multi_raft_batch_size, 0,
+              "Maximum batch size for a multi-Raft consensus payload. Ignored if set to zero.");
+TAG_FLAG(multi_raft_batch_size, advanced);
 
 DECLARE_int32(consensus_rpc_timeout_ms);
 

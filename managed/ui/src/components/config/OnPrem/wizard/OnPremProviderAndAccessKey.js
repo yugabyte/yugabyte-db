@@ -6,6 +6,7 @@ import { Row, Col } from 'react-bootstrap';
 import { YBInputField, YBButton, YBTextArea, YBNumericInput } from '../../../common/forms/fields';
 import constants from './OnPremWizardConstants.json';
 import YBToggle from '../../../common/forms/fields/YBToggle';
+import { NTPConfig } from '../../PublicCloud/views/NTPConfig';
 
 export default class OnPremProviderAndAccessKey extends Component {
   constructor(props) {
@@ -36,7 +37,7 @@ export default class OnPremProviderAndAccessKey extends Component {
   }
 
   render() {
-    const { handleSubmit, switchToJsonEntry, isEditProvider } = this.props;
+    const { handleSubmit, switchToJsonEntry, isEditProvider, change, initialValues } = this.props;
     const {
       nameHelpContent,
       userHelpContent,
@@ -51,7 +52,7 @@ export default class OnPremProviderAndAccessKey extends Component {
       <div className="on-prem-provider-form-container">
         <form name="onPremConfigForm" onSubmit={handleSubmit(this.submitProviderKeyForm)}>
           <Row>
-            <Col lg={6}>
+            <Col lg={10}>
               <div className="form-right-aligned-labels">
                 <Field
                   name="name"
@@ -158,6 +159,18 @@ export default class OnPremProviderAndAccessKey extends Component {
                   />
                 )}
               </div>
+            </Col>
+          </Row>
+          <Row>
+            <Col lg={10}>
+              <Row>
+                <Col lg={2} className='no-padding'>
+                  <div className="form-item-custom-label">NTP Setup</div>
+                </Col>
+                <Col lg={10} className='no-padding'>
+                  <NTPConfig onChange={change} hideOnPremProvider initialValues={initialValues} disabled={isEditProvider}/>
+                </Col>
+              </Row>
             </Col>
           </Row>
           <div className="form-action-button-container">

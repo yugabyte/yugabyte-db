@@ -263,6 +263,8 @@ inline bool operator!=(const MonoTime& lhs, const MonoTime& rhs) { return !(lhs 
 // MonoDelta duration.
 void SleepFor(const MonoDelta& delta);
 
+void SleepUntil(const MonoTime& deadline);
+
 class CoarseMonoClock {
  public:
   typedef std::chrono::nanoseconds duration;

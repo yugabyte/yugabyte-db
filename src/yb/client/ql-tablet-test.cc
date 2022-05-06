@@ -482,7 +482,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
   Status WaitForTableCreation(const YBTableName& table_name,
                               master::IsCreateTableDoneResponsePB *resp) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, table_name, resp]() -> Result<bool> {
       master::IsCreateTableDoneRequestPB req;
       req.mutable_table()->set_table_name(table_name.table_name());
       req.mutable_table()->mutable_namespace_()->set_name(table_name.namespace_name());

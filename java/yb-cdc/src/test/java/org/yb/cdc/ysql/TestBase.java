@@ -27,6 +27,7 @@ import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.util.CDCSubscriber;
 import org.yb.cdc.common.ExpectedRecordYSQL;
 import org.yb.cdc.util.TestUtils;
+import org.yb.client.SetCheckpointResponse;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.*;
@@ -41,6 +42,8 @@ public class TestBase extends CDCBaseClass {
                                           String sqlScript) throws Exception {
     CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
     testSubscriber.createStream("proto");
+
+    testSubscriber.setCheckpoint(0, 0, true);
 
     if (!sqlScript.isEmpty()) {
       TestUtils.runSqlScript(connection, sqlScript);
@@ -146,6 +149,7 @@ public class TestBase extends CDCBaseClass {
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
 
+      testSubscriber.setCheckpoint(0, 0, true);
       assertEquals(1, statement.executeUpdate("INSERT INTO test VALUES (1, 2);"));
       assertFalse(statement.execute("BEGIN;"));
       assertEquals(1, statement.executeUpdate("INSERT INTO test VALUES (1, 3) ON CONFLICT (a) " +

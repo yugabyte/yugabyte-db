@@ -2,9 +2,9 @@
 # Prometheus metrics query, and related params
 ---
 cpu_usage_user:
-  metric: "node_cpu_seconds_total"
-  function: "rate|avg"
-  range : true
+  metric: "node_cpu_usage"
+  function: "max_over_time|max"
+  range: true
   operator: "* 100"
   filters:
     mode: "user"
@@ -17,8 +17,8 @@ cpu_usage_user:
       ticksuffix: "&nbsp;%"
 
 cpu_usage_system:
-  metric: "node_cpu_seconds_total"
-  function: "rate|avg"
+  metric: "node_cpu_usage"
+  function: "max_over_time|max"
   range: true
   operator: "* 100"
   filters:
@@ -51,8 +51,8 @@ disk_usage:
       ticksuffix: "&nbsp;GB"
 
 cpu_usage:
-  metric: "node_cpu_seconds_total"
-  function: "rate|avg"
+  metric: "node_cpu_usage_avg"
+  function: "max_over_time|max"
   range : true
   operator: "* 100"
   filters:
@@ -68,10 +68,10 @@ cpu_usage:
 
 disk_iops:
   metric: ""
-  function: "rate|sum without (device)|avg"
+  function: "max_over_time|max"
   range : true
   filters:
-    saved_name: "node_disk_reads_completed_total|node_disk_writes_completed_total"
+    saved_name: "node_disk_reads_irate|node_disk_writes_irate"
   group_by: "saved_name"
   panel_group: "Node Metrics"
   layout:
@@ -80,13 +80,13 @@ disk_iops:
       type: "date"
     yaxis:
       alias:
-          "node_disk_writes_completed_total": "Writes"
-          "node_disk_reads_completed_total": "Reads"
+          "node_disk_writes_irate": "Writes"
+          "node_disk_reads_irate": "Reads"
 
 tserver_rpcs_per_sec_by_universe:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   filters:
     export_type: "tserver_export"
     server_type: "yb_tserver"
@@ -100,7 +100,8 @@ tserver_rpcs_per_sec_by_universe:
 
 memory_usage:
   metric: ""
-  function: "avg"
+  function: "max_over_time|max"
+  range: true
   operator: "/ 1073741824"
   filters:
     saved_name: "node_memory_Cached_bytes|node_memory_Buffers_bytes|node_memory_MemFree_bytes"
@@ -119,8 +120,8 @@ memory_usage:
 
 
 container_cpu_usage:
-  metric: "container_cpu_usage_seconds_total/container_cpu_request"
-  function: "rate|avg"
+  metric: "container_cpu_usage"
+  function: "max_over_time|max"
   range : true
   filters:
     pod_name: "yb-tserver-(.*)"
@@ -132,45 +133,13 @@ container_cpu_usage:
       type: "date"
     yaxis:
       alias:
-        "container_cpu_usage_seconds_total/container_cpu_request": "cpu_usage"
+        "container_cpu_usage": "cpu_usage"
       ticksuffix: "&nbsp;%"
-
-container_cpu_request:
-  metric: "kube_pod_container_resource_requests_cpu_cores"
-  function: "avg"
-  filters:
-    pod_name: "yb-tserver-(.*)"
-    container_name: "yb-tserver"
-  panel_group: "Container"
-  layout:
-    title: "CPU Request"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        "kube_pod_container_resource_requests_cpu_cores": "cpu_requests"
-      ticksuffix: "&nbsp;"
-
-container_cpu_usage_seconds_total:
-  metric: "container_cpu_usage_seconds_total"
-  function: "rate|avg"
-  range : true
-  filters:
-    pod_name: "yb-tserver-(.*)"
-    container_name: "yb-tserver"
-  panel_group: "Container"
-  layout:
-    title: "CPU Usage"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        "container_cpu_usage_seconds_total": "cpu_usage"
-      ticksuffix: "&nbsp;"
 
 container_memory_usage:
   metric: "container_memory_working_set_bytes"
-  function: "avg"
+  function: "max_over_time|max"
+  range : true
   operator: "/ 1073741824"
   filters:
     pod_name: "yb-tserver-(.*)"
@@ -219,12 +188,10 @@ container_volume_max_usage:
 
 network_bytes:
   metric: ""
-  function: "rate|avg"
+  function: "max_over_time|max"
   range : true
   filters:
-    saved_name: "node_network_receive_bytes_total|node_network_transmit_bytes_total"
-    # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
-    device: "[^l].*"
+    saved_name: "node_network_receive_bytes_irate|node_network_transmit_bytes_irate"
   group_by: "saved_name"
   panel_group: "Node Metrics"
   layout:
@@ -233,17 +200,15 @@ network_bytes:
       type: "date"
     yaxis:
       alias:
-        "node_network_receive_bytes_total": "RX"
-        "node_network_transmit_bytes_total": "TX"
+        "node_network_receive_bytes_irate": "RX"
+        "node_network_transmit_bytes_irate": "TX"
 
 network_packets:
   metric: ""
-  function: "rate|avg"
+  function: "max_over_time|max"
   range : true
   filters:
-    saved_name: "node_network_receive_packets_total|node_network_transmit_packets_total"
-    # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
-    device: "[^l].*"
+    saved_name: "node_network_receive_packets_irate|node_network_transmit_packets_irate"
   group_by: "saved_name"
   panel_group: "Node Metrics"
   layout:
@@ -252,17 +217,15 @@ network_packets:
       type: "date"
     yaxis:
       alias:
-        "node_network_receive_packets_total": "RX"
-        "node_network_transmit_packets_total": "TX"
+        "node_network_receive_packets_irate": "RX"
+        "node_network_transmit_packets_irate": "TX"
 
 network_errors:
   metric: ""
-  function: "rate|avg"
+  function: "max_over_time|max"
   range : true
   filters:
-    saved_name: "node_network_receive_errs_total|node_network_transmit_errs_total"
-    # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
-    device: "[^l].*"
+    saved_name: "node_network_receive_errs_irate|node_network_transmit_errs_irate"
   group_by: "saved_name"
   panel_group: "Node Metrics"
   layout:
@@ -271,8 +234,8 @@ network_errors:
       type: "date"
     yaxis:
       alias:
-        "node_network_receive_errs_total": "RX"
-        "node_network_transmit_errs_total": "TX"
+        "node_network_receive_errs_irate": "RX"
+        "node_network_transmit_errs_irate": "TX"
 
 system_load_over_time:
   metric: ""
@@ -294,10 +257,10 @@ system_load_over_time:
 disk_bytes_per_second_per_node:
   metric: ""
   filters:
-    saved_name: "node_disk_read_bytes_total|node_disk_written_bytes_total"
+    saved_name: "node_disk_read_bytes_irate|node_disk_write_bytes_irate"
   group_by: "saved_name"
   range : true
-  function: "rate|sum without (device)|avg"
+  function: "max_over_time|max"
   panel_group: "Node Metrics"
   layout:
     title: "Disk Bytes / Sec / Node"
@@ -305,13 +268,13 @@ disk_bytes_per_second_per_node:
       type: "date"
     yaxis:
       alias:
-        "node_disk_read_bytes_total": "Read"
-        "node_disk_written_bytes_total": "Write"
+        "node_disk_read_bytes_irate": "Read"
+        "node_disk_write_bytes_irate": "Write"
 
 node_clock_skew:
   metric: "hybrid_clock_skew"
-  range : true
   function: "max_over_time|max"
+  range : true
   group_by: "saved_name"
   filters:
     export_type: "(tserver_export|master_export)"
@@ -325,9 +288,9 @@ node_clock_skew:
         "hybrid_clock_skew": "Max clock skew (us)"
 
 redis_rpcs_per_sec_all:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -504,9 +467,9 @@ redis_server_rpc_p99:
       ticksuffix: "&nbsp;\u00B5s"
 
 redis_rpcs_per_sec_hash:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -534,9 +497,9 @@ redis_rpcs_per_sec_hash:
         "hdel": "HDel"
 
 redis_rpcs_per_sec_ts:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -556,9 +519,9 @@ redis_rpcs_per_sec_ts:
         "tsrem": "TsRem"
 
 redis_rpcs_per_sec_set:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -581,9 +544,9 @@ redis_rpcs_per_sec_set:
 
 
 redis_rpcs_per_sec_sortedset:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -604,9 +567,9 @@ redis_rpcs_per_sec_sortedset:
         "zrevrange": "ZRevRange"
 
 redis_rpcs_per_sec_str:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -634,9 +597,9 @@ redis_rpcs_per_sec_str:
         "incr": "Incr"
 
 redis_rpcs_per_sec_local:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -899,9 +862,9 @@ redis_ops_latency_local:
 
 # what does this have to do with redis??
 redis_yb_local_vs_remote_ops:
-  metric: "rpc_latency_count"
-  function: "rate|avg"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|avg"
+  range: true
   filters:
     export_type: "redis_export"
     service_type: "read|write"
@@ -1001,9 +964,9 @@ tserver_handler_latency:
       ticksuffix: "&nbsp;\u00B5s"
 
 total_rpcs_per_sec:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   filters:
     export_type: "tserver_export"
     server_type: "yb_tserver"
@@ -1017,9 +980,9 @@ total_rpcs_per_sec:
       type: "date"
 
 tserver_rpcs_per_sec_per_node:
-  metric: "rpc_latency_count"
-  function: "rate|avg"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|avg"
+  range: true
   filters:
     export_type: "tserver_export"
     server_type: "yb_tserver"
@@ -1033,14 +996,14 @@ tserver_rpcs_per_sec_per_node:
       type: "date"
 
 tserver_consensus_rpcs_per_sec:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   filters:
     export_type: "tserver_export"
     server_type: "yb_consensus"
     service_type: "ConsensusService"
-    service_method: "UpdateConsensus|RequestConsensusVote"
+    service_method: "MultiRaftUpdateConsensus|UpdateConsensus|RequestConsensusVote"
   group_by: "service_method"
   panel_group: "Tablet Server"
   layout:
@@ -1049,6 +1012,7 @@ tserver_consensus_rpcs_per_sec:
       type: "date"
     yaxis:
       alias:
+        "MultiRaftUpdateConsensus": "MultiRaftUpdateConsensus"
         "UpdateConsensus": "UpdateConsensus"
         "RequestConsensusVote": "RequestConsensusVote"
 
@@ -1093,7 +1057,7 @@ tserver_consensus_rpcs_latency:
     export_type: "tserver_export"
     server_type: "yb_consensus"
     service_type: "ConsensusService"
-    service_method: "UpdateConsensus|RequestConsensusVote"
+    service_method: "MultiRaftUpdateConsensus|UpdateConsensus|RequestConsensusVote"
   group_by: "service_method"
   panel_group: "Tablet Server"
   layout:
@@ -1122,30 +1086,45 @@ tserver_change_config_latency:
     yaxis:
       ticksuffix: "&nbsp;\u00B5s"
 
-tserver_threads:
-  metric: ""
-  function: "avg"
+tserver_threads_running:
+  metric: "threads_running"
+  function: "avg_over_time|avg"
+  range: true
   filters:
     export_type: "tserver_export"
-    saved_name: "threads_running|threads_started"
   group_by: "saved_name"
   panel_group: "Tablet Server"
   layout:
-    title: "Threads"
+    title: "Threads Running"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "threads_running": "Running"
+
+tserver_threads_started:
+  metric: "threads_started"
+  function: "increase|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Threads Started"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
         "threads_started": "Started"
 
 tserver_context_switches:
   metric: ""
-  function: "rate|avg"
+  function: "avg_over_time|avg"
   range : true
   filters:
     export_type: "tserver_export"
-    saved_name: "involuntary_context_switches|voluntary_context_switches"
+    saved_name: "involuntary_context_switches_irate|voluntary_context_switches_irate"
   group_by: "saved_name"
   panel_group: "Tablet Server"
   layout:
@@ -1154,11 +1133,12 @@ tserver_context_switches:
       type: "date"
     yaxis:
       alias:
-        "involuntary_context_switches": "Involuntary"
-        "voluntary_context_switches": "Voluntary"
+        "involuntary_context_switches_irate": "Involuntary"
+        "voluntary_context_switches_irate": "Voluntary"
+
 tserver_spinlock_server:
-  metric: "spinlock_contention_time"
-  function: "rate|avg"
+  metric: "spinlock_contention_time_irate"
+  function: "avg_over_time|avg"
   operator: "/ 1000000"
   range : true
   filters:
@@ -1170,8 +1150,9 @@ tserver_spinlock_server:
       type: "date"
     yaxis:
       alias:
-        "spinlock_contention_time": "SpinLock"
+        "spinlock_contention_time_irate": "SpinLock"
       ticksuffix: "&nbsp;sec"
+
 tserver_log_latency:
   metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
   function: "rate|avg"
@@ -1189,8 +1170,8 @@ tserver_log_latency:
       ticksuffix: "&nbsp;\u00B5s"
 
 tserver_log_bytes_written:
-  metric: "log_bytes_logged"
-  function: "rate|sum by (exported_instance)|avg"
+  metric: "log_bytes_logged_irate"
+  function: "avg_over_time|avg"
   range : true
   filters:
     export_type: "tserver_export"
@@ -1201,11 +1182,11 @@ tserver_log_bytes_written:
       type: "date"
     yaxis:
       alias:
-        "log_bytes_logged": "WAL Bytes Logged"
+        "log_bytes_logged_irate": "WAL Bytes Logged"
 
 tserver_log_bytes_read:
-  metric: "log_reader_bytes_read"
-  function: "rate|sum by (exported_instance)|avg"
+  metric: "log_reader_bytes_read_irate"
+  function: "avg_over_time|avg"
   range : true
   filters:
     export_type: "tserver_export"
@@ -1216,15 +1197,15 @@ tserver_log_bytes_read:
       type: "date"
     yaxis:
       alias:
-        "log_reader_bytes_read": "WAL Bytes Read"
+        "log_reader_bytes_read_irate": "WAL Bytes Read"
 
 tserver_log_ops_second:
   metric: ""
-  function: "rate|sum by (exported_instance, saved_name)|avg"
+  function: "avg_over_time|avg"
   range : true
   filters:
     export_type: "tserver_export"
-    saved_name: "log_group_commit_latency_count|log_append_latency_count|log_sync_latency_count"
+    saved_name: "log_group_commit_irate|log_append_irate|log_sync_irate"
   group_by: "saved_name"
   panel_group: "Tablet Server"
   layout:
@@ -1233,13 +1214,14 @@ tserver_log_ops_second:
       type: "date"
     yaxis:
       alias:
-        "log_group_commit_latency_count": "Commit"
-        "log_append_latency_count": "Append"
-        "log_sync_latency_count": "Sync"
+        "log_group_commit_irate": "Commit"
+        "log_append_irate": "Append"
+        "log_sync_irate": "Sync"
 
 tserver_tc_malloc_stats:
   metric: ""
-  function: "avg"
+  function: "avg_over_time|avg"
+  range: true
   operator: "/ 1048576"
   filters:
     export_type: "tserver_export"
@@ -1288,13 +1270,14 @@ tserver_cache_reader_num_ops:
     yaxis:
       alias:
         "log_cache_num_ops": "Num Ops"
+
 tserver_glog_info_messages:
   metric: ""
-  function: "rate|sum"
+  function: "avg_over_time|sum"
   range : true
   filters:
     export_type: "tserver_export"
-    saved_name: "glog_info_messages|glog_warning_messages|glog_error_messages"
+    saved_name: "glog_info_messages_irate|glog_warning_messages_irate|glog_error_messages_irate"
   group_by: "saved_name"
   panel_group: "Tablet Server"
   layout:
@@ -1303,9 +1286,10 @@ tserver_glog_info_messages:
       type: "date"
     yaxis:
       alias:
-        "glog_info_messages": "Info"
-        "glog_warning_messages": "Warning"
-        "glog_error_messages": "Error"
+        "glog_info_messages_irate": "Info"
+        "glog_warning_messages_irate": "Warning"
+        "glog_error_messages_irate": "Error"
+
 node_up:
   metric: "up"
   function: "avg"
@@ -1314,11 +1298,11 @@ node_up:
 
 lsm_rocksdb_num_seek_or_next:
   metric: ""
-  function: "rate|sum by (exported_instance, saved_name)|avg"
+  function: "avg_over_time|avg"
   range : true
   filters:
     export_type: "tserver_export"
-    saved_name: "rocksdb_number_db_seek|rocksdb_number_db_next"
+    saved_name: "rocksdb_number_db_seek_irate|rocksdb_number_db_next_irate"
   group_by: "saved_name"
   panel_group: "RocksDB"
   layout:
@@ -1327,12 +1311,12 @@ lsm_rocksdb_num_seek_or_next:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_number_db_seek": "Seek"
-        "rocksdb_number_db_next": "Next"
+        "rocksdb_number_db_seek_irate": "Seek"
+        "rocksdb_number_db_next_irate": "Next"
 
 lsm_rocksdb_num_seeks_per_node:
-  metric: "rocksdb_number_db_seek"
-  function: "rate|sum by (exported_instance)|avg"
+  metric: "rocksdb_number_db_seek_irate"
+  function: "avg_over_time|avg"
   range : true
   filters:
     export_type: "tserver_export"
@@ -1343,7 +1327,7 @@ lsm_rocksdb_num_seeks_per_node:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_number_db_seek": "Seek"
+        "rocksdb_number_db_seek_irate": "Seek"
 
 lsm_rocksdb_total_sst_per_node:
   metric: "rocksdb_current_version_sst_files_size"
@@ -1378,11 +1362,11 @@ lsm_rocksdb_avg_num_sst_per_node:
 
 lsm_rocksdb_blooms_checked_and_useful:
   metric: ""
-  function: "rate|sum by (exported_instance, saved_name)|avg"
+  function: "avg_over_time|avg"
   range : true
   filters:
     export_type: "tserver_export"
-    saved_name: "rocksdb_bloom_filter_checked|rocksdb_bloom_filter_useful"
+    saved_name: "rocksdb_bloom_filter_checked_irate|rocksdb_bloom_filter_useful_irate"
   group_by: "saved_name"
   panel_group: "RocksDB"
   layout:
@@ -1391,8 +1375,8 @@ lsm_rocksdb_blooms_checked_and_useful:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_bloom_filter_checked": "Blooms checked"
-        "rocksdb_bloom_filter_useful": "Blooms useful"
+        "rocksdb_bloom_filter_checked_irate": "Blooms checked"
+        "rocksdb_bloom_filter_useful_irate": "Blooms useful"
 
 lsm_rocksdb_latencies_get:
   metric: "rocksdb_db_get_micros.avg"
@@ -1458,10 +1442,10 @@ lsm_rocksdb_latencies_mutex:
 
 lsm_rocksdb_block_cache_hit_miss:
   metric: ""
-  function: "rate|sum by (exported_instance, saved_name)|avg"
+  function: "avg_over_time|avg"
   range : true
   filters:
-    saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_miss"
+    saved_name: "rocksdb_block_cache_hit_irate|rocksdb_block_cache_miss_irate"
     export_type: "tserver_export"
   group_by: "saved_name"
   panel_group: "RocksDB"
@@ -1471,12 +1455,13 @@ lsm_rocksdb_block_cache_hit_miss:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_block_cache_hit": "Hit"
-        "rocksdb_block_cache_miss": "Miss"
+        "rocksdb_block_cache_hit_irate": "Hit"
+        "rocksdb_block_cache_miss_irate": "Miss"
 
 lsm_rocksdb_block_cache_usage:
   metric: ""
-  function: "avg"
+  function: "avg_over_time|avg"
+  range: true
   operator: "/ 1073741824"
   filters:
     saved_name: "block_cache_single_touch_usage|block_cache_multi_touch_usage"
@@ -1495,10 +1480,11 @@ lsm_rocksdb_block_cache_usage:
 
 lsm_rocksdb_block_cache_add:
   metric: ""
-  function: "rate|sum by (exported_instance, saved_name)|avg"
+  function: "avg_over_time|avg"
   range : true
   filters:
-    saved_name: "rocksdb_block_cache_add|rocksdb_block_cache_single_touch_add|rocksdb_block_cache_multi_touch_add"
+    saved_name: "rocksdb_block_cache_add_irate|rocksdb_block_cache_single_touch_add_irate|\
+      rocksdb_block_cache_multi_touch_add_irate"
     export_type: "tserver_export"
   group_by: "saved_name"
   panel_group: "RocksDB"
@@ -1508,13 +1494,13 @@ lsm_rocksdb_block_cache_add:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_block_cache_add": "Add"
-        "rocksdb_block_cache_single_touch_add": "Single Touch Add"
-        "rocksdb_block_cache_multi_touch_add": "Multi Touch Add"
+        "rocksdb_block_cache_add_irate": "Add"
+        "rocksdb_block_cache_single_touch_add_irate": "Single Touch Add"
+        "rocksdb_block_cache_multi_touch_add_irate": "Multi Touch Add"
 
 lsm_rocksdb_stalls:
-  metric: "rocksdb_stall_micros"
-  function: "rate|sum by (exported_instance)|avg"
+  metric: "rocksdb_stall_micros_irate"
+  function: "avg_over_time|avg"
   range : true
   filters:
     export_type: "tserver_export"
@@ -1525,12 +1511,12 @@ lsm_rocksdb_stalls:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_stall_micros": "Stalls"
+        "rocksdb_stall_micros_irate": "Stalls"
       ticksuffix: "&nbsp;\u00B5s"
 
 lsm_rocksdb_write_rejections:
-  metric: "majority_sst_files_rejections"
-  function: "rate|sum by (exported_instance)|avg"
+  metric: "majority_sst_files_rejections_irate"
+  function: "avg_over_time|avg"
   range : true
   filters:
     export_type: "tserver_export"
@@ -1541,11 +1527,11 @@ lsm_rocksdb_write_rejections:
       type: "date"
     yaxis:
       alias:
-        "majority_sst_files_rejections": "Rejections"
+        "majority_sst_files_rejections_irate": "Rejections"
 
 lsm_rocksdb_flush_size:
-  metric: "rocksdb_flush_write_bytes"
-  function: "rate|sum by (exported_instance)|avg"
+  metric: "rocksdb_flush_write_bytes_irate"
+  function: "avg_over_time|avg"
   range : true
   operator: "/ 1048576"
   panel_group: "RocksDB"
@@ -1555,17 +1541,17 @@ lsm_rocksdb_flush_size:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_flush_write_bytes": "Flush"
+        "rocksdb_flush_write_bytes_irate": "Flush"
       ticksuffix: "&nbsp;MB"
 
 lsm_rocksdb_compaction:
   metric: ""
-  function: "rate|sum by (exported_instance, saved_name)|avg"
+  function: "avg_over_time|avg"
   range : true
   operator: "/ 1048576"
   filters:
     export_type: "tserver_export"
-    saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
+    saved_name: "rocksdb_compact_read_bytes_irate|rocksdb_compact_write_bytes_irate"
   group_by: "saved_name"
   panel_group: "RocksDB"
   layout:
@@ -1574,8 +1560,8 @@ lsm_rocksdb_compaction:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_compact_read_bytes": "Bytes Read"
-        "rocksdb_compact_write_bytes": "Bytes Written"
+        "rocksdb_compact_read_bytes_irate": "Bytes Read"
+        "rocksdb_compact_write_bytes_irate": "Bytes Written"
       ticksuffix: "&nbsp;MB"
 
 lsm_rocksdb_compaction_numfiles:
@@ -1628,10 +1614,10 @@ docdb_transaction_pool_cache:
 
 docdb_transaction:
   metric: ""
-  function: "rate|sum"
+  function: "avg_over_time|sum"
   range : true
   filters:
-    saved_name: "transaction_conflicts|expired_transactions"
+    saved_name: "transaction_conflicts_irate|expired_transactions_irate"
     export_type: "tserver_export"
   group_by: "saved_name"
   panel_group: "Tablet Server"
@@ -1641,14 +1627,14 @@ docdb_transaction:
       type: "date"
     yaxis:
       alias:
-        "transaction_conflicts": "Transaction Conflicts"
-        "expired_transactions": "Expired Transactions"
+        "transaction_conflicts_irate": "Transaction Conflicts"
+        "expired_transactions_irate": "Expired Transactions"
 
 #Ysql Metrics
 ysql_server_rpc_per_second:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   filters:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
@@ -1691,9 +1677,9 @@ ysql_sql_latency:
       ticksuffix: "&nbsp;\u00B5s"
 
 ysql_server_advanced_rpc_per_second:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   filters:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
@@ -1786,10 +1772,10 @@ ysql_server_rpc_p99:
 
 #Cassandra Metrics
 cql_server_rpc_per_second:
-  metric: "rpc_latency_count"
-  function: "rate|sum"
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
   # operator: "/ 1000"
-  range : true
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"
@@ -1918,9 +1904,9 @@ cql_yb_rpc_connections:
       type: "date"
 
 cql_yb_local_vs_remote:
-  metric: "rpc_latency_count"
-  function: "rate|avg"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|avg"
+  range: true
   filters:
     export_type: "cql_export|tserver_export"
     service_type: "read|write"
@@ -2019,7 +2005,8 @@ response_sizes:
 
 tserver_rpc_queue_size_master:
   metric: "rpcs_in_queue_yb_master_MasterService"
-  function: "max"
+  function: "max_over_time|max"
+  range: true
   panel_group: "Master"
   layout:
     title: "RPC Queue Size"
@@ -2033,7 +2020,8 @@ tserver_rpc_queue_size_master:
 # for the saved_name filter.
 tserver_rpc_queue_size_tserver:
   metric: ""
-  function: "max"
+  function: "max_over_time|max"
+  range: true
   filters:
     saved_name: "rpcs_in_queue_.*"
     export_type: "tserver_export"
@@ -2055,7 +2043,8 @@ tserver_rpc_queue_size_tserver:
 
 tserver_rpc_queue_size_cql:
   metric: ""
-  function: "max"
+  function: "max_over_time|max"
+  range: true
   filters:
     saved_name: "rpcs_in_queue_yb_cqlserver_CQLServerService"
     export_type: "cql_export"
@@ -2071,7 +2060,8 @@ tserver_rpc_queue_size_cql:
 
 tserver_rpc_queue_size_redis:
   metric: ""
-  function: "max"
+  function: "max_over_time|max"
+  range: true
   filters:
     saved_name: "rpcs_in_queue_yb_redisserver_RedisServerService"
     export_type: "redis_export"
@@ -2103,8 +2093,8 @@ tserver_async_replication_lag_micros:
         "async_replication_committed_lag_micros": "Committed Lag (Microseconds)"
 
 master_overall_rpc_rate:
-  metric: "rpc_inbound_calls_created"
-  function: "rate"
+  metric: "rpc_inbound_calls_created_irate"
+  function: "avg_over_time"
   range : true
   filters:
     export_type: "master_export"
@@ -2118,9 +2108,9 @@ master_overall_rpc_rate:
         "useInstanceName": "True"
 
 master_get_tablet_location:
-  metric: "rpc_latency_count"
-  function: "rate"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time"
+  range: true
   filters:
     export_type: "master_export"
     service_type: "MasterService"
@@ -2135,9 +2125,9 @@ master_get_tablet_location:
         "useInstanceName": "True"
 
 master_tsservice_reads:
-  metric: "rpc_latency_count"
-  function: "rate"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time"
+  range: true
   filters:
     export_type: "master_export"
     service_type: "TabletServerService"
@@ -2152,9 +2142,9 @@ master_tsservice_reads:
         "useInstanceName": "True"
 
 master_tsservice_writes:
-  metric: "rpc_latency_count"
-  function: "rate"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time"
+  range: true
   filters:
     export_type: "master_export"
     service_type: "TabletServerService"
@@ -2169,9 +2159,9 @@ master_tsservice_writes:
         "useInstanceName": "True"
 
 master_ts_heartbeats:
-  metric: "rpc_latency_count"
-  function: "rate"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time"
+  range: true
   filters:
     export_type: "master_export"
     service_type: "MasterService"
@@ -2186,9 +2176,9 @@ master_ts_heartbeats:
         "useInstanceName": "True"
 
 master_consensus_update:
-  metric: "rpc_latency_count"
-  function: "rate"
-  range : true
+  metric: "rpc_irate_rps"
+  function: "avg_over_time"
+  range: true
   filters:
     export_type: "master_export"
     service_type: "ConsensusService"
@@ -2196,6 +2186,23 @@ master_consensus_update:
   panel_group: "Master"
   layout:
     title: "UpdateConsensus / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_multiraft_consensus_update:
+  metric: "rpc_latency_count"
+  function: "rate"
+  range : true
+  filters:
+    export_type: "master_export"
+    service_type: "ConsensusService"
+    service_method: "MultiRaftUpdateConsensus"
+  panel_group: "Master"
+  layout:
+    title: "MultiRaftUpdateConsensus / sec"
     xaxis:
       type: "date"
     yaxis:
@@ -2221,12 +2228,14 @@ master_table_ops:
         "handler_latency_yb_master_MasterService_CreateTable_count": "Create Table"
 
 master_cpu_util_secs:
-  metric: "cpu_utime|cpu_stime"
-  function: "rate"
+  metric: ""
+  function: "max_over_time"
   range : true
   operator: "/ 1000"
   filters:
     export_type: "master_export"
+    saved_name: "cpu_utime_irate|cpu_stime_irate"
+  group_by: "saved_name"
   panel_group: "Master"
   layout:
     title: "CPU Util Secs / Sec"
@@ -2235,16 +2244,18 @@ master_cpu_util_secs:
     yaxis:
       alias:
         "useInstanceName": "True"
-        "cpu_utime": "cpu_utime"
-        "cpu_stime": "cpu_stime"
+        "cpu_utime_irate": "cpu_utime"
+        "cpu_stime_irate": "cpu_stime"
 
 tserver_cpu_util_secs:
-  metric: "cpu_utime|cpu_stime"
-  function: "rate|avg"
+  metric: ""
+  function: "max_over_time|max"
   range : true
   operator: "/ 1000"
   filters:
     export_type: "tserver_export"
+    saved_name: "cpu_utime_irate|cpu_stime_irate"
+  group_by: "saved_name"
   panel_group: "Tablet Server"
   layout:
     title: "CPU Util Secs / Sec"
@@ -2252,8 +2263,8 @@ tserver_cpu_util_secs:
       type: "date"
     yaxis:
       alias:
-        "cpu_utime": "cpu_utime"
-        "cpu_stime": "cpu_stime"
+        "cpu_utime_irate": "cpu_utime"
+        "cpu_stime_irate": "cpu_stime"
 
 redis_yb_rpc_connections:
   metric: "rpc_connections_alive"

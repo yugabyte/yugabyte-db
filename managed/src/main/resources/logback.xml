@@ -16,7 +16,7 @@
     </rollingPolicy>
     <encoder>
       <!-- Limit log message to 20MB. Truncate from front if longer -->
-      <pattern>%date [%level] from %logger{0} in %thread - %.2000000message%n%xException</pattern>
+      <pattern>YW %date [%level] from %logger{0} in %thread - %.2000000message%n%xException</pattern>
     </encoder>
 
     <!--

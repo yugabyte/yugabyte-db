@@ -394,7 +394,7 @@ class GraphPanelHeader extends Component {
     // TODO: Need to fix handling of query params on Metrics tab
     const liveQueriesLink =
       this.state.currentSelectedUniverse &&
-      this.state.nodeName !== 'all' &&
+      this.state.nodeName !== 'all' && this.state.nodeName !== 'top' &&
       `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
 
     return (
@@ -416,6 +416,7 @@ class GraphPanelHeader extends Component {
                     nodeItemChanged={this.nodeItemChanged}
                     selectedUniverse={this.state.currentSelectedUniverse}
                     selectedNode={this.state.currentSelectedNode}
+                    topNodesSelection={true}
                   />
                   {liveQueriesLink && !universePaused && (
                     <Link to={liveQueriesLink} style={{ marginLeft: '15px' }}>

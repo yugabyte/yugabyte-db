@@ -9,10 +9,10 @@
 
 import axios from 'axios';
 import { Dictionary, groupBy } from 'lodash';
-import moment from 'moment';
 import { IBackup, Keyspace_Table, RESTORE_ACTION_TYPE, TIME_RANGE_STATE } from '..';
 import { ROOT_URL } from '../../../config';
-import { BACKUP_API_TYPES, Backup_Options_Type, ITable } from './IBackup';
+import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
+import { BACKUP_API_TYPES, Backup_Options_Type, IStorageConfig, ITable } from './IBackup';
 
 export function getBackupsList(
   page = 0,
@@ -65,8 +65,8 @@ export function restoreEntireBackup(backup: IBackup, values: Record<string, any>
         backupType: backup.backupType,
         keyspace: keyspace || backup.responseList[index].keyspace,
         sse: backup.sse,
-        storageLocation: backup.responseList[index].storageLocation,
-        tableNameList: backup.responseList[index].tablesList
+        storageLocation:
+          backup.responseList[index].storageLocation ?? backup.responseList[index].defaultLocation
       };
     }
   );
@@ -95,10 +95,8 @@ export function deleteBackup(backupList: IBackup[]) {
       storageConfigUUID: b.storageConfigUUID
     };
   });
-  return axios.delete(`${ROOT_URL}/customers/${cUUID}/delete_backups`, {
-    data: {
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/backups/delete`, {
       deleteBackupInfos: backup_data
-    }
   });
 }
 
@@ -117,6 +115,12 @@ export function createBackup(values: Record<string, any>) {
   const cUUID = localStorage.getItem('customerId');
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups`;
 
+  const payload = prepareBackupCreationPayload(values, cUUID);
+
+  return axios.post(requestUrl, payload);
+}
+
+export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID: string | null) => {
   const backup_type = values['api_type'].value;
 
   const payload = {
@@ -125,7 +129,6 @@ export function createBackup(values: Record<string, any>) {
     parallelism: values['parallel_threads'],
     sse: values['storage_config'].name === 'S3',
     storageConfigUUID: values['storage_config'].value,
-    timeBeforeDelete: 0,
     universeUUID: values['universeUUID']
   };
 
@@ -168,10 +171,18 @@ export function createBackup(values: Record<string, any>) {
   if (values['keep_indefinitely']) {
     payload['timeBeforeDelete'] = 0;
   } else {
-    payload['timeBeforeDelete'] = moment()
-      .add(values['duration_period'], values['duration_type'].value)
-      .diff(moment(), 'second');
+    payload['timeBeforeDelete'] =
+      values['retention_interval'] *
+      MILLISECONDS_IN[values['retention_interval_type'].value.toUpperCase()];
+    payload['expiryTimeUnit'] = values['retention_interval_type'].value.toUpperCase();
   }
+  return payload;
+};
 
-  return axios.post(requestUrl, payload);
-}
+export const assignStorageConfig = (backup: IBackup, storageConfig: IStorageConfig) => {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups/${backup.backupUUID}`;
+  return axios.put(requestUrl, {
+    storageConfigUUID: storageConfig.configUUID
+  });
+};

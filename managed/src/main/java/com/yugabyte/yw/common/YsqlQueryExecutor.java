@@ -60,6 +60,15 @@ public class YsqlQueryExecutor {
     return command;
   }
 
+  // TODO This is a temporary workaround until it is fixed in the server side.
+  private String removeQueryFromErrorMessage(String errMsg, String queryString) {
+    // An error message contains the actual query sent to the server.
+    if (errMsg != null) {
+      errMsg = errMsg.replace(queryString, "<Query>");
+    }
+    return errMsg;
+  }
+
   private List<Map<String, Object>> resultSetToMap(ResultSet result) throws SQLException {
     List<Map<String, Object>> rows = new ArrayList<>();
     ResultSetMetaData rsmd = result.getMetaData();
@@ -119,7 +128,7 @@ public class YsqlQueryExecutor {
         }
       }
     } catch (SQLException | RuntimeException e) {
-      response.put("error", e.getMessage());
+      response.put("error", removeQueryFromErrorMessage(e.getMessage(), queryParams.query));
     }
     return response;
   }

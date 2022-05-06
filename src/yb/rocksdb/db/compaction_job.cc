@@ -814,9 +814,12 @@ Status CompactionJob::FinishCompactionOutputFile(
   TableProperties table_properties;
   // Check for iterator errors
   Status s = input_status;
-  auto meta = &sub_compact->current_output()->meta;
+  auto& meta = sub_compact->current_output()->meta;
   const uint64_t current_entries = sub_compact->builder->NumEntries();
-  meta->marked_for_compaction = sub_compact->builder->NeedCompact();
+  meta.marked_for_compaction = sub_compact->builder->NeedCompact();
+  if (s.ok() && sub_compact->context) {
+    s = sub_compact->context->UpdateMeta(&meta);
+  }
   if (s.ok()) {
     s = sub_compact->builder->Finish();
   } else {
@@ -824,8 +827,8 @@ Status CompactionJob::FinishCompactionOutputFile(
   }
 
   const uint64_t current_total_bytes = sub_compact->builder->TotalFileSize();
-  meta->fd.total_file_size = current_total_bytes;
-  meta->fd.base_file_size = sub_compact->builder->BaseFileSize();
+  meta.fd.total_file_size = current_total_bytes;
+  meta.fd.base_file_size = sub_compact->builder->BaseFileSize();
   sub_compact->current_output()->finished = true;
   sub_compact->total_bytes += current_total_bytes;
 
@@ -839,7 +842,7 @@ Status CompactionJob::FinishCompactionOutputFile(
     // Verify that the table is usable
     ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
     InternalIterator* iter = cfd->table_cache()->NewIterator(
-        ReadOptions(), env_options_, cfd->internal_comparator(), meta->fd, meta->UserFilter(),
+        ReadOptions(), env_options_, cfd->internal_comparator(), meta.fd, meta.UserFilter(),
         nullptr, cfd->internal_stats()->GetFileReadHist(
                      compact_->compaction->output_level()),
         false);
@@ -859,29 +862,29 @@ Status CompactionJob::FinishCompactionOutputFile(
       info.db_name = dbname_;
       info.cf_name = cfd->GetName();
       info.file_path =
-          TableFileName(cfd->ioptions()->db_paths, meta->fd.GetNumber(),
-                        meta->fd.GetPathId());
-      info.file_size = meta->fd.GetTotalFileSize();
+          TableFileName(cfd->ioptions()->db_paths, meta.fd.GetNumber(),
+                        meta.fd.GetPathId());
+      info.file_size = meta.fd.GetTotalFileSize();
       info.job_id = job_id_;
       RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
           " keys, %" PRIu64 " bytes%s %s",
           cfd->GetName().c_str(), job_id_, output_number, current_entries,
           current_total_bytes,
-          meta->marked_for_compaction ? " (need compaction)" : "",
-          meta->FrontiersToString().c_str());
+          meta.marked_for_compaction ? " (need compaction)" : "",
+          meta.FrontiersToString().c_str());
       EventHelpers::LogAndNotifyTableFileCreation(
-          event_logger_, cfd->ioptions()->listeners, meta->fd, info);
+          event_logger_, cfd->ioptions()->listeners, meta.fd, info);
     }
   }
 
   // Report new file to SstFileManagerImpl
   auto sfm =
       static_cast<SstFileManagerImpl*>(db_options_.sst_file_manager.get());
-  if (sfm && meta->fd.GetPathId() == 0) {
+  if (sfm && meta.fd.GetPathId() == 0) {
     ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
-    auto fn = TableFileName(cfd->ioptions()->db_paths, meta->fd.GetNumber(),
-                            meta->fd.GetPathId());
+    auto fn = TableFileName(cfd->ioptions()->db_paths, meta.fd.GetNumber(),
+                            meta.fd.GetPathId());
     RETURN_NOT_OK(sfm->OnAddFile(fn));
     if (is_split_sst) {
       RETURN_NOT_OK(sfm->OnAddFile(TableBaseToDataFileName(fn)));

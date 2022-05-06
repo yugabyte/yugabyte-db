@@ -1,4 +1,4 @@
----
+<!---
 title: Set up a VPC network
 headerTitle:
 linkTitle: Set up a VPC network
@@ -10,7 +10,7 @@ menu:
     weight: 20
 isTocNested: true
 showAsideToc: true
----
+--->
 
 ## Before you begin
 
@@ -28,32 +28,39 @@ Before setting up the VPC network, you'll need the following:
 
 ## Tasks
 
-To create a VPC network, you need to complete the following tasks:
+To create a VPC network, you need to complete the following tasks. With the exception of 3, these tasks are performed in YugabyteDB Managed.
 
-1. [Create a VPC](../cloud-add-vpc/#create-a-vpc).
+### 1. Create a VPC
 
-    - The VPC reserves a range of IP addresses for the network. The range can't overlap with the range used by any application VPC you want to peer.
+The first step is to [create the VPC](../cloud-add-vpc/#create-a-vpc) where you will deploy your YugabyteDB Managed cluster.
 
-    - VPCs are configured on the [VPCs](../cloud-add-vpc/) page of the **VPC Network** tab on the **Network Access** page.
+The VPC reserves a range of IP addresses for the network. The range can't overlap with the range used by any application VPC you want to peer.
 
-    - The status of the VPC is _Active_ when done.
+VPCs are configured on the [VPCs](../cloud-add-vpc/) page of the **VPC Network** tab on the **Network Access** page.
 
-    - After the VPC is created, you can [deploy a cluster in the VPC](../cloud-add-vpc/#deploy-a-cluster-in-a-vpc); you don't need to wait until the VPC is peered.
+The status of the VPC is _Active_ when done.
 
-1. [Create a peering connection](../cloud-add-peering/) between the VPC and the application VPC on the cloud provider network.
+After the VPC is created, you can [deploy a cluster in the VPC](../cloud-add-vpc/#deploy-a-cluster-in-a-vpc); you don't need to wait until the VPC is peered.
 
-    - Peering connections are configured on the [Peering Connections](../cloud-add-peering/) page of the **VPC Network** tab on the **Network Access** page.
+### 2. Create a peering connection
 
-    - The status of the peering connection is _Pending_ when done; to make the connection active, you must configure your cloud provider.
+Next, [create a peering connection](../cloud-add-peering/) between your VPC and the application VPC on the cloud provider network.
 
-1. Configure your cloud provider to confirm the connection.
+Peering connections are configured on the **Peering Connections** page of the **VPC Network** tab on the **Network Access** page.
 
-    - In AWS, [accept the peering request](../cloud-add-peering/#peer-aws).
-    - In GCP, [create a peering connection](../cloud-add-peering/#peer-gcp).
-    - The status of the peering connection changes to _Active_ once communication is established.
+The status of the peering connection is _Pending_ when done; to make the connection active, you must configure your cloud provider.
 
-1. [Add the application VPC CIDR to the cluster IP allow list](../../../cloud-secure-clusters/add-connections/).
+### 3. Configure the cloud provider
 
-    - To communicate with a cluster, networks must be added to the cluster IP allow list.
+After the VPC and peering connection are created in YugabyteDB Managed, [configure your cloud provider](../cloud-configure-provider) to confirm the connection:
 
-With the exception of 3, these tasks are performed in YugabyteDB Managed.
+- In AWS, accept the peering request.
+- In GCP, create a peering connection.
+
+The status of the peering connection changes to _Active_ once communication is established.
+
+### 4. Add the application VPC to the IP allow list
+
+To communicate with a cluster, networks must be added to the cluster IP allow list. This includes peered application VPCs.
+
+After the VPC and the peering connection are active, add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster.

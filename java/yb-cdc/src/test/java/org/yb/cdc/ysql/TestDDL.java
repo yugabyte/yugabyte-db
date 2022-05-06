@@ -47,6 +47,7 @@ public class TestDDL extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
+      testSubscriber.setCheckpoint(0, 0, true);
 
       List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
       // We are expecting 2 DDL records, the first one with 3 columns which will be added with the
@@ -87,6 +88,7 @@ public class TestDDL extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
+      testSubscriber.setCheckpoint(0, 0, true);
 
       int dummyInsert = statement.executeUpdate("insert into test values (1, 2);");
       assertEquals(1, dummyInsert);
@@ -136,6 +138,7 @@ public class TestDDL extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
+      testSubscriber.setCheckpoint(0, 0, true);
 
       assertEquals(1, statement.executeUpdate("insert into test values (1);"));
       assertEquals(1, statement.executeUpdate("insert into test values (2, 3);"));
@@ -172,6 +175,7 @@ public class TestDDL extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
+      testSubscriber.setCheckpoint(0, 0, true);
 
       int dummyInsert = statement.executeUpdate("insert into test values (1);");
       assertEquals(1, dummyInsert);
@@ -210,6 +214,7 @@ public class TestDDL extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
+      testSubscriber.setCheckpoint(0, 0, true);
 
       // We expect 2 DDL records, the first one would have the old table name while the second
       // one will have the new table name. The record for the first DDL record would be added

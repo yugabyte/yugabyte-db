@@ -140,7 +140,7 @@ template <class Enum>
 Result<std::pair<int, EnumBitSet<Enum>>> GetValueAndFlags(
     const CLIArgumentsIterator& begin,
     const CLIArgumentsIterator& end,
-    const std::initializer_list<Enum>& flags_list) {
+    const AllEnumItemsIterable<Enum>& flags_list) {
   std::pair<int, EnumBitSet<Enum>> result;
   bool seen_value = false;
   for (auto iter = begin; iter != end; iter = ++iter) {
@@ -175,7 +175,7 @@ YB_DEFINE_ENUM(AddIndexes, (ADD_INDEXES));
 Result<pair<int, bool>> GetTimeoutAndAddIndexesFlag(
     CLIArgumentsIterator begin,
     const CLIArgumentsIterator& end) {
-  auto temp_pair = VERIFY_RESULT(GetValueAndFlags(begin, end, kAddIndexesList));
+  auto temp_pair = VERIFY_RESULT(GetValueAndFlags(begin, end, AddIndexesList()));
   return std::make_pair(temp_pair.first, temp_pair.second.Test(AddIndexes::ADD_INDEXES));
 }
 
@@ -382,7 +382,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
             client, args.begin(), args.end(),
             [&arguments](auto i, const auto& end) -> Status {
-              arguments = VERIFY_RESULT(GetValueAndFlags(i, end, kListTabletsFlagsList));
+              arguments = VERIFY_RESULT(GetValueAndFlags(i, end, ListTabletsFlagsList()));
               return Status::OK();
             }));
         RETURN_NOT_OK_PREPEND(

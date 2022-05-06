@@ -604,6 +604,10 @@ def main() -> None:
                         default="-lto",
                         help='The suffix to append to LTO-enabled binaries produced by '
                              'the %s command' % Command.LINK_WHOLE_PROGRAM.value)
+    parser.add_argument('--lto-type',
+                        default='full',
+                        choices=['full', 'thin'],
+                        help='LTO type to use')
     parser.add_argument(
         '--run-linker',
         help='Whether to actually run the linker. Setting this to false might be useful when '
@@ -730,7 +734,8 @@ def main() -> None:
             initial_nodes=initial_nodes,
             link_cmd_out_file=args.link_cmd_out_file,
             run_linker=args.run_linker,
-            lto_output_suffix=args.lto_output_suffix)
+            lto_output_suffix=args.lto_output_suffix,
+            lto_type=args.lto_type)
         return
 
     file_changes_by_category: Dict[SourceFileCategory, List[str]] = group_by(

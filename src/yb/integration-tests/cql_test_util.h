@@ -311,6 +311,8 @@ class CppCassandraDriver {
 
   Result<CassandraSession> CreateSession();
 
+  void EnableTLS(const std::vector<std::string>& ca_certs);
+
  private:
   CassCluster* cass_cluster_ = nullptr;
 };

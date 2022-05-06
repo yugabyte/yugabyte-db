@@ -372,7 +372,8 @@ public class CDCSubscriber {
    * @see GetDBStreamInfoResponse
    * @see CdcService.TableInfo
    */
-  public SetCheckpointResponse setCheckpoint(long term, long index) throws Exception {
+  public SetCheckpointResponse setCheckpoint(long term, long index,
+                                             boolean initialCheckpoint) throws Exception {
     if (syncClient == null) {
       LOG.info("Cannot set checkpoint, YBClient not initialized");
       return null;
@@ -389,7 +390,7 @@ public class CDCSubscriber {
       return null;
     }
 
-    return syncClient.commitCheckpoint(table, streamId, tabletId, term, index);
+    return syncClient.commitCheckpoint(table, streamId, tabletId, term, index, initialCheckpoint);
   }
 
   /**

@@ -162,7 +162,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   // The connection on which this inbound call arrived.
   static constexpr size_t batch_capacity = RedisClientBatch::static_capacity;
   boost::container::small_vector<RedisResponsePB, batch_capacity> responses_;
-  boost::container::small_vector<std::atomic<size_t>, batch_capacity> ready_;
+  boost::container::small_vector<Atomic64, batch_capacity> ready_;
   std::atomic<size_t> ready_count_{0};
   std::atomic<bool> had_failures_{false};
   RedisClientBatch client_batch_;

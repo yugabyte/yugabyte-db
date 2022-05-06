@@ -78,6 +78,27 @@ Result<bool> TableMatchesIdentifier(const TableId& id,
 
 CHECKED_STATUS SetupError(MasterErrorPB* error, const Status& s);
 
+// TODO(alex): Merge with stuff in entity_ids?
+
+// Is this a parent dummy table ID created for a colocation group (database/tablegroup)?
+bool IsColocationParentTableId(const TableId& table_id);
+
+// Is this a parent dummy table ID created for a colocated database?
+bool IsColocatedDbParentTableId(const TableId& table_id);
+
+TableId GetColocatedDbParentTableId(const TableId& table_id);
+
+TableName GetColocatedDbParentTableName(const NamespaceId& database_id);
+
+// Is this a parent dummy table ID created for a tablegroup?
+bool IsTablegroupParentTableId(const TableId& table_id);
+
+TableId GetTablegroupParentTableId(const TablegroupId& tablegroup_id);
+
+TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id);
+
+TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id);
+
 } // namespace master
 } // namespace yb
 

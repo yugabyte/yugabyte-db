@@ -892,9 +892,9 @@ export function fetchCustomerConfigsResponse(response) {
   };
 }
 
-export function fetchRunTimeConfigs(scope = '00000000-0000-0000-0000-000000000000') {
+export function fetchRunTimeConfigs(scope = '00000000-0000-0000-0000-000000000000', includeInherited = false) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}`);
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}?includeInherited=${includeInherited}`);
   return {
     type: FETCH_RUNTIME_CONFIGS,
     payload: request

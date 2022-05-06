@@ -6,7 +6,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,9 +28,8 @@ public class UpdateMountedDisks extends NodeTaskBase {
   public void run() {
     LOG.info("Running UpdateMountedDisksTask against node {}", taskParams().nodeName);
 
-    ShellResponse response =
-        getNodeManager()
-            .nodeCommand(NodeManager.NodeCommandType.Update_Mounted_Disks, taskParams());
-    processShellResponse(response);
+    getNodeManager()
+        .nodeCommand(NodeManager.NodeCommandType.Update_Mounted_Disks, taskParams())
+        .processErrors();
   }
 }

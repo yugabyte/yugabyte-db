@@ -37,6 +37,10 @@ public class AuditService {
           "$..confirmPassword",
           "$..ysqlPassword",
           "$..ycqlPassword",
+          "$..ysqlAdminPassword",
+          "$..ycqlAdminPassword",
+          "$..ysqlCurrAdminPassword",
+          "$..ycqlCurrAdminPassword",
           "$..['config.AWS_ACCESS_KEY_ID']",
           "$..['config.AWS_SECRET_ACCESS_KEY']",
           // GCP private key

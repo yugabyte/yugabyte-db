@@ -20,7 +20,13 @@
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/doc_key.h"
 
+#include "yb/util/flag_tags.h"
+
 DEFINE_int32(cdc_snapshot_batch_size, 250, "Batch size for the snapshot operation in CDC");
+TAG_FLAG(cdc_snapshot_batch_size, runtime);
+
+DEFINE_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");
+TAG_FLAG(stream_truncate_record, runtime);
 
 namespace yb {
 namespace cdc {
@@ -421,7 +427,6 @@ CHECKED_STATUS PopulateCDCSDKTruncateRecord(
   row_message = proto_record->mutable_row_message();
   row_message->set_op(RowMessage_Op_TRUNCATE);
   row_message->set_pgschema_name(schema.SchemaName());
-  row_message->mutable_truncate_request_info()->CopyFrom(msg->truncate());
 
   CDCSDKOpIdPB* cdc_sdk_op_id_pb;
 
@@ -596,14 +601,14 @@ Status GetChangesForCDCSDK(
       VLOG(1) << "The first snapshot term " << data.op_id.term << "index  " << data.op_id.index
               << "time " << data.log_ht.ToUint64();
       // Update the CDCConsumerOpId.
-      {
-        std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
-        shared_consensus->UpdateCDCConsumerOpId(data.op_id);
-      }
+      std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
+      shared_consensus->UpdateCDCConsumerOpId(data.op_id);
+
       if (txn_participant == nullptr || txn_participant->context() == nullptr) {
         return STATUS_SUBSTITUTE(
             Corruption, "Cannot read data as the transaction participant context is null");
       }
+      txn_participant->SetRetainOpId(data.op_id);
       RETURN_NOT_OK(txn_participant->context()->GetLastReplicatedData(&data));
       time = ReadHybridTime::SingleTime(data.log_ht);
 
@@ -682,7 +687,6 @@ Status GetChangesForCDCSDK(
     }
     checkpoint_updated = true;
   } else {
-    OpId checkpoint_op_id;
     RequestScope request_scope;
 
     auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(
@@ -722,8 +726,6 @@ Status GetChangesForCDCSDK(
         current_schema = **cached_schema;
       }
 
-      const auto& batch = msg->write().write_batch();
-
       switch (msg->op_type()) {
         case consensus::OperationType::UPDATE_TRANSACTION_OP:
           // Ignore intents.
@@ -752,16 +754,19 @@ Status GetChangesForCDCSDK(
           checkpoint_updated = true;
           break;
 
-        case consensus::OperationType::WRITE_OP:
+        case consensus::OperationType::WRITE_OP: {
+          const auto& batch = msg->write().write_batch();
+
           if (!batch.has_transaction()) {
-            RETURN_NOT_OK(
+                RETURN_NOT_OK(
                 PopulateCDCSDKWriteRecord(msg, stream_metadata, tablet_peer, resp, current_schema));
 
             SetCheckpoint(
                 msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
             checkpoint_updated = true;
           }
-          break;
+        }
+        break;
 
         case consensus::OperationType::CHANGE_METADATA_OP: {
           RETURN_NOT_OK(SchemaFromPB(msg->change_metadata_request().schema(), &current_schema));
@@ -788,13 +793,15 @@ Status GetChangesForCDCSDK(
         break;
 
         case consensus::OperationType::TRUNCATE_OP: {
-          RETURN_NOT_OK(
-              PopulateCDCSDKTruncateRecord(msg, resp->add_cdc_sdk_proto_records(), current_schema));
-
-          SetCheckpoint(
-              msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
-          checkpoint_updated = true;
-        } break;
+          if (FLAGS_stream_truncate_record) {
+            RETURN_NOT_OK(PopulateCDCSDKTruncateRecord(
+                msg, resp->add_cdc_sdk_proto_records(), current_schema));
+            SetCheckpoint(
+                msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
+            checkpoint_updated = true;
+          }
+        }
+        break;
 
         default:
           // Nothing to do for other operation types.
@@ -815,17 +822,17 @@ Status GetChangesForCDCSDK(
   checkpoint_updated ? resp->mutable_cdc_sdk_checkpoint()->CopyFrom(checkpoint)
                        : resp->mutable_cdc_sdk_checkpoint()->CopyFrom(from_op_id);
 
-  if (checkpoint_updated) {
-    VLOG(1) << "The checkpoint is updated " << resp->checkpoint().DebugString();
-  } else {
-    VLOG(1) << "The checkpoint is not updated " << resp->checkpoint().DebugString();
-  }
-
   if (last_streamed_op_id->index > 0) {
-    resp->mutable_checkpoint()->mutable_op_id()->set_term(last_streamed_op_id->term);
-    resp->mutable_checkpoint()->mutable_op_id()->set_index(last_streamed_op_id->index);
+    last_streamed_op_id->ToPB(resp->mutable_checkpoint()->mutable_op_id());
   }
-
+  if (checkpoint_updated) {
+    VLOG(1) << "The cdcsdk checkpoint is updated " << resp->cdc_sdk_checkpoint().ShortDebugString();
+    VLOG(1) << "The checkpoint is updated " << resp->checkpoint().ShortDebugString();
+  } else {
+    VLOG(1) << "The cdcsdk checkpoint is not  updated "
+            << resp->cdc_sdk_checkpoint().ShortDebugString();
+    VLOG(1) << "The checkpoint is not updated " << resp->checkpoint().ShortDebugString();
+  }
   return Status::OK();
 }
 

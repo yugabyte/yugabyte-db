@@ -6,7 +6,8 @@ export const NodeSelector = ({
   selectedUniverse,
   nodeItemChanged,
   selectedNode,
-  otherSelectedNode
+  otherSelectedNode,
+  topNodesSelection
 }) => {
   let nodeItems = [];
   if (
@@ -27,9 +28,14 @@ export const NodeSelector = ({
   return (
     <div className="node-picker">
       <FormControl componentClass="select" onChange={nodeItemChanged} value={selectedNode}>
-        <option key={-1} value="all">
+        <option key={-2} value="all">
           All
         </option>
+        {topNodesSelection && (
+          <option key={-1} value="top">
+            Top
+          </option>
+        )}
         {nodeItems.map((nodeItem, nodeIdx) => (
           <option
             key={nodeIdx}

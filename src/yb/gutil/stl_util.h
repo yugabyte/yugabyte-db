@@ -856,8 +856,7 @@ BinaryComposeBinary<F, G1, G2> BinaryCompose2(F f, G1 g1, G2 g2) {
 template <typename T, typename Alloc = std::allocator<T> >
 class STLCountingAllocator : public Alloc {
  public:
-  typedef typename Alloc::pointer pointer;
-  typedef typename Alloc::size_type size_type;
+  using size_type = typename Alloc::size_type;
 
   STLCountingAllocator() : bytes_used_(NULL) { }
   explicit STLCountingAllocator(int64* b) : bytes_used_(b) {}
@@ -869,23 +868,23 @@ class STLCountingAllocator : public Alloc {
         bytes_used_(x.bytes_used()) {
   }
 
-  pointer allocate(size_type n, std::allocator<void>::const_pointer hint = 0) {
+  T* allocate(size_type n) {
     assert(bytes_used_ != NULL);
     *bytes_used_ += n * sizeof(T);
-    return Alloc::allocate(n, hint);
+    return Alloc::allocate(n);
   }
 
-  void deallocate(pointer p, size_type n) {
+  void deallocate(T* p, size_type n) {
     Alloc::deallocate(p, n);
     assert(bytes_used_ != NULL);
     *bytes_used_ -= n * sizeof(T);
   }
 
   // Rebind allows an allocator<T> to be used for a different type
-  template <class U> struct rebind {
-    typedef STLCountingAllocator<U,
-                                 typename Alloc::template
-                                 rebind<U>::other> other;
+  template <class U>
+  struct rebind {
+    using other = STLCountingAllocator<
+        U, typename std::allocator_traits<Alloc>::template rebind_alloc<U>>;
   };
 
   int64* bytes_used() const { return bytes_used_; }
@@ -1020,6 +1019,16 @@ void MoveCollection(Collection1* source, Collection2* destination) {
 template <class Collection>
 void Unique(Collection* collection) {
   collection->erase(std::unique(collection->begin(), collection->end()), collection->end());
+}
+
+template <class Key, class Value, class Map>
+void MakeAtMost(const Key& key, const Value& value, Map* map) {
+  auto it = map->find(key);
+  if (it == map->end()) {
+    map->emplace(key, value);
+  } else {
+    it->second = std::min(it->second, value);
+  }
 }
 
 } // namespace yb

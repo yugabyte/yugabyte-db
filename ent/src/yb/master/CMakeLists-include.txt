@@ -58,6 +58,7 @@ set(MASTER_SRCS_EXTENSIONS
 
 set(MASTER_ADDITIONAL_TESTS
     catalog_manager-test_ent
+    cluster_balance_preferred_leader-test
     sys_catalog-test_ent
     master-test_ent
     restore_sys_catalog_state_test

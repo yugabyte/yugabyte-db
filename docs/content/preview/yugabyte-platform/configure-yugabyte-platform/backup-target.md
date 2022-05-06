@@ -1,7 +1,7 @@
 ---
 title: Configure the backup target
 headerTitle: Configure the backup target
-linkTitle: Configure the backup target
+linkTitle: Configure backup target
 description: Configure the backup target.
 menu:
   preview:

@@ -244,6 +244,12 @@ public class RestoreManagerYb extends DevopsBase {
     if (restoreBackupParams.enableVerboseLogs) {
       commandArgs.add("--verbose");
     }
+    if (restoreBackupParams.useTablespaces) {
+      commandArgs.add("--use_tablespaces");
+    }
+    if (restoreBackupParams.disableChecksum) {
+      commandArgs.add("--disable_checksums");
+    }
   }
 
   private String getCertsDir(Region region, Provider provider) {

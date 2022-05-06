@@ -5,6 +5,7 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -418,7 +419,7 @@ public class ReleaseManager {
     if (isPresentLocally) {
       // delete specific release's directory recursively.
       File releaseDirectory = new File(ybReleasesPath, version);
-      if (!Util.deleteDirectory(releaseDirectory)) {
+      if (!FileUtils.deleteDirectory(releaseDirectory)) {
         String errorMsg =
             "Failed to delete release directory: " + releaseDirectory.getAbsolutePath();
         throw new RuntimeException(errorMsg);

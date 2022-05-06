@@ -3378,7 +3378,9 @@ RenameRelation(RenameStmt *stmt)
 	/* YB rename is not needed for a primary key dummy index. */
 	rel             = RelationIdGetRelation(relid);
 	needs_yb_rename = IsYBRelation(rel) &&
-	                  !(rel->rd_rel->relkind == RELKIND_INDEX && rel->rd_index->indisprimary);
+					  !(rel->rd_rel->relkind == RELKIND_INDEX &&
+						rel->rd_index->indisprimary) &&
+					  rel->rd_rel->relkind != RELKIND_PARTITIONED_INDEX;
 	RelationClose(rel);
 
 	/* Do the work */
@@ -12856,6 +12858,8 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 	newOptions = transformRelOptions(isnull ? (Datum) 0 : datum,
 									 defList, NULL, validnsps, false,
 									 operation == AT_ResetRelOptions);
+
+	newOptions = ybExcludeNonPersistentReloptions(newOptions);
 
 	/* Validate */
 	switch (rel->rd_rel->relkind)

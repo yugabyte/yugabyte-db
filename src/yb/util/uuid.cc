@@ -98,21 +98,13 @@ Slice Uuid::AsSlice() const {
   return Slice(boost_uuid_.data, boost_uuid_.size());
 }
 
-CHECKED_STATUS Uuid::FromSlice(const Slice& slice, size_t size_hint) {
-  size_t expected_size = (size_hint == 0) ? slice.size() : size_hint;
-  if (expected_size > slice.size()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Size of slice: $0 is smaller than provided "
-        "size_hint: $1", slice.size(), expected_size);
+Result<Uuid> Uuid::FromSlice(const Slice& slice) {
+  if (slice.size() != kUuidSize) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "Size of slice is invalid: $0", slice.size());
   }
-  if (expected_size != kUuidSize) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Size of slice is invalid: $0", expected_size);
-  }
-  memcpy(boost_uuid_.data, slice.data(), kUuidSize);
-  return Status::OK();
-}
-
-CHECKED_STATUS Uuid::FromBytes(const std::string& bytes) {
-  return FromSlice(Slice(bytes.data(), bytes.size()));
+  Uuid result;
+  memcpy(result.boost_uuid_.data, slice.data(), kUuidSize);
+  return result;
 }
 
 std::string Uuid::ToHexString() const {
@@ -130,7 +122,7 @@ std::string Uuid::ToHexString() const {
   return std::string(buffer, sizeof(buffer) - 1);
 }
 
-CHECKED_STATUS Uuid::FromHexString(const std::string& hex_string) {
+Result<Uuid> Uuid::FromHexString(const std::string& hex_string) {
   constexpr size_t kInputLen = kUuidSize * 2;
   if (hex_string.length() != kInputLen) {
     return STATUS_SUBSTITUTE(InvalidArgument, "Size of hex_string is invalid: $0, expected: $1",
@@ -142,6 +134,7 @@ CHECKED_STATUS Uuid::FromHexString(const std::string& hex_string) {
   char buffer[kWordLen + 1];
   buffer[kWordLen] = 0;
 
+  Uuid result;
   for (size_t i = 0; i != kInputLen;) {
     memcpy(buffer, hex_string.c_str() + i, kWordLen);
     char* endptr = nullptr;
@@ -153,18 +146,15 @@ CHECKED_STATUS Uuid::FromHexString(const std::string& hex_string) {
     static_assert(sizeof(Word) == 8, "Adjust little endian conversion below");
     value = LittleEndian::FromHost64(value);
     i += kWordLen;
-    memcpy(boost_uuid_.data + boost_uuid_.size() - i / 2, &value, sizeof(value));
+    memcpy(result.boost_uuid_.data + result.boost_uuid_.size() - i / 2, &value, sizeof(value));
   }
 
-  return Status::OK();
+  return result;
 }
 
-CHECKED_STATUS Uuid::DecodeFromComparableSlice(const Slice& slice, size_t size_hint) {
-  size_t expected_size = (size_hint == 0) ? slice.size() : size_hint;
-  if (expected_size > slice.size()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Size of slice: $0 is smaller than provided "
-        "size_hint: $1", slice.size(), expected_size);
-  }
+Result<Uuid> Uuid::FromComparable(const Slice& slice) {
+  Uuid result;
+  size_t expected_size = slice.size();
   if (expected_size != kUuidSize) {
     return STATUS_SUBSTITUTE(InvalidArgument,
                              "Decode error: Size of slice is invalid: $0", expected_size);
@@ -172,17 +162,12 @@ CHECKED_STATUS Uuid::DecodeFromComparableSlice(const Slice& slice, size_t size_h
   const uint8_t* bytes = slice.data();
   if ((bytes[0] & 0xF0) == 0x10) {
     // Check the first byte to see if it is version 1.
-    FromTimestampBytes(bytes);
+    result.FromTimestampBytes(bytes);
   } else {
-    FromVersionFirstBytes(bytes);
+    result.FromVersionFirstBytes(bytes);
   }
-  memcpy(boost_uuid_.data + kUuidMsbSize, bytes + kUuidMsbSize, kUuidLsbSize);
-  return Status::OK();
-}
-
-CHECKED_STATUS Uuid::DecodeFromComparable(const std::string& bytes) {
-  Slice slice(bytes.data(), bytes.size());
-  return DecodeFromComparableSlice(slice);
+  memcpy(result.boost_uuid_.data + kUuidMsbSize, bytes + kUuidMsbSize, kUuidLsbSize);
+  return result;
 }
 
 CHECKED_STATUS Uuid::HashMACAddress() {

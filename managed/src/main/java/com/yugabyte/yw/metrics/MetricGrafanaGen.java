@@ -1,5 +1,13 @@
 package com.yugabyte.yw.metrics;
 
+import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
+
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.models.MetricConfig;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,18 +18,9 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
-
-import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.models.MetricConfig;
-
+import lombok.extern.slf4j.Slf4j;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
-
-import lombok.extern.slf4j.Slf4j;
 import play.Environment;
 import play.libs.Json;
 
@@ -37,7 +36,6 @@ public class MetricGrafanaGen {
   public static final String TSERVER_STATUS_PANEL_TEMPLATE_PATH =
       "metric/grafana_tserver_status_template.json";
   public static final String GROUP_HEADER_TEMPLATE = "metric/group_header_template.json";
-  public static final String METRICS_CONFIG_PATH = "metrics.yml";
   public static int DEFAULT_RANGE_SECS = 300;
 
   public MetricGrafanaGen(Environment environment) {
@@ -49,9 +47,8 @@ public class MetricGrafanaGen {
     try {
       File grafanaFile = new File(dashboardGenPath);
       grafanaFile.createNewFile();
-      ObjectWriter fileWriter = mapper.writer(new DefaultPrettyPrinter());
+      ObjectWriter fileWriter = mapper.writer(new DefaultPrettyPrinter("\n"));
       fileWriter.writeValue(grafanaFile, grafanaJson);
-
     } catch (IOException e) {
       log.error("Error in writing to Dashboards file: {}", e);
       throw new RuntimeException(e);

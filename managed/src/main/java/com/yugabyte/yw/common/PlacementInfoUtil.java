@@ -99,15 +99,8 @@ public class PlacementInfoUtil {
       PlacementInfo oldPlacementInfo, PlacementInfo newPlacementInfo) {
 
     // Map between the old placement's AZs and the affinitized leader info.
-    HashMap<UUID, Boolean> oldAZMap = new HashMap<>();
-
-    for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
-      for (PlacementRegion oldRegion : oldCloud.regionList) {
-        for (PlacementAZ oldAZ : oldRegion.azList) {
-          oldAZMap.put(oldAZ.uuid, oldAZ.isAffinitized);
-        }
-      }
-    }
+    Map<UUID, Boolean> oldAZMap = new HashMap<>();
+    oldPlacementInfo.azStream().forEach(oldAZ -> oldAZMap.put(oldAZ.uuid, oldAZ.isAffinitized));
 
     for (PlacementCloud newCloud : newPlacementInfo.cloudList) {
       for (PlacementRegion newRegion : newCloud.regionList) {
@@ -137,29 +130,18 @@ public class PlacementInfoUtil {
    */
   @VisibleForTesting
   static PlacementAZ findPlacementAzByUuid(PlacementInfo placementInfo, UUID azUUID) {
-    for (PlacementCloud cloud : placementInfo.cloudList) {
-      for (PlacementRegion region : cloud.regionList) {
-        for (PlacementAZ az : region.azList) {
-          if (az.uuid.equals(azUUID)) {
-            return az;
-          }
-        }
-      }
-    }
-
-    return null;
+    return placementInfo.azStream().filter(az -> az.uuid.equals(azUUID)).findFirst().orElse(null);
   }
 
   // Helper function to reset az node counts before a full move.
   private static void clearPlacementAZCounts(PlacementInfo placementInfo) {
-    for (PlacementCloud cloud : placementInfo.cloudList) {
-      for (PlacementRegion region : cloud.regionList) {
-        for (PlacementAZ az : region.azList) {
-          LOG.info("Clearing {} count {}.", az.name, az.numNodesInAZ);
-          az.numNodesInAZ = 0;
-        }
-      }
-    }
+    placementInfo
+        .azStream()
+        .forEach(
+            az -> {
+              LOG.info("Clearing {} count {}.", az.name, az.numNodesInAZ);
+              az.numNodesInAZ = 0;
+            });
   }
 
   /**
@@ -343,13 +325,7 @@ public class PlacementInfoUtil {
   }
 
   public static int getNodeCountInPlacement(PlacementInfo placementInfo) {
-    return placementInfo
-        .cloudList
-        .stream()
-        .flatMap(cloud -> cloud.regionList.stream())
-        .flatMap(region -> region.azList.stream())
-        .map(az -> az.numNodesInAZ)
-        .reduce(0, Integer::sum);
+    return sumByAZs(placementInfo, az -> az.numNodesInAZ);
   }
 
   // Helper API to catch duplicated node names in the given set of nodes.
@@ -476,7 +452,6 @@ public class PlacementInfoUtil {
                     cluster.clusterType,
                     cluster.userIntent,
                     cluster.userIntent.replicationFactor,
-                    allowGeoPartitioning,
                     defaultRegionUUID)
                 : cluster.placementInfo;
         LOG.info("Placement created={}.", cluster.placementInfo);
@@ -501,7 +476,6 @@ public class PlacementInfoUtil {
               cluster.clusterType,
               cluster.userIntent,
               cluster.userIntent.replicationFactor,
-              allowGeoPartitioning,
               defaultRegionUUID);
       LOG.info("Placement created={}.", cluster.placementInfo);
       configureNodeStates(
@@ -601,27 +575,13 @@ public class PlacementInfoUtil {
     // to 5, we will show existing zones. ResetConfig can be used to change zone count.
     boolean mode_changed = false;
     if (clusterOpType.equals(UniverseConfigureTaskParams.ClusterOperationType.CREATE)) {
-      int totalRF =
-          cluster
-              .placementInfo
-              .cloudList
-              .stream()
-              .flatMap(cloud -> cloud.regionList.stream())
-              .flatMap(region -> region.azList.stream())
-              .map(az -> az.replicationFactor)
-              .reduce(0, Integer::sum);
+      int totalRF = sumByAZs(cluster.placementInfo, az -> az.replicationFactor);
 
       int rf = cluster.userIntent.replicationFactor;
       LOG.info(
           "UserIntent replication factor={} while total zone replication factor={}.", rf, totalRF);
-      int numZonesIntended =
-          cluster
-              .placementInfo
-              .cloudList
-              .stream()
-              .flatMap(cloud -> cloud.regionList.stream())
-              .mapToInt(region -> region.azList.size())
-              .sum();
+      int numZonesIntended = (int) cluster.placementInfo.azStream().count();
+
       if (rf < numZonesIntended) {
         if (allowGeoPartitioning) {
           LOG.info(
@@ -632,11 +592,7 @@ public class PlacementInfoUtil {
         } else {
           cluster.placementInfo =
               getPlacementInfo(
-                  cluster.clusterType,
-                  cluster.userIntent,
-                  numZonesIntended,
-                  allowGeoPartitioning,
-                  defaultRegionUUID);
+                  cluster.clusterType, cluster.userIntent, numZonesIntended, defaultRegionUUID);
           LOG.info("New placement has {} zones.", getNumZones(cluster.placementInfo));
           taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
           mode = ConfigureNodesMode.NEW_CONFIG;
@@ -656,21 +612,13 @@ public class PlacementInfoUtil {
               : taskParams.nodeDetailsSet,
           regionsChanged)) {
         LOG.info("Provider or region changed, getting new placement info.");
-        int numZonesIntended =
-            cluster
-                .placementInfo
-                .cloudList
-                .stream()
-                .flatMap(cloud -> cloud.regionList.stream())
-                .mapToInt(region -> region.azList.size())
-                .sum();
+        int numZonesIntended = (int) cluster.placementInfo.azStream().count();
+        // For example if we only added 1 region with 1 az,
+        // numZonesIntended will be 1, but we need RF.
+        int intentZones = Math.max(cluster.userIntent.replicationFactor, numZonesIntended);
         cluster.placementInfo =
             getPlacementInfo(
-                cluster.clusterType,
-                cluster.userIntent,
-                numZonesIntended,
-                allowGeoPartitioning,
-                defaultRegionUUID);
+                cluster.clusterType, cluster.userIntent, intentZones, defaultRegionUUID);
         changeNodeStates = true;
       } else {
         String newInstType = cluster.userIntent.instanceType;
@@ -703,16 +651,11 @@ public class PlacementInfoUtil {
   @VisibleForTesting
   static void setPerAZRF(PlacementInfo placementInfo, int rf, UUID defaultRegionUUID) {
     LOG.info("Setting per AZ replication factor. Default region {}", defaultRegionUUID);
-    List<PlacementAZ> sortedAZs = getAZsSortedByNumNodes(placementInfo.cloudList);
+    List<PlacementAZ> sortedAZs = getAZsSortedByNumNodes(placementInfo);
     int numNodesInUniverse = sortedAZs.stream().map(az -> az.numNodesInAZ).reduce(0, Integer::sum);
 
     // Reset per-AZ RF to 0
-    placementInfo
-        .cloudList
-        .stream()
-        .flatMap(cloud -> cloud.regionList.stream())
-        .flatMap(region -> region.azList.stream())
-        .forEach(az -> az.replicationFactor = 0);
+    placementInfo.azStream().forEach(az -> az.replicationFactor = 0);
 
     if (defaultRegionUUID != null) {
       // If default region is set, placing replicas only in its zones (removing all
@@ -788,13 +731,9 @@ public class PlacementInfoUtil {
   }
 
   // Returns a list of zones sorted in descending order by the number of nodes in each zone
-  public static List<PlacementAZ> getAZsSortedByNumNodes(List<PlacementCloud> cloudList) {
+  public static List<PlacementAZ> getAZsSortedByNumNodes(PlacementInfo placementInfo) {
     Map<PlacementAZ, Integer> currentAZsToNumNodes =
-        cloudList
-            .stream()
-            .flatMap(cloud -> cloud.regionList.stream())
-            .flatMap(region -> region.azList.stream())
-            .collect(Collectors.toMap(az -> az, az -> az.numNodesInAZ));
+        placementInfo.azStream().collect(Collectors.toMap(az -> az, az -> az.numNodesInAZ));
 
     List<Entry<PlacementAZ, Integer>> currentAZsToNumNodesList =
         new ArrayList<>(currentAZsToNumNodes.entrySet());
@@ -1108,6 +1047,10 @@ public class PlacementInfoUtil {
     }
   }
 
+  private static int sumByAZs(PlacementInfo info, Function<PlacementAZ, Integer> extractor) {
+    return info.azStream().map(extractor).reduce(0, Integer::sum);
+  }
+
   // Helper API to get keys of map in ascending order of its values and natural order.
   private static LinkedHashSet<UUID> sortKeysByValuesAndOriginalOrder(
       Map<UUID, Integer> map, Collection<UUID> originalOrder) {
@@ -1294,12 +1237,7 @@ public class PlacementInfoUtil {
    */
   public static Map<UUID, Integer> getAzUuidToNumNodes(PlacementInfo placement) {
     Map<UUID, Integer> azUuidToNumNodes =
-        placement
-            .cloudList
-            .stream()
-            .flatMap(cloud -> cloud.regionList.stream())
-            .flatMap(region -> region.azList.stream())
-            .collect(Collectors.toMap(az -> az.uuid, az -> az.numNodesInAZ));
+        placement.azStream().collect(Collectors.toMap(az -> az.uuid, az -> az.numNodesInAZ));
 
     LOG.info("Az placement map {}", azUuidToNumNodes);
 
@@ -1492,21 +1430,11 @@ public class PlacementInfoUtil {
       // Remove primary cluster nodes which will be added back in ToBeRemoved state
       taskParams.nodeDetailsSet.removeIf(nd -> (nd.placementUuid.equals(currentCluster.uuid)));
 
-      int num_zones_intended =
-          currentCluster
-              .placementInfo
-              .cloudList
-              .stream()
-              .flatMap(cloud -> cloud.regionList.stream())
-              .mapToInt(region -> region.azList.size())
-              .sum();
-
       currentCluster.placementInfo =
           getPlacementInfo(
               currentCluster.clusterType,
               currentCluster.userIntent,
-              num_zones_intended,
-              allowGeoPartitioning,
+              currentCluster.userIntent.replicationFactor,
               getDefaultRegion(taskParams));
       configureDefaultNodeStates(currentCluster, taskParams.nodeDetailsSet, universe);
     } else {
@@ -2456,8 +2384,7 @@ public class PlacementInfoUtil {
       ClusterType clusterType,
       UserIntent userIntent,
       int intentZones,
-      boolean allowGeoPartitioning,
-      UUID defaultRegionUUID) {
+      @Nullable UUID defaultRegionUUID) {
     if (userIntent == null) {
       LOG.info("No placement due to null userIntent.");
 
@@ -2530,18 +2457,18 @@ public class PlacementInfoUtil {
           INTERNAL_SERVER_ERROR, "No AZ found across regions: " + userIntent.regionList);
     }
 
-    int num_zones = Math.min(intentZones, userIntent.replicationFactor);
+    int numZones = Math.min(intentZones, userIntent.replicationFactor);
     LOG.info(
         "numRegions={}, numAzsInRegions={}, zonesIntended={}",
         userIntent.regionList.size(),
         allAzsInRegions.size(),
-        num_zones);
+        numZones);
 
     // Create the placement info object.
     PlacementInfo placementInfo = new PlacementInfo();
 
     // Case (1) Set min_num_replicas = RF
-    if (num_zones == 1) {
+    if (numZones == 1) {
       addPlacementZone(
           allAzsInRegions.get(0).uuid,
           placementInfo,
@@ -2549,12 +2476,8 @@ public class PlacementInfoUtil {
           userIntent.numNodes);
     } else {
       // Case (2) Set min_num_replicas ~= RF/num_zones
-      for (int i = 0; i < num_zones; i++) {
-        if (allAzsInRegions.size() < num_zones) {
-          addPlacementZone(allAzsInRegions.get(i % allAzsInRegions.size()).uuid, placementInfo);
-        } else {
-          addPlacementZone(allAzsInRegions.get(i).uuid, placementInfo);
-        }
+      for (int i = 0; i < numZones; i++) {
+        addPlacementZone(allAzsInRegions.get(i % allAzsInRegions.size()).uuid, placementInfo);
       }
     }
 

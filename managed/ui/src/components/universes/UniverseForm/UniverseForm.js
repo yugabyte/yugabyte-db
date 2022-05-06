@@ -324,11 +324,11 @@ class UniverseForm extends Component {
     return null;
   };
 
-  getYSQLstate = () => {
+  getYSQLstate = (clusterType) => {
     const { formValues, universe } = this.props;
 
-    if (isNonEmptyObject(formValues['primary'])) {
-      return formValues['primary'].enableYSQL;
+    if (isNonEmptyObject(formValues[clusterType])) {
+      return formValues[clusterType].enableYSQL;
     }
 
     const {
@@ -344,11 +344,11 @@ class UniverseForm extends Component {
     return null;
   };
 
-  getYCQLstate = () => {
+  getYCQLstate = (clusterType) => {
     const { formValues, universe } = this.props;
 
-    if (isNonEmptyObject(formValues['primary'])) {
-      return formValues['primary'].enableYCQL;
+    if (isNonEmptyObject(formValues[clusterType])) {
+      return formValues[clusterType].enableYCQL;
     }
 
     const {
@@ -364,11 +364,11 @@ class UniverseForm extends Component {
     return null;
   };
 
-  getYEDISstate = () => {
+  getYEDISstate = (clusterType) => {
     const { formValues, universe } = this.props;
 
-    if (isNonEmptyObject(formValues['primary'])) {
-      return formValues['primary'].enableYEDIS;
+    if (isNonEmptyObject(formValues[clusterType])) {
+      return formValues[clusterType].enableYEDIS;
     }
 
     const {
@@ -411,13 +411,13 @@ class UniverseForm extends Component {
         provider: formValues[clusterType].provider,
         assignPublicIP: formValues[clusterType].assignPublicIP,
         useTimeSync: formValues[clusterType].useTimeSync,
-        enableYSQL: self.getYSQLstate(),
+        enableYSQL: self.getYSQLstate(clusterType),
         enableYSQLAuth: formValues[clusterType].enableYSQLAuth,
         ysqlPassword: formValues[clusterType].ysqlPassword,
-        enableYCQL: self.getYCQLstate(),
+        enableYCQL: self.getYCQLstate(clusterType),
         enableYCQLAuth: formValues[clusterType].enableYCQLAuth,
         ycqlPassword: formValues[clusterType].ycqlPassword,
-        enableYEDIS: self.getYEDISstate(),
+        enableYEDIS: self.getYEDISstate(clusterType),
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
         enableIPV6: formValues[clusterType].enableIPV6,
@@ -827,7 +827,9 @@ class UniverseForm extends Component {
       getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
       fetchCurrentUniverse: this.props.fetchCurrentUniverse,
       location: this.props.location,
-      featureFlags: this.props.featureFlags
+      featureFlags: this.props.featureFlags,
+      fetchRunTimeConfigs: this.props.fetchRunTimeConfigs,
+      runtimeConfigs: this.props.runtimeConfigs
     };
 
     if (this.state.currentView === 'Primary') {

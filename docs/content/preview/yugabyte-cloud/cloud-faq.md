@@ -57,10 +57,10 @@ A YugabyteDB Managed account is limited to a single free cluster; you can add as
 | vCPU/Storage | Up to 2 vCPU / 4 GB RAM / 10 GB storage | Any |
 | [Regions](../release-notes/#cloud-provider-regions) | All | All |
 | Upgrades | Automatic | Automatic with customizable [maintenance windows](../cloud-clusters/cloud-maintenance/) |
-| VPC Peering | No | Yes |
+| [VPC Peering](../cloud-basics/cloud-vpcs/) | No | Yes |
 | Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
-| Scaling | None | Horizontal and Vertical |
-| Backups | None | Scheduled and on-demand |
+| [Scaling](../cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
+| [Backups](../cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
 | [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Edge | Stable |
 | Support | Slack Community | Enterprise Support |
 

@@ -1588,7 +1588,7 @@ generateClonedIndexStmt(RangeVar *heapRel, Oid heapRelid, Relation source_idx,
 	index->unique = idxrec->indisunique;
 	index->primary = idxrec->indisprimary;
 	index->transformed = true;	/* don't need transformIndexStmt */
-	index->concurrent = false;
+	index->concurrent = YB_CONCURRENCY_DISABLED;
 	index->if_not_exists = false;
 
 	/*

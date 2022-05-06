@@ -16,6 +16,7 @@ import { YBLoading } from '../../../common/indicators';
 import { isNonEmptyObject, isNonEmptyString, trimString } from '../../../../utils/ObjectUtils';
 import { reduxForm, FieldArray } from 'redux-form';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
+import { NTPConfig, NTP_TYPES } from './NTPConfig';
 
 const validationIsRequired = (value) => (value && value.trim() !== '' ? undefined : 'Required');
 
@@ -97,6 +98,11 @@ class GCPProviderInitView extends Component {
     const self = this;
     const gcpCreateConfig = {};
     const perRegionMetadata = {};
+    const ntpConfig = {
+      setUpChrony: vals['setUpChrony'],
+      showSetUpChrony: vals['setUpChrony'],
+      ntpServers: vals['ntpServers']
+    }
     if (isNonEmptyString(vals.destVpcId)) {
       gcpCreateConfig['network'] = vals.destVpcId;
       gcpCreateConfig['use_host_vpc'] = true;
@@ -120,7 +126,7 @@ class GCPProviderInitView extends Component {
     const configText = vals.gcpConfig;
     if (vals.credential_input === 'local_service_account') {
       gcpCreateConfig['use_host_credentials'] = true;
-      return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata);
+      return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata, ntpConfig);
     } else if (
       vals.credential_input === 'upload_service_account_json' &&
       isNonEmptyObject(configText)
@@ -135,7 +141,7 @@ class GCPProviderInitView extends Component {
         } catch (e) {
           self.setState({ error: 'Invalid GCP config JSON file' });
         }
-        return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata);
+        return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata, ntpConfig);
       };
     } else {
       this.setState({ error: 'GCP Config JSON is required' });
@@ -350,8 +356,17 @@ class GCPProviderInitView extends Component {
                 {gcpProjectField}
                 {destVpcField}
                 {regionInput}
+              <Row>
+                <Col lg={3}>
+                  <div className="form-item-custom-label">NTP Setup</div>
+                </Col>
+                <Col lg={7}>
+                  <NTPConfig onChange={this.updateFormField} hideHelp={true}/>
+                </Col>
+              </Row>
               </Col>
             </Row>
+
           </div>
           <div className="form-action-button-container">
             <YBButton
@@ -391,6 +406,9 @@ const validate = (values) => {
       errors.destVpcId = 'VPC Network Name is Required';
     }
   }
+  if(values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0){
+    errors.ntpServers = 'NTP servers cannot be empty'
+  }
   return errors;
 };
 
@@ -400,7 +418,10 @@ function mapStateToProps(state) {
       accountName: '',
       credential_input: 'upload_service_account_json',
       airGapInstall: false,
-      network_setup: 'new_vpc'
+      network_setup: 'new_vpc',
+      ntp_option: NTP_TYPES.MANUAL,
+      ntpServers: [],
+      setUpChrony: true
     }
   };
 }

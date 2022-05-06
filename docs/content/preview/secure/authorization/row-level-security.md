@@ -1,11 +1,9 @@
 ---
-title: Row-Level Security (RLS)
-headerTitle: Row-Level Security (RLS)
-linkTitle: Row-Level Security (RLS)
-description: Row-Level Security (RLS) in YugabyteDB
+title: Row-level security (RLS)
+description: Row-level security (RLS) in YugabyteDB
 menu:
   preview:
-    name: Row-Level Security (RLS)
+    name: Row-level security
     identifier: ysql-row-level-security
     parent: authorization
     weight: 745
@@ -25,9 +23,9 @@ showAsideToc: true
 
 In addition to database access permissions available through ROLE and GRANT privilege system, YugabyteDB provides a more granular level security where tables can have **row security policies** that restrict rows users can access.
 
-**Row-level Security (RLS)** restricts rows that can be returned by normal queries or inserted, updated, or deleted by DML commands. Row-level security policies can be created specific to a DML command or with ALL commands. They can also be used to create policies on a particular role or multiple roles.
+Row-level security (RLS) restricts rows that can be returned by normal queries or inserted, updated, or deleted by DML commands. RLS policies can be created specific to a DML command or with ALL commands. They can also be used to create policies on a particular role or multiple roles.
 
-By default, tables do not have any row level policies defined, so that if a user has access privileges to a table, all rows in the table are available to query and update.
+By default, tables do not have any row-level policies defined; if a user has access privileges to a table, all rows in the table are available to query and update.
 
 This example uses the row-level security policies to restrict employees to view only rows that have their respective names.
 

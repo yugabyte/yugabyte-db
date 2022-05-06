@@ -29,11 +29,11 @@ To view the peering connection details, select a peering connection in the list 
 
 To terminate a peering connection, click the **Delete** icon for the peering connection in the list you want to terminate, then click **Terminate**. You can also terminate a peering connection by clicking **Terminate Peering** in the **Peering Details** sheet.
 
-{{< note title="Note" >}}
+{{< warning title="Important" >}}
 
 If you have an _Active_ peering connection but are unable to connect to a cluster in the VPC, ensure that you have added the CIDR block of the peered application VPC to your cluster's IP allow list. For information on adding IP allow lists, refer to [Assign IP allow lists](../../../cloud-secure-clusters/add-connections/).
 
-{{< /note >}}
+{{< /warning >}}
 
 ## Create a peering connection
 
@@ -61,13 +61,7 @@ If you have an _Active_ peering connection but are unable to connect to a cluste
   </div>
 </div>
 
-## Add the peered application VPC to your cluster IP allow list
+## Next steps
 
-After the VPC and the peering connection are active, you need to add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster.
-
-1. On the **Clusters** page, select your cluster.
-1. Click **More Links** and **Edit IP Allow List**.
-1. Click **Create New List and Add to Cluster**.
-1. Enter a name for the allow list.
-1. Enter the IP addresses or CIDR.
-1. Click **Save**.
+- [Configure your cloud provider](../cloud-configure-provider)
+- [Add the application VPC CIDR to the cluster IP allow list](../../../cloud-secure-clusters/add-connections/)

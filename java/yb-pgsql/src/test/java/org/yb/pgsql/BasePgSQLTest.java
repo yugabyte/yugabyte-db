@@ -935,6 +935,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
       // Pre-initialize stuff while connection is still available
       for (Object el : elems) {
+        // TODO(alex): Store as List to begin with?
         if (el instanceof PgArray)
           ((PgArray) el).getArray();
       }
@@ -1268,7 +1269,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       unexpected.removeAll(expected);
       List<T> missing = new ArrayList<>(expected);
       missing.removeAll(actual);
-      fail(errorPrefix + "Collection length mismatch: expected<" + expected.size()
+      fail(errorPrefix + " Collection length mismatch: expected<" + expected.size()
           + "> but was:<" + actual.size() + ">"
           + "\nUnexpected rows: " + unexpected
           + "\nMissing rows:    " + missing);
@@ -1645,6 +1646,42 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                              warning.getMessage(), warningSubstring),
                StringUtils.containsIgnoreCase(warning.getMessage(), warningSubstring));
     assertEquals("Expected (at most) one warning", null, warning.getNextWarning());
+  }
+
+  /**
+   * Verify that a (write) query succeeds with multiple lines of warnings.
+   * @param statement The statement used to execute the query.
+   * @param query The query string.
+   * @param warningSubstring A (case-insensitive) list of substrings of expected warning messages.
+   */
+  protected void verifyStatementWarnings(Statement statement,
+                                        String query,
+                                        List<String> warningSubstrings) throws SQLException {
+    int warningLineIndex = 0;
+    int expectedWarningCount = warningSubstrings.size();
+    statement.execute(query);
+    SQLWarning warning = statement.getWarnings();
+
+    // make sure number of warnings match expected number of warnings
+    int warningCount = 0;
+    while (warning != null) {
+      warningCount++;
+      warning = warning.getNextWarning();
+    }
+    assertEquals("Expected " + expectedWarningCount + " warnings.", expectedWarningCount,
+      warningCount);
+
+    // check each warning matches expected list of warnings
+    warning = statement.getWarnings();
+    while (warning != null) {
+      assertTrue(String.format("Unexpected Warning Message. Got: '%s', expected to contain : '%s",
+                            warning.getMessage(), warningSubstrings.get(warningLineIndex)),
+                 StringUtils.containsIgnoreCase(warning.getMessage(),
+                            warningSubstrings.get(warningLineIndex)));
+      warning = warning.getNextWarning();
+      warningLineIndex++;
+    }
+
   }
 
   protected String getSimpleTableCreationStatement(

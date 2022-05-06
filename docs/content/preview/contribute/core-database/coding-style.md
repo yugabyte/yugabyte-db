@@ -287,6 +287,30 @@ Similarly, for variable declarations and definitions:
   int *a = nullptr;
 ```
 
+### Pointer vs reference as returned value
+
+When a function never returns `nullptr` we should prefer returning references over pointers.
+
+It has the following advantages:
+* It is pretty clear to the user of the function that it would never return `nullptr`, and they do not have to check for it.
+* It works perfectly with our policy to pass read-write arguments as pointers, because the caller will add `&` while passing the result of such function to another call:
+  ```
+  DoSomething(..., &GetX());
+  ```
+* It is clear that returned reference is not owned by the caller. Also, we could avoid cases when ownership is taken by mistake.
+  Consider the following examples, where `GetP()` returns pointer and `GetR()` returns reference:
+  ```
+  // No compilation error. It is useful for refactoring.
+  std::unique_ptr<P> p = GetP();
+  ```
+  ```
+  auto p = GetP();
+  p->foo(); // It is unclear for the caller whether p is stored as smart pointer and owned by him or returned as raw pointer and owner by someone else.
+  ...
+  auto& r = GetR(); // Would not even compile without &, so it is pretty clear that r is reference and not owner by the caller.
+  r.foo();
+  ```
+
 ### Get prefix for getters
 
 Some C++ coding styles (such as Google's) use the `Get` prefix for functions returning a value, and some don't (Boost, STL). In YugabyteDB code it is allowed to either use or not use the `Get` prefix.
@@ -523,6 +547,19 @@ We sometimes use `DCHECKs` to verify function prerequisites. If you never expect
 However, if you could theoretically get bad data in production at a certain point in the code, then:
   * If you can recover from this error, return an error `Status` (e.g. using [`SCHECK`]({{< relref "#scheck" >}}) or [`RSTATUS_DCHECK`]({{< relref "#rstatus_dcheck" >}})).
   * If this is a severe invariant violation and you can't recover from it, this could be a [`CHECK`]({{< relref "#check" >}}).
+
+### Log levels
+
+We should use the following policy when choosing log level:
+  * `INFO` - general logs that describe some important actions taken by the system.
+    Should not be too verbose, i.e. avoid logging the same information several times per second.
+    Use `YB_LOG_EVERY_N_SECS` when necessary.
+  * `WARNING` - expected failures. Failures that could occur while service is running. For instance network disconnect, timeout etc.
+  * `ERROR` - should NEVER be used.
+  * `DFATAL` - unexpected failures. Some sanity check failures that should not happen if the system operates correctly.
+    I.e. unexpected state, data corruption etc.
+    `DFATAL` logs an `ERROR` in release mode and `FATAL` in debug mode. So tests will fail when such issue happen.
+    Also use `RSTATUS_DCHECK` when possible, instead of `DFATAL`.
 
 ### PREDICT_TRUE and PREDICT_FALSE
 

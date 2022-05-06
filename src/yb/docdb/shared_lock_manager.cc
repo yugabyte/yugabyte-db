@@ -66,7 +66,7 @@ std::array<LockState, kIntentTypeSetMapSize> GenerateConflicts() {
   for (size_t idx = 0; idx != kIntentTypeSetMapSize; ++idx) {
     result[idx] = 0;
     for (auto intent_type : IntentTypeSet(idx)) {
-      for (auto other_intent_type : kIntentTypeList) {
+      for (auto other_intent_type : IntentTypeList()) {
         if (IntentTypesConflict(intent_type, other_intent_type)) {
           result[idx] |= IntentTypeMask(other_intent_type);
         }
@@ -170,7 +170,7 @@ const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetConflicts = Gen
 std::string SharedLockManager::ToString(const LockState& state) {
   std::string result = "{";
   bool first = true;
-  for (auto type : kIntentTypeList) {
+  for (auto type : IntentTypeList()) {
     if ((state & IntentTypeMask(type)) != 0) {
       if (first) {
         first = false;

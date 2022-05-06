@@ -1253,8 +1253,7 @@ public class NodeManager extends DevopsBase {
 
   static boolean isIpAddress(String maybeIp) {
     InetAddressValidator ipValidator = InetAddressValidator.getInstance();
-    return InetAddressValidator.getInstance().isValidInet4Address(maybeIp)
-        || InetAddressValidator.getInstance().isValidInet6Address(maybeIp);
+    return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
   }
 
   enum SkipCertValidationType {
@@ -1753,6 +1752,16 @@ public class NodeManager extends DevopsBase {
           if (taskParam.useSystemd) {
             commandArgs.add("--systemd_services");
           }
+          if (taskParam.checkVolumesAttached) {
+            UniverseDefinitionTaskParams.Cluster cluster =
+                universe.getCluster(taskParam.placementUuid);
+            if (cluster != null
+                && cluster.userIntent.deviceInfo != null
+                && cluster.userIntent.providerType != Common.CloudType.onprem) {
+              commandArgs.add("--num_volumes");
+              commandArgs.add(String.valueOf(cluster.userIntent.deviceInfo.numVolumes));
+            }
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
@@ -1832,7 +1841,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(taskParam.rootCertPath.toString());
           }
           commandArgs.add("--replication_config_name");
-          commandArgs.add(taskParam.replicationConfigName);
+          commandArgs.add(taskParam.replicationGroupName);
           if (taskParam.producerCertsDirOnTarget != null) {
             commandArgs.add("--producer_certs_dir");
             commandArgs.add(taskParam.producerCertsDirOnTarget.toString());
@@ -1959,7 +1968,7 @@ public class NodeManager extends DevopsBase {
       result.add("--cql_proxy_rpc_port");
       result.add(Integer.toString(ports.yqlServerRpcPort));
     }
-    if (userIntent.enableYCQL) {
+    if (userIntent.enableYSQL) {
       result.add("--ysql_proxy_http_port");
       result.add(Integer.toString(ports.ysqlServerHttpPort));
       result.add("--ysql_proxy_rpc_port");

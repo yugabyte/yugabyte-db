@@ -244,7 +244,7 @@ class PgApiImpl {
                                 bool is_shared_table,
                                 bool if_not_exist,
                                 bool add_primary_key,
-                                const bool colocated,
+                                bool is_colocated_via_database,
                                 const PgObjectId& tablegroup_oid,
                                 const ColocationId colocation_id,
                                 const PgObjectId& tablespace_oid,

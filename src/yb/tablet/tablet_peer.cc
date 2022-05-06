@@ -708,18 +708,6 @@ Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
   return Status::OK();
 }
 
-void TabletPeer::GetLastCDCedData(RemoveIntentsData* data) {
-  if (consensus_ != nullptr) {
-    data->op_id.index = consensus_->GetLastCDCedOpId().index;
-    data->op_id.term = consensus_->GetLastCDCedOpId().term;
-  }
-
-  if((tablet_ != nullptr) && (tablet_->mvcc_manager() != nullptr)) {
-    // for now use this hybrid time, ideally it should be of last_updated_time
-    data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
-  }
-}
-
 void TabletPeer::UpdateClock(HybridTime hybrid_time) {
   clock_->Update(hybrid_time);
 }
@@ -860,6 +848,12 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
 }
 
 Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) const {
+  if (PREDICT_FALSE(!log_)) {
+    auto status = STATUS(Uninitialized, "Log not ready (tablet peer not yet initialized?)");
+    LOG(DFATAL) << status;
+    return status;
+  }
+
   // First, we anchor on the last OpId in the Log to establish a lower bound
   // and avoid racing with the other checks. This limits the Log GC candidate
   // segments before we check the anchors.

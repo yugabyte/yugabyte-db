@@ -29,6 +29,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
@@ -60,6 +61,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
@@ -68,6 +70,11 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+
+DECLARE_int64(cdc_intent_retention_ms);
+DECLARE_bool(enable_update_local_peer_min_index);
+DECLARE_int32(update_min_cdc_indices_interval_secs);
+DECLARE_bool(stream_truncate_record);
 
 namespace yb {
 
@@ -131,6 +138,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
+  Status TruncateTable(Cluster* cluster, const std::vector<string>& table_ids) {
+    RETURN_NOT_OK(cluster->client_->TruncateTables(table_ids));
+    return Status::OK();
+  }
+
   // The range is exclusive of end i.e. [start, end)
   void WriteRows(uint32_t start, uint32_t end, Cluster* cluster) {
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(kNamespaceName));
@@ -156,13 +168,32 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     EXPECT_OK(conn.Execute("COMMIT"));
   }
 
+  std::unique_ptr<tserver::TabletServerAdminServiceProxy> GetTServerAdminProxy(
+      const uint32_t tserver_index) {
+    auto tserver = test_cluster()->mini_tablet_server(tserver_index);
+    return std::make_unique<tserver::TabletServerAdminServiceProxy>(
+        &tserver->server()->proxy_cache(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
+  }
+
+  Status GetIntentCounts(const uint32_t tserver_index, int64* num_intents) {
+    tserver::CountIntentsRequestPB req;
+    tserver::CountIntentsResponsePB resp;
+    RpcController rpc;
+
+    auto ts_admin_service_proxy = GetTServerAdminProxy(tserver_index);
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    RETURN_NOT_OK(ts_admin_service_proxy->CountIntents(req, &resp, &rpc));
+    *num_intents = resp.num_intents();
+    return Status::OK();
+  }
+
   void PrepareChangeRequest(
       GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
     change_req->set_stream_id(stream_id);
     change_req->set_tablet_id(tablets.Get(0).tablet_id());
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_index(0);
     change_req->mutable_from_cdc_sdk_checkpoint()->set_term(0);
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_index(0);
     change_req->mutable_from_cdc_sdk_checkpoint()->set_key("");
     change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(0);
   }
@@ -173,8 +204,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB& cp) {
     change_req->set_stream_id(stream_id);
     change_req->set_tablet_id(tablets.Get(0).tablet_id());
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_index(cp.index());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_term(cp.term());
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_index(cp.index());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_key(cp.key());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(cp.write_id());
   }
@@ -185,6 +216,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB>
           tablets) {
     set_checkpoint_req->set_stream_id(stream_id);
+    set_checkpoint_req->set_initial_checkpoint(true);
     set_checkpoint_req->set_tablet_id(tablets.Get(0).tablet_id());
     set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_term(0);
     set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_index(0);
@@ -200,9 +232,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     set_checkpoint_rpc.set_deadline(deadline);
     PrepareSetCheckpointRequest(&set_checkpoint_req, stream_id, tablets);
 
-    return cdc_proxy_->SetCDCCheckpoint(set_checkpoint_req,
-                                        &set_checkpoint_resp,
-                                        &set_checkpoint_rpc);
+    return cdc_proxy_->SetCDCCheckpoint(
+        set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
   }
 
   void AssertKeyValue(const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value) {
@@ -227,8 +258,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return change_resp;
   }
 
-  void TestGetChanges(const uint32_t replication_factor,
-                      bool add_tables_without_primary_key = false) {
+  void TestGetChanges(
+      const uint32_t replication_factor, bool add_tables_without_primary_key = false) {
     ASSERT_OK(SetUpWithParams(replication_factor, 1, false));
 
     auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -237,8 +268,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       // Adding tables without primary keys, they should not disturb any CDC related processes.
       std::string tables_wo_pk[] = {"table_wo_pk_1", "table_wo_pk_2", "table_wo_pk_3"};
       for (const auto& table_name : tables_wo_pk) {
-        auto temp = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName,
-                                              table_name, 1 /* num_tablets */, false));
+        auto temp = ASSERT_RESULT(
+            CreateTable(&test_cluster_, kNamespaceName, table_name, 1 /* num_tablets */, false));
       }
     }
 
@@ -272,6 +303,90 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     }
     LOG(INFO) << "Got " << ins_count << " insert records";
     ASSERT_EQ(expected_records_size, ins_count);
+  }
+
+  void TestIntentGarbageCollectionFlag(const uint32_t num_tservers,
+                                       const bool set_flag_to_a_smaller_value,
+                                       const uint32_t cdc_intent_retention_ms) {
+    if (set_flag_to_a_smaller_value) {
+      FLAGS_cdc_intent_retention_ms = cdc_intent_retention_ms;
+    }
+    FLAGS_enable_update_local_peer_min_index = false;
+    FLAGS_update_min_cdc_indices_interval_secs = 1;
+
+    ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
+
+    auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    ASSERT_OK(
+        test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
+
+    TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+    ASSERT_OK(SetInitialCheckpoint(stream_id, tablets));
+
+    // Call GetChanges once to set the initial value in the cdc_state table.
+    GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+    // This will write one row with PK = 0.
+    WriteRows(0 /* start */, 1 /* end */, &test_cluster_);
+
+    // Count intents here, they should be 0 here.
+    for (uint32_t i = 0; i < num_tservers; ++i) {
+      int64 intents_count = 0;
+      ASSERT_OK(GetIntentCounts(i, &intents_count));
+      ASSERT_EQ(0, intents_count);
+    }
+
+    WriteRowsInTransaction(1, 2, &test_cluster_);
+    ASSERT_OK(test_client()->FlushTables(
+        {table.table_id()}, /* add_indexes = */ false,
+        /* timeout_secs = */ 30, /* is_compaction = */ false));
+
+    // Sleep for 60s for the background thread to update the consumer op_id so that garbage
+    // collection can happen.
+    vector<int64> intent_counts(num_tservers, -1);
+    ASSERT_OK(WaitFor(
+        [this, &num_tservers, &set_flag_to_a_smaller_value, &intent_counts]() -> Result<bool> {
+          uint32_t i = 0;
+          while (i < num_tservers) {
+            auto status = GetIntentCounts(i, &intent_counts[i]);
+            if (!status.ok()) {
+              continue;
+            }
+
+            if (set_flag_to_a_smaller_value) {
+              if (intent_counts[i] != 0) {
+                continue;
+              }
+            }
+            i++;
+          }
+          return true;
+        },
+        MonoDelta::FromSeconds(60), "Wait for the intent counts"));
+
+    for (uint32_t i = 0; i < num_tservers; ++i) {
+      if (set_flag_to_a_smaller_value) {
+        ASSERT_EQ(0, intent_counts[i]);
+      } else {
+        ASSERT_NE(0, intent_counts[i]);
+      }
+    }
+  }
+
+  void TestSetCDCCheckpoint(const uint32_t num_tservers, bool initial_checkpoint) {
+    ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
+    auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    ASSERT_OK(
+        test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
+
+    TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+    ASSERT_OK(SetInitialCheckpoint(stream_id, tablets));
+
   }
 
   Result<GetChangesResponsePB> VerifyIfDDLRecordPresent(
@@ -310,6 +425,35 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     }
 
     return resp;
+  }
+
+  void CheckRecord(
+      const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::ExpectedRecord expected_records,
+      uint32_t* count) {
+    // The count array stores counts of DDL, INSERT, TRUNCATE in that order.
+    switch (record.row_message().op()) {
+      case RowMessage::DDL: {
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        count[0]++;
+      } break;
+      case RowMessage::INSERT: {
+        AssertKeyValue(record, expected_records.key, expected_records.value);
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        count[1]++;
+      } break;
+      case RowMessage::TRUNCATE: {
+        count[2]++;
+      } break;
+      default:
+        ASSERT_FALSE(true);
+        break;
+    }
+  }
+
+  void CheckCount(const uint32_t* expected_count, uint32_t* count) {
+    for (int i = 0; i < 3; i++) {
+      ASSERT_EQ(expected_count[i], count[i]);
+    }
   }
 };
 
@@ -399,8 +543,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNeedSchemaInfoFlag)) {
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(test_client()->GetTablets(
-      table, 0, &tablets, /* partition_list_version = */ nullptr));
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
   std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
@@ -411,24 +554,97 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNeedSchemaInfoFlag)) {
   WriteRows(0 /* start */, 1 /* end */, &test_cluster_);
 
   // This is the first call to GetChanges, we will get a DDL record.
-  GetChangesResponsePB resp = ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, false,
-                                                                     true));
+  GetChangesResponsePB resp =
+      ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, false, true));
 
   // Write another row to the database with PK = 1.
   WriteRows(1 /* start */, 2 /* end */, &test_cluster_);
 
   // We will not get any DDL record here since this is not the first call and the flag
   // need_schema_info is also unset.
-  resp = ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, false, false,
-                                                &resp.cdc_sdk_checkpoint()));
+  resp = ASSERT_RESULT(
+      VerifyIfDDLRecordPresent(stream_id, tablets, false, false, &resp.cdc_sdk_checkpoint()));
 
   // Write another row to the database with PK = 2.
   WriteRows(2 /* start */, 3 /* end */, &test_cluster_);
 
   // We will get a DDL record since we have enabled the need_schema_info flag.
-  resp = ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, true, false,
-                                                &resp.cdc_sdk_checkpoint()));
+  resp = ASSERT_RESULT(
+      VerifyIfDDLRecordPresent(stream_id, tablets, true, false, &resp.cdc_sdk_checkpoint()));
 }
+
+// Insert a single row, truncate table, insert another row.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTruncateTable)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  ASSERT_OK(SetInitialCheckpoint(stream_id, tablets));
+
+  WriteRows(0 /* start */, 1 /* end */, &test_cluster_);
+  ASSERT_OK(TruncateTable(&test_cluster_, {table_id}));
+  WriteRows(1 /* start */, 2 /* end */, &test_cluster_);
+
+  // Calling Get Changes without enabling truncate flag.
+  // Expected records: (DDL, INSERT, INSERT).
+  GetChangesResponsePB resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // The count array stores counts of DDL, INSERT, TRUNCATE in that order.
+  const uint32_t expected_count_truncate_disable[] = {1, 2, 0};
+  uint32_t count_truncate_disable[] = {0, 0, 0};
+  ExpectedRecord expected_records_truncate_disable[] = {{0, 0}, {0, 1}, {1, 2}};
+  uint32_t record_size = resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records_truncate_disable[i], count_truncate_disable);
+  }
+  CheckCount(expected_count_truncate_disable, count_truncate_disable);
+
+  // Setting the flag true and calling Get Changes. This will enable streaming of truncate record.
+  // Expected records: (DDL, INSERT, TRUNCATE, INSERT).
+  FLAGS_stream_truncate_record = true;
+  resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // The count array stores counts of DDL, INSERT, TRUNCATE in that order.
+  const uint32_t expected_count_truncate_enable[] = {1, 2, 1};
+  uint32_t count_truncate_enable[] = {0, 0, 0};
+  ExpectedRecord expected_records_truncate_enable[] = {{0, 0}, {0, 1}, {0, 0}, {1, 2}};
+  record_size = resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records_truncate_enable[i], count_truncate_enable);
+  }
+  CheckCount(expected_count_truncate_enable, count_truncate_enable);
+
+  LOG(INFO) << "Got " << count_truncate_enable[0] << " ddl records, " << count_truncate_enable[1]
+            << " insert records and " << count_truncate_enable[2] << " truncate records";
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGarbageCollectionFlag)) {
+  TestIntentGarbageCollectionFlag(1, true, 200);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGarbageCollectionWithSmallInterval)) {
+  TestIntentGarbageCollectionFlag(3, true, 200);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGarbageCollectionWithLargerInterval)) {
+  TestIntentGarbageCollectionFlag(3, true, 3000);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNoGarbageCollectionBeforeInterval)) {
+  TestIntentGarbageCollectionFlag(3, false, 0);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpoint)) {
+  TestSetCDCCheckpoint(1, false);
+}
+
 }  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb

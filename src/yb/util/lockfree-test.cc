@@ -149,14 +149,14 @@ template <class T, class Allocator = std::allocator<T>>
 struct BlockAllocator {
   template <class U>
   struct rebind {
-    typedef BlockAllocator<U, typename Allocator::template rebind<U>::other> other;
+    using other = BlockAllocator<
+        U, typename std::allocator_traits<Allocator>::template rebind_alloc<U>>;
   };
 
-  typedef typename Allocator::value_type value_type;
-  typedef typename Allocator::pointer pointer;
-  typedef typename Allocator::size_type size_type;
+  using value_type = typename Allocator::value_type;
+  using size_type = typename Allocator::size_type;
 
-  void deallocate(pointer p, size_type n) {
+  void deallocate(T* p, size_type n) {
     BlockEntry* entry = OBJECT_FROM_MEMBER(BlockEntry, value, p);
     if (entry->counter->fetch_sub(1, std::memory_order_acq_rel) == 1) {
       Block* block = OBJECT_FROM_MEMBER(Block, counter, entry->counter);
@@ -190,7 +190,7 @@ struct BlockAllocator {
 
   static thread_local std::unique_ptr<TSS> tss_;
 
-  pointer allocate(size_type n) {
+  T* allocate(size_type n) {
     TSS* tss = tss_.get();
     if (PREDICT_FALSE(!tss)) {
       tss_.reset(new TSS);
@@ -206,7 +206,7 @@ struct BlockAllocator {
     return &entry.value;
   }
 
-  typedef typename Allocator::template rebind<Block>::other Impl;
+  using Impl = typename std::allocator_traits<Allocator>::template rebind_alloc<Block>;
   Impl impl_;
 };
 

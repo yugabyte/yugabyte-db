@@ -41,12 +41,13 @@ export const TABLE_TYPE_MAP: Record<TableType, string> = {
   YQL_TABLE_TYPE: 'YCQL',
   PGSQL_TABLE_TYPE: 'YSQL',
   REDIS_TABLE_TYPE: 'REDIS'
-}
+};
 
 export interface Keyspace_Table {
   keyspace: string;
   tablesList: string[];
-  storageLocation: string;
+  storageLocation?: string;
+  defaultLocation?: string;
 }
 
 export interface IBackup {
@@ -63,14 +64,19 @@ export interface IBackup {
   onDemand: boolean;
   createTime: number;
   updateTime: number;
+  completionTime: number;
   expiryTime: number;
   responseList: Keyspace_Table[];
   sse: boolean;
+  totalBackupSizeInBytes?: number;
 }
 
 export interface IUniverse {
   universeUUID: string;
   name: string;
+  universeDetails: {
+    universePaused: boolean;
+  };
 }
 
 export enum RESTORE_ACTION_TYPE {
@@ -97,6 +103,7 @@ export interface IStorageConfig {
   };
   state: 'ACTIVE' | 'INACTIVE';
   inUse: boolean;
+  type: 'STORAGE' | 'CALLHOME';
 }
 
 export interface ITable {

@@ -236,8 +236,7 @@ Status YQLPartitionsVTable::InsertTabletIntoRowUnlocked(
   RETURN_NOT_OK(SetColumnValue(kEndKey, partition.partition_key_end(), row));
 
   // Note: tablet id is in host byte order.
-  Uuid uuid;
-  RETURN_NOT_OK(uuid.FromHexString(tablet.tablet_id));
+  auto uuid = VERIFY_RESULT(Uuid::FromHexString(tablet.tablet_id));
   RETURN_NOT_OK(SetColumnValue(kId, uuid, row));
 
   // Get replicas for tablet.

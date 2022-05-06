@@ -86,6 +86,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   const Schema& schema() const;
 
+  // True if table is colocated (including tablegroups, excluding YSQL system tables).
   bool IsColocated() const;
 
   YBCPgOid GetColocationId() const;

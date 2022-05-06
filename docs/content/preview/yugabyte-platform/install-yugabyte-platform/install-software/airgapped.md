@@ -39,63 +39,64 @@ showAsideToc: true
 
 On a computer connected to the Internet, perform the following steps:
 
-Make a directory for downloading the binaries by executing the following command:
+- Make a directory for downloading the binaries by executing the following command:
 
-```sh
-$ sudo mkdir /opt/downloads
-```
+  ```sh
+  sudo mkdir /opt/downloads
+  ```
 
-Change the owner user for the directory by executing the following command:
+- Change the owner user for the directory by executing the following command:
 
-```sh
-$ sudo chown -R ubuntu:ubuntu /opt/downloads
-```
+  ```sh
+  sudo chown -R ubuntu:ubuntu /opt/downloads
+  ```
 
-Change to the directory by executing the following command:
+- Change to the directory by executing the following command:
 
-```sh
-$ cd /opt/downloads
-```
+  ```sh
+  cd /opt/downloads
+  ```
 
-Download the `replicated.tar.gz` file by executing the following command:
+- Download the `replicated.tar.gz` file by executing the following command:
 
-```sh
-$ wget --trust-server-names https://get.replicated.com/airgap
-```
+  ```sh
+  wget --trust-server-names https://get.replicated.com/airgap
+  ```
 
-Download the `yugaware` binary and change the following number, as required:
+- Download the `yugaware` binary and change the following number, as required:
 
-```sh
-$ wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugaware-{{< yb-version version="preview" format="build">}}-linux-x86_64.airgap
-```
+  ```sh
+  wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugaware-{{< yb-version version="preview" format="build">}}-linux-x86_64.airgap
+  ```
 
-Switch to the following directory:
+- Switch to the following directory:
 
-```sh
-$ cd /opt/downloads
-```
+  ```sh
+  cd /opt/downloads
+  ```
 
-Extract the `replicated` binary, as follows:
+- Extract the `replicated` binary, as follows:
 
-```sh
-$ tar xzvf replicated.tar.gz
-```
+  ```sh
+  tar xzvf replicated.tar.gz
+  ```
 
-Install Replicated. If multiple options appear, select the `eth0` network interface, as follows.
+- Install Replicated. If multiple options appear, select the `eth0` network interface, as follows:
 
-```sh
-$ cat ./install.sh | sudo bash -s airgap
-```
+  ```sh
+  cat ./install.sh | sudo bash -s airgap
+  ```
 
 The `yugaware` binary is installed using the Replicated UI after the Replicated installation completes.
 
 After Replicated finishes installing, ensure that it is running by executing the following command:
 
 ```sh
-$ sudo docker ps
+sudo docker ps
 ```
 
 You should see an output similar to the following:
+
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 

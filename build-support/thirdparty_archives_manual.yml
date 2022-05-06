@@ -1,10 +1,3 @@
-# Unlike thirdpaty_archives.yml, this file is maintained manually.
-archives:
-  # Note that the aarch64 gcc build is probably not very usable due to libunwind issues, and we
-  # prefer to use the clang11 build for aarch64.
-  - os_type: centos8
-    architecture: aarch64
-    compiler_type: gcc9
-    tag: v20210817191252-9a29e26965-centos8-aarch64-gcc9
-    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
-    is_linuxbrew: false
+# Unlike thirdpaty_archives.yml, this file is maintained manually. The contents of "archives" lists
+# from both files are concatenated.
+archives: []

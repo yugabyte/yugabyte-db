@@ -362,8 +362,6 @@ class PeerMessageQueue {
 
   // Get the maximum op ID that can be evicted for CDC consumer from log cache.
   yb::OpId GetCDCConsumerOpIdToEvict();
-  yb::OpId GetCDCConsumerOpIdForIntentRemoval();
-
 
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);

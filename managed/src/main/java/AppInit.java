@@ -1,5 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
+import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
+
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
@@ -120,7 +122,7 @@ public class AppInit {
 
       // Load metrics configurations.
       Map<String, Object> configs =
-          yaml.load(environment.resourceAsStream("metrics.yml"), application.classloader());
+          yaml.load(environment.resourceAsStream(METRICS_CONFIG_PATH), application.classloader());
       MetricConfig.loadConfig(configs);
 
       // Enter all the configuration data. This is the first thing that should be

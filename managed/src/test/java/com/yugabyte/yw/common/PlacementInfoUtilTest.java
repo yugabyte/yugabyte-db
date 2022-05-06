@@ -389,6 +389,39 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUpdatePlacementAddRegion() {
+    for (TestData t : testData) {
+      Universe universe = t.universe;
+      UUID univUuid = t.univUuid;
+      UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
+      Cluster primaryCluster = udtp.getPrimaryCluster();
+      udtp.universeUUID = univUuid;
+      Universe.saveDetails(univUuid, t.setAzUUIDs());
+      Provider p = t.provider;
+      Region r3 = Region.create(p, "region-3", "Region 3", "yb-image-3");
+
+      // Create a new AZ with index 4 and INITIAL_NUM_NODES nodes.
+      t.createAZ(r3, 4, INITIAL_NUM_NODES);
+      primaryCluster.userIntent.regionList.clear();
+      primaryCluster.userIntent.preferredRegion = null;
+      // Switching to single-az region.
+      primaryCluster.userIntent.regionList.add(r3.uuid);
+      PlacementInfoUtil.updateUniverseDefinition(
+          udtp, t.customer.getCustomerId(), primaryCluster.uuid, EDIT);
+      Set<NodeDetails> nodes = udtp.nodeDetailsSet;
+      assertEquals(INITIAL_NUM_NODES, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
+      assertEquals(INITIAL_NUM_NODES, PlacementInfoUtil.getTserversToProvision(nodes).size());
+      assertEquals(1, udtp.getPrimaryCluster().placementInfo.azStream().count());
+
+      udtp.getPrimaryCluster().userIntent.regionList.add(Region.getByCode(p, "region-1").uuid);
+      PlacementInfoUtil.updateUniverseDefinition(
+          udtp, t.customer.getCustomerId(), primaryCluster.uuid, EDIT);
+      // Now we should have RF zones.
+      assertEquals(REPLICATION_FACTOR, udtp.getPrimaryCluster().placementInfo.azStream().count());
+    }
+  }
+
+  @Test
   public void testEditInstanceType() {
     for (TestData t : testData) {
       Universe universe = t.universe;
@@ -2012,7 +2045,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // Using default region. Only AZs from the default region should have
     // replicationFactor = 1.
     PlacementInfo pi =
-        PlacementInfoUtil.getPlacementInfo(ClusterType.PRIMARY, userIntent, 5, true, r2.uuid);
+        PlacementInfoUtil.getPlacementInfo(ClusterType.PRIMARY, userIntent, 5, r2.uuid);
     assertNotNull(pi);
 
     List<PlacementAZ> placementAZs =
@@ -2028,7 +2061,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // Old logic - without default region.
     // Zones from different regions are alternated - so at least one zone from both
     // r1 and r2 regions should have replicationFactor = 1.
-    pi = PlacementInfoUtil.getPlacementInfo(ClusterType.PRIMARY, userIntent, 5, false, null);
+    pi = PlacementInfoUtil.getPlacementInfo(ClusterType.PRIMARY, userIntent, 5, null);
     assertNotNull(pi);
 
     placementAZs =

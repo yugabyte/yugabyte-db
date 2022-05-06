@@ -35,7 +35,7 @@ ruamel.yaml.clib==0.2.6
 semantic-version==2.8.5
 shutilwhich==1.1.0
 six==1.16.0
-sys-detection==1.1.1
+sys-detection==1.2.0
 toml==0.10.2
 typed-ast==1.5.1
 typing-extensions==3.10.0.2

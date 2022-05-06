@@ -64,6 +64,7 @@
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
+#include "commands/defrem.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
 #include "tcop/utility.h"
@@ -310,18 +311,26 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 }
 
 bool
-YBIsDatabaseColocated(Oid dbId)
+YbIsDatabaseColocated(Oid dbid)
 {
 	bool colocated;
-	HandleYBStatus(YBCPgIsDatabaseColocated(dbId, &colocated));
+	HandleYBStatus(YBCPgIsDatabaseColocated(dbid, &colocated));
 	return colocated;
 }
 
 bool
-YBIsTableColocated(Oid dbId, Oid relationId)
+YbIsUserTableColocated(Oid dbid, Oid relid)
 {
-	bool colocated;
-	HandleYBStatus(YBCPgIsTableColocated(dbId, relationId, &colocated));
+	if (!MyDatabaseColocated && !YbTablegroupCatalogExists)
+		return false;
+
+	bool colocated = false;
+	bool not_found = false;
+
+	HandleYBStatusIgnoreNotFound(YbPgIsUserTableColocated(dbid,
+														  relid,
+														  &colocated),
+								 &not_found);
 	return colocated;
 }
 
@@ -409,17 +418,40 @@ HandleYBStatus(YBCStatus status)
    HandleYBStatusAtErrorLevel(status, ERROR);
 }
 
-void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level) {
-	if (!status) {
-		return;
-	}
-	/* Copy the message to the current memory context and free the YBCStatus. */
-	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
-	char* msg_buf = DupYBStatusMessage(status, pg_err_code == ERRCODE_UNIQUE_VIOLATION);
+static const char*
+FetchUniqueConstraintName(Oid relation_id)
+{
+	const char* name = NULL;
+	Relation rel = RelationIdGetRelation(relation_id);
 
-	if (YBShouldReportErrorStatus()) {
-		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
+	if (!rel->rd_index && rel->rd_pkindex != InvalidOid)
+	{
+		Relation pkey = RelationIdGetRelation(rel->rd_pkindex);
+
+		name = pstrdup(RelationGetRelationName(pkey));
+
+		RelationClose(pkey);
 	}
+	else
+		name = pstrdup(RelationGetRelationName(rel));
+
+	RelationClose(rel);
+	return name;
+}
+
+void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level)
+{
+	if (!status)
+		return;
+
+	/* Build message in the current memory context. */
+	const char* msg_buf = BuildYBStatusMessage(
+			status, &FetchUniqueConstraintName);
+
+	if (YBShouldReportErrorStatus())
+		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
+
+	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
 	const uint16_t txn_err_code = YBCStatusTransactionError(status);
 	YBCFreeStatus(status);
 	ereport(error_level,
@@ -432,10 +464,11 @@ void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level) {
 void
 HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 {
-	if (!status) {
+	if (!status)
 		return;
-	}
-	if (YBCStatusIsNotFound(status)) {
+
+	if (YBCStatusIsNotFound(status))
+	{
 		*not_found = true;
 		YBCFreeStatus(status);
 		return;
@@ -451,33 +484,6 @@ HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 		return;
 
 	HandleYBStatus(status);
-}
-
-/*
- * Fetches relation's unique constraint name to specified buffer.
- * If relation is not an index and it has primary key the name of primary key index is returned.
- * In other cases, relation name is used.
- */
-static void
-FetchUniqueConstraintName(Oid relation_id, char* dest, size_t max_size)
-{
-	// strncat appends source to destination, so destination must be empty.
-	dest[0] = 0;
-	Relation rel = RelationIdGetRelation(relation_id);
-
-	if (!rel->rd_index && rel->rd_pkindex != InvalidOid)
-	{
-		Relation pkey = RelationIdGetRelation(rel->rd_pkindex);
-
-		strncat(dest, RelationGetRelationName(pkey), max_size);
-
-		RelationClose(pkey);
-	} else
-	{
-		strncat(dest, RelationGetRelationName(rel), max_size);
-	}
-
-	RelationClose(rel);
 }
 
 static const char*
@@ -520,7 +526,6 @@ YBInitPostgresBackend(
 		int count;
 		YbGetTypeTable(&type_table, &count);
 		YBCPgCallbacks callbacks;
-		callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
@@ -795,11 +800,9 @@ YBShouldRestartAllChildrenIfOneCrashes() {
 		ereport(LOG, (errmsg("YBShouldRestartAllChildrenIfOneCrashes returning 0, YBIsEnabledInPostgresEnvVar is false")));
 		return true;
 	}
-	const char* flag_file_path =
-		getenv("YB_PG_NO_RESTART_ALL_CHILDREN_ON_CRASH_FLAG_PATH");
 	// We will use PostgreSQL's default behavior (restarting all children if one of them crashes)
 	// if the flag env variable is not specified or the file pointed by it does not exist.
-	return !flag_file_path || access(flag_file_path, F_OK) == -1;
+	return YBCIsEnvVarTrueWithDefault("FLAGS_yb_pg_terminate_child_backend", true);
 }
 
 bool
@@ -1086,6 +1089,34 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_c
 	}
 }
 
+static Node*
+GetActualStmtNode(PlannedStmt *pstmt)
+{
+	if (nodeTag(pstmt->utilityStmt) == T_ExplainStmt)
+	{
+		ExplainStmt *stmt = castNode(ExplainStmt, pstmt->utilityStmt);
+		Node *actual_stmt = castNode(Query, stmt->query)->utilityStmt;
+		if (actual_stmt)
+		{
+			/*
+			 * EXPLAIN statement may have multiple ANALYZE options.
+			 * The value of the last one will take effect.
+			 */
+			bool analyze = false;
+			ListCell *lc;
+			foreach(lc, stmt->options)
+			{
+				DefElem *opt = (DefElem *) lfirst(lc);
+				if (strcmp(opt->defname, "analyze") == 0)
+					analyze = defGetBoolean(opt);
+			}
+			if (analyze)
+				return actual_stmt;
+		}
+	}
+	return pstmt->utilityStmt;
+}
+
 bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
                                  bool *is_catalog_version_increment,
                                  bool *is_breaking_catalog_change)
@@ -1093,7 +1124,9 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 	/* Assume the worst. */
 	*is_catalog_version_increment = true;
 	*is_breaking_catalog_change = true;
-	Node *parsetree = pstmt->utilityStmt;
+
+	bool is_ddl = true;
+	Node *parsetree = GetActualStmtNode(pstmt);
 
 	NodeTag node_tag = nodeTag(parsetree);
 	switch (node_tag) {
@@ -1119,7 +1152,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 		}
 		case T_ViewStmt: // CREATE VIEW
 		{
@@ -1133,12 +1166,12 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 				YbIsSystemNamespaceByName(castNode(ViewStmt, parsetree)->view->schemaname))
 			{
 				*is_breaking_catalog_change = false;
-				return true;
+				break;
 			}
 
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 		}
 
 		case T_CompositeTypeStmt: // CREATE TYPE
@@ -1178,7 +1211,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 *		  order to correctly invalidate negative cache entries
 			 */
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 		}
 		case T_CreateStmt:
 		{
@@ -1195,7 +1228,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 */
 			if (stmt->partbound != NULL) {
 				*is_breaking_catalog_change = false;
-				return true;
+				break;
 			}
 
 			/*
@@ -1208,7 +1241,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 				YbIsSystemNamespaceByName(stmt->relation->schemaname))
 			{
 				*is_breaking_catalog_change = false;
-				return true;
+				break;
 			}
 
 			foreach (lc, stmt->constraints)
@@ -1226,7 +1259,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 					 * have to force a transaction abort on PG side.
 					 */
 					*is_breaking_catalog_change = false;
-					return true;
+					break;
 				}
 			}
 
@@ -1236,7 +1269,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 		}
 		case T_CreateSeqStmt:
 		{
@@ -1247,7 +1280,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			{
 				*is_catalog_version_increment = false;
 			}
-			return true;
+			break;
 		}
 		case T_CreateFunctionStmt:
 		{
@@ -1257,7 +1290,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			{
 				*is_catalog_version_increment = false;
 			}
-			return true;
+			break;
 		}
 
 		// All T_Drop... tags from nodes.h:
@@ -1267,11 +1300,11 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_DropSubscriptionStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropUserMappingStmt:
-			return true;
+			break;
 
 		case T_DropStmt:
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 
 		case T_DropdbStmt:
 		    /*
@@ -1279,7 +1312,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * so nothing to do on the cache side.
 			 */
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 
 		// All T_Alter... tags from nodes.h:
 		case T_AlterCollationStmt:
@@ -1317,7 +1350,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_ReassignOwnedStmt:
 		/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
 		case T_RenameStmt:
-			return true;
+			break;
 
 		case T_AlterTableStmt:
 		{
@@ -1327,7 +1360,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			if (cmd->subtype == AT_AddColumn || cmd->subtype == AT_DropColumn) {
 				*is_breaking_catalog_change = false;
 			}
-			return true;
+			break;
 		}
 
 		// T_Grant...
@@ -1336,14 +1369,14 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			/* Grant (add permission) is not a breaking change, but revoke is. */
 			GrantStmt *stmt = castNode(GrantStmt, parsetree);
 			*is_breaking_catalog_change = !stmt->is_grant;
-			return true;
+			break;
 		}
 		case T_GrantRoleStmt:
 		{
 			/* Grant (add permission) is not a breaking change, but revoke is. */
 			GrantRoleStmt *stmt = castNode(GrantRoleStmt, parsetree);
 			*is_breaking_catalog_change = !stmt->is_grant;
-			return true;
+			break;
 		}
 
 		// T_Index...
@@ -1354,23 +1387,35 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * transactions so we don't have to force a transaction abort on PG side.
 			 */
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 
 		case T_VacuumStmt:
 			/* Vacuum with analyze updates relation and attribute statistics */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
+			is_ddl = castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
+			break;
 
 		case T_RefreshMatViewStmt:
-			return true;
+			break;
 
 		default:
 			/* Not a DDL operation. */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return false;
+			is_ddl = false;
+			break;
 	}
+
+	/*
+	 * For DDL, it does not make sense to get breaking catalog change without
+	 * catalog version increment.
+	 */
+	Assert(!(is_ddl &&
+			 *is_breaking_catalog_change &&
+			 !*is_catalog_version_increment));
+
+	return is_ddl;
 }
 
 static void YBTxnDdlProcessUtility(

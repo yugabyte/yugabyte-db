@@ -121,7 +121,7 @@ public class ApiUtils {
       final boolean updateInProgress) {
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, false, null);
+            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
     return mockUniverseUpdater(userIntent, nodePrefix, setMasters, updateInProgress, placementInfo);
   }
 

@@ -31,8 +31,8 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.AlertingData;
+import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.CustomerDetailsData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
@@ -40,9 +40,10 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.metrics.MetricSettings;
 import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Alert.State;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -64,10 +65,13 @@ import io.swagger.annotations.Authorization;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -353,6 +357,29 @@ public class CustomerController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     Form<MetricQueryParams> formData = formFactory.getFormDataOrBadRequest(MetricQueryParams.class);
+    MetricQueryParams metricQueryParams = formData.get();
+
+    if (CollectionUtils.isEmpty(metricQueryParams.getMetrics())
+        && CollectionUtils.isEmpty(metricQueryParams.getMetricsWithSettings())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Either metrics or metricsWithSettings should not be empty");
+    }
+
+    Map<String, MetricSettings> metricSettingsMap = new LinkedHashMap<>();
+    if (CollectionUtils.isNotEmpty(metricQueryParams.getMetrics())) {
+      metricQueryParams
+          .getMetrics()
+          .stream()
+          .map(MetricSettings::defaultSettings)
+          .forEach(
+              metricSettings -> metricSettingsMap.put(metricSettings.getMetric(), metricSettings));
+    }
+    if (CollectionUtils.isNotEmpty(metricQueryParams.getMetricsWithSettings())) {
+      metricQueryParams
+          .getMetricsWithSettings()
+          .forEach(
+              metricSettings -> metricSettingsMap.put(metricSettings.getMetric(), metricSettings));
+    }
 
     Map<String, String> params = new HashMap<>(formData.rawData());
     HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
@@ -361,7 +388,7 @@ public class CustomerController extends AuthenticatedController {
     // container or not, and use pod_name vs exported_instance accordingly.
     // Expect for container metrics, all the metrics would with node_prefix and exported_instance.
     boolean hasContainerMetric =
-        formData.get().getMetrics().stream().anyMatch(s -> s.startsWith("container"));
+        metricSettingsMap.keySet().stream().anyMatch(s -> s.startsWith("container"));
     String universeFilterLabel = hasContainerMetric ? "namespace" : "node_prefix";
     String nodeFilterLabel = hasContainerMetric ? "pod_name" : "exported_instance";
     String containerLabel = "container_name";
@@ -407,7 +434,8 @@ public class CustomerController extends AuthenticatedController {
           filterJson.put(nodeFilterLabel, params.remove("nodeName"));
         }
 
-        filterOverrides.putAll(getFilterOverrides(customer, nodePrefix, formData.get()));
+        filterOverrides.putAll(
+            getFilterOverrides(customer, nodePrefix, metricSettingsMap.keySet()));
       }
     }
     if (params.containsKey("tableName")) {
@@ -421,13 +449,12 @@ public class CustomerController extends AuthenticatedController {
     }
     params.put("filters", Json.stringify(filterJson));
     JsonNode response;
-    if (formData.get().getIsRecharts()) {
-      response =
-          metricQueryHelper.query(
-              formData.get().getMetrics(), params, filterOverrides, formData.get().getIsRecharts());
-    } else {
-      response = metricQueryHelper.query(formData.get().getMetrics(), params, filterOverrides);
-    }
+    response =
+        metricQueryHelper.query(
+            new ArrayList<>(metricSettingsMap.values()),
+            params,
+            filterOverrides,
+            metricQueryParams.getIsRecharts());
 
     if (response.has("error")) {
       throw new PlatformServiceException(BAD_REQUEST, response.get("error"));
@@ -503,12 +530,12 @@ public class CustomerController extends AuthenticatedController {
   }
 
   private HashMap<String, HashMap<String, String>> getFilterOverrides(
-      Customer customer, String nodePrefix, MetricQueryParams mqParams) {
+      Customer customer, String nodePrefix, Set<String> metricNames) {
 
     HashMap<String, HashMap<String, String>> filterOverrides = new HashMap<>();
     // For a disk usage metric query, the mount point has to be modified to match the actual
     // mount point for an onprem universe.
-    if (mqParams.getMetrics().contains("disk_usage")) {
+    if (metricNames.contains("disk_usage")) {
       List<Universe> universes =
           customer
               .getUniverses()

@@ -1455,11 +1455,10 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 					if (!(opt & INDOPTION_NULLS_FIRST))
 						appendStringInfoString(&buf, " NULLS LAST");
 				}
-				else
+				else if (!(opt & INDOPTION_HASH)) // ASC
 				{
-					if (!(opt & INDOPTION_HASH))
-						appendStringInfoString(&buf, " ASC");
-
+					appendStringInfoString(&buf, " ASC");
+					/* NULLS LAST is the default in this case */
 					if (opt & INDOPTION_NULLS_FIRST)
 						appendStringInfoString(&buf, " NULLS FIRST");
 				}

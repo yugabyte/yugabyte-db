@@ -199,6 +199,16 @@ if [[ ${YB_DOWNLOAD_THIRDPARTY:-auto} == "auto" ]]; then
 fi
 log "YB_DOWNLOAD_THIRDPARTY=$YB_DOWNLOAD_THIRDPARTY"
 
+if [[ -z ${YB_LINKING_TYPE:-} ]]; then
+  if should_use_lto; then
+    YB_LINKING_TYPE=full-lto
+  else
+    YB_LINKING_TYPE=dynamic
+  fi
+  export YB_LINKING_TYPE
+fi
+log "YB_LINKING_TYPE=${YB_LINKING_TYPE}"
+
 # -------------------------------------------------------------------------------------------------
 # Build root setup and build directory cleanup
 # -------------------------------------------------------------------------------------------------
@@ -612,7 +622,7 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
 fi
 
 # It is important to do these LTO linking steps before building the package.
-if should_use_lto; then
+if [[ ${YB_LINKING_TYPE} == *-lto ]]; then
   log "Using LTO. Replacing the yb-tserver binary with an LTO-enabled one."
   log "See below for the file size and linked shared libraries."
   (
@@ -621,12 +631,13 @@ if should_use_lto; then
         --build-root "$BUILD_ROOT" \
         --file-regex "^.*/yb-tserver$" \
         --lto-output-suffix="" \
+        "--lto-type=${YB_LINKING_TYPE%-lto}" \
         link-whole-program
     ls -l "$BUILD_ROOT/bin/yb-tserver"
     ldd "$BUILD_ROOT/bin/yb-tserver"
   )
 else
-  log "Not using LTO: YB_COMPILER_TYPE=${YB_COMPILER_TYPE}, build_type=${build_type}"
+  log "Not using LTO: YB_LINKING_TYPE=${YB_LINKING_TYPE}"
 fi
 
 # -------------------------------------------------------------------------------------------------
@@ -777,6 +788,9 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
       # YB_MVN_LOCAL_REPO is in source tree. So unsetting value here to allow default.
       if is_mac; then
         unset YB_MVN_LOCAL_REPO
+      fi
+      if [[ ${YB_NUM_REPETITIONS:-1} -gt 1 ]]; then
+        run_tests_extra_args+=( "--num_repetitions" "$YB_NUM_REPETITIONS" )
       fi
       set +u  # because extra_args can be empty
       if ! run_tests_on_spark "${run_tests_extra_args[@]}"; then
