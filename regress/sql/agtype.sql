@@ -575,6 +575,17 @@ SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', 'true');
 SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2');
 SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2.0');
 
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":true, "array":[1,3,{"bool":false, "int":3, "float":3.14},7], "float":3.14}'::agtype->'array'->2->'float' as i) a;
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":true, "array":[1,3,{"bool":false, "int":3, "float":3.14},7], "float":3.14}'::agtype->'array'->2->>'float' as i) a;
+SELECT i, pg_typeof(i) FROM (SELECT '{}'::agtype->'array' as i) a;
+SELECT i, pg_typeof(i) FROM (SELECT '[]'::agtype->0 as i) a;
+SELECT i, pg_typeof(i) FROM (SELECT '[0, 1]'::agtype->2 as i) a;
+SELECT i, pg_typeof(i) FROM (SELECT '[0, 1]'::agtype->3 as i) a;
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":false, "int":3, "float":3.14}'::agtype->'true' as i) a;
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":false, "int":3, "float":3.14}'::agtype->2 as i) a;
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":false, "int":3, "float":3.14}'::agtype->'true'->2 as i) a;
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":false, "int":3, "float":3.14}'::agtype->'true'->>2 as i) a;
+
 --
 -- Vertex
 --

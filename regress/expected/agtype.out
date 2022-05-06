@@ -2208,6 +2208,66 @@ SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2');
 ERROR:  AGTV_INTEGER is not a valid key type
 SELECT agtype_access_operator('{"bool":false, "int":3, "float":3.14}', '2.0');
 ERROR:  AGTV_FLOAT is not a valid key type
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":true, "array":[1,3,{"bool":false, "int":3, "float":3.14},7], "float":3.14}'::agtype->'array'->2->'float' as i) a;
+  i   | pg_typeof 
+------+-----------
+ 3.14 | agtype
+(1 row)
+
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":true, "array":[1,3,{"bool":false, "int":3, "float":3.14},7], "float":3.14}'::agtype->'array'->2->>'float' as i) a;
+  i   | pg_typeof 
+------+-----------
+ 3.14 | text
+(1 row)
+
+SELECT i, pg_typeof(i) FROM (SELECT '{}'::agtype->'array' as i) a;
+ i | pg_typeof 
+---+-----------
+   | agtype
+(1 row)
+
+SELECT i, pg_typeof(i) FROM (SELECT '[]'::agtype->0 as i) a;
+ i | pg_typeof 
+---+-----------
+   | agtype
+(1 row)
+
+SELECT i, pg_typeof(i) FROM (SELECT '[0, 1]'::agtype->2 as i) a;
+ i | pg_typeof 
+---+-----------
+   | agtype
+(1 row)
+
+SELECT i, pg_typeof(i) FROM (SELECT '[0, 1]'::agtype->3 as i) a;
+ i | pg_typeof 
+---+-----------
+   | agtype
+(1 row)
+
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":false, "int":3, "float":3.14}'::agtype->'true' as i) a;
+ i | pg_typeof 
+---+-----------
+   | agtype
+(1 row)
+
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":false, "int":3, "float":3.14}'::agtype->2 as i) a;
+ i | pg_typeof 
+---+-----------
+   | agtype
+(1 row)
+
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":false, "int":3, "float":3.14}'::agtype->'true'->2 as i) a;
+ i | pg_typeof 
+---+-----------
+   | agtype
+(1 row)
+
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":false, "int":3, "float":3.14}'::agtype->'true'->>2 as i) a;
+ i | pg_typeof 
+---+-----------
+   | text
+(1 row)
+
 --
 -- Vertex
 --

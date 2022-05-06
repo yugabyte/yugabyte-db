@@ -122,6 +122,8 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
                             bool key_scalar);
 static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
                                       int estimated_len, bool indent);
+static text *agtype_value_to_text(agtype_value *scalar_val,
+                                  bool err_not_scalar);
 static void add_indent(StringInfo out, bool indent, int level);
 static void cannot_cast_agtype_value(enum agtype_value_type type,
                                      const char *sqltype);
@@ -129,9 +131,15 @@ static bool agtype_extract_scalar(agtype_container *agtc, agtype_value *res);
 static agtype_value *execute_array_access_operator(agtype *array,
                                                    agtype_value *array_value,
                                                    agtype *array_index);
+static agtype_value *execute_array_access_operator_internal(
+    agtype *array, agtype_value *array_value, int64 array_index);
 static agtype_value *execute_map_access_operator(agtype *map,
                                                  agtype_value* map_value,
                                                  agtype *key);
+static agtype_value *execute_map_access_operator_internal(
+    agtype *map, agtype_value *map_value, char *key, int key_len);
+Datum agtype_object_field_impl(FunctionCallInfo fcinfo, bool as_text);
+Datum agtype_array_element_impl(FunctionCallInfo fcinfo, bool as_text);
 /* typecast functions */
 static void agtype_typecast_object(agtype_in_state *state, char *annotation);
 static void agtype_typecast_array(agtype_in_state *state, char *annotation);
@@ -1131,6 +1139,50 @@ static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
     Assert(level == 0);
 
     return out->data;
+}
+
+/*
+ * Convert agtype_value(scalar) to text
+ */
+static text *agtype_value_to_text(agtype_value *scalar_val,
+                                  bool err_not_scalar)
+{
+    text *result = NULL;
+    switch (scalar_val->type)
+    {
+    case AGTV_INTEGER:
+        result = cstring_to_text(DatumGetCString(DirectFunctionCall1(
+            int8out, Int64GetDatum(scalar_val->val.int_value))));
+        break;
+    case AGTV_FLOAT:
+        result = cstring_to_text(DatumGetCString(DirectFunctionCall1(
+            float8out, Float8GetDatum(scalar_val->val.float_value))));
+        break;
+    case AGTV_STRING:
+        result = cstring_to_text_with_len(scalar_val->val.string.val,
+                                          scalar_val->val.string.len);
+        break;
+    case AGTV_NUMERIC:
+        result = cstring_to_text(DatumGetCString(DirectFunctionCall1(
+            numeric_out, PointerGetDatum(scalar_val->val.numeric))));
+        break;
+    case AGTV_BOOL:
+        result = cstring_to_text((scalar_val->val.boolean) ? "true" : "false");
+        break;
+    case AGTV_NULL:
+        result = NULL;
+        break;
+    default:
+        if (err_not_scalar)
+        {
+            ereport(
+                ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("agtype_value_to_text: unsupported argument agtype %d",
+                        scalar_val->type)));
+        }
+    }
+    return result;
 }
 
 static void add_indent(StringInfo out, bool indent, int level)
@@ -2642,7 +2694,6 @@ Datum agtype_to_text(PG_FUNCTION_ARGS)
     agtype *arg_agt;
     agtype_value *arg_value;
     text *text_value;
-    char *string;
 
     /* get the agtype equivalence of any convertable input type */
     arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
@@ -2660,26 +2711,11 @@ Datum agtype_to_text(PG_FUNCTION_ARGS)
     /* get the arg parameter */
     arg_value = get_ith_agtype_value_from_container(&arg_agt->root, 0);
 
-    if (arg_value->type == AGTV_INTEGER)
-        string = DatumGetCString(DirectFunctionCall1(int8out,
-                Int64GetDatum(arg_value->val.int_value)));
-    else if (arg_value->type == AGTV_FLOAT)
-        string = DatumGetCString(DirectFunctionCall1(float8out,
-                Float8GetDatum(arg_value->val.float_value)));
-    else if (arg_value->type == AGTV_STRING)
-        string = pnstrdup(arg_value->val.string.val,
-                          arg_value->val.string.len);
-    else if (arg_value->type == AGTV_NUMERIC)
-        string = DatumGetCString(DirectFunctionCall1(numeric_out,
-                PointerGetDatum(arg_value->val.numeric)));
-    else if (arg_value->type == AGTV_BOOL)
-        string = (arg_value->val.boolean) ? "true" : "false";
-    else
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("agtype_to_text: unsupported argument agtype %d",
-                               arg_value->type)));
-
-    text_value = cstring_to_text_with_len(string, strlen(string));
+    text_value = agtype_value_to_text(arg_value, true);
+    if (text_value == NULL)
+    {
+        PG_RETURN_NULL();
+    }
 
     PG_RETURN_TEXT_P(text_value);
 }
@@ -2773,13 +2809,11 @@ static agtype_value *execute_map_access_operator(agtype *map,
                                                  agtype *key)
 {
     agtype_value *key_value;
-    agtype_value new_key_value;
+    char *key_str;
+    int key_len = 0;
 
     /* get the key from the container */
     key_value = get_ith_agtype_value_from_container(&key->root, 0);
-
-    /* transform key where appropriate */
-    new_key_value.type = AGTV_STRING;
 
     switch (key_value->type)
     {
@@ -2799,15 +2833,25 @@ static agtype_value *execute_map_access_operator(agtype *map,
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("AGTV_BOOL is not a valid key type")));
     case AGTV_STRING:
-        new_key_value.val.string.val = key_value->val.string.val;
-        new_key_value.val.string.len = key_value->val.string.len;
+        key_str = key_value->val.string.val;
+        key_len = key_value->val.string.len;
         break;
-
     default:
         ereport(ERROR, (errmsg("unknown agtype scalar type")));
         break;
     }
 
+    return execute_map_access_operator_internal(map, map_value, key_str,
+                                                key_len);
+}
+
+static agtype_value *execute_map_access_operator_internal(
+    agtype *map, agtype_value *map_value, char *key, int key_len)
+{
+    agtype_value new_key_value;
+    new_key_value.type = AGTV_STRING;
+    new_key_value.val.string.val = key;
+    new_key_value.val.string.len = key_len;
     /* if we were passed an agtype */
     if (map_value == NULL)
     {
@@ -2824,9 +2868,7 @@ static agtype_value *execute_map_access_operator(agtype *map,
     /* if we were passed an agtype_value OBJECT */
     else if (map_value != NULL && map_value->type == AGTV_OBJECT)
     {
-        map_value = get_agtype_value_object_value(map_value,
-                                                  key_value->val.string.val,
-                                                  key_value->val.string.len);
+        map_value = get_agtype_value_object_value(map_value, key, key_len);
     }
     /* otherwise, we don't know how to process it */
     else
@@ -2846,10 +2888,7 @@ static agtype_value *execute_array_access_operator(agtype *array,
                                                    agtype_value *array_value,
                                                    agtype *array_index)
 {
-    agtype_value *array_element_value = NULL;
     agtype_value *array_index_value = NULL;
-    int64 index = 0;
-    uint32 size = 0;
 
     /* unpack the array index value */
     array_index_value = get_ith_agtype_value_from_container(&array_index->root,
@@ -2868,17 +2907,25 @@ static agtype_value *execute_array_access_operator(agtype *array,
                 (errmsg("array index must resolve to an integer value")));
     }
 
+    return execute_array_access_operator_internal(
+        array, array_value, array_index_value->val.int_value);
+}
+
+static agtype_value *execute_array_access_operator_internal(
+    agtype *array, agtype_value *array_value, int64 array_index)
+{
+    agtype_value *array_element_value = NULL;
+    uint32 size = (array_value == NULL) ? AGT_ROOT_COUNT(array) :
+                                          array_value->val.array.num_elems;
+
     /* adjust for negative index values */
-    index = array_index_value->val.int_value;
-    size = (array_value == NULL) ? AGT_ROOT_COUNT(array) :
-                                   array_value->val.array.num_elems;
     if (index < 0)
     {
-        index = size + index;
+        array_index = size + array_index;
     }
 
     /* check array bounds */
-    if ((index >= size) || (index < 0))
+    if ((array_index >= size) || (index < 0))
     {
         return NULL;
     }
@@ -2887,18 +2934,18 @@ static agtype_value *execute_array_access_operator(agtype *array,
     if (array_value == NULL)
     {
         array_element_value = get_ith_agtype_value_from_container(&array->root,
-                                                                  index);
+                                                                  array_index);
     }
     /* if we were passed an agtype_value ARRAY (BINARY) */
     else if (array_value != NULL && array_value->type == AGTV_BINARY)
     {
-        array_element_value = get_ith_agtype_value_from_container(array_value->val.binary.data,
-                                                                  index);
+        array_element_value = get_ith_agtype_value_from_container(
+            array_value->val.binary.data, array_index);
     }
     /* if we were passed an agtype_value ARRAY */
     else if (array_value != NULL && array_value->type == AGTV_ARRAY)
     {
-        array_element_value = &array_value->val.array.elems[index];
+        array_element_value = &array_value->val.array.elems[array_index];
     }
     /* otherwise, we don't know how to process it */
     else
@@ -3126,6 +3173,108 @@ static int extract_variadic_args_min(FunctionCallInfo fcinfo,
     *types = types_res;
 
     return nargs;
+}
+
+/*
+ * get agtype object field
+ */
+Datum agtype_object_field_impl(FunctionCallInfo fcinfo, bool as_text)
+{
+    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
+    text *key = PG_GETARG_TEXT_PP(1);
+    agtype_value *v;
+
+    if (!AGT_ROOT_IS_OBJECT(agtype_in))
+    {
+        PG_RETURN_NULL();
+    }
+
+    v = execute_map_access_operator_internal(agtype_in, NULL, VARDATA_ANY(key),
+                                             VARSIZE_ANY_EXHDR(key));
+
+    if (v != NULL)
+    {
+        if (as_text)
+        {
+            text *result = agtype_value_to_text(v, false);
+
+            if (result)
+            {
+                PG_RETURN_TEXT_P(result);
+            }
+        }
+        else
+        {
+            AG_RETURN_AGTYPE_P(agtype_value_to_agtype(v));
+        }
+    }
+
+    PG_RETURN_NULL();
+}
+
+/*
+ * get agtype array element
+ */
+Datum agtype_array_element_impl(FunctionCallInfo fcinfo, bool as_text)
+{
+    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
+    int element = PG_GETARG_INT32(1);
+    agtype_value *v;
+
+    if (!AGT_ROOT_IS_ARRAY(agtype_in))
+    {
+        PG_RETURN_NULL();
+    }
+
+    if (element < 0)
+    {
+        PG_RETURN_NULL();
+    }
+
+    v = execute_array_access_operator_internal(agtype_in, NULL, element);
+
+    if (v != NULL)
+    {
+        if (as_text)
+        {
+            text *result = agtype_value_to_text(v, false);
+
+            if (result)
+            {
+                PG_RETURN_TEXT_P(result);
+            }
+        }
+        else
+        {
+            AG_RETURN_AGTYPE_P(agtype_value_to_agtype(v));
+        }
+    }
+
+    PG_RETURN_NULL();
+}
+
+PG_FUNCTION_INFO_V1(agtype_object_field);
+Datum agtype_object_field(PG_FUNCTION_ARGS)
+{
+    return agtype_object_field_impl(fcinfo, false);
+}
+
+PG_FUNCTION_INFO_V1(agtype_object_field_text);
+Datum agtype_object_field_text(PG_FUNCTION_ARGS)
+{
+    return agtype_object_field_impl(fcinfo, true);
+}
+
+PG_FUNCTION_INFO_V1(agtype_array_element);
+Datum agtype_array_element(PG_FUNCTION_ARGS)
+{
+    return agtype_array_element_impl(fcinfo, false);
+}
+
+PG_FUNCTION_INFO_V1(agtype_array_element_text);
+Datum agtype_array_element_text(PG_FUNCTION_ARGS)
+{
+    return agtype_array_element_impl(fcinfo, true);
 }
 
 PG_FUNCTION_INFO_V1(agtype_access_operator);

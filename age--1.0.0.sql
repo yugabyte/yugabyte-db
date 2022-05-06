@@ -2834,6 +2834,70 @@ CREATE OPERATOR CLASS agtype_ops_hash
   FUNCTION 1 ag_catalog.agtype_hash_cmp(agtype);
 
 --
+-- agtype - access operators ( ->, ->> )
+--
+
+CREATE FUNCTION ag_catalog.agtype_object_field(agtype, text)
+RETURNS agtype
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+-- get agtype object field
+CREATE OPERATOR -> (
+  LEFTARG = agtype,
+  RIGHTARG = text,
+  FUNCTION = ag_catalog.agtype_object_field
+);
+
+CREATE FUNCTION ag_catalog.agtype_object_field_text(agtype, text)
+RETURNS text
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+-- get agtype object field as text
+CREATE OPERATOR ->> (
+  LEFTARG = agtype,
+  RIGHTARG = text,
+  FUNCTION = ag_catalog.agtype_object_field_text
+);
+
+CREATE FUNCTION ag_catalog.agtype_array_element(agtype, int4)
+RETURNS agtype
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+-- get agtype array element
+CREATE OPERATOR -> (
+  LEFTARG = agtype,
+  RIGHTARG = int4,
+  FUNCTION = ag_catalog.agtype_array_element
+);
+
+CREATE FUNCTION ag_catalog.agtype_array_element_text(agtype, int4)
+RETURNS text
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+-- get agtype array element as text
+CREATE OPERATOR ->> (
+  LEFTARG = agtype,
+  RIGHTARG = int4,
+  FUNCTION = ag_catalog.agtype_array_element_text
+);
+
+--
 -- Contains operators @> <@
 --
 CREATE FUNCTION ag_catalog.agtype_contains(agtype, agtype)
