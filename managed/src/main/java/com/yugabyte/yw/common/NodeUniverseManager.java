@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 
 @Singleton
 public class NodeUniverseManager extends DevopsBase {
-  public static final int YSQL_COMMAND_DEFAULT_TIMEOUT_SEC = 20;
+  public static final long YSQL_COMMAND_DEFAULT_TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
   public static final String NODE_ACTION_SSH_SCRIPT = "bin/run_node_action.py";
   public static final String CERTS_DIR = "/yugabyte-tls-config";
   public static final String K8S_CERTS_DIR = "/opt/certs/yugabyte";
@@ -88,7 +88,7 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   public synchronized ShellResponse runYsqlCommand(
-      NodeDetails node, Universe universe, String dbName, String ysqlCommand, int timeoutSec) {
+      NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
     List<String> command = new ArrayList<>();
     command.add("timeout");
     command.add(String.valueOf(timeoutSec));
