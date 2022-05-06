@@ -15,7 +15,57 @@ menu:
     weight: 2900
 ---
 
+Because YugabyteDB is PostgreSQL-compatible, you can use third-party PostgreSQL clients to connect to your YugabyteDB clusters.
+
+### YugabyteDB prerequisites
+
+Your YugabyteDB cluster should be up and running.
+
+To create a local cluster, follow the steps in [Quick start](../../quick-start/install).
+
+For YugabyteDB Managed, do the following:
+
+- [Create a cluster](../../yugabyte-cloud/cloud-quickstart/)
+- [Download the cluster certificate](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+- [Add your computer to the IP allow list](../../yugabyte-cloud/cloud-secure-clusters/add-connections/#assign-an-ip-allow-list-to-a-cluster)
+
+#### Connection parameters
+
+To connect, follow the client's configuration steps for PostgreSQL, and use the following values:
+
+| Setting | Local installation | YugabyteDB Managed |
+| :--- | :--- | :--- |
+| Hostname | `localhost` | The cluster hostname as displayed on the cluster **Settings** tab |
+| Port | `5433` (YSQL) `9042` (YCQL) | `5433` (YSQL) `9042` (YCQL) |
+| Database | The database name (`yugabyte` is the default) | The database name (`yugabyte` is the default) |
+| Username | `yugabyte` | Database username; the default user is `admin` |
+| Password | `yugabyte`; leave blank if YSQL authentication is not enabled | Database user password |
+
 <div class="row">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="superset/">
+      <div class="head">
+        <img class="icon" src="/images/develop/tools/superset/superset-icon.png" aria-hidden="true" />
+        <div class="title">Apache Superset</div>
+      </div>
+      <div class="body">
+        Open-source data exploration and visualization tool.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="arctype/">
+      <div class="head">
+        <img class="icon" src="/images/develop/tools/arctype/arctype-icon.png" aria-hidden="true" />
+        <div class="title">Arctype</div>
+      </div>
+      <div class="body">
+        SQL client and database management tool.
+      </div>
+    </a>
+  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="dbeaver-ysql/">
@@ -24,7 +74,7 @@ menu:
         <div class="title">DBeaver</div>
       </div>
       <div class="body">
-        An Eclipse-based, multi-platform database tool.
+        Eclipse-based, multi-platform database tool.
       </div>
     </a>
   </div>
@@ -36,7 +86,7 @@ menu:
         <div class="title">DbSchema</div>
       </div>
       <div class="body">
-        Use DbSchema, a visual database tool, to reverse-engineer schemas, edit ER diagrams, browse data, visually build queries, and sync schemas.
+        Visual database tool for reverse-engineering schemas, editing ER diagrams, browsing data, and more.
       </div>
     </a>
   </div>
@@ -48,7 +98,7 @@ menu:
         <div class="title">pgAdmin</div>
       </div>
       <div class="body">
-        Use this popular PostgreSQL client with YugabyteDB.
+        Management tool for PostgreSQL.
       </div>
     </a>
   </div>
@@ -60,7 +110,7 @@ menu:
         <div class="title">SQL Workbench/J</div>
       </div>
       <div class="body">
-        A unified developer console for querying YugabyteDB and displaying results.
+        Unified developer console for querying YugabyteDB and displaying results.
       </div>
     </a>
   </div>
@@ -72,7 +122,7 @@ menu:
         <div class="title">TablePlus</div>
       </div>
       <div class="body">
-        A unified developer console for querying all YugabyteDB APIs.
+        Unified developer console for querying YugabyteDB APIs.
       </div>
     </a>
   </div>

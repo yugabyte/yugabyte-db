@@ -12,15 +12,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[Apache Superset](https://superset.apache.org/) is a fast, lightweight and intuitive open-source data exploration and visualization tool that helps you query your data stored in YugabyteDB and visualize it using simple line charts to highly detailed geospatial charts.
+[Apache Superset](https://superset.apache.org/) is a fast, lightweight and intuitive open-source data exploration and visualization tool that helps you query your data stored in YugabyteDB and visualize it using basic line charts to highly detailed geospatial charts.
 
 ![Superset Dashboard](/images/develop/tools/superset/dashboard.png)
 
 ## Before you begin
 
-Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../quick-start/install). You can also get started with the free tier of [YugabyteDB Fully-Managed Cloud](https://www.yugabyte.com/cloud/).
+Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../quick-start/install). You can also get started with the free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/).
 
-You also need to load a relevant database in your YugabyteDB for exploration and visualization. You can load the Northwind sample database with the `./bin/yugabyted demo connect` command from your shell, or you can follow the [instructions here]/preview/sample-data/northwind/).
+You also need to load a relevant database in your YugabyteDB for exploration and visualization. You can load the Northwind sample database with the `./bin/yugabyted demo connect` command from your shell, or you can follow the [instructions](../../sample-data/northwind/).
 
 You also need to install Apache Superset to explore and visualize your data. You can install Superset using [Docker Compose](https://superset.apache.org/docs/installation/installing-superset-using-docker-compose) (recommended) or from scratch using [Python (pip3)](https://superset.apache.org/docs/installation/installing-superset-from-scratch).
 
@@ -30,7 +30,7 @@ After successful installation, launch Superset in your browser at `http://<hostn
 
 To connect Apache Superset to YugabyteDB:
 
-1. Navigate to Data > Databases > + Databases, and choose "PostgreSQL" from the “Connect a database” menu.
+1. Navigate to Data > Databases > + Databases, and choose "PostgreSQL" from the "Connect a database" menu.
 
 ![Connect Database](/images/develop/tools/superset/connect-database.png)
 

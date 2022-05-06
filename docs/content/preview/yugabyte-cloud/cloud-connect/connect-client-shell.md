@@ -15,7 +15,7 @@ showAsideToc: true
 
 Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is PostgreSQL-compatible, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect.
 
-You can download and install the YugabyteDB Client Shell and connect to your database by following the steps below for either YSQL or YCQL.
+You can download and install the YugabyteDB client shells and connect to your database by following the steps below for either YSQL or YCQL.
 
 {{< warning title="IP allow list" >}}
 
@@ -25,11 +25,11 @@ Before you can connect using a shell, you need to add your computer to a cluster
 
 {{< note title="Note" >}}
 
-When connecting via Yugabyte Client Shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later). See [How do I connect to my cluster?](../../cloud-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
+When connecting via a Yugabyte client shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later). See [How do I connect to my cluster?](../../cloud-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
 
 {{< /note >}}
 
-## Connect via Client Shell
+## Connect using a client shell
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -84,16 +84,12 @@ To connect, follow the client's configuration steps for PostgreSQL, and use the 
 
 - **host** as shown on the **Settings** tab for your cluster
 - **port** 5433
-- **username** and **password** of a user with permissions for the cluster
+- **database** name; the default database is yugabyte
+- **username** and **password** of a user with permissions for the database; the default user is admin
 
-For detailed steps for configuring popular third party tools, see [Third party tools](../../../tools/). In that section, configuration steps are included for the following tools:
+Your client may also require the use of the cluster certificate. Refer to [Download the cluster certificate](../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
-- DBeaver
-- DbSchema
-- pgAdmin
-- SQL Workbench/J
-- TablePlus
-- Visual Studio Workbench
+For detailed steps for configuring popular third party tools, see [Third party tools](../../../tools/).
 
 ## Related information
 
