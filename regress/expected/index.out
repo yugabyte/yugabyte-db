@@ -226,14 +226,7 @@ SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtyp
 /*
  * Section 2: Graphid Indices to Improve Join Performance
  */
-SELECT create_graph('agload_test_graph');
-NOTICE:  graph "agload_test_graph" has been created
- create_graph 
---------------
- 
-(1 row)
-
-SELECT * FROM cypher('agload_test_graph', $$
+SELECT * FROM cypher('cypher_index', $$
     CREATE (us:Country {name: "United States"}),
         (ca:Country {name: "Canada"}),
         (mx:Country {name: "Mexico"}),
@@ -252,28 +245,22 @@ $$) as (n agtype);
 ---
 (0 rows)
 
-ALTER TABLE agload_test_graph."Country" ADD PRIMARY KEY (id);
-CREATE UNIQUE INDEX CONCURRENTLY cntry_id_idx ON agload_test_graph."Country" (id);
-ALTER TABLE agload_test_graph."Country"  CLUSTER ON cntry_id_idx;
-ALTER TABLE agload_test_graph."City"
-ADD PRIMARY KEY (id);
-CREATE UNIQUE INDEX city_id_idx
-ON agload_test_graph."City" (id);
-ALTER TABLE agload_test_graph."City"
-CLUSTER ON city_id_idx;
-ALTER TABLE agload_test_graph.has_city
+ALTER TABLE cypher_index."Country" ADD PRIMARY KEY (id);
+CREATE UNIQUE INDEX CONCURRENTLY cntry_id_idx ON cypher_index."Country" (id);
+ALTER TABLE cypher_index."Country"  CLUSTER ON cntry_id_idx;
+ALTER TABLE cypher_index."City" ADD PRIMARY KEY (id);
+CREATE UNIQUE INDEX city_id_idx ON cypher_index."City" (id);
+ALTER TABLE cypher_index."City" CLUSTER ON city_id_idx;
+ALTER TABLE cypher_index.has_city
 ADD CONSTRAINT has_city_end_fk FOREIGN KEY (end_id)
-REFERENCES agload_test_graph."Country"(id) MATCH FULL;
-CREATE INDEX load_has_city_eid_idx
-ON agload_test_graph.has_city (end_id);
-CREATE INDEX load_has_city_sid_idx
-ON agload_test_graph.has_city (start_id);
-ALTER TABLE agload_test_graph."has_city"
-CLUSTER ON load_has_city_eid_idx;
+REFERENCES cypher_index."Country"(id) MATCH FULL;
+CREATE INDEX load_has_city_eid_idx ON cypher_index.has_city (end_id);
+CREATE INDEX load_has_city_sid_idx ON cypher_index.has_city (start_id);
+ALTER TABLE cypher_index."has_city" CLUSTER ON load_has_city_eid_idx;
 SET enable_mergejoin = ON;
 SET enable_hashjoin = OFF;
 SET enable_nestloop = OFF;
-SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+SELECT COUNT(*) FROM cypher('cypher_index', $$
     MATCH (a:Country)<-[e:has_city]-()
     RETURN e
 $$) as (n agtype);
@@ -285,7 +272,7 @@ $$) as (n agtype);
 SET enable_mergejoin = OFF;
 SET enable_hashjoin = ON;
 SET enable_nestloop = OFF;
-SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+SELECT COUNT(*) FROM cypher('cypher_index', $$
     MATCH (a:Country)<-[e:has_city]-()
     RETURN e
 $$) as (n agtype);
@@ -297,7 +284,7 @@ $$) as (n agtype);
 SET enable_mergejoin = OFF;
 SET enable_hashjoin = OFF;
 SET enable_nestloop = ON;
-SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+SELECT COUNT(*) FROM cypher('cypher_index', $$
     MATCH (a:Country)<-[e:has_city]-()
     RETURN e
 $$) as (n agtype);
@@ -306,12 +293,15 @@ $$) as (n agtype);
     10
 (1 row)
 
+SET enable_mergejoin = ON;
+SET enable_hashjoin = ON;
+SET enable_nestloop = ON;
 --
 -- Section 3: Agtype GIN Indices to Improve WHERE clause Performance
 --
 CREATE INDEX load_city_gid_idx
-ON agload_test_graph."City" USING gin (properties);
-SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+ON cypher_index."City" USING gin (properties);
+SELECT COUNT(*) FROM cypher('cypher_index', $$
     MATCH (c:City {country_code: "AD"})
     RETURN c
 $$) as (n agtype);
@@ -320,14 +310,42 @@ $$) as (n agtype);
      0
 (1 row)
 
+DROP INDEX load_city_gid_idx;
+ERROR:  index "load_city_gid_idx" does not exist
+--
+-- Section 4: Index use with WHERE clause
+--
+SELECT COUNT(*) FROM cypher('cypher_index', $$
+    MATCH (a:City)
+    WHERE a.country_code = 'RS'
+    RETURN a
+$$) as (n agtype);
+ count 
+-------
+     0
+(1 row)
+
+CREATE INDEX CONCURRENTLY cntry_ode_idx ON cypher_index."City"
+(ag_catalog.agtype_access_operator(properties, '"country_code"'::agtype));
+SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+    MATCH (a:City)
+    WHERE a.country_code = 'RS'
+    RETURN a
+$$) as (n agtype);
+ERROR:  graph "agload_test_graph" does not exist
+LINE 1: SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+                                    ^
 --
 -- General Cleanup
 --
 SELECT drop_graph('cypher_index', true);
-NOTICE:  drop cascades to 3 other objects
+NOTICE:  drop cascades to 6 other objects
 DETAIL:  drop cascades to table cypher_index._ag_label_vertex
 drop cascades to table cypher_index._ag_label_edge
 drop cascades to table cypher_index.idx
+drop cascades to table cypher_index."Country"
+drop cascades to table cypher_index.has_city
+drop cascades to table cypher_index."City"
 NOTICE:  graph "cypher_index" has been dropped
  drop_graph 
 ------------
@@ -335,15 +353,4 @@ NOTICE:  graph "cypher_index" has been dropped
 (1 row)
 
 SELECT drop_graph('agload_test_graph', true);
-NOTICE:  drop cascades to 5 other objects
-DETAIL:  drop cascades to table agload_test_graph._ag_label_vertex
-drop cascades to table agload_test_graph._ag_label_edge
-drop cascades to table agload_test_graph."Country"
-drop cascades to table agload_test_graph.has_city
-drop cascades to table agload_test_graph."City"
-NOTICE:  graph "agload_test_graph" has been dropped
- drop_graph 
-------------
- 
-(1 row)
-
+ERROR:  graph "agload_test_graph" does not exist

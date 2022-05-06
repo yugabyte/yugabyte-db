@@ -23,6 +23,8 @@
 #include "nodes/primnodes.h"
 #include "parser/parse_node.h"
 
+#include "nodes/cypher_nodes.h"
+
 #define AGE_DEFAULT_ALIAS_PREFIX "_age_default_alias_"
 #define AGE_DEFAULT_VARNAME_PREFIX "_age_varname_"
 
@@ -61,5 +63,6 @@ void setup_errpos_ecb(errpos_ecb_state *ecb_state, ParseState *pstate,
                       int query_loc);
 void cancel_errpos_ecb(errpos_ecb_state *ecb_state);
 RangeTblEntry *find_rte(cypher_parsestate *cpstate, char *varname);
+char *get_next_default_alias(cypher_parsestate *cpstate);
 
 #endif

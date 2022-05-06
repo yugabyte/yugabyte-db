@@ -130,9 +130,7 @@ SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtyp
 /*
  * Section 2: Graphid Indices to Improve Join Performance
  */
-SELECT create_graph('agload_test_graph');
-
-SELECT * FROM cypher('agload_test_graph', $$
+SELECT * FROM cypher('cypher_index', $$
     CREATE (us:Country {name: "United States"}),
         (ca:Country {name: "Canada"}),
         (mx:Country {name: "Mexico"}),
@@ -148,39 +146,32 @@ SELECT * FROM cypher('agload_test_graph', $$
         (mx)<-[:has_city]-(:City {name:"Tijuana", country_code:"MX"})
 $$) as (n agtype);
 
-ALTER TABLE agload_test_graph."Country" ADD PRIMARY KEY (id);
+ALTER TABLE cypher_index."Country" ADD PRIMARY KEY (id);
 
-CREATE UNIQUE INDEX CONCURRENTLY cntry_id_idx ON agload_test_graph."Country" (id);
-ALTER TABLE agload_test_graph."Country"  CLUSTER ON cntry_id_idx;
+CREATE UNIQUE INDEX CONCURRENTLY cntry_id_idx ON cypher_index."Country" (id);
+ALTER TABLE cypher_index."Country"  CLUSTER ON cntry_id_idx;
 
-ALTER TABLE agload_test_graph."City"
-ADD PRIMARY KEY (id);
+ALTER TABLE cypher_index."City" ADD PRIMARY KEY (id);
 
-CREATE UNIQUE INDEX city_id_idx
-ON agload_test_graph."City" (id);
+CREATE UNIQUE INDEX city_id_idx ON cypher_index."City" (id);
 
-ALTER TABLE agload_test_graph."City"
-CLUSTER ON city_id_idx;
+ALTER TABLE cypher_index."City" CLUSTER ON city_id_idx;
 
-ALTER TABLE agload_test_graph.has_city
+ALTER TABLE cypher_index.has_city
 ADD CONSTRAINT has_city_end_fk FOREIGN KEY (end_id)
-REFERENCES agload_test_graph."Country"(id) MATCH FULL;
+REFERENCES cypher_index."Country"(id) MATCH FULL;
 
-CREATE INDEX load_has_city_eid_idx
-ON agload_test_graph.has_city (end_id);
+CREATE INDEX load_has_city_eid_idx ON cypher_index.has_city (end_id);
 
-CREATE INDEX load_has_city_sid_idx
-ON agload_test_graph.has_city (start_id);
+CREATE INDEX load_has_city_sid_idx ON cypher_index.has_city (start_id);
 
-ALTER TABLE agload_test_graph."has_city"
-CLUSTER ON load_has_city_eid_idx;
-
+ALTER TABLE cypher_index."has_city" CLUSTER ON load_has_city_eid_idx;
 
 SET enable_mergejoin = ON;
 SET enable_hashjoin = OFF;
 SET enable_nestloop = OFF;
 
-SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+SELECT COUNT(*) FROM cypher('cypher_index', $$
     MATCH (a:Country)<-[e:has_city]-()
     RETURN e
 $$) as (n agtype);
@@ -189,7 +180,7 @@ SET enable_mergejoin = OFF;
 SET enable_hashjoin = ON;
 SET enable_nestloop = OFF;
 
-SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+SELECT COUNT(*) FROM cypher('cypher_index', $$
     MATCH (a:Country)<-[e:has_city]-()
     RETURN e
 $$) as (n agtype);
@@ -198,20 +189,44 @@ SET enable_mergejoin = OFF;
 SET enable_hashjoin = OFF;
 SET enable_nestloop = ON;
 
-SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+SELECT COUNT(*) FROM cypher('cypher_index', $$
     MATCH (a:Country)<-[e:has_city]-()
     RETURN e
 $$) as (n agtype);
+
+SET enable_mergejoin = ON;
+SET enable_hashjoin = ON;
+SET enable_nestloop = ON;
 
 --
 -- Section 3: Agtype GIN Indices to Improve WHERE clause Performance
 --
 CREATE INDEX load_city_gid_idx
-ON agload_test_graph."City" USING gin (properties);
+ON cypher_index."City" USING gin (properties);
 
-SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+SELECT COUNT(*) FROM cypher('cypher_index', $$
     MATCH (c:City {country_code: "AD"})
     RETURN c
+$$) as (n agtype);
+
+DROP INDEX load_city_gid_idx;
+
+--
+-- Section 4: Index use with WHERE clause
+--
+SELECT COUNT(*) FROM cypher('cypher_index', $$
+    MATCH (a:City)
+    WHERE a.country_code = 'RS'
+    RETURN a
+$$) as (n agtype);
+
+CREATE INDEX CONCURRENTLY cntry_ode_idx ON cypher_index."City"
+(ag_catalog.agtype_access_operator(properties, '"country_code"'::agtype));
+
+SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+    MATCH (a:City)
+    WHERE a.country_code = 'RS'
+    RETURN a
 $$) as (n agtype);
 
 --

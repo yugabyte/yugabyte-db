@@ -3147,7 +3147,7 @@ Datum agtype_access_operator(PG_FUNCTION_ARGS)
     nargs = extract_variadic_args_min(fcinfo, 0, true, &args, &types, &nulls,
                                       2);
     /* return NULL if we don't have the minimum number of args */
-    if (args == NULL && nargs == 0)
+    if (args == NULL || nargs == 0 || nulls[0] == true)
     {
         PG_RETURN_NULL();
     }

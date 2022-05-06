@@ -49,6 +49,7 @@
 #include "nodes/cypher_nodes.h"
 #include "parser/cypher_expr.h"
 #include "parser/cypher_parse_node.h"
+#include "parser/cypher_transform_entity.h"
 #include "utils/ag_func.h"
 #include "utils/agtype.h"
 
@@ -92,7 +93,9 @@ static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink);
 static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn);
 static Node *transform_WholeRowRef(ParseState *pstate, RangeTblEntry *rte,
                                    int location);
-
+static ArrayExpr *make_agtype_array_expr(List *args);
+static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
+                                                  ColumnRef *cr);
 /* transform a cypher expression */
 Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
                             ParseExprKind expr_kind)
@@ -302,6 +305,7 @@ static Node *transform_ColumnRef(cypher_parsestate *cpstate, ColumnRef *cref)
     {
         case 1:
             {
+                transform_entity *te;
                 field1 = (Node*)linitial(cref->fields);
 
                 Assert(IsA(field1, String));
@@ -309,43 +313,53 @@ static Node *transform_ColumnRef(cypher_parsestate *cpstate, ColumnRef *cref)
 
                 /* Try to identify as an unqualified column */
                 node = colNameToVar(pstate, colname, false, cref->location);
-
-                if (node == NULL)
+                if (node != NULL)
                 {
-                    /*
-                     * Not known as a column of any range-table entry.
-                     * Try to find the name as a relation.  Note that only
-                     * relations already entered into the rangetable will be
-                     * recognized.
-                     *
-                     * This is a hack for backwards compatibility with
-                     * PostQUEL-inspired syntax.  The preferred form now is
-                     * "rel.*".
-                     */
-                    rte = refnameRangeTblEntry(pstate, NULL, colname,
-                                               cref->location, &levels_up);
-                    if (rte)
-                    {
-                        node = transform_WholeRowRef(pstate, rte,
-                                                     cref->location);
-                    }
-                    else
-                    {
-                        ereport(ERROR,
+                        break;
+                }
+
+                /*
+                 * Try to find the columnRef as a transform_entity and extract
+                 * the expr.
+                 */
+                te = find_variable(cpstate, colname) ;
+                if (te != NULL && te->expr != NULL)
+                {
+                    node = (Node *)te->expr;
+                    break;
+                }
+
+                /*
+                 * Not known as a column of any range-table entry.
+                 * Try to find the name as a relation.  Note that only
+                 * relations already entered into the rangetable will be
+                 * recognized.
+                 *
+                 * This is a hack for backwards compatibility with
+                 * PostQUEL-inspired syntax.  The preferred form now is
+                 * "rel.*".
+                 */
+                rte = refnameRangeTblEntry(pstate, NULL, colname,
+                                           cref->location, &levels_up);
+                if (rte)
+                {
+                    node = transform_WholeRowRef(pstate, rte, cref->location);
+                }
+                else
+                {
+                    ereport(ERROR,
                                 (errcode(ERRCODE_UNDEFINED_COLUMN),
                                  errmsg("could not find rte for %s", colname),
                                  parser_errposition(pstate, cref->location)));
-                    }
-
-                    if (node == NULL)
-                    {
-                        ereport(ERROR,
-                                (errcode(ERRCODE_DATA_EXCEPTION),
-                                 errmsg("unable to transform whole row for %s",
-                                         colname),
-                                 parser_errposition(pstate, cref->location)));
-                    }
                 }
+
+                if (node == NULL)
+                {
+                    ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
+                            errmsg("unable to transform whole row for %s", colname),
+                             parser_errposition(pstate, cref->location)));
+                }
+
                 break;
             }
         case 2:
@@ -617,9 +631,13 @@ static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm)
     }
 
     if (list_length(newkeyvals) == 0)
+    {
         func_oid = get_ag_func_oid("agtype_build_map", 0);
+    }
     else
+    {
         func_oid = get_ag_func_oid("agtype_build_map", 1, ANYOID);
+    }
 
     fexpr = makeFuncExpr(func_oid, AGTYPEOID, newkeyvals, InvalidOid,
                          InvalidOid, COERCE_EXPLICIT_CALL);
@@ -645,15 +663,86 @@ static Node *transform_cypher_list(cypher_parsestate *cpstate, cypher_list *cl)
     }
 
     if (list_length(newelems) == 0)
+    {
         func_oid = get_ag_func_oid("agtype_build_list", 0);
+    }
     else
+    {
         func_oid = get_ag_func_oid("agtype_build_list", 1, ANYOID);
+    }
 
     fexpr = makeFuncExpr(func_oid, AGTYPEOID, newelems, InvalidOid, InvalidOid,
                          COERCE_EXPLICIT_CALL);
     fexpr->location = cl->location;
 
     return (Node *)fexpr;
+}
+
+// makes a VARIADIC agtype array
+static ArrayExpr *make_agtype_array_expr(List *args)
+{
+    ArrayExpr  *newa = makeNode(ArrayExpr);
+
+    newa->elements = args;
+
+    /* assume all the variadic arguments were coerced to the same type */
+    newa->element_typeid = AGTYPEOID;
+    newa->array_typeid = AGTYPEARRAYOID;
+
+    if (!OidIsValid(newa->array_typeid))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_OBJECT),
+                 errmsg("could not find array type for data type %s",
+                        format_type_be(newa->element_typeid))));
+    }
+
+    /* array_collid will be set by parse_collate.c */
+    newa->multidims = false;
+
+    return newa;
+}
+
+/*
+ * Transforms a column ref for indirection. Try to find the rte that the
+ * columnRef is references and pass the properties of that rte as what the
+ * columnRef is referencing. Otherwise, reference the Var
+ */
+static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
+                                                  ColumnRef *cr)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    RangeTblEntry *rte = NULL;
+    Node *field1 = linitial(cr->fields);
+    char *relname = NULL;
+    Node *node = NULL;
+
+    Assert(IsA(field1, String));
+    relname = strVal(field1);
+
+    // locate the referenced RTE
+    rte = find_rte(cpstate, relname);
+    if (rte == NULL)
+    {
+        /*
+         * This column ref is referencing something that was created in
+         * a previous query and is a variable.
+         */
+        return transform_cypher_expr_recurse(cpstate, (Node *)cr);
+    }
+
+    // try to identify the properties column of the RTE
+    node = scanRTEForColumn(pstate, rte, "properties", cr->location, 0, NULL);
+
+    if (node == NULL)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_OBJECT),
+                 errmsg("could not find rte for %s", relname)));
+
+    }
+
+    return node;
 }
 
 static Node *transform_A_Indirection(cypher_parsestate *cpstate,
@@ -677,7 +766,17 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
     func_slice_oid = get_ag_func_oid("agtype_access_slice", 3, AGTYPEOID,
                                      AGTYPEOID, AGTYPEOID);
 
-    ind_arg_expr = transform_cypher_expr_recurse(cpstate, a_ind->arg);
+    if (IsA(a_ind->arg, ColumnRef))
+    {
+        ColumnRef *cr = (ColumnRef *)a_ind->arg;
+
+        ind_arg_expr = transform_column_ref_for_indirection(cpstate, cr);
+    }
+    else
+    {
+        ind_arg_expr = transform_cypher_expr_recurse(cpstate, a_ind->arg);
+    }
+
     location = exprLocation(ind_arg_expr);
 
     args = lappend(args, ind_arg_expr);
@@ -693,13 +792,18 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
             /* were we working on an access? if so, wrap and close it */
             if (is_access)
             {
-                func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, args,
+                ArrayExpr *newa = make_agtype_array_expr(args);
+
+                func_expr = makeFuncExpr(func_access_oid, AGTYPEOID,
+                                         list_make1(newa),
                                          InvalidOid, InvalidOid,
                                          COERCE_EXPLICIT_CALL);
-                func_expr->location = location;
-                args = lappend(NIL, func_expr);
+
                 /* we are no longer working on an access */
                 is_access = false;
+
+                func_expr->funcvariadic = true;
+
             }
             /* add slice bounds to args */
             if (!indices->lidx)
@@ -710,8 +814,12 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
                 node = transform_cypher_expr_recurse(cpstate, (Node *)n);
             }
             else
+            {
                 node = transform_cypher_expr_recurse(cpstate, indices->lidx);
+            }
+
             args = lappend(args, node);
+
             if (!indices->uidx)
             {
                 A_Const *n = makeNode(A_Const);
@@ -720,7 +828,9 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
                 node = transform_cypher_expr_recurse(cpstate, (Node *)n);
             }
             else
+            {
                 node = transform_cypher_expr_recurse(cpstate, indices->uidx);
+            }
             args = lappend(args, node);
             /* wrap and close it */
             func_expr = makeFuncExpr(func_slice_oid, AGTYPEOID, args,
@@ -761,8 +871,15 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
 
     /* if we were doing an access, we need wrap the args with access func. */
     if (is_access)
-        func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, args, InvalidOid,
-                                 InvalidOid, COERCE_EXPLICIT_CALL);
+    {
+        ArrayExpr *newa = make_agtype_array_expr(args);
+
+        func_expr = makeFuncExpr(func_access_oid, AGTYPEOID, list_make1(newa),
+                                 InvalidOid, InvalidOid,
+                                 COERCE_EXPLICIT_CALL);
+        func_expr->funcvariadic = true;
+    }
+
     Assert(func_expr != NULL);
     func_expr->location = location;
 

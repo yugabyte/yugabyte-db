@@ -124,3 +124,29 @@ RangeTblEntry *find_rte(cypher_parsestate *cpstate, char *varname)
 
     return NULL;
 }
+
+/*
+ * Generates a default alias name for when a query needs on and the parse
+ * state does not provide one.
+ */
+char *get_next_default_alias(cypher_parsestate *cpstate)
+{
+    char *alias_name;
+    int nlen = 0;
+
+    /* get the length of the combinded string */
+    nlen = snprintf(NULL, 0, "%s%d", AGE_DEFAULT_ALIAS_PREFIX,
+                    cpstate->default_alias_num);
+
+    /* allocate the space */
+    alias_name = palloc0(nlen + 1);
+
+    /* create the name */
+    snprintf(alias_name, nlen + 1, "%s%d", AGE_DEFAULT_ALIAS_PREFIX,
+             cpstate->default_alias_num);
+
+    /* increment the default alias number */
+    cpstate->default_alias_num++;
+
+    return alias_name;
+}
