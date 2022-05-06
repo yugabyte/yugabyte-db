@@ -1105,18 +1105,27 @@ public class PlacementInfoUtil {
   @VisibleForTesting
   /**
    * Try to generate a collection of PlacementIndexes from available zones using round-robin
-   * algorythm. If azUuidToNumNodes is not empty - at first we try to get nodes from that zones
-   * (sorted by number of nodes in ascending order).
+   * algorythm. If currentNodes is not empty - at first we try to get nodes from that zones (zones
+   * are sorted by the number of nodes in each in ascending order).
    *
    * <p>IllegalStateException will be thrown if there are not enough nodes.
    *
-   * @param azUuidToNumNodes Map of zone uuid to number of existent nodes in it.
+   * @param currentNodes Currently used nodes.
    * @param numNodes Number of nodes to generate.
    * @param cluster Cluster
    * @return Ordered collection of PlacementIndexes
    */
   static Collection<PlacementIndexes> generatePlacementIndexes(
-      Map<UUID, Integer> azUuidToNumNodes, final int numNodes, Cluster cluster) {
+      Collection<NodeDetails> currentNodes, final int numNodes, Cluster cluster) {
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(currentNodes);
+    Map<UUID, Integer> currentToBeAdded = new HashMap<>();
+    int toBeAdded = 0;
+    for (NodeDetails currentNode : currentNodes) {
+      if (currentNode.state == NodeState.ToBeAdded) {
+        currentToBeAdded.merge(currentNode.azUuid, 1, Integer::sum);
+        toBeAdded++;
+      }
+    }
     Collection<PlacementIndexes> placements = new ArrayList<>();
 
     // Ordered map of PlacementIndexes for all zones.
@@ -1125,6 +1134,12 @@ public class PlacementInfoUtil {
     Map<UUID, Integer> availableNodesPerZone = new HashMap<>();
 
     if (!azUuidToNumNodes.isEmpty()) {
+      // Init available nodes for all zones with ToBeAdded nodes
+      // (since these nodes are not marked as "in use" in db we should subtract that count)
+      currentToBeAdded.forEach(
+          (zUUID, count) ->
+              availableNodesPerZone.put(
+                  zUUID, getAvailableNodesByZone(zUUID, cluster.userIntent) - count));
       // Taking from preferred zones first.
       Collection<UUID> preferredZoneUUIDs =
           sortKeysByValuesAndOriginalOrder(azUuidToNumNodes, zoneToPlacementIndexes.keySet());
@@ -1150,7 +1165,10 @@ public class PlacementInfoUtil {
     LOG.info("Generated placement indexes {} for {} nodes.", placements, numNodes);
     if (placements.size() < numNodes) {
       throw new IllegalStateException(
-          "Couldn't find enough nodes: needed " + numNodes + " but found " + placements.size());
+          "Couldn't find enough nodes: needed "
+              + (numNodes + toBeAdded)
+              + " but found "
+              + (placements.size() + toBeAdded));
     }
     return placements;
   }
@@ -1164,7 +1182,7 @@ public class PlacementInfoUtil {
    * @param zoneUUIDs Collection of zone UUIDs to use.
    * @param numNodes Number of PlacementIndexes to generate.
    * @param userIntent UserIntent describing the cluster.
-   * @param availableNodesPerZone Statefull counters of available nodes per zone.
+   * @param availableNodesPerZone Stateful counters of available nodes per zone.
    * @param zoneToPlacementIndexes Pre-calculated PlacementIndexes for each zone.
    * @return Ordered collection of PlacementIndexes
    */
@@ -1184,11 +1202,7 @@ public class PlacementInfoUtil {
       UUID zoneUUID = zoneUUIDIterator.next();
       Integer currentAvailable =
           availableNodesPerZone.computeIfAbsent(
-              zoneUUID,
-              zUUID ->
-                  (cloudType.equals(CloudType.onprem)
-                      ? NodeInstance.listByZone(zUUID, instanceType).size()
-                      : Integer.MAX_VALUE));
+              zoneUUID, zUUID -> getAvailableNodesByZone(zUUID, userIntent));
       if (currentAvailable > 0) {
         availableNodesPerZone.put(zoneUUID, --currentAvailable);
         PlacementIndexes pi = zoneToPlacementIndexes.get(zoneUUID).copy();
@@ -1204,6 +1218,12 @@ public class PlacementInfoUtil {
       }
     }
     return result;
+  }
+
+  private static int getAvailableNodesByZone(UUID zoneUUID, UserIntent userIntent) {
+    return userIntent.providerType.equals(CloudType.onprem)
+        ? NodeInstance.listByZone(zoneUUID, userIntent.instanceType).size()
+        : Integer.MAX_VALUE;
   }
 
   /**
@@ -1587,7 +1607,6 @@ public class PlacementInfoUtil {
     int numTservers = (int) getNumTserverNodes(nodesInCluster);
     int numDeltaNodes = userIntent.numNodes - numTservers;
     Map<String, NodeDetails> deltaNodesMap = new HashMap<>();
-    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodesInCluster);
     LOG.info("Nodes desired={} vs existing={}.", userIntent.numNodes, numTservers);
     if (numDeltaNodes < 0) {
       // Desired action is to remove nodes from a given cluster.
@@ -1615,7 +1634,7 @@ public class PlacementInfoUtil {
     } else if (numDeltaNodes > 0) {
       // Desired action is to add nodes.
       Collection<PlacementIndexes> indexes =
-          generatePlacementIndexes(azUuidToNumNodes, numDeltaNodes, cluster);
+          generatePlacementIndexes(nodesInCluster, numDeltaNodes, cluster);
 
       int startIndex = getNextIndexToConfigure(nodeDetailsSet);
       addNodeDetailSetToTaskParams(
@@ -1633,7 +1652,7 @@ public class PlacementInfoUtil {
     int numNodes = userIntent.numNodes;
     Map<String, NodeDetails> deltaNodesMap = new HashMap<>();
     Collection<PlacementIndexes> indexes =
-        generatePlacementIndexes(Collections.emptyMap(), numNodes, cluster);
+        generatePlacementIndexes(Collections.emptySet(), numNodes, cluster);
     addNodeDetailSetToTaskParams(
         indexes, startIndex, numNodes, cluster, nodeDetailsSet, deltaNodesMap);
 

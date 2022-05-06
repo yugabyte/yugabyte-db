@@ -13,6 +13,7 @@ import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeAdded;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Unreachable;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -63,6 +64,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -2492,26 +2494,32 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     cluster.placementInfo = placementInfo;
 
     Collection<PlacementIndexes> indexes =
-        PlacementInfoUtil.generatePlacementIndexes(Collections.emptyMap(), 3, cluster);
+        PlacementInfoUtil.generatePlacementIndexes(Collections.emptySet(), 3, cluster);
 
     assertPlacementIndexes(placementInfo, indexes, "r1z1", "r1z2", "r1z3");
 
-    indexes = PlacementInfoUtil.generatePlacementIndexes(Collections.emptyMap(), 5, cluster);
+    indexes = PlacementInfoUtil.generatePlacementIndexes(Collections.emptySet(), 5, cluster);
     assertPlacementIndexes(placementInfo, indexes, "r1z1", "r1z2", "r1z3", "r1z1", "r1z2");
 
     // Multi-region.
     placementInfo = generatePlacementInfo(provider, 2, 5);
     cluster.placementInfo = placementInfo;
 
-    indexes = PlacementInfoUtil.generatePlacementIndexes(Collections.emptyMap(), 6, cluster);
+    indexes = PlacementInfoUtil.generatePlacementIndexes(Collections.emptySet(), 6, cluster);
     assertPlacementIndexes(placementInfo, indexes, "r1z1", "r1z2", "r2z1", "r2z2", "r2z3", "r2z4");
 
+    NodeDetails nodeDetails = new NodeDetails();
+    nodeDetails.azUuid = AvailabilityZone.getByCode(provider, "r1z2").uuid;
+    nodeDetails.state = ToBeAdded;
     // Passing existing nodes.
     indexes =
-        PlacementInfoUtil.generatePlacementIndexes(
-            Collections.singletonMap(AvailabilityZone.getByCode(provider, "r1z2").uuid, 1),
-            3,
-            cluster);
+        PlacementInfoUtil.generatePlacementIndexes(Collections.singleton(nodeDetails), 3, cluster);
+    assertPlacementIndexes(placementInfo, indexes, "r1z2", "r1z2", "r1z2");
+
+    // Same for already created node
+    nodeDetails.state = Live;
+    indexes =
+        PlacementInfoUtil.generatePlacementIndexes(Collections.singleton(nodeDetails), 3, cluster);
     assertPlacementIndexes(placementInfo, indexes, "r1z2", "r1z2", "r1z2");
   }
 
@@ -2532,18 +2540,18 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     cluster.placementInfo = placementInfo;
 
     Collection<PlacementIndexes> indexes =
-        PlacementInfoUtil.generatePlacementIndexes(Collections.emptyMap(), 3, cluster);
+        PlacementInfoUtil.generatePlacementIndexes(Collections.emptySet(), 3, cluster);
 
     assertPlacementIndexes(placementInfo, indexes, "r1z1", "r1z3", "r1z4");
 
-    indexes = PlacementInfoUtil.generatePlacementIndexes(Collections.emptyMap(), 4, cluster);
+    indexes = PlacementInfoUtil.generatePlacementIndexes(Collections.emptySet(), 4, cluster);
     assertPlacementIndexes(placementInfo, indexes, "r1z1", "r1z3", "r1z4", "r1z3");
 
     // Not enough nodes
     assertThrows(
         RuntimeException.class,
         () -> {
-          PlacementInfoUtil.generatePlacementIndexes(Collections.emptyMap(), 5, cluster);
+          PlacementInfoUtil.generatePlacementIndexes(Collections.emptySet(), 5, cluster);
         });
 
     // Multiregion
@@ -2552,14 +2560,29 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     addNodes(AvailabilityZone.getByCode(provider, "r2z3"), 2, ApiUtils.UTIL_INST_TYPE);
     cluster.placementInfo = placementInfo;
 
-    indexes = PlacementInfoUtil.generatePlacementIndexes(Collections.emptyMap(), 6, cluster);
+    indexes = PlacementInfoUtil.generatePlacementIndexes(Collections.emptySet(), 6, cluster);
     assertPlacementIndexes(placementInfo, indexes, "r1z1", "r1z3", "r1z4", "r2z2", "r2z3", "r1z3");
 
+    // r1z1 -> 1
+    // r1z2 -> 0
+    // r1z3 -> 2
+    // r1z4 -> 1
+    // r2z1 -> 0
+    // r2z2 -> 1
+    // r2z3 -> 2
+
     // Passing existing nodes.
-    Map<UUID, Integer> existentNodes =
-        ImmutableMap.of(
-            AvailabilityZone.getByCode(provider, "r1z3").uuid, 2,
-            AvailabilityZone.getByCode(provider, "r2z3").uuid, 1);
+    List<NodeDetails> existentNodes =
+        zoneCodesToUUIDs(provider, "r1z3", "r1z3", "r2z3")
+            .stream()
+            .map(
+                uuid -> {
+                  NodeDetails details = new NodeDetails();
+                  details.azUuid = uuid;
+                  details.state = Live;
+                  return details;
+                })
+            .collect(Collectors.toList());
     indexes = PlacementInfoUtil.generatePlacementIndexes(existentNodes, 3, cluster);
     assertPlacementIndexes(placementInfo, indexes, "r2z3", "r1z3", "r2z3");
 
@@ -2572,6 +2595,26 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         () -> {
           PlacementInfoUtil.generatePlacementIndexes(existentNodes, 8, cluster);
         });
+
+    // Consider case for CREATE - nodes are in ToBeAdded state and are not marked as used in db.
+    existentNodes.forEach(node -> node.state = ToBeAdded);
+    indexes = PlacementInfoUtil.generatePlacementIndexes(existentNodes, 3, cluster);
+    assertPlacementIndexes(placementInfo, indexes, "r2z3", "r1z1", "r1z4");
+
+    indexes = PlacementInfoUtil.generatePlacementIndexes(existentNodes, 4, cluster);
+    assertPlacementIndexes(placementInfo, indexes, "r2z3", "r1z1", "r1z4", "r2z2");
+
+    assertThrows(
+        RuntimeException.class,
+        () -> {
+          PlacementInfoUtil.generatePlacementIndexes(existentNodes, 5, cluster);
+        });
+  }
+
+  private List<UUID> zoneCodesToUUIDs(Provider provider, String... codes) {
+    return Arrays.stream(codes)
+        .map(code -> AvailabilityZone.getByCode(provider, code).uuid)
+        .collect(Collectors.toList());
   }
 
   private void assertPlacementIndexes(
