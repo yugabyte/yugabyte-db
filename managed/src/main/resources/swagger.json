@@ -5902,6 +5902,15 @@
           "description" : "Keyspace",
           "type" : "string"
         },
+        "nameSpace" : {
+          "description" : "Namespace or Schema",
+          "type" : "string"
+        },
+        "parentTableUUID" : {
+          "description" : "Parent Table UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "relationType" : {
           "description" : "Relation type",
           "enum" : [ "SYSTEM_TABLE_RELATION", "USER_TABLE_RELATION", "INDEX_TABLE_RELATION" ],
@@ -5915,6 +5924,10 @@
         },
         "tableName" : {
           "description" : "Table name",
+          "type" : "string"
+        },
+        "tableSpace" : {
+          "description" : "Table space",
           "type" : "string"
         },
         "tableType" : {
@@ -13006,6 +13019,12 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "includeParentTableInfo",
+          "required" : false,
+          "type" : "boolean"
         } ],
         "responses" : {
           "200" : {
