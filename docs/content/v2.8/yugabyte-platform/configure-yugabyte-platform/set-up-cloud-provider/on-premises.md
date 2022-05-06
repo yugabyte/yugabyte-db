@@ -555,7 +555,7 @@ If you plan to have Platform use **systemd services** to perform the monitoring 
 
 As an alternative to setting crontab permissions, you can install systemd-specific database service unit files, as follows:
 
-1. Obtain sudo root access and add the `yugabyte` file to `/etc/sudoers.d/`. Next, open the `/etc/sudoers.d/yugabyte` file and write the following to provide permissions for the `yugabyte` user to run systemctl commands as a sudo user in order to manage the database:
+1. Enable the `yugabyte` user to run the following commands as sudo or root:
 
    ```sh
    yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start yb-master, \
@@ -601,16 +601,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    /bin/systemctl daemon-reload
    ```
 
-   <br>Open the `sudoers` file located in the `/etc` directory and add the following line to place the `yugabyte` file at the top-level `sudoers` file:
+2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):<br><br>
 
-     ```sh
-   includedir /etc/sudoers.d
-     ```
-
-2. Ensure that you have the root access and add the following service and timer files to the `/etc/systemd/system` directory. Set their ownerships to the `yugabyte` user and 0644 permissions:
+   `yb-master.service`
 
    ```sh
-   yb-master.service
    [Unit]
    Description=Yugabyte master service
    Requires=network-online.target
@@ -647,10 +642,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=default.target
    ```
 
-   
+   <br><br>
+
+   `yb-tserver.service`
 
    ```sh
-   yb-tserver.service
    [Unit]
    Description=Yugabyte tserver service
    Requires=network-online.target
@@ -687,10 +683,9 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=default.target
    ```
 
-   
+   <br><br>`yb-zip_purge_yb_logs.service`
 
    ```sh
-   yb-zip_purge_yb_logs.service
    [Unit]
    Description=Yugabyte logs
    Wants=yb-zip_purge_yb_logs.timer
@@ -706,10 +701,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=multi-user.target
    ```
 
-   
+   <br><br>
+
+   `yb-zip_purge_yb_logs.timer`
 
    ```sh
-   yb-zip_purge_yb_logs.timer
    [Unit]
    Description=Yugabyte logs
    Requires=yb-zip_purge_yb_logs.service
@@ -725,10 +721,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=timers.target
    ```
 
-   
+   <br><br>
+
+   `yb-clean_cores.service`
 
    ```sh
-   yb-clean_cores.service
    [Unit]
    Description=Yugabyte clean cores
    Wants=yb-clean_cores.timer
@@ -744,10 +741,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=multi-user.target
    ```
 
-   
+   <br><br>
+
+   `yb-clean_cores.timer`
 
    ```sh
-   yb-clean_cores.timer
    [Unit]
    Description=Yugabyte clean cores
    Requires=yb-clean_cores.service
@@ -763,10 +761,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=timers.target
    ```
 
-   
+   <br><br>
+
+   `yb-collect_metrics.service`
 
    ```sh
-   yb-collect_metrics.service
    [Unit]
    Description=Yugabyte collect metrics
    Wants=yb-collect_metrics.timer
@@ -782,10 +781,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=multi-user.target
    ```
 
-   
+   <br><br>
+
+   `yb-collect_metrics.timer`
 
    ```sh
-   yb-collect_metrics.timer
    [Unit]
    Description=Yugabyte collect metrics
    Requires=yb-collect_metrics.service
@@ -801,3 +801,4 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=timers.target
    ```
 
+## 
