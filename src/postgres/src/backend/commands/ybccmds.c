@@ -638,13 +638,14 @@ YBCDropTable(Oid relationId)
 
 	/* Whether the table is colocated (via DB or a tablegroup) */
 	bool            colocated  = YbIsUserTableColocated(databaseId, relationId);
+	Relation 		relation   = relation_open(relationId, AccessExclusiveLock);
 
 	/* Create table-level tombstone for colocated tables / tables in a tablegroup */
 	if (colocated)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
-															   relationId,
+															   YbGetStorageRelid(relation),
 															   false,
 															   &handle),
 									 &not_found);
@@ -664,7 +665,6 @@ YBCDropTable(Oid relationId)
 	/* Drop the table */
 	{
 		bool not_found = false;
-		Relation relation = relation_open(relationId, AccessExclusiveLock);
 		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(databaseId,
 													   YbGetStorageRelid(relation),
 													   false, /* if_exists */
@@ -1169,6 +1169,7 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 
 	switch (stmt->renameType)
 	{
+		case OBJECT_INDEX:
 		case OBJECT_TABLE:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  relationId,

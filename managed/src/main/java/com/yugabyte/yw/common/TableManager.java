@@ -401,6 +401,9 @@ public class TableManager extends DevopsBase {
     if (backupTableParams.useTablespaces) {
       commandArgs.add("--use_tablespaces");
     }
+    if (backupTableParams.disableChecksum) {
+      commandArgs.add("--disable_checksums");
+    }
   }
 
   @Override

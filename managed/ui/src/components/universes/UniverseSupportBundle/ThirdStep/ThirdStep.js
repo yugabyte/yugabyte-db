@@ -47,14 +47,16 @@ const getActions = (uuid, row, handleViewLogs, handleDeleteBundle, isConfirmDele
             <i className="fa fa-download"/> Download
           </MenuItem>
         )}
-        <MenuItem
-          value="View logs"
-          onClick={() => {
-            handleViewLogs('/logs')
-          }}
-        >
-          <i className="fa fa-file"/> View logs
-        </MenuItem>
+        {!isReady && (
+          <MenuItem
+            value="View logs"
+            onClick={() => {
+              handleViewLogs('/logs')
+            }}
+          >
+            <i className="fa fa-file"/> View logs
+          </MenuItem>
+        )}
         <YBMenuItem
 
           value="Delete"
@@ -100,6 +102,8 @@ export const ThirdStep = withRouter(({
   useEffect(() => {
     if(supportBundles && Array.isArray(supportBundles) && supportBundles.find((supportBundle) => supportBundle.status === 'Running') !== undefined) {
       setCreatingBundle(true);
+    } else {
+      setCreatingBundle(false);
     }
   }, [supportBundles, setCreatingBundle]);
 
@@ -134,7 +138,7 @@ export const ThirdStep = withRouter(({
         {supportBundles && Array.isArray(supportBundles) && (
           <BootstrapTable data={supportBundles}>
             <TableHeaderColumn
-              dataField="startDate"
+              dataField="creationDate"
               isKey={true}
               className={'node-name-field'}
               columnClassName={'node-name-field'}
@@ -142,7 +146,7 @@ export const ThirdStep = withRouter(({
               Date Created
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="endDate"
+              dataField="expirationDate"
               className={'yb-node-status-cell'}
               columnClassName={'yb-node-status-cell'}
             >

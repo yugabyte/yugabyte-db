@@ -3129,7 +3129,7 @@ TEST_P(DocDBTestWrapper, MergingIterator) {
 
 TEST_P(DocDBTestWrapper, SetPrimitiveWithInitMarker) {
   // Both required and optional init marker should be ok.
-  for (auto init_marker_behavior : kInitMarkerBehaviorList) {
+  for (auto init_marker_behavior : InitMarkerBehaviorList()) {
     auto dwb = MakeDocWriteBatch(init_marker_behavior);
     ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1), ValueRef(ValueEntryType::kObject)));
   }

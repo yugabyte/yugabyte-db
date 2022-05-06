@@ -8225,7 +8225,7 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 			 i < sizeof(YbDbAdminVariables) / sizeof(YbDbAdminVariables[0]);
 			 i++)
 		{
-			if (strcmp(YbDbAdminVariables[i], stmt->name) == 0)
+			if (stmt->name && strcmp(YbDbAdminVariables[i], stmt->name) == 0)
 			{
 				YbDbAdminCanSet = true;
 				break;

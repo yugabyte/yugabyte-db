@@ -34,23 +34,23 @@ YugabyteDB is developed and distributed as an [Apache 2.0 open source project](h
 
 ## What makes YugabyteDB unique?
 
-YugabyteDB is a transactional database that brings together 4 must-have needs of cloud native apps, namely SQL as a flexible query language, low-latency performance, continuous availability and globally-distributed scalability. Other databases do not serve all 4 of these needs simultaneously.
+YugabyteDB is a transactional database that brings together four must-have needs of cloud native apps - namely SQL as a flexible query language, low-latency performance, continuous availability, and globally-distributed scalability. Other databases do not serve all 4 of these needs simultaneously.
 
-- Monolithic SQL databases offer SQL and low-latency reads but neither have ability to tolerate failures nor can scale writes across multiple nodes, zones, regions and clouds.
+- Monolithic SQL databases offer SQL and low-latency reads, but neither have the ability to tolerate failures, nor can they scale writes across multiple nodes, zones, regions, and clouds.
 
-- Distributed NoSQL databases offer read performance, high availability and write scalability but give up on SQL features such as relational data modeling and ACID transactions.
+- Distributed NoSQL databases offer read performance, high availability, and write scalability, but give up on SQL features such as relational data modeling and ACID transactions.
 
 YugabyteDB feature highlights are listed below.
 
 ### SQL and ACID transactions
 
-- SQL [JOINs](../../quick-start/explore/ysql/#3-joins) and [distributed transactions](../../quick-start/explore/ysql/#4-distributed-transactions) that allow multi-row access across any number of shards at any scale.
+- SQL [JOINs](../../quick-start/explore/ysql/#join) and [distributed transactions](../../explore/transactions/distributed-transactions-ysql/) that allow multi-row access across any number of shards at any scale.
 
 - Transactional [document store](../../architecture/docdb/) backed by self-healing, strongly-consistent, synchronous [replication](../../architecture/docdb-replication/replication/).
 
 ### High performance and massive scalability
 
-- Low latency for geo-distributed applications with multiple [read consistency levels](../../architecture/docdb-replication/replication/#tunable-read-consistency) and [read replicas](../../architecture/docdb-replication/replication/#read-replicas).
+- Low latency for geo-distributed applications with multiple [read consistency levels](../../architecture/docdb-replication/replication/#follower-reads) and [read replicas](../../architecture/docdb-replication/read-replicas/).
 
 - Linearly scalable throughput for ingesting and serving ever-growing datasets.
 
@@ -88,7 +88,7 @@ YugabyteDB supports two flavors of distributed SQL.
 
 {{< note title="Note" >}}
 
-The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../../integrations/presto/) can help for simple cases).
+The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../../integrations/presto/) can help for basic cases).
 
 **The net impact is that you need to select an API first before undertaking detailed database schema/query design and implementation.**
 
@@ -99,7 +99,6 @@ The YugabyteDB APIs are isolated and independent from one another today. This me
 You should pick YCQL over YSQL if your application:
 
 - Does not require fully-relational data modeling constructs, such as foreign keys and JOINs. Note that strongly-consistent secondary indexes and unique constraints are supported by YCQL.
-- Requires storing large amounts of data (for example, 10TB or more).
 - Needs to serve low-latency (sub-millisecond) queries.
 - Needs TTL-driven automatic data expiration.
 - Needs to integrate with stream processors, such as Apache Spark and KSQL.
@@ -108,7 +107,7 @@ If you have a specific use case in mind, share it in our [Slack community]({{<sl
 
 ## How does YugabyteDB's common document store work?
 
-[DocDB](../../architecture/docdb/), YugabyteDB's distributed document store common across all APIs, is built using a custom integration of Raft replication, distributed ACID transactions and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../../architecture/docdb-sharding/sharding/), [replication/fault-tolerance](../../architecture/docdb-replication/replication/) and [distributed ACID transactions](../../architecture/transactions/distributed-txns/) architecture are all based on the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
+[DocDB](../../architecture/docdb/), YugabyteDB's distributed document store is common across all APIs, and built using a custom integration of Raft replication, distributed ACID transactions, and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB's [sharding](../../architecture/docdb-sharding/sharding/), [replication/fault-tolerance](../../architecture/docdb-replication/replication/), and [distributed ACID transactions](../../architecture/transactions/distributed-txns/) architecture are all based on the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
 
 ## What are the trade-offs involved in using YugabyteDB?
 
@@ -198,15 +197,15 @@ Learn more: [Apache Cassandra: The Truth Behind Tunable Consistency, Lightweight
 
 ## When is YugabyteDB a good fit?
 
-YugabyteDB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability and low latency. Common use cases include:
+YugabyteDB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability, and low latency. Common use cases include:
 
-- Distributed Online Transaction Processing (OLTP) applications needing multi-region scalability without compromising strong consistency and low latency. E.g. User identity, Retail product catalog, Financial data service.
+- Distributed Online Transaction Processing (OLTP) applications needing multi-region scalability without compromising strong consistency and low latency. For example, user identity, Retail product catalog, Financial data service.
 
-- Hybrid Transactional/Analytical Processing (HTAP), also known as Translytical, applications needing real-time analytics on transactional data. E.g User personalization, fraud detection, machine learning.
+- Hybrid Transactional/Analytical Processing (HTAP), also known as Translytical, applications needing real-time analytics on transactional data. For example, user personalization, fraud detection, machine learning.
 
-- Streaming applications needing to efficiently ingest, analyze and store ever-growing data. E.g. IoT sensor analytics, time series metrics, real-time monitoring.
+- Streaming applications needing to efficiently ingest, analyze, and store ever-growing data. For example, IoT sensor analytics, time series metrics, real-time monitoring.
 
-A few such use cases are detailed [here](https://www.yugabyte.com/).
+See some success stories at [yugabyte.com](https://www.yugabyte.com/success-stories/).
 
 ## When is YugabyteDB not a good fit?
 
@@ -251,7 +250,7 @@ Yes, both YugabyteDB APIs are production ready. [YCQL](https://blog.yugabyte.com
 
 ## Which companies are currently using YugabyteDB in production?
 
-Reference deployments are listed [here](https://www.yugabyte.com/success-stories/).
+Reference deployments are listed in [Success Stories](https://www.yugabyte.com/success-stories/).
 
 ## What is the definition of the "Beta" feature tag?
 
@@ -271,7 +270,7 @@ Please do try our beta features and give feedback on them on our [Slack communit
 
 [Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against YugabyteDB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra.
 
-Details for both the above benchhmarks are published in [Building a Strongly Consistent Cassandra with Better Performance](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
+Details for both the above benchmarks are published in [Building a Strongly Consistent Cassandra with Better Performance](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
 ## What about correctness testing?
 
@@ -307,13 +306,13 @@ See [Compare YugabyteDB to other databases](../../comparisons/)
 
 ## Why is a group of YugabyteDB nodes called a universe instead of the more commonly used term clusters?
 
-A YugabyteDB universe packs a lot more functionality than what people think of when referring to a cluster. In fact, in certain deployment choices, the universe subsumes the equivalent of multiple clusters and some of the operational work needed to run these. Here are just a few concrete differences, which made us feel like giving it a different name would help earmark the differences and avoid confusion.
+A YugabyteDB universe packs a lot more functionality than what people think of when referring to a cluster. In fact, in certain deployment choices, the universe subsumes the equivalent of multiple clusters and some of the operational work needed to run them. Here are just a few concrete differences, which made us feel like giving it a different name would help earmark the differences and avoid confusion:
 
 - A YugabyteDB universe can move into new machines, availability zones (AZs), regions, and data centers in an online fashion, while these primitives are not associated with a traditional cluster.
 
-- It is very easy to set up multiple asynchronous replicas with just a few clicks (in the YugabyteDB Anywhere). This is built into the universe as a first-class operation with bootstrapping of the remote replica and all the operational aspects of running async replicas being supported natively. In the case of traditional clusters, the source and the async replicas are independent clusters. The user is responsible for maintaining these separate clusters as well as operating the replication logic.
+- You can set up multiple asynchronous replicas with just a few clicks (using YugabyteDB Anywhere). This is built into the universe as a first-class operation with bootstrapping of the remote replica and all the operational aspects of running asynchronous replicas being supported natively. In the case of traditional clusters, the source and the asynchronous replicas are independent clusters. The user is responsible for maintaining these separate clusters as well as operating the replication logic.
 
-- Failover to asynchronous replicas as the primary data and failback once the original is up and running are both natively supported within a universe.
+- Failover to asynchronous replicas as the primary data and fallback once the original is up and running are both natively supported in a universe.
 
 ## What is the difference between `ysqlsh` and `psql`?
 
@@ -323,7 +322,7 @@ The YSQL shell (`ysqlsh`) is functionally similar to PostgreSQL's `psql` , but u
 
 In the near-term, Yugabyte is not actively working on new feature or driver enhancements to the [YEDIS](../../yedis/) API other than bug fixes and stability improvements. Current focus is on [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/).
 
-For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with notion of keyspaces, tables, role-based access control and more) is often a great fit, especially if the application new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware, and hence YCQL is expected to perform better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups and more), correctness testing (using Jepsen) and performance optimization is in the YSQL and YCQL areas.
+For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with the notion of keyspaces, tables, role-based access control, and more) is often a great fit, especially if the application is new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware, and hence YCQL is expected to perform better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups, and more), correctness testing (using Jepsen), and performance optimization is in the YSQL and YCQL areas.
 
 ## Why is consistent hash sharding the default sharding strategy?
 

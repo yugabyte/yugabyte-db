@@ -1021,6 +1021,16 @@ void Unique(Collection* collection) {
   collection->erase(std::unique(collection->begin(), collection->end()), collection->end());
 }
 
+template <class Key, class Value, class Map>
+void MakeAtMost(const Key& key, const Value& value, Map* map) {
+  auto it = map->find(key);
+  if (it == map->end()) {
+    map->emplace(key, value);
+  } else {
+    it->second = std::min(it->second, value);
+  }
+}
+
 } // namespace yb
 
 // For backward compatibility

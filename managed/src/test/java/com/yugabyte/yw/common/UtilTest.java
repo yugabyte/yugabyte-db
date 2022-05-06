@@ -15,6 +15,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -293,7 +294,7 @@ public class UtilTest extends FakeDBApplication {
   })
   // @formatter:on
   public void testGetFileName(@Nullable String fullName, @Nullable String fileName) {
-    assertEquals(fileName, Util.getFileName(fullName));
+    assertEquals(fileName, FileUtils.getFileName(fullName));
   }
 
   // TODO: Add tests for other functions
@@ -345,7 +346,7 @@ public class UtilTest extends FakeDBApplication {
     folder.mkdir();
     new File("certificates/ca.cert");
     new File("certificates/cb.cert");
-    Util.deleteDirectory(folder);
+    FileUtils.deleteDirectory(folder);
     assertFalse(folder.exists());
   }
 

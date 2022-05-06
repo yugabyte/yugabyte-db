@@ -37,6 +37,7 @@
 #include "yb/gutil/singleton.h"
 
 #include "yb/util/net/inetaddress.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/uuid.h"
 
@@ -119,16 +120,12 @@ void DataTypeTraits<INET>::AppendDebugStringForValue(const void *val, std::strin
 
 void DataTypeTraits<UUID>::AppendDebugStringForValue(const void *val, std::string *str) {
   const Slice *s = reinterpret_cast<const Slice *>(val);
-  Uuid uuid;
-  DCHECK(uuid.FromSlice(*s).ok());
-  str->append(uuid.ToString());
+  str->append(CHECK_RESULT(Uuid::FromSlice(*s)).ToString());
 }
 
 void DataTypeTraits<TIMEUUID>::AppendDebugStringForValue(const void *val, std::string *str) {
   const Slice *s = reinterpret_cast<const Slice *>(val);
-  Uuid uuid;
-  DCHECK(uuid.FromSlice(*s).ok());
-  str->append(uuid.ToString());
+  str->append(CHECK_RESULT(Uuid::FromSlice(*s)).ToString());
 }
 
 } // namespace yb

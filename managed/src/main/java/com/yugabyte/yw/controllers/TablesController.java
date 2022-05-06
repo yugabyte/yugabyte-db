@@ -9,12 +9,21 @@ import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import com.fasterxml.jackson.databind.deser.std.UUIDDeserializer;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -26,6 +35,8 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -49,6 +60,8 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.queries.SlowQueryExecutor;
 
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -64,12 +77,21 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.Scanner;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
+import oshi.util.tuples.Triplet;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,8 +99,12 @@ import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo.PlacementBlockPB;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
+import org.yb.tserver.Tserver;
+
+import play.Environment;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
@@ -87,7 +113,9 @@ import play.mvc.Result;
     value = "Table management",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class TablesController extends AuthenticatedController {
-  public static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
+  private static final String mastersUnavailableErrMsg =
+      "Expected error. Masters are not currently queryable.";
 
   Commissioner commissioner;
 
@@ -99,18 +127,24 @@ public class TablesController extends AuthenticatedController {
 
   private final NodeUniverseManager nodeUniverseManager;
 
+  private final Environment environment;
+
+  private final String PARTITION_QUERY_PATH = "queries/fetch_table_partitions.sql";
+
   @Inject
   public TablesController(
       Commissioner commissioner,
       YBClientService service,
       MetricQueryHelper metricQueryHelper,
       CustomerConfigService customerConfigService,
-      NodeUniverseManager nodeUniverseManager) {
+      NodeUniverseManager nodeUniverseManager,
+      Environment environment) {
     this.commissioner = commissioner;
     this.ybService = service;
     this.metricQueryHelper = metricQueryHelper;
     this.customerConfigService = customerConfigService;
     this.nodeUniverseManager = nodeUniverseManager;
+    this.environment = environment;
   }
 
   @ApiOperation(
@@ -189,10 +223,7 @@ public class TablesController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
-      String errMsg = "Expected error. Masters are not currently queryable.";
-      LOG.warn(errMsg);
-      // TODO: This should be temporary unavailable error and not a success!!
-      return YBPSuccess.withMessage(errMsg);
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, mastersUnavailableErrMsg);
     }
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = ybService.getClient(masterAddresses, certificate);
@@ -273,6 +304,7 @@ public class TablesController extends AuthenticatedController {
 
   @ApiModel(description = "Table information response")
   @Builder
+  @Jacksonized
   static class TableInfoResp {
 
     @ApiModelProperty(value = "Table UUID", accessMode = READ_ONLY)
@@ -295,6 +327,15 @@ public class TablesController extends AuthenticatedController {
 
     @ApiModelProperty(value = "UI_ONLY", hidden = true)
     public final boolean isIndexTable;
+
+    @ApiModelProperty(value = "Namespace or Schema")
+    public final String nameSpace;
+
+    @ApiModelProperty(value = "Table space")
+    public final String tableSpace;
+
+    @ApiModelProperty(value = "Parent Table UUID")
+    public final UUID parentTableUUID;
   }
 
   @ApiOperation(
@@ -303,7 +344,10 @@ public class TablesController extends AuthenticatedController {
       notes = "Get a list of all tables in the specified universe",
       response = TableInfoResp.class,
       responseContainer = "List")
-  public Result listTables(UUID customerUUID, UUID universeUUID) {
+  public Result listTables(UUID customerUUID, UUID universeUUID, boolean includeParentTableInfo) {
+    if (includeParentTableInfo) {
+      return listTablesWithParentTableInfo(customerUUID, universeUUID);
+    }
     // Validate customer UUID
     Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
@@ -311,9 +355,7 @@ public class TablesController extends AuthenticatedController {
 
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
-      String errMsg = "Expected error. Masters are not currently queryable.";
-      LOG.warn(errMsg);
-      return ok(errMsg);
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, mastersUnavailableErrMsg);
     }
 
     Map<String, Double> tableSizes = getTableSizesOrEmpty(universe);
@@ -323,22 +365,8 @@ public class TablesController extends AuthenticatedController {
     List<TableInfo> tableInfoList = response.getTableInfoList();
     List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
     for (TableInfo table : tableInfoList) {
-      String tableKeySpace = table.getNamespace().getName();
       if (!isSystemTable(table) || isSystemRedis(table)) {
-        String id = table.getId().toStringUtf8();
-        TableInfoResp.TableInfoRespBuilder builder =
-            TableInfoResp.builder()
-                .tableUUID(getUUIDRepresentation(id))
-                .keySpace(tableKeySpace)
-                .tableType(table.getTableType())
-                .tableName(table.getName())
-                .relationType(table.getRelationType())
-                .isIndexTable(table.getRelationType() == RelationType.INDEX_TABLE_RELATION);
-        Double tableSize = tableSizes.get(id);
-        if (tableSize != null) {
-          builder.sizeBytes(tableSize);
-        }
-        tableInfoRespList.add(builder.build());
+        tableInfoRespList.add(buildResponseFromTableInfo(table, null, null, tableSizes).build());
       }
     }
     return PlatformResults.withData(tableInfoRespList);
@@ -406,12 +434,13 @@ public class TablesController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     YBClient client = null;
     String masterAddresses = universe.getMasterAddresses(true);
+
+    if (masterAddresses.isEmpty()) {
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, mastersUnavailableErrMsg);
+    }
+
     try {
       String certificate = universe.getCertificateNodetoNode();
-      if (masterAddresses.isEmpty()) {
-        LOG.warn("Expected error. Masters are not currently queryable.");
-        return ok("Expected error. Masters are not currently queryable.");
-      }
       client = ybService.getClient(masterAddresses, certificate);
       GetTableSchemaResponse response =
           client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
@@ -863,7 +892,7 @@ public class TablesController extends AuthenticatedController {
 
     LOG.debug("jsonData {}", jsonData);
     try {
-      ObjectMapper objectMapper = new ObjectMapper();
+      ObjectMapper objectMapper = Json.mapper();
       List<TableSpaceQueryResponse> tablespaceList =
           objectMapper.readValue(jsonData, new TypeReference<List<TableSpaceQueryResponse>>() {});
       tableSpaceInfoRespList =
@@ -884,7 +913,7 @@ public class TablesController extends AuthenticatedController {
     TableSpaceInfo.TableSpaceInfoBuilder builder = TableSpaceInfo.builder();
     builder.name(tablespace.tableSpaceName);
     try {
-      ObjectMapper objectMapper = new ObjectMapper();
+      ObjectMapper objectMapper = Json.mapper();
       for (String optionStr : tablespace.tableSpaceOptions) {
         if (optionStr.startsWith("replica_placement=")) {
           optionStr = optionStr.replaceFirst("replica_placement=", "");
@@ -947,5 +976,176 @@ public class TablesController extends AuthenticatedController {
 
     @JsonProperty("placement_blocks")
     public List<PlacementBlock> placementBlocks;
+  }
+
+  private Result listTablesWithParentTableInfo(UUID customerUUID, UUID universeUUID) {
+    // Validate customer UUID
+    Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    final String masterAddresses = universe.getMasterAddresses(true);
+    if (masterAddresses.isEmpty()) {
+      String errMsg = "Expected error. Masters are not currently queryable.";
+      LOG.warn(errMsg);
+      return ok(errMsg);
+    }
+
+    Map<String, Double> tableSizes = getTableSizesOrEmpty(universe);
+
+    String certificate = universe.getCertificateNodetoNode();
+    ListTablesResponse response = listTablesOrBadRequest(masterAddresses, certificate);
+    List<TableInfo> tableInfoList = response.getTableInfoList();
+
+    Map<String, List<TableInfo>> namespacesToTablesMap =
+        tableInfoList.stream().collect(Collectors.groupingBy(ti -> ti.getNamespace().getName()));
+
+    Map<TablePartitionInfoKey, TablePartitionInfo> partitionMap = new HashMap<>();
+    for (String namespace : namespacesToTablesMap.keySet()) {
+      partitionMap.putAll(fetchTablePartitionInfo(universe, namespace));
+    }
+
+    Map<TablePartitionInfoKey, TableInfo> tablePartitionInfoToTableInfoMap =
+        tableInfoList
+            .stream()
+            .collect(
+                Collectors.toMap(
+                    ti -> new TablePartitionInfoKey(ti.getName(), ti.getNamespace().getName()),
+                    Function.identity()));
+
+    List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
+
+    for (TableInfo table : tableInfoList) {
+      if (!isSystemTable(table) || isSystemRedis(table)) {
+        TablePartitionInfoKey partitionInfoKey =
+            new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
+        TableInfo parentPartitionInfo = null;
+        TablePartitionInfo partitionInfo = null;
+        if (partitionMap.containsKey(partitionInfoKey)) {
+          // This 'table' is a partition of some table.
+          partitionInfo = partitionMap.get(partitionInfoKey);
+          parentPartitionInfo =
+              tablePartitionInfoToTableInfoMap.get(
+                  new TablePartitionInfoKey(partitionInfo.parentTable, partitionInfo.keyspace));
+          LOG.debug("Partition {}, Parent {}", partitionInfo, parentPartitionInfo);
+        }
+        tableInfoRespList.add(
+            buildResponseFromTableInfo(table, partitionInfo, parentPartitionInfo, tableSizes)
+                .build());
+      }
+    }
+
+    return PlatformResults.withData(tableInfoRespList);
+  }
+
+  private TableInfoResp.TableInfoRespBuilder buildResponseFromTableInfo(
+      TableInfo table,
+      TablePartitionInfo tablePartitionInfo,
+      TableInfo parentTableInfo,
+      Map<String, Double> tableSizes) {
+    String id = table.getId().toStringUtf8();
+    String tableKeySpace = table.getNamespace().getName();
+    TableInfoResp.TableInfoRespBuilder builder =
+        TableInfoResp.builder()
+            .tableUUID(getUUIDRepresentation(id))
+            .keySpace(tableKeySpace)
+            .tableType(table.getTableType())
+            .tableName(table.getName())
+            .relationType(table.getRelationType())
+            .isIndexTable(table.getRelationType() == RelationType.INDEX_TABLE_RELATION);
+    Double tableSize = tableSizes.get(id);
+    if (tableSize != null) {
+      builder.sizeBytes(tableSize);
+    }
+    if (tablePartitionInfo != null) {
+      builder.tableSpace(tablePartitionInfo.tablespace);
+    }
+    if (parentTableInfo != null) {
+      builder.parentTableUUID(getUUIDRepresentation(parentTableInfo.getId().toStringUtf8()));
+    }
+    return builder;
+  }
+
+  private Map<TablePartitionInfoKey, TablePartitionInfo> fetchTablePartitionInfo(
+      Universe universe, String dbName) {
+    LOG.info("Fetching table partitions...");
+
+    final String fetchPartitionDataQuery =
+        FileUtils.readResource(PARTITION_QUERY_PATH, environment);
+
+    NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
+    ShellResponse shellResponse =
+        nodeUniverseManager.runYsqlCommand(
+            randomTServer, universe, dbName, fetchPartitionDataQuery);
+    if (!shellResponse.isSuccess()) {
+      LOG.warn(
+          "Attempt to fetch table partition info for db {} via node {} failed, response {}:{}",
+          dbName,
+          randomTServer.nodeName,
+          shellResponse.code,
+          shellResponse.message);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching Table Partition information");
+    }
+
+    LOG.debug("shell response {}", shellResponse);
+    String jsonData = CommonUtils.extractJsonisedSqlResponse(shellResponse);
+
+    if (jsonData == null || (jsonData = jsonData.trim()).isEmpty()) {
+      return Collections.EMPTY_MAP;
+    }
+    LOG.debug("jsonData = {}", jsonData);
+    try {
+      ObjectMapper objectMapper = Json.mapper();
+      List<TablePartitionInfo> partitionList =
+          objectMapper.readValue(jsonData, new TypeReference<List<TablePartitionInfo>>() {});
+      return partitionList
+          .stream()
+          .map(
+              partition -> {
+                partition.keyspace = dbName;
+                return partition;
+              })
+          .collect(Collectors.toMap(partition -> partition.getKey(), Function.identity()));
+    } catch (IOException e) {
+      LOG.error("Error while parsing partition query response {}", jsonData, e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching Table Partition information");
+    }
+  }
+
+  @ToString
+  private static class TablePartitionInfo {
+
+    public String tableName;
+
+    public String schemaName;
+
+    public String tablespace;
+
+    public String parentTable;
+
+    public String parentSchema;
+
+    public String parentTablespace;
+
+    public String keyspace;
+
+    public TablePartitionInfo() {}
+
+    public TablePartitionInfoKey getKey() {
+      return new TablePartitionInfoKey(tableName, keyspace);
+    }
+  }
+
+  @EqualsAndHashCode
+  private static class TablePartitionInfoKey {
+    private final String tableName;
+    private final String keyspace;
+
+    public TablePartitionInfoKey(String tableName, String keyspace) {
+      this.tableName = tableName;
+      this.keyspace = keyspace;
+    }
   }
 }

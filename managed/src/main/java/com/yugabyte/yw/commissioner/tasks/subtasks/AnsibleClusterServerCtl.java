@@ -35,6 +35,7 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
 
     // Systemd vs Cron Option (Default: Cron)
     public boolean useSystemd = false;
+    public boolean checkVolumesAttached = false;
   }
 
   @Override

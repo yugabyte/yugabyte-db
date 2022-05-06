@@ -149,6 +149,15 @@ public class YcqlQueryExecutor {
     return command;
   }
 
+  // TODO This is a temporary workaround until it is fixed in the server side.
+  private String removeQueryFromErrorMessage(String errMsg, String queryString) {
+    // An error message contains the actual query sent to the server.
+    if (errMsg != null) {
+      errMsg = errMsg.replace(queryString, "<Query>");
+    }
+    return errMsg;
+  }
+
   public JsonNode executeQuery(
       Universe universe, RunQueryFormData queryParams, Boolean authEnabled) {
     return executeQuery(universe, queryParams, authEnabled, DEFAULT_DB_USER, DEFAULT_DB_PASSWORD);
@@ -175,7 +184,7 @@ public class YcqlQueryExecutor {
         response.put("queryType", getQueryType(queryParams.query));
       }
     } catch (Exception e) {
-      response.put("error", e.getMessage());
+      response.put("error", removeQueryFromErrorMessage(e.getMessage(), queryParams.query));
     } finally {
       cc.close();
     }

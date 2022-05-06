@@ -322,7 +322,6 @@ typedef struct PgAttrValueDescriptor {
 } YBCPgAttrValueDescriptor;
 
 typedef struct PgCallbacks {
-  void (*FetchUniqueConstraintName)(YBCPgOid, char*, size_t);
   YBCPgMemctx (*GetCurrentYbMemctx)();
   const char* (*GetDebugQueryString)();
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);

@@ -20,16 +20,16 @@
     {
       "series": "v2.8",
       "display": "v2.8",
-      "version": "2.8.4.0",
-      "versionShort": "2.8.4",
-      "appVersion": "2.8.4.0-b28"
+      "version": "2.8.5.0",
+      "versionShort": "2.8.5",
+      "appVersion": "2.8.5.0-b22"
     },
     {
       "series": "v2.6",
       "display": "v2.6",
-      "version": "2.6.17.0",
-      "versionShort": "2.6.17",
-      "appVersion": "2.6.17.0-b10"
+      "version": "2.6.18.0",
+      "versionShort": "2.6.18",
+      "appVersion": "2.6.18.0-b3"
     },
     {
       "series": "v2.4",

@@ -2455,5 +2455,55 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CollationRangePresplit)) {
   }
 }
 
+// The motive of this test is to prove that when a postgres backend crashes
+// while possessing an LWLock, the postmaster will kill all postgres backends
+// and would perform a restart.
+// TEST_lwlock_crash_after_acquire_lock_pg_stat_statements_reset when set true
+// will crash a postgres backend after acquiring a LWLock. Specifically in this
+// example, when pg_stat_statements_reset() function is called when this flag
+// is set, it crashes after acquiring a lock on pgss->lock. This causes the
+// postmaster to terminate all the connections. Hence, the SELECT 1 that is
+// executed by conn2 also fails.
+class PgLibPqYSQLBackendCrash: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        Format("--yb_pg_terminate_child_backend=false"));
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset=true"));
+    options->extra_tserver_flags.push_back(
+        Format("--yb_backend_oom_score_adj=" + expected_oom_score));
+  }
+
+ protected:
+  const std::string expected_oom_score = "123";
+};
+
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(TestLWPgBackendKillAfterLWLockAcquire),
+          PgLibPqYSQLBackendCrash) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_NOK(conn1.FetchFormat("SELECT pg_stat_statements_reset()"));
+  ASSERT_NOK(conn2.FetchFormat("SELECT 1"));
+}
+
+#ifdef __linux__
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(TestOomScoreAdjPGBackend),
+          PgLibPqYSQLBackendCrash) {
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT pg_backend_pid()"));
+
+  auto backend_pid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  std::string file_name = "/proc/" + std::to_string(backend_pid) + "/oom_score_adj";
+  std::ifstream fPtr(file_name);
+  std::string oom_score_adj;
+  getline(fPtr, oom_score_adj);
+  ASSERT_EQ(oom_score_adj, expected_oom_score);
+}
+#endif
+
 } // namespace pgwrapper
 } // namespace yb

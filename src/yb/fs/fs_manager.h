@@ -191,7 +191,8 @@ class FsManager {
   // Return the path for a specific Raft group's superblock.
   Result<std::string> GetRaftGroupMetadataPath(const std::string& tablet_id) const;
 
-  // List the tablet IDs in the metadata directory.
+  // Read all RaftGroupMetadataDirs and fill tablet_id_to_path_.
+  // Return the tablet IDs in the metadata directory.
   Result<std::vector<std::string>> ListTabletIds();
 
   // Return the path where InstanceMetadataPB is stored.

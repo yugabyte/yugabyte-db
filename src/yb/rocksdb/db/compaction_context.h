@@ -50,6 +50,9 @@ class CompactionContext {
   // represented as pairs of Slices denoting the beginning and end of the range in user space.
   virtual std::vector<std::pair<Slice, Slice>> GetLiveRanges() const = 0;
 
+  // Update file meta data after compaction. For instance could be used to patch frontiers.
+  virtual Status UpdateMeta(FileMetaData* meta) = 0;
+
   virtual ~CompactionContext() = default;
 };
 

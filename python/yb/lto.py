@@ -313,7 +313,8 @@ class LinkHelper:
                         not arg.startswith('-lyb_')):
                     self.process_arg(arg)
 
-    def add_final_args(self) -> None:
+    def add_final_args(self, lto_type: str) -> None:
+        assert lto_type in ['full', 'thin']
         self.new_args.extend([
             '-L%s' % os.path.join(self.build_root, 'postgres', 'lib'),
             '-l:libpgcommon.a',
@@ -322,7 +323,7 @@ class LinkHelper:
             '-fwhole-program',
             '-Wl,-v',
             '-nostdlib++',
-            '-flto=full',
+            '-flto=' + lto_type,
         ])
 
         for lib_name in ['libc++.a', 'libc++abi.a']:
@@ -355,7 +356,8 @@ def link_whole_program(
         initial_nodes: Iterable[Node],
         link_cmd_out_file: Optional[str],
         run_linker: bool,
-        lto_output_suffix: Optional[str]) -> None:
+        lto_output_suffix: Optional[str],
+        lto_type: str) -> None:
     initial_node_list = list(initial_nodes)
     assert len(initial_node_list) == 1
     initial_node = initial_node_list[0]
@@ -371,11 +373,9 @@ def link_whole_program(
 
     conf = dep_graph.conf
 
-    new_args = link_helper.new_args
-
     link_helper.consume_original_link_cmd()
     link_helper.add_leaf_object_files()
-    link_helper.add_final_args()
+    link_helper.add_final_args(lto_type=lto_type)
 
     with WorkDirContext(conf.build_root):
         if link_cmd_out_file:

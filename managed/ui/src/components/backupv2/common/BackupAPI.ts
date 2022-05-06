@@ -9,9 +9,9 @@
 
 import axios from 'axios';
 import { Dictionary, groupBy } from 'lodash';
-import moment from 'moment';
 import { IBackup, Keyspace_Table, RESTORE_ACTION_TYPE, TIME_RANGE_STATE } from '..';
 import { ROOT_URL } from '../../../config';
+import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
 import { BACKUP_API_TYPES, Backup_Options_Type, IStorageConfig, ITable } from './IBackup';
 
 export function getBackupsList(
@@ -65,8 +65,8 @@ export function restoreEntireBackup(backup: IBackup, values: Record<string, any>
         backupType: backup.backupType,
         keyspace: keyspace || backup.responseList[index].keyspace,
         sse: backup.sse,
-        storageLocation: backup.responseList[index].storageLocation,
-        tableNameList: backup.responseList[index].tablesList
+        storageLocation:
+          backup.responseList[index].storageLocation ?? backup.responseList[index].defaultLocation
       };
     }
   );
@@ -95,10 +95,8 @@ export function deleteBackup(backupList: IBackup[]) {
       storageConfigUUID: b.storageConfigUUID
     };
   });
-  return axios.delete(`${ROOT_URL}/customers/${cUUID}/delete_backups`, {
-    data: {
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/backups/delete`, {
       deleteBackupInfos: backup_data
-    }
   });
 }
 
@@ -173,9 +171,10 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
   if (values['keep_indefinitely']) {
     payload['timeBeforeDelete'] = 0;
   } else {
-    payload['timeBeforeDelete'] = moment()
-      .add(values['retention_interval'], values['retention_interval_type'].value)
-      .diff(moment(), 'second');
+    payload['timeBeforeDelete'] =
+      values['retention_interval'] *
+      MILLISECONDS_IN[values['retention_interval_type'].value.toUpperCase()];
+    payload['expiryTimeUnit'] = values['retention_interval_type'].value.toUpperCase();
   }
   return payload;
 };

@@ -59,8 +59,7 @@ class DocKeyTest : public YBTest {
     const int kMaxNumRangeKeys = 3;
     const int kMaxNumSubKeys = 3;
     vector<SubDocKey> sub_doc_keys;
-    Uuid cotable_id;
-    EXPECT_OK(cotable_id.FromHexString("0123456789abcdef0123456789abcdef"));
+    auto cotable_id = CHECK_RESULT(Uuid::FromHexString("0123456789abcdef0123456789abcdef"));
 
     std::vector<std::pair<Uuid, ColocationId>> colocation_id_pairs;
     colocation_id_pairs.emplace_back(cotable_id, 0);

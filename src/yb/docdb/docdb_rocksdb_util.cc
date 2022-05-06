@@ -179,7 +179,7 @@ namespace docdb {
 
   Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
     const std::string& flag_value) {
-    for (const auto& encoding_format : rocksdb::kKeyValueEncodingFormatList) {
+    for (const auto& encoding_format : rocksdb::KeyValueEncodingFormatList()) {
       if (flag_value == KeyValueEncodingFormatToString(encoding_format)) {
         return encoding_format;
       }
@@ -937,7 +937,7 @@ Status RocksDBPatcher::UpdateFileSizes() {
 Status ForceRocksDBCompact(rocksdb::DB* db) {
   RETURN_NOT_OK_PREPEND(
       db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
-      "Compact range failed:");
+      "Compact range failed");
   return Status::OK();
 }
 

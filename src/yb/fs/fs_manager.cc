@@ -285,6 +285,13 @@ Status FsManager::CheckAndOpenFileSystemRoots() {
   if (create_roots) {
     RETURN_NOT_OK(CreateFileSystemRoots(*metadata_.get()));
   }
+  for (const auto& dir : GetAncillaryDirs()) {
+    bool created;
+    RETURN_NOT_OK(CreateDirIfMissingAndSync(dir, &created));
+    if (created) {
+      LOG(INFO) << dir << " was created";
+    }
+  }
 
   LOG(INFO) << "Opened local filesystem: " << JoinStrings(canonicalized_all_fs_roots_, ",")
             << std::endl << metadata_->DebugString();

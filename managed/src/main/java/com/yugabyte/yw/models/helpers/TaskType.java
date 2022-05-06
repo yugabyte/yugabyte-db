@@ -124,8 +124,6 @@ public enum TaskType {
 
   SyncXClusterConfig("SyncXClusterConfig"),
 
-  XClusterConfigUpdateMasterAddresses("XClusterConfigUpdateMasterAddresses"),
-
   CreateSupportBundle("CreateSupportBundle"),
 
   // Tasks belonging to subtasks classpath
@@ -227,6 +225,8 @@ public enum TaskType {
   XClusterConfigDelete("subtasks.xcluster.XClusterConfigDelete"),
 
   XClusterConfigSync("subtasks.xcluster.XClusterConfigSync"),
+
+  XClusterConfigUpdateMasterAddresses("subtasks.xcluster.XClusterConfigUpdateMasterAddresses"),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),

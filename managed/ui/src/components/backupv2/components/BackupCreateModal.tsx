@@ -31,8 +31,10 @@ import Bulb from '../../universes/images/bulb.svg';
 import { toast } from 'react-toastify';
 import { createBackup } from '../common/BackupAPI';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
-import { createBackupSchedule } from '../common/BackupScheduleAPI';
+import { createBackupSchedule, editBackupSchedule } from '../common/BackupScheduleAPI';
 
+import { IBackupSchedule } from '../common/IBackupSchedule';
+import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
 import './BackupCreateModal.scss';
 
 interface BackupCreateModalProps {
@@ -44,7 +46,9 @@ interface BackupCreateModalProps {
   editValues?: Record<string, any>;
 }
 
-const DURATIONS = ['Days', 'Weeks', 'Months', 'Years'];
+type ToogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>;
+
+const DURATIONS = ['Days', 'Months', 'Years'];
 
 const DURATION_OPTIONS = DURATIONS.map((t: string) => {
   return {
@@ -67,9 +71,12 @@ const TABLE_BACKUP_OPTIONS = [
 
 const STEPS = [
   {
-    title: (isScheduledBackup: boolean) =>
-      isScheduledBackup ? 'Create scheduled backup policy' : 'Backup Now',
-    submitLabel: (isScheduledBackup: boolean) => (isScheduledBackup ? 'Create' : 'Backup'),
+    title: (isScheduledBackup: boolean, isEditMode: boolean) =>
+      isScheduledBackup
+        ? `${isEditMode ? 'Edit' : 'Create'} scheduled backup policy`
+        : 'Backup Now',
+    submitLabel: (isScheduledBackup: boolean, isEditMode: boolean) =>
+      isScheduledBackup ? (isEditMode ? 'Apply Changes' : 'Create') : 'Backup',
     component: BackupConfigurationForm,
     footer: () => null
   }
@@ -81,11 +88,14 @@ const validationSchema = Yup.object().shape({
   retention_interval: Yup.number().when('keep_indefinitely', {
     is: (keep_indefinitely) => !keep_indefinitely,
     then: Yup.number().min(1, 'Duration must be greater than or equal to one')
-  })
+  }),
+  parallel_threads: Yup.number()
+    .min(1, 'Parallel threads should be greater than or equal to 1')
+    .max(100, 'Parallel threads should be less than or equal to 100')
 });
 
 const initialValues = {
-  policy_name: '',
+  scheduleName: '',
   policy_interval: 1,
   policy_interval_type: SCHEDULE_DURATION_OPTIONS[2], //default to days
   use_cron_expression: false,
@@ -136,6 +146,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       onHide();
     },
     onError: (err: any) => {
+      onHide();
       toast.error(err.response.data.error);
     }
   });
@@ -147,7 +158,20 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       onHide();
     },
     onError: (err: any) => {
+      onHide();
       toast.error(err.data.error);
+    }
+  });
+
+  const doEditBackupSchedule = useMutation((val: ToogleScheduleProps) => editBackupSchedule(val), {
+    onSuccess: () => {
+      toast.success(`Schedule policy is updated`);
+      queryClient.invalidateQueries('scheduled_backup_list');
+      onHide();
+    },
+    onError: (resp: any) => {
+      onHide();
+      toast.error(resp?.response?.data?.error ?? 'An error occurred');
     }
   });
 
@@ -166,11 +190,10 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   }, [storageConfigs]);
 
   if (!visible) return null;
-
   return (
     <YBModalForm
       size="large"
-      title={STEPS[currentStep].title(isScheduledBackup)}
+      title={STEPS[currentStep].title(isScheduledBackup, isEditMode)}
       className="backup-create-modal"
       visible={visible}
       validationSchema={validationSchema}
@@ -181,11 +204,23 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       ) => {
         setSubmitting(false);
         if (isScheduledBackup) {
-          doCreateBackupSchedule.mutateAsync({
-            ...values,
-            universeUUID: currentUniverseUUID,
-            tablesList: tablesInUniverse?.data
-          });
+          if (isEditMode) {
+            doEditBackupSchedule.mutateAsync({
+              scheduleUUID: values.scheduleObj.scheduleUUID,
+              frequency:
+                values['policy_interval'] *
+                MILLISECONDS_IN[values['policy_interval_type'].value.toUpperCase()],
+              cronExpression: values.cronExpression,
+              status: values.scheduleObj.status,
+              frequencyTimeUnit: values['policy_interval_type'].value.toUpperCase()
+            });
+          } else {
+            doCreateBackupSchedule.mutateAsync({
+              ...values,
+              universeUUID: currentUniverseUUID,
+              tablesList: tablesInUniverse?.data
+            });
+          }
         } else {
           doCreateBackup.mutateAsync({
             ...values,
@@ -198,7 +233,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         ...initialValues,
         ...editValues
       }}
-      submitLabel={STEPS[currentStep].submitLabel(isScheduledBackup)}
+      submitLabel={STEPS[currentStep].submitLabel(isScheduledBackup, isEditMode)}
       onHide={() => {
         setCurrentStep(0);
         onHide();
@@ -259,7 +294,7 @@ function BackupConfigurationForm({
         <Row>
           <Col lg={8} className="no-padding">
             <Field
-              name="policy_name"
+              name="scheduleName"
               component={YBFormInput}
               label="Policy Name"
               disabled={isEditMode}
@@ -357,6 +392,7 @@ function BackupConfigurationForm({
                 return { ...props, display: 'flex' };
               }
             }}
+            isClearable
             isDisabled={isEditMode}
           />
         </Col>
@@ -481,7 +517,7 @@ function BackupConfigurationForm({
         )}
       </Row>
       <Row>
-        <Col lg={4} className="no-padding">
+        <Col lg={6} className="no-padding">
           <Field
             name="parallel_threads"
             component={YBNumericInput}
@@ -489,10 +525,13 @@ function BackupConfigurationForm({
               onChange: (val: number) => setFieldValue('parallel_threads', val),
               value: values['parallel_threads']
             }}
-            minVal={initialValues['parallel_threads']}
+            minVal={1}
             label="Parallel threads (Optional)"
             readOnly={isEditMode}
           />
+          {errors['parallel_threads'] && (
+            <span className="standard-error">{errors['parallel_threads']}</span>
+          )}
         </Col>
       </Row>
       <SelectYCQLTablesModal
@@ -506,6 +545,7 @@ function BackupConfigurationForm({
         }}
         setFieldValue={setFieldValue}
         values={values}
+        isEditMode={isEditMode}
       />
     </div>
   );
@@ -517,6 +557,7 @@ interface SelectYCQLTablesModalProps {
   onHide: () => void;
   values: Record<string, any>;
   setFieldValue: Function;
+  isEditMode: boolean;
 }
 
 const infoText = (
@@ -532,14 +573,14 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
   visible,
   onHide,
   values,
-  setFieldValue
+  setFieldValue,
+  isEditMode
 }) => {
   const tablesInKeyspaces = tablesList
     ?.filter((t) => t.tableType === BACKUP_API_TYPES.YCQL)
     .filter(
       (t) => values['db_to_backup']?.value === null || t.keySpace === values['db_to_backup']?.value
     );
-
   return (
     <YBModalForm
       formName="alertDestinationForm"
@@ -549,6 +590,7 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
       submitLabel="Confirm"
       onFormSubmit={(_values: any, { setSubmitting }: { setSubmitting: any }) => {
         setSubmitting(false);
+
         if (values['selected_ycql_tables'].length === 0) {
           toast.error('No tables selected');
           return;
@@ -569,7 +611,7 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
             <Col lg={12} className="no-padding select-all">
               <span>Click to select the tables you want to backup</span>
               <YBButton
-                disabled={tablesInKeyspaces ? tablesInKeyspaces.length === 0 : true}
+                disabled={isEditMode || (tablesInKeyspaces ? tablesInKeyspaces.length === 0 : true)}
                 btnText="Select all "
                 onClick={() => {
                   setFieldValue('selected_ycql_tables', tablesInKeyspaces);
@@ -589,6 +631,7 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
                       <span
                         className="select-icon"
                         onClick={() => {
+                          if (isEditMode) return;
                           setFieldValue('selected_ycql_tables', [
                             ...values['selected_ycql_tables'],
                             t
@@ -614,6 +657,7 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
                     <span
                       className="remove-selected-table"
                       onClick={() => {
+                        if (isEditMode) return;
                         setFieldValue(
                           'selected_ycql_tables',
                           values['selected_ycql_tables'].filter(

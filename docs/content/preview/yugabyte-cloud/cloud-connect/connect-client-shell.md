@@ -17,11 +17,13 @@ Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqls
 
 You can download and install the YugabyteDB Client Shell and connect to your database by following the steps below for either YSQL or YCQL.
 
-Before you can connect using a shell, you need to add your computer to an IP allow list for the cluster. Refer to [Assign IP Allow Lists](../../cloud-secure-clusters/add-connections/).
+{{< warning title="IP allow list" >}}
+
+Before you can connect using a shell, you need to add your computer to a cluster IP allow list. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
+
+{{< /warning >}}
 
 {{< note title="Note" >}}
-
-You must add your computer to the cluster [IP allow list](../../cloud-secure-clusters/add-connections/) before you can connect from a remote shell.
 
 When connecting via Yugabyte Client Shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later). See [How do I connect to my cluster?](../../cloud-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
 

@@ -557,7 +557,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // disabled. We do so, for example, when StillHasOrphanedPostSplitData() returns true.
   bool ShouldDisableLbMove();
 
-  void ForceRocksDBCompactInTest();
+  void TEST_ForceRocksDBCompact();
 
   CHECKED_STATUS ForceFullRocksDBCompact();
 
