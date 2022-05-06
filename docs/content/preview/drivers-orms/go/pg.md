@@ -9,7 +9,7 @@ menu:
     identifier: pg-orm
     parent: go-drivers
     weight: 400
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
@@ -33,7 +33,7 @@ showAsideToc: true
 
 [go-pg](https://github.com/go-pg/pg) is a Golang ORM for PostgreSQL.
 
-## CRUD Operations with PG ORM
+## CRUD operations with PG ORM
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page under the Quick start section.
 
@@ -52,11 +52,7 @@ import (
 
 ### Step 2: Set up the database connection
 
-Go applications can connect to the YugabyteDB database using the `pg.Connect()` function.
-
 Use the `pg.Connect()` function to establish a connection to the YugabyteDB database. This can then can be used to read and write data to the database.
-
-Code snippet for connecting to YugabyteDB:
 
 ```go
 url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s%s",
@@ -103,7 +99,7 @@ Read more on designing [Database schemas and tables](../../../explore/ysql-langu
 
 ### Step 4: Read and write data
 
-To write data to YugabyteDB, use the `Insert()` functions.
+To write data to YugabyteDB, use the `Insert()` function.
 
 ```go
 // Insert into the table.

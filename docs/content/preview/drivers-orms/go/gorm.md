@@ -9,7 +9,7 @@ menu:
     identifier: go-orm
     parent: go-drivers
     weight: 400
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 

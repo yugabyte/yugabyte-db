@@ -8,7 +8,7 @@ menu:
     identifier: pq-driver
     parent: go-drivers
     weight: 400
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
@@ -58,7 +58,7 @@ Use the `sql.Open()` function to create a connection object for the YugabyteDB d
 
 The connection details can be specified either as string parameters or via a URL in the following format:
 
-```go
+```sh
 postgresql://username:password@hostname:port/database
 ```
 
@@ -86,7 +86,7 @@ if err != nil {
 
 #### Use SSL
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side.
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer [OpenSSL](../../../quick-start/build-apps/go/ysql-pq/#openssl) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -96,7 +96,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 | Environment Variable | Description |
 | :---------- | :---------- |
 | PGSSLMODE |  SSL mode used for the connection |
-| PGSSLROOTCERT | Server CA Certificate |
+| PGSSLROOTCERT | Path to the root certificate on your computer |
 
 ### Step 3: Create tables
 
