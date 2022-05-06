@@ -11,21 +11,17 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use the Slow Queries dashboard to analyze statistics of past queries on your YugabyteDB universes. You can use this data for the following:
+Use the **Slow Queries** dashboard to analyze statistics of past queries on your YugabyteDB universes. You can use this data for the following:
 
 - Visually identifying slower running database operations.
 - Evaluating query execution times over time.
 - Discovering potential queries for memory optimization.
 
-All user roles — `Super Admin`, `Admin`, and `Read-only` — are granted access to use the Slow Queries dashboard.
-
-{{< note title="Note" >}}
+All user roles — `Super Admin`, `Admin`, and `Read-only` — are granted permissions to use the **Slow Queries** dashboard.
 
 Note that slow queries are not available for YCQL.
 
-{{< /note >}}
-
-The following table describes the column values.
+The following table describes the **Slow Queries** column values.
 
 | Column          | Description                                                  |
 | --------------- | ------------------------------------------------------------ |

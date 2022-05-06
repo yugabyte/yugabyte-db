@@ -38,6 +38,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -508,7 +509,8 @@ public class AccessManagerTest extends FakeDBApplication {
             + TMP_KEYS_PATH
             + "/"
             + defaultProvider.uuid
-            + " --delete_remote";
+            + " --delete_remote"
+            + " --ignore_auth_failure";
     String commandStr = String.join(" ", command.getValue());
     assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
     assertTrue(cloudCredentials.getValue().isEmpty());
@@ -557,7 +559,7 @@ public class AccessManagerTest extends FakeDBApplication {
           "/tmp/yugaware_tests/amt/keys/"
               + defaultProvider.uuid
               + "/"
-              + Util.getFileName(configName),
+              + com.yugabyte.yw.common.utils.FileUtils.getFileName(configName),
           configFile);
       List<String> lines = Files.readAllLines(Paths.get(configFile));
       assertEquals("hello world", lines.get(0));

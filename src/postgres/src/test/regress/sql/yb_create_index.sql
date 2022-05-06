@@ -477,5 +477,9 @@ DROP TABLE test_index_nonconcurrently;
 CREATE TEMP TABLE test_temp_lsm (i int);
 CREATE INDEX ON test_temp_lsm USING lsm (i);
 
+-- temp tables
+CREATE TEMPORARY TABLE temp_table(a int, b int);
+CREATE INDEX CONCURRENTLY temp_index ON temp_table(a);
+
 -- Cleanup.
 DISCARD TEMP;
