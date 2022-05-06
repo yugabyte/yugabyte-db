@@ -27,7 +27,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
     <a class="section-link icon-offset" href="export-import-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Export and import data</div>
+        <div class="title">Export and Import Data</div>
       </div>
       <div class="body">
         Export and import data using SQL or CQL scripts.
@@ -38,7 +38,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
     <a class="section-link icon-offset" href="snapshot-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Distributed snapshot and restore data</div>
+        <div class="title">Distributed Snapshot and Restore Data</div>
       </div>
       <div class="body">
         Back up and restore data using distributed snapshots.
@@ -51,7 +51,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
     <a class="section-link icon-offset" href="point-in-time-recovery/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
-        <div class="title">Point-in-time recovery</div>
+        <div class="title">Point-In-Time Recovery</div>
       </div>
       <div class="body">
         Restore data from a particular point in time.
