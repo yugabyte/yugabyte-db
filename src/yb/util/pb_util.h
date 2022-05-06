@@ -81,14 +81,14 @@ enum CreateMode {
 };
 
 // See MessageLite::AppendToString
-void AppendToString(const MessageLite &msg, faststring *output);
+Status AppendToString(const MessageLite &msg, faststring *output);
 
 // See MessageLite::AppendPartialToString
-void AppendPartialToString(const MessageLite &msg, faststring *output);
-void AppendPartialToString(const MessageLite &msg, std::string *output);
+Status AppendPartialToString(const MessageLite &msg, faststring *output);
+Status AppendPartialToString(const MessageLite &msg, std::string *output);
 
 // See MessageLite::SerializeToString.
-void SerializeToString(const MessageLite &msg, faststring *output);
+Status SerializeToString(const MessageLite &msg, faststring *output);
 
 // See MessageLite::ParseFromZeroCopyStream
 // TODO: change this to return Status - differentiate IO error from bad PB
