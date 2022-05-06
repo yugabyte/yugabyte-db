@@ -2032,7 +2032,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_write_time);
 
 		/* resp_calls at column number 41 */
-		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, MAX_RESPONSE_BUCKET);
+		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, PGSM_HISTOGRAM_BUCKETS);
 
 		/* utime at column number 42 */
 		values[i++] = Float8GetDatumFast(roundf(tmp.sysinfo.utime,4));
