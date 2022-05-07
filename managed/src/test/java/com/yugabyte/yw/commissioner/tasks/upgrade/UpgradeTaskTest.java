@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -162,12 +163,14 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     try {
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      when(mockClient.waitForMaster(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())
           .thenReturn(HostAndPort.fromString("host-n2").withDefaultPort(11));
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
     } catch (Exception ignored) {
+      fail();
     }
 
     // Create dummy shell response

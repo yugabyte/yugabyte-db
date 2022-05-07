@@ -9,6 +9,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -81,12 +82,14 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     setDefaultNodeState(onPremUniverse, NodeState.Removed, DEFAULT_NODE_NAME);
 
     try {
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
     } catch (Exception e) {
+      fail();
     }
 
     mockWaits(mockClient, 4);
