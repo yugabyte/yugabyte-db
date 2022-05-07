@@ -93,8 +93,10 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
     } catch (Exception ex) {
+      fail();
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
   }

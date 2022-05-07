@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
 
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 
 public class WaitForServer extends ServerSubTaskBase {
@@ -41,8 +42,13 @@ public class WaitForServer extends ServerSubTaskBase {
     try {
       HostAndPort hp = getHostPort();
       client = getClient();
-
-      ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);
+      if (taskParams().serverType == ServerType.MASTER) {
+        // This first calls waitForServer followed by availability check of master UUID.
+        // Check for master UUID retries until timeout.
+        ret = client.waitForMaster(hp, taskParams().serverWaitTimeoutMs);
+      } else {
+        ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);
+      }
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

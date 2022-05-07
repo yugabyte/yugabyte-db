@@ -10,6 +10,7 @@ import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyLong;
@@ -173,8 +174,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         .thenReturn(HostAndPort.fromString("host-n2").withDefaultPort(11));
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
+      when(mockClient.waitForMaster(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
     } catch (Exception ex) {
+      fail();
     }
     dummyShellResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);

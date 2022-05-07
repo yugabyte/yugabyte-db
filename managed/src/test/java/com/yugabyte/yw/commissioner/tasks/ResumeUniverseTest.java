@@ -38,6 +38,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.*;
 
@@ -61,6 +62,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     dummyShellResponse = new ShellResponse();
+    try {
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
+    } catch (Exception e) {
+      fail();
+    }
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
   }

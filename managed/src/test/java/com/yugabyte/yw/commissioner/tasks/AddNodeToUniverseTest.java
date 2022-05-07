@@ -101,9 +101,11 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
     } catch (Exception e) {
+      fail();
     }
 
     mockWaits(mockClient, 4);
