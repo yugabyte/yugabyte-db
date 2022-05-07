@@ -8,10 +8,12 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -77,15 +79,17 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
 
     YBClient mockClient = mock(YBClient.class);
-    when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
 
     try {
+      lenient().when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+      lenient().when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))
           .thenReturn(true);
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
     } catch (Exception e) {
+      fail();
     }
 
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
