@@ -220,6 +220,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
                 return new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
               });
     } catch (Exception ignored) {
+      fail();
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
@@ -228,10 +229,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         .thenReturn(HostAndPort.fromString("host-n2").withDefaultPort(11));
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
+      when(mockClient.waitForMaster(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
       when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))
           .thenReturn(true);
     } catch (Exception ignored) {
+      fail();
     }
     dummyShellResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
