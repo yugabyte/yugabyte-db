@@ -1,7 +1,7 @@
 ---
 title: Use Visual Studio Code with YugabyteDB YCQL
-headerTitle: Visual Studio Code
-linkTitle: Visual Studio Code
+headerTitle: Cassandra Workbench
+linkTitle: Cassandra Workbench
 description: Configure Visual Studio Code to work with YCQL.
 menu:
   preview:

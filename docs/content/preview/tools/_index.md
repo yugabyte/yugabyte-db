@@ -130,10 +130,10 @@ To connect, follow the client's configuration steps, and use the following value
     <a class="section-link icon-offset" href="visualstudioworkbench">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/tools/cassandraworkbench.png" aria-hidden="true" />
-        <div class="title">Apache Cassandra Workbench</div>
+        <div class="title">Cassandra Workbench</div>
       </div>
       <div class="body">
-        Visual Studio extension.
+        Visual Studio Code extension for querying Apache Cassandra databases.
       </div>
     </a>
   </div>
