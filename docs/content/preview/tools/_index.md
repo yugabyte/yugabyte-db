@@ -3,7 +3,7 @@ title: Third party tools
 headerTitle: Third party tools
 linkTitle: Third party tools
 description: Interactive third party clients that you can use with YugabyteDB.
-headcontent: Interactive third party clients that you can use with YugabyteDB to run queries and get results from.
+headcontent: Use popular third party clients with YugabyteDB.
 image: /images/section_icons/troubleshoot/troubleshoot.png
 aliases:
   - /develop/tools/
@@ -19,19 +19,18 @@ Because YugabyteDB is PostgreSQL-compatible, you can use third-party PostgreSQL 
 
 ### YugabyteDB prerequisites
 
-Your YugabyteDB cluster should be up and running.
+To use these tools with YugabyteDB, you should have a cluster up and running, and you will need to know the connection parameters required by the client to connect to your cluster.
 
-To create a local cluster, follow the steps in [Quick start](../../quick-start/install).
+To create a local cluster, follow the steps in [Quick start](../quick-start/).
 
-For YugabyteDB Managed, do the following:
+To create a cluster in YugabyteDB Managed, follow the steps in [Create a cluster](../yugabyte-cloud/cloud-quickstart/). In addition, do the following:
 
-- [Create a cluster](../../yugabyte-cloud/cloud-quickstart/)
-- [Download the cluster certificate](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
-- [Add your computer to the IP allow list](../../yugabyte-cloud/cloud-secure-clusters/add-connections/#assign-an-ip-allow-list-to-a-cluster)
+- [Download the cluster certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate); YugabyteDB requires the use of TLS
+- [Add your computer to the cluster IP allow list](../yugabyte-cloud/cloud-secure-clusters/add-connections/#assign-an-ip-allow-list-to-a-cluster); this allows your computer to access the cluster
 
 #### Connection parameters
 
-To connect, follow the client's configuration steps for PostgreSQL, and use the following values:
+To connect, follow the client's configuration steps, and use the following values:
 
 | Setting | Local installation | YugabyteDB Managed |
 | :--- | :--- | :--- |
@@ -131,10 +130,10 @@ To connect, follow the client's configuration steps for PostgreSQL, and use the 
     <a class="section-link icon-offset" href="visualstudioworkbench">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/tools/cassandraworkbench.png" aria-hidden="true" />
-        <div class="title">Visual Studio Workbench</div>
+        <div class="title">Apache Cassandra Workbench</div>
       </div>
       <div class="body">
-        Design and query YCQL database with help of generated templates, autocomplete, and inline code decorations.
+        Visual Studio extension.
       </div>
     </a>
   </div>

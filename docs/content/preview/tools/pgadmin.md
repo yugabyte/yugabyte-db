@@ -32,21 +32,17 @@ To install pgAdmin, go to the [Download page](https://www.pgadmin.org/download/)
 
 ## Configure pgAdmin
 
+Add a pgAdmin server to connect to a cluster as follows:
+
 1. Launch the pgAdmin 4 application. You are prompted to save a master password for the application.
 
 1. Under Quick Links, click **Add New Server** to display the **Register - Server** window.
 
 1. On the **General** tab, enter a name for your server, such as YBManaged.
 
-1. On the **Connection** tab, fill in the settings:
+1. On the **Connection** tab, fill in the [connection parameters](../#connection-parameters).
 
-    - Host name/address - `localhost` for local installations, or the cluster hostname as displayed on the cluster **Settings** tab for YugabyteDB Managed clusters
-    - Port - `5433`
-    - Maintenance database - the database name (`yugabyte` is the default)
-    - Username - the username for the database
-    - Password - the user password (for local installations, leave blank if YSQL authentication is not enabled)
-
-1. For YugabyteDB Managed clusters, on the **SSL** tab, set **Root certificate** to the root certificate you downloaded.
+1. For YugabyteDB Managed clusters, on the **SSL** tab, set **Root certificate** to the cluster root certificate you downloaded.
 
 1. Click **Save**. The new connection appears in the application.
 
@@ -60,4 +56,4 @@ You can begin exploring YugabyteDB databases.
 
 For details on using pgAdmin, click **Help** in the pgAdmin menu.
 
-If you're looking for sample databases to explore YugabyteDB using pgAdmin, see [Sample data](../../sample-data/).
+If you're looking for sample databases to explore YugabyteDB using pgAdmin, refer to [Sample data](../../sample-data/).

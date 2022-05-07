@@ -12,68 +12,79 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Introduction
+This tutorial shows how to install the [Cassandra Workbench](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra) extension in Visual Studio Code and configure a connection.
 
-In this tutorial, you will show how to install the [Apache Cassandra Workbench](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra#quick-start) extension in Visual Studio Code and configure a connection.
+## Before you begin
 
-## Install the VS Code extension
+To use Cassandra Workbench with YugabyteDB, you need to have YugabyteDB up and running, and Visual Studio Code.
 
-In this tutorial, you will show how to install the [Apache Cassandra Workbench](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra#quick-start) extension in Visual Studio Code and configure a connection.
+### YugabyteDB
 
-Open Visual Studio Code (you can download it from https://code.visualstudio.com for Windows, Mac or Linux) and press `Control + P`.
+Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../#yugabytedb-prerequisites).
 
-![VSCode Quick Open](/images/develop/tools/vscodeworkbench/vscode_control_p.png)
+### Visual Studio Code
 
-Paste the following command and press enter.
+You can download Visual Studio Code from <https://code.visualstudio.com> for Windows, Mac or Linux.
 
-```
-ext install kdcro101.vscode-cassandra
-```
+## Install the Cassandra Workbench extension
 
-This will install the extension, but you will need to configure the connection details of the clusters, so go to the next step and configure connections.
+To install the extension, do the following:
+
+1. Start Visual Studio Code and from the **Go** menu, choose **Go to File**.
+
+    ![Visual Studio Code Quick Open](/images/develop/tools/vscodeworkbench/vscode_control_p.png)
+
+1. Enter the following command.
+
+    ```sh
+    ext install kdcro101.vscode-cassandra
+    ```
+
+Cassandra Workbench is now available in the **Activity** bar.
+
+For more information on managing extensions in Visual Studio Code, refer to [Install an extension](https://code.visualstudio.com/docs/editor/extension-marketplace#_install-an-extension).
 
 ## Create a configuration
 
-Click in cloud icon in the left bar in VSCode to show Cassandra Workbench.
+1. Click the Cassandra Workbench icon in the **Activity** bar in Visual Studio Code.
 
-![Open Cassandra Workbench](/images/develop/tools/vscodeworkbench/cloudicon.png)
+    ![Open Cassandra Workbench](/images/develop/tools/vscodeworkbench/cloudicon.png)
 
-Press Control + Shift + P to open the actions input and type:
+1. Open the Command Palette (View>Command Palette) and enter the following command to generate the .cassandraWorkbench.jsonc configuration file:
 
-```
-Cassandra Workbench: Generate configuration
-```
+    ```sh
+    Cassandra Workbench: Generate configuration
+    ```
 
-This will generate .cassandraWorkbench.jsonc configuration file.
+1. In the Cassandra Workbench, click **Edit configuration** to open the configuration file.
 
-Open and configure adding cluster as you need with connections informations: YugabyteDB ContactPoints, Port and Authentication Details (if you using Password Authenticator)
+1. Replace `contactPoints` with the host address, and username and password with your credentials (the default user and password is `cassandra`).
 
-```
-// name must be unique!
-[
-    // AllowAllAuthenticator
-    {
-        "name": "Cluster AllowAllAuthenticator",
-        "contactPoints": ["127.0.0.1"]
-    },
-    //PasswordAuthenticator
-    {
-        "name": "Cluster PasswordAuthenticator",
-        "contactPoints": ["127.0.0.1"],
-        "authProvider": {
-            "class": "PasswordAuthenticator",
-            "username": "yourUsername",
-            "password": "yourPassword"
+    ```json
+    // name must be unique!
+    [
+        // AllowAllAuthenticator
+        {
+            "name": "Cluster AllowAllAuthenticator",
+            "contactPoints": ["127.0.0.1"]
+        },
+        //PasswordAuthenticator
+        {
+            "name": "Cluster PasswordAuthenticator",
+            "contactPoints": ["127.0.0.1"],
+            "authProvider": {
+                "class": "PasswordAuthenticator",
+                "username": "cassandra",
+                "password": "cassandra"
+            }
         }
-    }
-]
+    ]
+    ```
 
-```
+You can now explore your YCQL schema and data.
 
-## Enjoy
+![Cassandra Workbench](/images/develop/tools/vscodeworkbench/editor-ui.png)
 
-Now you are ready to explore YCQL schema and data by simply double-clicking on the connection name.
+## What's next
 
-![EDITOR UI](/images/develop/tools/vscodeworkbench/editor-ui.png)
-
-Details in  [Cassandra Workbench for Visual Studio Code](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra).
+For more details, refer to [Cassandra Workbench for Visual Studio Code](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra).

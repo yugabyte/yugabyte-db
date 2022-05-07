@@ -21,7 +21,7 @@ This tutorial shows how to connect TablePlus to a YugabyteDB cluster.
 
 ## Before you begin
 
-To use TablePlus with YugabyteDB, you need to have YugabyteDB up and running. Refer to [YugabyteDB Prerequisites](../#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequisites](../#yugabytedb-prerequisites).
 
 ## Install TablePlus
 

@@ -18,7 +18,7 @@ showAsideToc: true
 
 ## Before you begin
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequisites](../#yugabytedb-prerequisites).
 
 ## Install DbSchema
 
