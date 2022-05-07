@@ -1,6 +1,15 @@
 /* Copyright (c) YugaByte, Inc. */
 .universe-support-bundle {
 
+  .modal-footer {
+    div {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      flex-direction: row-reverse;
+    }
+  }
+
   .modal-content {
     height: 652px;
     width: 750px;
@@ -47,7 +56,7 @@
         .filters {
           width: 100%;
           display: flex;
-          justify-content: end;
+          justify-content: flex-end;
           margin-bottom: 16px;
           padding-right: 0;
 

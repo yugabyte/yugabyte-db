@@ -694,7 +694,7 @@ class UniverseDetail extends Component {
                                   onClick={showSupportBundleModal}
                                 >
                                   <YBLabelWithIcon icon="fa fa-file-archive-o">
-                                    Support Bundles
+                                    Support Bundles (Beta)
                                   </YBLabelWithIcon>
                                 </YBMenuItem>
                               }
