@@ -42,6 +42,8 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/gutil/macros.h"
 
 #include "yb/integration-tests/mini_cluster_base.h"
@@ -128,7 +130,7 @@ class MiniCluster : public MiniClusterBase {
   CHECKED_STATUS FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
-  CHECKED_STATUS CompactTablets();
+  CHECKED_STATUS CompactTablets(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();
 

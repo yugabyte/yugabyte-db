@@ -31,6 +31,7 @@ class WriteBatch;
 
 struct BlockBasedTableOptions;
 struct CompactionContextOptions;
+struct CompactionInputFiles;
 struct Options;
 struct TableBuilderOptions;
 struct TableProperties;

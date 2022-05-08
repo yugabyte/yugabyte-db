@@ -487,9 +487,9 @@ Status MiniCluster::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags flag
   return Status::OK();
 }
 
-Status MiniCluster::CompactTablets() {
+Status MiniCluster::CompactTablets(docdb::SkipFlush skip_flush) {
   for (const auto& tablet_server : mini_tablet_servers_) {
-    RETURN_NOT_OK(tablet_server->CompactTablets());
+    RETURN_NOT_OK(tablet_server->CompactTablets(skip_flush));
   }
   return Status::OK();
 }
