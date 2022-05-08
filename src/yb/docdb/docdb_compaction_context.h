@@ -95,9 +95,13 @@ class HistoryRetentionPolicy {
   virtual HistoryRetentionDirective GetRetentionDirective() = 0;
 };
 
+using DeleteMarkerRetentionTimeProvider = std::function<HybridTime(
+    const std::vector<rocksdb::FileMetaData*>&)>;
+
 std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
     const KeyBounds* key_bounds,
+    const DeleteMarkerRetentionTimeProvider& delete_marker_retention_provider,
     SchemaPackingProvider* schema_packing_provider);
 
 // A history retention policy that can be configured manually. Useful in tests. This class is

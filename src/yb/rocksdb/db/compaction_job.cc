@@ -633,7 +633,7 @@ void CompactionJob::ProcessKeyValueCompaction(
 
   if (db_options_.compaction_context_factory) {
     auto context = CompactionContextOptions {
-      .is_full_compaction = compact_->compaction->is_full_compaction(),
+      .level0_inputs = *compact_->compaction->inputs(0),
     };
     sub_compact->context = (*db_options_.compaction_context_factory)(sub_compact, context);
     sub_compact->feed = sub_compact->context->Feed();

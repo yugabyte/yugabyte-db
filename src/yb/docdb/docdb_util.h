@@ -239,6 +239,7 @@ class DocDBRocksDBUtil {
   mutable IntraTxnWriteId intra_txn_write_id_ = 0;
   IsolationLevel txn_isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   InitMarkerBehavior init_marker_behavior_ = InitMarkerBehavior::kOptional;
+  HybridTime delete_marker_retention_time_ = HybridTime::kMax;
 
  private:
   std::atomic<int64_t> monotonic_counter_{0};

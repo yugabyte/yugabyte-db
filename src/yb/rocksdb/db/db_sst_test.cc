@@ -221,7 +221,7 @@ TEST_F(DBTest, DeleteObsoleteFilesPendingOutputs) {
   std::vector<LiveFileMetaData> metadata;
   db_->GetLiveFilesMetaData(&metadata);
   ASSERT_EQ(metadata.size(), 1U);
-  auto file_on_L2 = metadata[0].name;
+  auto file_on_L2 = metadata[0].Name();
   listener->SetExpectedFileName(dbname_ + file_on_L2);
 
   ASSERT_OK(dbfull()->TEST_CompactRange(3, nullptr, nullptr, nullptr,

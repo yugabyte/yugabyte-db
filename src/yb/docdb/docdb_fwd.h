@@ -68,6 +68,8 @@ YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 // PrimitiveValue to string. This is useful when displaying write batches for secondary indexes.
 YB_STRONGLY_TYPED_BOOL(AutoDecodeKeys);
 
+YB_STRONGLY_TYPED_BOOL(SkipFlush);
+
 YB_DEFINE_ENUM(OperationKind, (kRead)(kWrite));
 
 // "Weak" intents are written for ancestor keys of a key that's being modified. For example, if
