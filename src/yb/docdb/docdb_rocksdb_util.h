@@ -102,7 +102,7 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const Slice* iterate_upper_bound = nullptr);
 
 // Request RocksDB compaction and wait until it completes.
-CHECKED_STATUS ForceRocksDBCompact(rocksdb::DB* db);
+CHECKED_STATUS ForceRocksDBCompact(rocksdb::DB* db, SkipFlush skip_flush = SkipFlush::kFalse);
 
 rocksdb::Options TEST_AutoInitFromRocksDBFlags();
 

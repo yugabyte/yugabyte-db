@@ -5828,8 +5828,8 @@ TEST_F(DBTest, DynamicLevelCompressionPerLevel) {
   ColumnFamilyMetaData cf_meta;
   db_->GetColumnFamilyMetaData(&cf_meta);
   for (auto file : cf_meta.levels[4].files) {
-    listener->SetExpectedFileName(dbname_ + file.name);
-    ASSERT_OK(dbfull()->DeleteFile(file.name));
+    listener->SetExpectedFileName(dbname_ + file.Name());
+    ASSERT_OK(dbfull()->DeleteFile(file.Name()));
   }
   listener->VerifyMatchedCount(cf_meta.levels[4].files.size());
 

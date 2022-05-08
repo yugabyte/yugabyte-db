@@ -17,7 +17,9 @@
 
 #include "yb/master/mini_master.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
@@ -27,9 +29,13 @@
 
 using namespace std::literals;
 
+DECLARE_bool(cleanup_intents_sst_files);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int64(cql_processors_limit);
 DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 DECLARE_int32(client_read_write_timeout_ms);
@@ -317,6 +323,40 @@ TEST_F(CqlTest, TestTruncateTable) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_truncate_table) = true;
   ASSERT_NOK(session.ExecuteQuery("TRUNCATE TABLE users"));
+}
+
+TEST_F(CqlTest, CompactDeleteMarkers) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  FLAGS_TEST_transaction_ignore_applying_probability = 1.0;
+  FLAGS_cleanup_intents_sst_files = false;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (i INT PRIMARY KEY) WITH transactions = { 'enabled' : true }"));
+  ASSERT_OK(session.ExecuteQuery(
+      "BEGIN TRANSACTION "
+      "  INSERT INTO t (i) VALUES (42);"
+      "END TRANSACTION;"));
+  ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE i = 42"));
+  ASSERT_OK(cluster_->FlushTablets());
+  FLAGS_TEST_transaction_ignore_applying_probability = 0.0;
+  ASSERT_OK(WaitFor([this] {
+    auto list = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    for (const auto& peer : list) {
+      auto* participant = peer->tablet()->transaction_participant();
+      if (!participant) {
+        continue;
+      }
+      if (participant->MinRunningHybridTime() != HybridTime::kMax) {
+        return false;
+      }
+    }
+    return true;
+  }, 10s, "Transaction complete"));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+  auto count_str = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(count_str, "0");
 }
 
 }  // namespace yb
