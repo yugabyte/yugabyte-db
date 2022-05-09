@@ -96,7 +96,7 @@ export function deleteBackup(backupList: IBackup[]) {
     };
   });
   return axios.post(`${ROOT_URL}/customers/${cUUID}/backups/delete`, {
-      deleteBackupInfos: backup_data
+    deleteBackupInfos: backup_data
   });
 }
 
