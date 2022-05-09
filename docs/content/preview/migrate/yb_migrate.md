@@ -210,28 +210,49 @@ If you want yb_migrate to connect to the source database over SSL, refer to [SSL
 
 ## Prepare the target database
 
-- Create the target database in the YugabyteDB cluster. The database name can be the same or different from the source database name. If the target database name is not provided, yb_migrate assumes the name is the same as the source database.
+### Create the target database
 
-        CREATE DATABASE sakila;
+Create the target database in the YugabyteDB cluster. The database name can be the same or different from the source database name. If you choose the target database name different from the source database name, you will have to provide the `--target-db-name` argument to the `yb_migrate import` commands.
 
-- (TODO) Create TABLESPACEs.
+      CREATE DATABASE sakila;
 
-- For convenience, capture the database name in an environment variable:
+For convenience, capture the database name in an environment variable:
 
-        TARGET_DB_NAME=sakila
+      TARGET_DB_NAME=sakila
 
-- Create a role with the superuser privileges. yb_migrate will use the role to connect to the target database. Capture the user and database details in environment variables.
+
+### Create a user
+
+User creation steps slightly differ depending on the YugabyteDB deployment and version:
+
+- **YugabyteDB Managed or YugabyteDB Anywhere version >= 2.13.1, 2.12.4**
+
+  Create a user with `yb_db_admin` and `yb_extension` role:
+
+      CREATE USER ybmigrate PASSWORD 'password';
+      GRANT yb_db_admin TO ybmigrate;
+      GRANT yb_extension TO ybmigrate;
+
+- **YugabyteDB Anywhere version < 2.13.1, 2.12.4**
+
+  Create a role with the superuser privileges.
+
+      CREATE USER ybmigrate SUPERUSER PASSWORD 'password';
+
+Capture the user and database details in environment variables.
 
         TARGET_DB_HOST=127.0.0.1
         TARGET_DB_PORT=5433
-        TARGET_DB_USER=yugabyte
+        TARGET_DB_USER=ybmigrate
         TARGET_DB_PASSWORD=password
 
-- For Oracle and MySQL, `yb_migrate` migrates the source database into the `public` schema of the target database. By specifying `--target-db-schema` argument during import, you can instruct `yb_migrate` to create a non-public schema and use it for the schema/data import.
+If you want yb_migrate to connect to the target database over SSL, refer to [SSL Connectivity](#ssl-connectivity) in the References section.
 
-  For PostgreSQL, there is no need to provide the target db schema name. For each schema in source PG database, yb_migrate creates a target schema with the same name.
+Be careful while deleting the `ybmigrate` user after completion of the migration. After migration, all the migrated objects (tables, views, etc.) are owned by the `ybmigrate` user. You must transfer the ownership of the objects to some other user (e.g. `yugabyte`) before deleting the it. Example steps to delete the user are:
 
-- If you want yb_migrate to connect to the target database over SSL, refer to [SSL Connectivity](#ssl-connectivity) in the References section.
+    REASSIGN OWNED BY ybmigrate TO yugabyte;
+    DROP OWNED BY ybmigrate;
+    DROP USER ybmigrate;
 
 ## Create an export directory
 
@@ -308,9 +329,13 @@ Once you're done with manually editing the schema, you can use the `yb_migrate i
             --target-db-password ${TARGET_DB_PASSWORD:-''} \
             --target-db-name ${TARGET_DB_NAME}
 
+For Oracle and MySQL, `yb_migrate` imports the source database into the `public` schema of the target database. By specifying `--target-db-schema` argument during import, you can instruct `yb_migrate` to create a non-public schema and use it for the schema/data import.
+
+For PostgreSQL, there is no need to provide the target db schema name. For each schema in source PG database, yb_migrate creates a target schema with the same name.
+
 If for some reason, yb_migrate terminates before it could import the entire schema, you can rerun it by adding `--ignore-exist` option.
 
- Note that, the `yb_migrate import schema` command does NOT import indexes, yet. This is done to speed up the data import phase. The indexes will be created by `yb_migrate import data` command after importing the data.
+Note that, the `yb_migrate import schema` command does NOT import indexes, yet. This is done to speed up the data import phase. The indexes will be created by `yb_migrate import data` command after importing the data.
 
 ## Import data
 
