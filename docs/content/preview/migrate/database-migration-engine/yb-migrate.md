@@ -1,35 +1,42 @@
 ---
-title: yb_migrate
-headerTitle: yb_migrate
-linkTitle: yb_migrate
+title: Migrate using yb_migrate
+headerTitle: Migrate using yb_migrate
+linkTitle: Migrate using yb_migrate
 description: Overview of the yb_migrate database engine for migrating data and applications from other databases to YugabyteDB.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     identifier: yb-migrate
     parent: db-migration-engine
-    weight: 710
+    weight: 700
 isTocNested: true
 showAsideToc: true
 ---
 
-[yb_migrate](https://github.com/yugabyte/yb-db-migration) is an open-source database migration engine provided by YugabyteDB. It is a command line executable program that supports migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database. yb_migrate addresses both steps of a database migration - schema-migration and data-migration.
+[yb_migrate](https://github.com/yugabyte/yb-db-migration) is an open-source database migration engine provided by YugabyteDB. It is a command line executable program that supports migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database. yb_migrate helps in both steps of a database migration including schema-migration and data-migration.
+
+## Migration modes
+
+### Offline migration
+
+In the *offline migration* mode, the source database should not change during the migration. The offline migration is considered complete when all the requested schema objects and data are migrated to the target database.
+
+### Online migration
+
+In the *online migration* mode, the source database can continue to change. After the full initial migration, yb_migrate continues replicating source database changes to the target database. The process runs continuously till you decide to switch over to the YugabyteDB database.
 
 {{< note title="Note" >}}
-
-yb_migrate supports `offline` migration mode. The `online` migration mode is currently under development.
-In the *offline migration* mode, the source database must not change during the migration. The offline migration is considered complete when all the requested schema objects and data are migrated to the target database.
-
+yb_migrate supports only `offline` migration mode. The `online` migration mode is currently under development.
 {{< /note >}}
 
-<!-- - In the *online migration* mode, the source database can continue to change. After the full initial migration, yb_migrate continues replicating source database changes to the target database. The process runs continuously, until you decide to switch-over to the YugabyteDB database. -->
+## Migration workflow
 
 A typical migration workflow using yb_migrate consists of the following steps:
 
-- Install yb_migrate on a *migrator machine*.
-- Generate a *Migration Assessment Report* using the `yb_migrate generateReport` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB.
+- [Install](#installation) yb_migrate on a *migrator machine*.
 - Convert the source database schema to PostgreSQL format using the `yb_migrate export schema` command.
-- Manually change the exported schema as suggested in the Migration Assessment Report.
+- Generate a *Schema Analysis Report* using the `yb_migrate analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB.
+- Manually change the exported schema as suggested in the Schema Analysis Report.
 - Dump the source database in the local files on the migrator machine using the `yb_migrate export data` command.
 - Import the schema in the target YugabyteDB database using the `yb_migrate import schema` command.
 - Import the data in the target YugabyteDB database using the `yb_migrate import data` command.
@@ -38,11 +45,16 @@ A typical migration workflow using yb_migrate consists of the following steps:
 
 ## How does yb_migrate work?
 
-<!-- yb_migrate is installed on a *migrator machine*. -->
+yb_migrate is first [installed](#installation) on a _migrator machine_ using which you perform the migration.
 
-<!-- - Runs CentOS or Ubuntu.
-- Can reach both source and target DB.
-- Has local storage of at least 1.5 times the size of source DB. -->
+### Migrator machine requirements
+
+The machine where you'll run the yb_migrate command should:
+
+- support CentOS or Ubuntu.
+- connect to both the source and target database.
+- have local storage at least 1.5 times the size of source DB.
+- have sudo access.
 
 yb_migrate keeps all of its migration state, including exported schema and data, in a local directory called *export directory*. Before starting migration, you should create the directory on a file system that has enough space to keep the entire data dump. Next, you should provide the path of the export directory as a mandatory argument (`--export-dir`) to each invocation of the yb_migrate command.
 
@@ -54,32 +66,25 @@ The export directory has the following sub-directories and files:
 - `metainfo` and `temp` directories are used by yb_migrate for internal bookkeeping.
 - `yb_migrate.log` contains log messages.
 
-In the *export phase*, yb_migrate uses `ora2pg` (for Oracle and MySQL) or `pg_dump` (for PostgreSQL) to dump schema and data in the PostgreSQL format. Given that YugabyteDB is a distributed database and uses storage format different from PostgreSQL, minor manual changes are required to the PostgreSQL schema dumped by yb_migrate. The report generated by the `yb_migrate generateReport` command, points to various schema files that you should manually change before trying to import the schema.
+### Migration phases
 
-In the *import schema phase*, yb_migrate applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target database.
+- In the *export phase*, yb_migrate uses `ora2pg` (for Oracle and MySQL) or `pg_dump` (for PostgreSQL) to dump schema and data in the PostgreSQL format. Given that YugabyteDB is a distributed database and uses storage format different from PostgreSQL, minor manual changes are required to the PostgreSQL schema dumped by yb_migrate. The report generated by the `yb_migrate analyze-schema` command, points to various schema files that you should manually change before trying to import the schema.
 
-In the *import data phase*, yb_migrate splits the data dump files from the `$EXPORT_DIR/data` directory into smaller *batches* ,each of which contains at most `--batch-size` number of records. yb_migrate concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are utilized. The import data phase is designed to be *restartable*; if yb_migrate terminates when the data import was in progress, upon restart the data import resumes from its state in the previous run.
+- In the *import schema phase*, yb_migrate applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target database.
 
-<!-- ## Limitations - Don't think there's need to add limitations
+- In the *import data phase*, yb_migrate splits the data dump files from the `$EXPORT_DIR/data` directory into smaller *batches* ,each of which contains at most `--batch-size` number of records. yb_migrate concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are utilized. The import data phase is designed to be *restartable*; if yb_migrate terminates when the data import was in progress, upon restart the data import resumes from its state in the previous run.
 
-- yb_migrate doesn't yet support following features:
+## Unsupported features
 
-  - BLOB and CLOB
-  - TABLESPACEs
-  - ALTER VIEW -->
+Currently, yb_migrate doesn't support following features:
+
+- BLOB and CLOB
+- TABLESPACEs
+- ALTER VIEW
 
 ## Installation
 
-### Machine requirements
-
-The machine where you'll run the yb_migrate command should:
-
-- run CentOS or Ubuntu.
-- connect to both the source and target database.
-- have local storage at least 1.5 times the size of source DB.
-- have sudo access.
-
-Set up a machine where you can run yb_migrate using the following steps:
+Set up a machine which satisfies the following [requirements](#migrator-machine-requirements) using the following steps:
 
 - Clone the yb_migrate repository.
 
@@ -93,19 +98,21 @@ git clone https://github.com/yugabyte/yb-db-migration.git
 cd yb-db-migration/installer_scripts
 ```
 
-- Depending on the Linux distribution (CentOS or Ubuntu)  you're running, execute the appropriate installer script:
+- Depending on the Linux distribution (CentOS or Ubuntu) you're running, execute the appropriate installer script:
 
 ```sh
 //CentOS
 ./yb_migrate_installer__centos.sh
+```
 
+```sh
 //Ubuntu
 ./yb_migrate_installer__ubuntu.sh
 ```
 
 It is safe to execute the script multiple times. On each run, the script regenerates the `yb_migrate` executable based on the latest commit in the git repository. If the script fails for some reason, check the `yb_migrate_installer.log` in the current working directory.
 
-- The script generates a `.yb_migrate_installer_bashrc` file in the home directory. Source the file to ensure that the correct environment variables are set.
+- The script generates a `.yb_migrate_installer_bashrc` file in the home directory. Source the file to ensure that the correct environment variables are set using the following command:
 
 ```sh
 source ~/.yb_migrate_installer_bashrc
@@ -116,3 +123,7 @@ source ~/.yb_migrate_installer_bashrc
 ```sh
 yb_migrate --help
 ```
+
+## Next step
+
+[Migrate](../../database-migration-engine/db-migration-process) from other databases (PostgreSQL, MySQL or Oracle) to YugabyteDB using yb_migrate.

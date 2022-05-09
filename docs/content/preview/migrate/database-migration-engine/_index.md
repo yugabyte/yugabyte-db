@@ -15,19 +15,7 @@ showAsideToc: true
 ---
 
 <div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="db-migration-process/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-database-alt2"></i>
-        </div>
-        <div class="title">Database migration process</div>
-      </div>
-      <div class="body">
-        Learn the database migration process using the yb_migrate engine.
-      </div>
-    </a>
-  </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="yb-migrate/">
       <div class="head">
@@ -38,6 +26,20 @@ showAsideToc: true
       </div>
       <div class="body">
         Use the yb_migrate tool for migrating data and applications from other databases to YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="db-migration-process/">
+      <div class="head">
+        <div class="icon">
+          <i class="icon-database-alt2"></i>
+        </div>
+        <div class="title">Database migration process</div>
+      </div>
+      <div class="body">
+        Learn the database migration process using the yb_migrate engine.
       </div>
     </a>
   </div>
