@@ -53,7 +53,7 @@ Before you can start using DBeaver with YCQL, you need to perform the following:
 You can create a connection as follows:
 
 - Launch DBeaver.
-- Navigate to **Database > New Connection** to open the **Connect to database** window shown in the following illustration.
+- Navigate to **Database > New Database Connection** to open the **Connect to a database** window shown in the following illustration.
 - In the **Select your database** list, select **NoSQL > Yugabyte CQL**, and then click **Next**.
 
     ![img](/images/develop/tools/dbeaver/dbeaver-select-db-ycql.png)
