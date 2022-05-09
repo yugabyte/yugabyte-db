@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: dbschema
     parent: tools
-    weight: 2720
+    weight: 60
 isTocNested: true
 showAsideToc: true
 ---

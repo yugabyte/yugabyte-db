@@ -15,7 +15,7 @@ menu:
     weight: 2900
 ---
 
-Because YugabyteDB is PostgreSQL-compatible, you can use third-party PostgreSQL clients to connect to your YugabyteDB clusters.
+Because YugabyteDB is PostgreSQL- and Cassandra-compatible, you can use third-party clients to connect to your YugabyteDB clusters.
 
 ### YugabyteDB prerequisites
 
@@ -36,11 +36,27 @@ To connect, follow the client's configuration steps, and use the following value
 | :--- | :--- | :--- |
 | Hostname | `localhost` | The cluster hostname as displayed on the cluster **Settings** tab |
 | Port | `5433` (YSQL) `9042` (YCQL) | `5433` (YSQL) `9042` (YCQL) |
-| Database | The database name (`yugabyte` is the default) | The database name (`yugabyte` is the default) |
-| Username | `yugabyte` | Database username; the default user is `admin` |
-| Password | `yugabyte`; leave blank if YSQL authentication is not enabled | Database user password |
+| Database | Database name (`yugabyte` is the default) | Database name (`yugabyte` is the default) |
+| Username | `yugabyte` or `cassandra` | Database username (`admin` is the default) |
+| Password | `yugabyte` or `cassandra`<br>Leave blank if [authentication is not enabled](../secure/enable-authentication/) | Database user password |
+
+YugabyteDB Managed requires TLS. Use the root.ca certificate you downloaded for connections to YugabyteDB Managed clusters.
+
+## Tools
 
 <div class="row">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="pgadmin/">
+      <div class="head">
+        <img class="icon" src="/images/develop/tools/pgadmin-icon.png" aria-hidden="true" />
+        <div class="title">pgAdmin</div>
+      </div>
+      <div class="body">
+        Management tool for PostgreSQL.
+      </div>
+    </a>
+  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="superset/">
@@ -79,6 +95,18 @@ To connect, follow the client's configuration steps, and use the following value
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="tableplus/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/tools/tableplus.png" aria-hidden="true" />
+        <div class="title">TablePlus</div>
+      </div>
+      <div class="body">
+        Unified developer console for querying databases.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="dbschema/">
       <div class="head">
         <img class="icon" src="/images/develop/tools/dbschema/dbschema-icon.png" aria-hidden="true" />
@@ -91,18 +119,6 @@ To connect, follow the client's configuration steps, and use the following value
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="pgadmin/">
-      <div class="head">
-        <img class="icon" src="/images/develop/tools/pgadmin-icon.png" aria-hidden="true" />
-        <div class="title">pgAdmin</div>
-      </div>
-      <div class="body">
-        Management tool for PostgreSQL.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="sql-workbench/">
       <div class="head">
         <img class="icon" src="/images/develop/tools/sql-workbench.png" aria-hidden="true" />
@@ -110,18 +126,6 @@ To connect, follow the client's configuration steps, and use the following value
       </div>
       <div class="body">
         Unified developer console for querying YugabyteDB and displaying results.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="tableplus/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/tools/tableplus.png" aria-hidden="true" />
-        <div class="title">TablePlus</div>
-      </div>
-      <div class="body">
-        Unified developer console for querying YugabyteDB APIs.
       </div>
     </a>
   </div>

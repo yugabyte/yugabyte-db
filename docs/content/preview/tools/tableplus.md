@@ -10,7 +10,7 @@ menu:
   preview:
     identifier: tableplus
     parent: tools
-    weight: 2750
+    weight: 50
 isTocNested: true
 showAsideToc: true
 ---
@@ -25,28 +25,31 @@ Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequis
 
 ## Install TablePlus
 
-TablePlus is available on both macOS and Windows. Follow the links below to download.
+To install TablePlus, go to the [Download page](https://tableplus.com/download/) and select the version for your operating system.
 
-- [TablePlus on macOS](https://tableplus.io/release/osx/tableplus_latest)
-- [TablePlus on Windows](https://tableplus.io/windows)
+## Create connections
 
-Install TablePlus after the download completes.
+You can use TablePlus to connect to YugabyteDB using the YSQL and YCQL APIs.
 
-## Connect with PostgreSQL-compatible YSQL
+To create a connection, do the following:
 
-Click `Create a new connection` on TablePlus and then choose `Postgres` from the list of database types.
+1. In TablePlus, from the **Connection** menu, choose **New**.
 
-![Choose DB](/images/develop/tools/tableplus/choose-db.png)
+1. Select **PostgreSQL** for YSQL, or **Cassandra** for YCQL, and click **Create**.
 
-Enter the connection details for your cluster as shown in the following illustration and then click `Test` to ensure that TablePlus is indeed able to establish connectivity with the YugabyteDB API. The color of the fields changes to green if the test succeeds.
+    ![Choose DB](/images/develop/tools/tableplus/choose-db.png)
 
-![YSQL](/images/develop/tools/tableplus/ysql-connection.png)
+1. Enter a **Name** for the connection and fill in the [connection parameters](../#connection-parameters).
 
-## Connect with Cassandra-compatible YCQL
+1. Click **Test** to verify that TablePlus can connect with YugabyteDB. The color of the fields changes to green if the test succeeds.
 
-Repeat the above steps for the Cassandra type as shown below.
+    ![YSQL connection parameters](/images/develop/tools/tableplus/ysql-connection.png)
 
-![YCQL](/images/develop/tools/tableplus/ycql-connection.png)
+1. Click **Connect** to create the connection.
+
+Connections are saved in the application, and displayed every time you start TablePlus.
+
+![YB ALL](/images/develop/tools/tableplus/yb-all-connection.png)
 
 <!--## Connect with Redis-compatible YEDIS
 
@@ -54,13 +57,9 @@ Repeat the above steps for the Redis type as shown below.
 
 ![YEDIS](/images/develop/tools/tableplus/yedis-connection.png)
 -->
-## Explore with TablePlus
+## What's next
 
-Now you have connected to all the YugabyteDB APIs and can start exploring them by double-clicking the connection name.
-
-![YB ALL](/images/develop/tools/tableplus/yb-all-connection.png)
-
-Follow the instructions from [TablePlus Getting Started](https://tableplus.io/blog/2018/04/getting-started-with-tableplus.html) on how to best use TablePlus.
+To get started with TablePlus, follow the instructions in [Getting Started with TablePlus](https://tableplus.io/blog/2018/04/getting-started-with-tableplus.html).
 
 <!--## Known issue
 

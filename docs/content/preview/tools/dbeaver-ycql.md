@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: dbeaver-ycql
     parent: tools
-    weight: 2711
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---
@@ -48,16 +48,15 @@ Before you can start using DBeaver with YCQL, you need to perform the following:
 
 - Install [DBeaver Enterprise Edition](https://dbeaver.com/download/enterprise/).
 
-
-## Creating a YugabyteDB YCQL Connection
+## Create a YugabyteDB YCQL connection
 
 You can create a connection as follows:
 
 - Launch DBeaver.
 - Navigate to **Database > New Connection** to open the **Connect to database** window shown in the following illustration.
-- In the **Select your databas**e list, select **NoSQL > Yugabyte CQL**, and then click **Next**.
+- In the **Select your database** list, select **NoSQL > Yugabyte CQL**, and then click **Next**.
 
-![img](/images/develop/tools/dbeaver/dbeaver-select-db-ycql.png)
+    ![img](/images/develop/tools/dbeaver/dbeaver-select-db-ycql.png)
 
 - Use **Connection Settings** to specify the following:
   - **Host**: localhost
@@ -69,7 +68,7 @@ You can create a connection as follows:
 
 - Click **Test Connection** to verify that the connection is successful, as shown in the following illustration:
 
-![img](/images/develop/tools/dbeaver/dbeaver-test-conn-ycql.png)
+    ![img](/images/develop/tools/dbeaver/dbeaver-test-conn-ycql.png)
 
 DBeaver's **Database Navigator** should display system.
 

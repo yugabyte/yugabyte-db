@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: sql-workbench
     parent: tools
-    weight: 2740
+    weight: 70
 isTocNested: true
 showAsideToc: true
 ---

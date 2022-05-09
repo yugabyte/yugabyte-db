@@ -9,12 +9,10 @@ menu:
   preview:
     identifier: dbeaver-ysql
     parent: tools
-    weight: 2710
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---
-
-
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -54,15 +52,15 @@ Before you can start using DBeaver with YSQL, you need to perform the following:
   - Download the distribution package for your OS from [DBeaver Downloads](https://dbeaver.io/download/).
   - Start the installation by following instructions in [DBeaver Installation](https://github.com/dbeaver/dbeaver/wiki/Installation).
 
-## Creating a YugabyteDB YSQL Connection
+## Create a YugabyteDB YSQL connection
 
 You can create a connection as follows:
 
 - Launch DBeaver.
 - Navigate to **Database > New Connection** to open the **Connect to database** window shown in the following illustration.
-- In the **Select your databas**e list, select **YugabyteDB**, and then click **Next**.
+- In the **Select your database** list, select **YugabyteDB**, and then click **Next**.
 
-![img](/images/develop/tools/dbeaver/dbeaver-select-db.png)
+    ![img](/images/develop/tools/dbeaver/dbeaver-select-db.png)
 
 - Use **Connection Settings** to specify the following:
   - **Host**: localhost
@@ -74,7 +72,7 @@ You can create a connection as follows:
 
 - Click **Test Connection** to verify that the connection is successful, as shown in the following illustration:
 
-![img](/images/develop/tools/dbeaver/dbeaver-connected.png)
+    ![img](/images/develop/tools/dbeaver/dbeaver-connected.png)
 
 DBeaver's **Database Navigator** should display **Yugabyte - localhost**.
 

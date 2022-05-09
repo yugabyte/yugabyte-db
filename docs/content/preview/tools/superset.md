@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: superset
     parent: tools
-    weight: 2709
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---
@@ -54,6 +54,6 @@ As of Docker version 18.03, the `host.docker.internal` hostname connects to your
 
 You've successfully created a connection to your YugabyteDB database, and you can now start exploring and visualizing your databases using Apache Superset.
 
-## Next steps
+## What's next
 
 Refer to the Apache [Superset documentation](https://superset.apache.org/docs/creating-charts-dashboards/exploring-data#exploring-data-in-superset) to learn more about Superset's data exploration capabilities. If you're creating your first dashboard using Superset, check out the [data analysis and exploration workflow](https://superset.apache.org/docs/creating-charts-dashboards/creating-your-first-dashboard/).

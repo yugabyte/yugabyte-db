@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: arctype
     parent: tools
-    weight: 2710
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---

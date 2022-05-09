@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: visualstudioworkbench
     parent: tools
-    weight: 2760
+    weight: 80
 isTocNested: true
 showAsideToc: true
 ---
