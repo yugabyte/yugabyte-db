@@ -1186,6 +1186,12 @@
           "type" : "array",
           "uniqueItems" : true
         },
+        "onlyShowDeletedConfigs" : {
+          "type" : "boolean"
+        },
+        "onlyShowDeletedUniverses" : {
+          "type" : "boolean"
+        },
         "scheduleUUIDList" : {
           "items" : {
             "format" : "uuid",
@@ -1226,7 +1232,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "dateRangeEnd", "dateRangeStart", "keyspaceList", "scheduleUUIDList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
+      "required" : [ "dateRangeEnd", "dateRangeStart", "keyspaceList", "onlyShowDeletedConfigs", "onlyShowDeletedUniverses", "scheduleUUIDList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
       "type" : "object"
     },
     "BackupPagedApiQuery" : {
@@ -1492,6 +1498,10 @@
         "isUniversePresent" : {
           "type" : "boolean"
         },
+        "kmsConfigUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "onDemand" : {
           "type" : "boolean"
         },
@@ -1541,7 +1551,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigType", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "kmsConfigUUID", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigType", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {

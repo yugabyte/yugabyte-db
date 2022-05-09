@@ -537,13 +537,11 @@ public class Schedule extends Model {
     }
     BackupInfo backupInfo =
         BackupInfo.builder()
-            .kmsConfigUUID(params.kmsConfigUUID)
             .universeUUID(params.universeUUID)
             .keyspaceList(keySpaceResponseList)
             .storageConfigUUID(params.storageConfigUUID)
             .backupType(params.backupType)
             .timeBeforeDelete(params.timeBeforeDelete)
-            .encryptionAtRestConfig(params.encryptionAtRestConfig)
             .fullBackup(CollectionUtils.isEmpty(params.keyspaceTableList))
             .useTablespaces(params.useTablespaces)
             .expiryTimeUnit(params.expiryTimeUnit)
@@ -570,14 +568,12 @@ public class Schedule extends Model {
     }
     BackupInfo backupInfo =
         BackupInfo.builder()
-            .kmsConfigUUID(params.kmsConfigUUID)
             .universeUUID(params.universeUUID)
             .keyspaceList(keySpaceResponseList)
             .storageConfigUUID(params.storageConfigUUID)
             .backupType(params.backupType)
             .timeBeforeDelete(params.timeBeforeDelete)
             .expiryTimeUnit(params.expiryTimeUnit)
-            .encryptionAtRestConfig(params.encryptionAtRestConfig)
             .fullBackup(StringUtils.isEmpty(params.getKeyspace()))
             .useTablespaces(params.useTablespaces)
             .build();
