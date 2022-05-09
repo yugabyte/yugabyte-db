@@ -154,6 +154,7 @@ public class BackupUtil {
             .scheduleUUID(backup.getScheduleUUID())
             .customerUUID(backup.customerUUID)
             .universeUUID(backup.universeUUID)
+            .kmsConfigUUID(backup.getBackupInfo().kmsConfigUUID)
             .storageConfigUUID(backup.storageConfigUUID)
             .isStorageConfigPresent(isStorageConfigPresent)
             .isUniversePresent(isUniversePresent)
