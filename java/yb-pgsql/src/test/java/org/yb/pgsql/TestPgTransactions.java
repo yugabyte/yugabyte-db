@@ -1046,4 +1046,19 @@ public class TestPgTransactions extends BasePgSQLTest {
       Collections.emptyMap(),
       Collections.singletonMap("yb_enable_read_committed_isolation", "false"));
   }
+
+  @Test
+  public void testMiscellaneous() throws Exception {
+    // Test issue #12004 - READ COMMITTED isolation in YSQL maps to REPEATABLE READ if
+    // yb_enable_read_committed_isolation=false. In this case, if the first statement takes an
+    // explicit locking, a transaction should be present/created.
+    try (Statement s1 = getConnectionBuilder().connect().createStatement();) {
+      s1.execute("CREATE TABLE test (k int PRIMARY KEY, v INT)");
+      s1.execute("INSERT INTO test values (1, 1)");
+      s1.execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      s1.execute("SELECT * FROM test WHERE k=1 for update");
+      s1.execute("COMMIT");
+      s1.execute("DROP TABLE test");
+    }
+  }
 }

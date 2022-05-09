@@ -424,18 +424,12 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
     }
   }
 
-  TxnPriorityRequirement txn_priority_requirement = kLowerPriorityRange;
-  if (op->type() == YBOperation::Type::PGSQL_READ) {
-    const auto row_mark_type = GetRowMarkType(*op);
-    read_only = read_only && !IsValidRowMarkType(row_mark_type);
-    if (RowMarkNeedsHigherPriority(row_mark_type)) {
-      txn_priority_requirement = kHigherPriorityRange;
-    }
-  }
-
-  if (pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
-    txn_priority_requirement = kHighestPriority;
-  }
+  const auto row_mark_type = GetRowMarkType(*op);
+  const auto txn_priority_requirement =
+    pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED ||
+    RowMarkNeedsHigherPriority(row_mark_type)
+        ? kHigherPriorityRange : kLowerPriorityRange;
+  read_only = read_only && !IsValidRowMarkType(row_mark_type);
 
   auto session = VERIFY_RESULT(pg_session_.GetSession(
       transactional_,
