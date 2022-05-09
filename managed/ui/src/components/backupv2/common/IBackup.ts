@@ -91,7 +91,8 @@ export interface TIME_RANGE_STATE {
 
 export enum BACKUP_API_TYPES {
   YSQL = 'PGSQL_TABLE_TYPE',
-  YCQL = 'YQL_TABLE_TYPE'
+  YCQL = 'YQL_TABLE_TYPE',
+  YEDIS = 'REDIS_TABLE_TYPE'
 }
 
 export interface IStorageConfig {
