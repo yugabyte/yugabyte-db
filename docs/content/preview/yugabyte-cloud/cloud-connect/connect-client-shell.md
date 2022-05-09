@@ -19,7 +19,7 @@ You can download and install the YugabyteDB client shells and connect to your da
 
 {{< warning title="IP allow list" >}}
 
-Before you can connect using a shell, you need to add your computer to a cluster IP allow list. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
+Before you can connect using a shell or other client, you need to add your computer to a cluster IP allow list. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
 
 {{< /warning >}}
 
@@ -78,13 +78,13 @@ For information on using other SSL modes, refer to [SSL modes in YSQL](../../clo
 
 ## Connect using third party clients
 
-Because YugabyteDB is PostgreSQL-compatible, you can use third-party PostgreSQL clients to connect to your YugabyteDB clusters in YugabyteDB Managed.
+Because YugabyteDB is PostgreSQL- and Cassandra-compatible, you can use third-party clients to connect to your YugabyteDB clusters in YugabyteDB Managed.
 
-To connect, follow the client's configuration steps for PostgreSQL, and use the following values:
+To connect, follow the client's configuration steps for PostgreSQL or Cassandra, and use the following values:
 
 - **host** as shown on the **Settings** tab for your cluster
-- **port** 5433
-- **database** name; the default database is yugabyte
+- **port** 5433 for YSQL, 9042 for YCQL
+- **database** name; the default YSQL database is yugabyte
 - **username** and **password** of a user with permissions for the database; the default user is admin
 
 Your client may also require the use of the cluster certificate. Refer to [Download the cluster certificate](../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
