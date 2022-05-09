@@ -199,7 +199,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </Col>
 
               <Col lg={12} className="no-padding">
-                {backup_details.backupType === TableType.YQL_TABLE_TYPE ? (
+                {backup_details.backupType === TableType.YQL_TABLE_TYPE ||
+                backup_details.backupType === TableType.REDIS_TABLE_TYPE ? (
                   <YCQLTableList
                     backup={backup_details}
                     keyspaceSearch={searchKeyspaceText}

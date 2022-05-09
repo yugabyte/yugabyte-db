@@ -53,10 +53,6 @@ export const BACKUP_STATUS_OPTIONS: { value: Backup_States | null; label: string
     value: Backup_States.DELETE_IN_PROGRESS
   },
   {
-    label: 'Deleted',
-    value: Backup_States.DELETED
-  },
-  {
     label: 'Failed',
     value: Backup_States.FAILED
   },
