@@ -107,7 +107,7 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 
 - Included columns are optional table columns whose values are copied into the index in addition to storing them in the table. When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
 
-- The following can't be added to an index's included columns: static columns of a table, expressions, table columns with the following types - frozen, map, set, list, tuple, jsonb, and user defined types.
+- The following can't be added to an index's included columns: static columns of a table, expressions, and table columns with the following types: frozen, map, set, list, tuple, jsonb, and user defined.
 
 ### UNIQUE INDEX
 
