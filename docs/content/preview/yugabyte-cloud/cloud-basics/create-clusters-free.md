@@ -108,7 +108,7 @@ To keep your cluster from being paused, you (or, where applicable, an applicatio
 - You can't pause free clusters.
 - Free clusters have the following resource limitations:
   - Up to 10 simultaneous connections; more than that will result in increased latencies and dropped connections.
-  - Maximum 500 tables and 12.5 million rows.
+  - Maximum 500 tables or 12.5 million objects.
 
 YugabyteDB is a distributed database optimized for deployment across multiple nodes. Because free clusters are single node, they are not suitable for proof-of-concept (POC) or performance testing. To evaluate YugabyteDB Managed for production use or conduct a POC, contact {{<support-cloud>}}.
 
