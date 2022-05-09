@@ -243,16 +243,13 @@ class PgSession::RunHelper {
       return Status::OK();
     }
 
-    TxnPriorityRequirement txn_priority_requirement = kLowerPriorityRange;
-    if (pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
-      txn_priority_requirement = kHighestPriority;
-    } else if (op->is_read()) {
-      const auto row_mark_type = GetRowMarkType(*op);
-      read_only = read_only && !IsValidRowMarkType(row_mark_type);
-      if (RowMarkNeedsHigherPriority(row_mark_type)) {
-        txn_priority_requirement = kHigherPriorityRange;
-      }
-    }
+    const auto row_mark_type = GetRowMarkType(*op);
+    const auto txn_priority_requirement =
+      pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED ||
+      RowMarkNeedsHigherPriority(row_mark_type)
+          ? kHigherPriorityRange : kLowerPriorityRange;
+    read_only = read_only && !IsValidRowMarkType(row_mark_type);
+
     return pg_session_.pg_txn_manager_->CalculateIsolation(
         read_only, txn_priority_requirement, read_time);
   }
