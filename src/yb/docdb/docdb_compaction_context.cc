@@ -272,11 +272,11 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed {
   DocDBCompactionFeed(
       rocksdb::CompactionFeed* next_feed,
       HistoryRetentionDirective retention,
-      IsMajorCompaction is_major_compaction,
+      HybridTime delete_marker_retention_time,
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider)
       : next_feed_(*next_feed), retention_(std::move(retention)), key_bounds_(key_bounds),
-        is_major_compaction_(is_major_compaction),
+        delete_marker_retention_time_(delete_marker_retention_time),
         packed_row_(next_feed, schema_packing_provider) {
   }
 
@@ -304,7 +304,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed {
   rocksdb::CompactionFeed& next_feed_;
   const HistoryRetentionDirective retention_;
   const KeyBounds* key_bounds_;
-  const IsMajorCompaction is_major_compaction_;
+  const HybridTime delete_marker_retention_time_;
   ValueBuffer new_value_buffer_;
 
   std::vector<char> prev_subdoc_key_;
@@ -365,8 +365,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   if (!feed_usage_logged_) {
     // TODO: switch this to VLOG if it becomes too chatty.
-    LOG(INFO) << "DocDB compaction feed is being used for a "
-              << (is_major_compaction_ ? "major" : "minor") << " compaction"
+    LOG(INFO) << "DocDB compaction feed, delete_marker_retention_time: "
+              << delete_marker_retention_time_
               << ", history_cutoff=" << history_cutoff
               << ", deleted columns: " << AsString(*retention_.deleted_cols);
     feed_usage_logged_ = true;
@@ -587,7 +587,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // compactions. However, we do need to update the overwrite hybrid time stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier hybrid times.
-  if (value_type == ValueEntryType::kTombstone && is_major_compaction_ &&
+  if (value_type == ValueEntryType::kTombstone &&
+      ht.hybrid_time() < delete_marker_retention_time_ &&
       !retention_.retain_delete_markers_in_major_compaction) {
     return Status::OK();
   }
@@ -622,7 +623,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   if (has_expired) {
     // This is consistent with the condition we're testing for deletes at the bottom of the function
     // because ht_at_or_below_cutoff is implied by has_expired.
-    if (is_major_compaction_ && !retention_.retain_delete_markers_in_major_compaction) {
+    if (ht.hybrid_time() < delete_marker_retention_time_ &&
+        !retention_.retain_delete_markers_in_major_compaction) {
       return Status::OK();
     }
 
@@ -674,7 +676,7 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
   DocDBCompactionContext(
       rocksdb::CompactionFeed* next_feed,
       HistoryRetentionDirective retention,
-      IsMajorCompaction is_major_compaction,
+      HybridTime delete_marker_retention_time,
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider);
 
@@ -715,13 +717,13 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
 DocDBCompactionContext::DocDBCompactionContext(
     rocksdb::CompactionFeed* next_feed,
     HistoryRetentionDirective retention,
-    IsMajorCompaction is_major_compaction,
+    HybridTime delete_marker_retention_time,
     const KeyBounds* key_bounds,
     SchemaPackingProvider* schema_packing_provider)
     : history_cutoff_(retention.history_cutoff),
       key_bounds_(key_bounds),
       feed_(std::make_unique<DocDBCompactionFeed>(
-          next_feed, std::move(retention), is_major_compaction, key_bounds,
+          next_feed, std::move(retention), delete_marker_retention_time, key_bounds,
           schema_packing_provider)) {
 }
 
@@ -754,14 +756,17 @@ std::vector<std::pair<Slice, Slice>> DocDBCompactionContext::GetLiveRanges() con
 std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
     const KeyBounds* key_bounds,
+    const DeleteMarkerRetentionTimeProvider& delete_marker_retention_provider,
     SchemaPackingProvider* schema_packing_provider) {
   return std::make_shared<rocksdb::CompactionContextFactory>(
-      [retention_policy, key_bounds, schema_packing_provider](
+      [retention_policy, key_bounds, delete_marker_retention_provider, schema_packing_provider](
       rocksdb::CompactionFeed* next_feed, const rocksdb::CompactionContextOptions& options) {
     return std::make_unique<DocDBCompactionContext>(
         next_feed,
         retention_policy->GetRetentionDirective(),
-        IsMajorCompaction(options.is_full_compaction),
+        delete_marker_retention_provider
+            ? delete_marker_retention_provider(options.level0_inputs)
+            : HybridTime::kMax,
         key_bounds,
         schema_packing_provider);
   });

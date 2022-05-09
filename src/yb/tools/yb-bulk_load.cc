@@ -367,7 +367,7 @@ Status BulkLoad::CompactFiles() {
   vector<string> sst_files;
   sst_files.reserve(live_files_metadata.size());
   for (const rocksdb::LiveFileMetaData& file : live_files_metadata) {
-    sst_files.push_back(file.name);
+    sst_files.push_back(file.Name());
   }
 
   // Batch the files for compaction.

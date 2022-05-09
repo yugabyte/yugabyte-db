@@ -750,7 +750,7 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
         file_path = ioptions->db_paths.back().path;
       }
       files.emplace_back(
-          MakeTableFileName("", file->fd.GetNumber()),
+          file->fd.GetNumber(),
           file_path,
           file->fd.GetTotalFileSize(),
           file->fd.GetBaseFileSize(),
@@ -3701,7 +3701,7 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
           assert(!db_options_->db_paths.empty());
           filemetadata.db_path = db_options_->db_paths.back().path;
         }
-        filemetadata.name = MakeTableFileName("", file->fd.GetNumber());
+        filemetadata.name_id = file->fd.GetNumber();
         filemetadata.level = level;
         filemetadata.total_size = file->fd.GetTotalFileSize();
         filemetadata.base_size = file->fd.GetBaseFileSize();

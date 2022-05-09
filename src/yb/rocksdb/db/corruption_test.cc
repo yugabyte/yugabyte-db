@@ -251,7 +251,7 @@ class CorruptionTest : public RocksDBTest {
     db_->GetLiveFilesMetaData(&metadata);
     for (const auto& m : metadata) {
       if (m.level == level) {
-        CorruptFile(dbname_ + "/" + m.name, offset, bytes_to_corrupt);
+        CorruptFile(dbname_ + m.Name(), offset, bytes_to_corrupt);
         return;
       }
     }
@@ -510,7 +510,7 @@ TEST_F(CorruptionTest, FileSystemStateCorrupted) {
     std::vector<LiveFileMetaData> metadata;
     dbi->GetLiveFilesMetaData(&metadata);
     ASSERT_GT(metadata.size(), size_t(0));
-    std::string filename = dbname_ + metadata[0].name;
+    std::string filename = dbname_ + metadata[0].Name();
 
     delete db_;
     db_ = nullptr;

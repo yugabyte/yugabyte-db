@@ -16,15 +16,21 @@ const statusElementsIcons = {
   'Running': <span className="status creating">Creating <i className="fa fa-spinner fa-spin"/></span>
 }
 
-const getActions = (uuid, row, handleViewLogs, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle) => {
+const getActions = (uuid, row, handleViewLogs, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle, creatingBundle) => {
   const isReady = row.status === 'Success';
   return (
     <>
       {isConfirmDeleteOpen && (
         <ConfirmDeleteModal
-          closeModal={() => setIsConfirmDeleteOpen(false)}
-          createdOn={row.startDate}
-          confirmDelete={() => { setIsConfirmDeleteOpen(false); handleDeleteBundle(row.bundleUUID) }}/>
+          key={`${row.bundleUUID}-modal`}
+          closeModal={() => {
+            setIsConfirmDeleteOpen(false)
+          }}
+          createdOn={row.creationDate}
+          confirmDelete={() => {
+            setIsConfirmDeleteOpen(false);
+            handleDeleteBundle(row.bundleUUID);
+          }}/>
       )}
       <DropdownButton
         id={row.bundleUUID}
@@ -58,9 +64,11 @@ const getActions = (uuid, row, handleViewLogs, handleDeleteBundle, isConfirmDele
           </MenuItem>
         )}
         <YBMenuItem
-
+          disabled={creatingBundle}
           value="Delete"
-          onClick={() => setIsConfirmDeleteOpen(true)}
+          onClick={() => {
+            setIsConfirmDeleteOpen(true)
+          }}
         >
           <i className="fa fa-trash"/> Delete
         </YBMenuItem>
@@ -83,7 +91,7 @@ const ConfirmDeleteModal = ({createdOn, closeModal, confirmDelete}) => {
       onFormSubmit={confirmDelete}
       className="support-bundle-confirm-delete"
     >
-      You are about to delete the support bundle that was created on {createdOn}. This can not be undone
+      You are about to delete the support bundle that was created on <span className="created-on-date">{createdOn}</span>. This can not be undone
     </YBModal>
   );
 };
@@ -161,9 +169,9 @@ export const ThirdStep = withRouter(({
               Status
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="status"
-              dataFormat={(status, row) => {
-                return getActions(status, row, router.push, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle);
+              dataField="bundleUUID"
+              dataFormat={(bundleUUID, row) => {
+                return getActions(bundleUUID, row, router.push, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle, creatingBundle);
               }}
             />
           </BootstrapTable>
@@ -171,4 +179,4 @@ export const ThirdStep = withRouter(({
       </div>
     </div>
   )
-})
+});
