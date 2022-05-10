@@ -22,7 +22,7 @@ interface YBTagProps {
   type?: YBTag_Types;
 }
 
-export const YBTag: FC<YBTagProps> = ({ type = 'yb-orange', children }) => {
+export const YBTag: FC<YBTagProps> = ({ type = YBTag_Types.YB_ORANGE, children }) => {
   if (!children) return null;
   return <span className={clsx('yb-tag', type)}>{children}</span>;
 };
