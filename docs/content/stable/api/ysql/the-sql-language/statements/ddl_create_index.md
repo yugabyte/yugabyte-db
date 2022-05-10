@@ -43,8 +43,6 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 ## Semantics
 
-`CONCURRENTLY` option is not yet supported.
-
 When an index is created on a populated table, YugabyteDB automatically backfills the existing data into the index.
 In most cases, this uses an online schema migration.
 The following table explains some of the differences between creating an index online and not online.
@@ -55,6 +53,7 @@ The following table explains some of the differences between creating an index o
 | Keeps other transactions alive during `CREATE INDEX`? | mostly | no |
 | Parallelizes index loading? | yes | no |
 
+To enable online schema migration for one `CREATE INDEX`, use `CREATE INDEX CONCURRENTLY`.
 To disable online schema migration for YSQL `CREATE INDEX`, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** master and tserver.
 To disable online schema migration for one `CREATE INDEX`, use `CREATE INDEX NONCONCURRENTLY`.
 
@@ -75,16 +74,21 @@ on individually, which you should do in the following cases:
  to create indexes on each partition individually.
 * [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to
  customize the tablespace in which each index is created.
+* `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)).
 
 ### UNIQUE
 
 Enforce that duplicate values in a table are not allowed.
 
+### CONCURRENTLY
+Enable online schema migration (see [Semantics](#semantics) for details), with some restrictions:
+* Upon creating an index on a temporary table, online schema migration will be disabled.
+* `CREATE INDEX CONCURRENTLY` is not supported for partitioned table.
+* `CREATE INDEX CONCURRENTLY` is not supported inside a transaction block.
+
 ### NONCONCURRENTLY
 
 Disable online schema migration (see [Semantics](#semantics) for details).
-
-Concurrent is the default, but the grammar does not yet support `CONCURRENTLY`.
 
 ### ONLY
 
