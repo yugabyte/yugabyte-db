@@ -7,11 +7,12 @@
   font-size: 11px;
   line-height: 13px;
   color: $YB_DARKER_GRAY;
-  width: 40px;
-  height: 17px;
+  min-width: 40px;
+  min-height: 17px;
   user-select: none;
   padding: 2px 6px;
   margin: 0px 5px;
+  align-self: center;
   &.yb-orange {
     background: $YB_ORANGE;
     border: 1px solid $YB_ORANGE;
