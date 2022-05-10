@@ -460,10 +460,10 @@ CHECKED_STATUS CatalogManagerUtil::SetPreferredZones(
 }
 
 void CatalogManagerUtil::GetAllAffinitizedZones(
-    const ReplicationInfoPB* replication_info, vector<AffinitizedZonesSet>* affinitized_zones) {
-  if (replication_info->multi_affinitized_leaders_size()) {
+    const ReplicationInfoPB& replication_info, vector<AffinitizedZonesSet>* affinitized_zones) {
+  if (replication_info.multi_affinitized_leaders_size()) {
     // New persisted version
-    for (auto& zone_set : replication_info->multi_affinitized_leaders()) {
+    for (auto& zone_set : replication_info.multi_affinitized_leaders()) {
       AffinitizedZonesSet new_zone_set;
       for (auto& ci : zone_set.zones()) {
         new_zone_set.insert(ci);
@@ -475,7 +475,7 @@ void CatalogManagerUtil::GetAllAffinitizedZones(
   } else {
     // Old persisted version
     AffinitizedZonesSet new_zone_set;
-    for (auto& ci : replication_info->affinitized_leaders()) {
+    for (auto& ci : replication_info.affinitized_leaders()) {
       new_zone_set.insert(ci);
     }
     if (!new_zone_set.empty()) {

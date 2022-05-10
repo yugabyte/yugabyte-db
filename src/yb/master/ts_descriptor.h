@@ -140,8 +140,6 @@ class TSDescriptor {
 
   std::string placement_uuid() const;
 
-  template<typename Lambda>
-  bool DoesRegistrationMatch(Lambda predicate) const;
   bool IsRunningOn(const HostPortPB& hp) const;
   bool IsBlacklisted(const BlacklistSet& blacklist) const;
 
