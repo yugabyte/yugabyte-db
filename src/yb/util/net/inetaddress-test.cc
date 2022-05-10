@@ -13,11 +13,15 @@
 
 #include "yb/util/net/inetaddress.h"
 
+#include <string>
+
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -36,13 +40,13 @@ class InetAddressTest : public YBTest {
 };
 
 TEST_F(InetAddressTest, TestRoundTrip) {
-  for (const std::string& strval : {
-      "1.2.3.4",
-      "2001:db8:a0b:12f0::1",
-      "0.0.0.0",
-      "2607:f0d0:1002:51::4",
-      "::1",
-      "255.255.255.255"}) {
+  for (auto strval : {
+      "1.2.3.4"s,
+      "2001:db8:a0b:12f0::1"s,
+      "0.0.0.0"s,
+      "2607:f0d0:1002:51::4"s,
+      "::1"s,
+      "255.255.255.255"s}) {
     RunRoundTrip(strval);
   }
 }

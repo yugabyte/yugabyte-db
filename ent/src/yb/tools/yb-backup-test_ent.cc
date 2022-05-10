@@ -45,6 +45,7 @@
 #include "yb/yql/redis/redisserver/redis_parser.h"
 
 using namespace std::chrono_literals;
+using namespace std::literals;
 using std::unique_ptr;
 using std::vector;
 using std::string;
@@ -473,7 +474,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLSameIdDifferen
   // Initialize data:
   // - s1.mytbl: (1, 1)
   // - s2.mytbl: (2, 2)
-  auto schemas = {"s1", "s2"};
+  const auto schemas = {"s1"s, "s2"s};
   for (const string& schema : schemas) {
     ASSERT_NO_FATALS(CreateSchema(Format("CREATE SCHEMA $0", schema)));
     ASSERT_NO_FATALS(CreateTable(

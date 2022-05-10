@@ -289,6 +289,13 @@ class ReleaseGroup:
         return min(self.creation_timestamps)
 
 
+def validate_git_commit(commit: str) -> str:
+    commit = commit.strip().lower()
+    if not re.match(r'^[0-9a-f]{40}$', commit):
+        raise ValueError(f"Invalid Git commit SHA1: {commit}")
+    return commit
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -345,6 +352,13 @@ def parse_args() -> argparse.Namespace:
         '--lto',
         choices=ALLOWED_LTO_TYPES,
         help='Specify link-time optimization type.')
+    parser.add_argument(
+        '--also-use-commit',
+        nargs='+',
+        type=validate_git_commit,
+        help='One or more Git commits in the yugabyte-db-thirdparty repository that we should '
+             'find releases for, in addition to the most recent commit in that repository that is '
+             'associated with any of the releases. For use with --update.')
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -378,16 +392,19 @@ def get_github_token(token_file_path: Optional[str]) -> Optional[str]:
 class MetadataUpdater:
     github_token_file_path: str
     tag_filter_pattern: Optional[Pattern]
+    also_use_commits: List[str]
 
     def __init__(
             self,
             github_token_file_path: str,
-            tag_filter_regex_str: Optional[str]) -> None:
+            tag_filter_regex_str: Optional[str],
+            also_use_commits: List[str]) -> None:
         self.github_token_file_path = github_token_file_path
         if tag_filter_regex_str:
             self.tag_filter_pattern = re.compile(tag_filter_regex_str)
         else:
             self.tag_filter_pattern = None
+        self.also_use_commits = also_use_commits
 
     def update_archive_metadata_file(self) -> None:
         yb_version = read_file(os.path.join(YB_SRC_ROOT, 'version.txt')).strip()
@@ -439,7 +456,7 @@ class MetadataUpdater:
                 releases_by_commit[sha] = ReleaseGroup(sha)
 
             num_releases_found += 1
-            logging.info(f"Found release: {yb_dep_release}")
+            logging.debug(f"Found release: {yb_dep_release}")
             releases_by_commit[sha].add_release(yb_dep_release)
 
         if num_skipped_old_tag_format > 0:
@@ -448,6 +465,7 @@ class MetadataUpdater:
             logging.info(f"Skipped {num_skipped_wrong_branch} releases due to branch mismatch")
         logging.info(
             f"Found {num_releases_found} releases for {len(releases_by_commit)} different commits")
+
         latest_group_by_max = max(
             releases_by_commit.values(), key=ReleaseGroup.get_max_creation_timestamp)
         latest_group_by_min = max(
@@ -457,19 +475,35 @@ class MetadataUpdater:
                 "Overlapping releases for different commits. No good way to identify latest "
                 "release: e.g. {latest_group_by_max.sha} and {latest_group_by_min.sha}.")
 
-        latest_group = latest_group_by_max
+        latest_group: ReleaseGroup = latest_group_by_max
 
-        sha = latest_group.sha
+        latest_release_sha = latest_group.sha
         logging.info(
-            f"Latest released yugabyte-db-thirdparty commit: f{sha}. "
+            f"Latest released yugabyte-db-thirdparty commit: {latest_release_sha}. "
             f"Released at: {latest_group.get_max_creation_timestamp()}.")
+
+        groups_to_use: List[ReleaseGroup] = [latest_group]
+
+        if self.also_use_commits:
+            for extra_commit in self.also_use_commits:
+                logging.info(f"Additional manually specified commit to use: {extra_commit}")
+                if extra_commit == latest_release_sha:
+                    logging.info(
+                        f"(already matches the latest commit {latest_release_sha}, skipping.)")
+                    continue
+                if extra_commit not in releases_by_commit:
+                    raise ValueError(
+                        f"No releases found for user-specified commit {extra_commit}. "
+                        "Please check if there is an error.")
+                groups_to_use.append(releases_by_commit[extra_commit])
 
         new_metadata: Dict[str, Any] = {
             SHA_FOR_LOCAL_CHECKOUT_KEY: sha,
             'archives': []
         }
-        releases_for_one_commit = [
-            rel for rel in latest_group.releases
+        releases_to_use: List[GitHubThirdPartyRelease] = [
+            rel for release_group in groups_to_use
+            for rel in release_group.releases
             if rel.tag not in BROKEN_TAGS
         ]
 
@@ -478,7 +512,7 @@ class MetadataUpdater:
 
         num_valid_releases = 0
         num_invalid_releases = 0
-        for yb_thirdparty_release in releases_for_one_commit:
+        for yb_thirdparty_release in releases_to_use:
             if yb_thirdparty_release.validate_url():
                 num_valid_releases += 1
                 releases_by_key_without_tag[
@@ -489,7 +523,7 @@ class MetadataUpdater:
         logging.info(
             f"Valid releases found: {num_valid_releases}, invalid releases: {num_invalid_releases}")
 
-        filtered_releases_for_one_commit = []
+        filtered_releases_to_use = []
         for key_without_tag, releases_for_key in releases_by_key_without_tag.items():
             if len(releases_for_key) > 1:
                 picked_release = max(releases_for_key, key=lambda r: r.tag)
@@ -500,18 +534,18 @@ class MetadataUpdater:
                         picked_release,
                         key_without_tag,
                         '\n  '.join([str(r) for r in releases_for_key])))
-                filtered_releases_for_one_commit.append(picked_release)
+                filtered_releases_to_use.append(picked_release)
             else:
-                filtered_releases_for_one_commit.append(releases_for_key[0])
+                filtered_releases_to_use.append(releases_for_key[0])
 
-        filtered_releases_for_one_commit.sort(key=GitHubThirdPartyRelease.get_sort_key)
+        filtered_releases_to_use.sort(key=GitHubThirdPartyRelease.get_sort_key)
 
-        for yb_thirdparty_release in filtered_releases_for_one_commit:
+        for yb_thirdparty_release in filtered_releases_to_use:
             new_metadata['archives'].append(yb_thirdparty_release.as_dict())
 
         write_yaml_file(new_metadata, archive_metadata_path)
         logging.info(
-            f"Wrote information for {len(filtered_releases_for_one_commit)} pre-built "
+            f"Wrote information for {len(filtered_releases_to_use)} pre-built "
             f"yugabyte-db-thirdparty archives to {archive_metadata_path}.")
 
 
@@ -592,9 +626,21 @@ def get_third_party_release(
     if not architecture:
         architecture = local_sys_conf().architecture
 
+    needed_compiler_type = compiler_type
+    if compiler_type == 'gcc11' and os_type == 'almalinux8' and architecture == 'x86_64':
+        # A temporary workaround for https://github.com/yugabyte/yugabyte-db/issues/12429
+        # Strictly speaking, we don't have to build third-party dependencies with the same compiler
+        # as we build YugabyteDB code with, unless we want to use advanced features like LTO where
+        # the "bitcode" format files of object files being linked need to match, and they may differ
+        # across different compiler versions. Another potential issue is libstdc++ versioning.
+        # We don't want to end up linking two different versions of libstdc++.
+        #
+        # TODO: use a third-party archive built with GCC 10 (and ideally with GCC 11 itself).
+        needed_compiler_type = 'gcc9'
+
     candidates: List[Any] = [
         archive for archive in available_archives
-        if compiler_type_matches(archive.compiler_type, compiler_type) and
+        if compiler_type_matches(archive.compiler_type, needed_compiler_type) and
         archive.architecture == architecture and
         matches_maybe_empty(archive.lto_type, lto)
     ]
@@ -642,7 +688,8 @@ def main() -> None:
     if args.update:
         updater = MetadataUpdater(
             github_token_file_path=args.github_token_file,
-            tag_filter_regex_str=args.tag_filter_regex)
+            tag_filter_regex_str=args.tag_filter_regex,
+            also_use_commits=args.also_use_commit)
         updater.update_archive_metadata_file()
         return
 
