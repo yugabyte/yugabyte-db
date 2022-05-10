@@ -1,7 +1,7 @@
 ---
-title: Manage peering connections
+title: Peering connections
 headerTitle:
-linkTitle: Peering Connections
+linkTitle: Peering connections
 description: Manage peering connections to your cloud VPCs.
 menu:
   preview:
@@ -14,14 +14,7 @@ showAsideToc: true
 
 A peering connection connects a YugabyteDB Managed VPC with a VPC on the corresponding cloud provider - typically one that hosts an application that you want to have access to your cluster.
 
-Configuring a peering connection is done in two stages:
-
-1. Create the peering connection in YugabyteDB Managed.
-2. Configure the peering in your cloud provider.
-    - In AWS, this requires accepting the peering request.
-    - In GCP, this requires creating a peering connection.
-
-**Peering Connections** on the **VPC Network** tab displays a list of peering connections configured for your cloud that includes the peering connection name, cloud provider, the network name (GCP) or VPC ID (AWS) of the peered VPC, the name of the Yugabyte VPC, and status of the connection (Pending or Active).
+**Peering Connections** on the **VPC Network** tab displays a list of peering connections configured for your account that includes the peering connection name, cloud provider, the network name (GCP) or VPC ID (AWS) of the peered VPC, the name of the Yugabyte VPC, and status of the connection (Pending or Active).
 
 ![Peering connections](/images/yb-cloud/cloud-vpc-peering.png)
 
@@ -34,34 +27,3 @@ To terminate a peering connection, click the **Delete** icon for the peering con
 If you have an _Active_ peering connection but are unable to connect to a cluster in the VPC, ensure that you have added the CIDR block of the peered application VPC to your cluster's IP allow list. For information on adding IP allow lists, refer to [Assign IP allow lists](../../../cloud-secure-clusters/add-connections/).
 
 {{< /warning >}}
-
-## Create a peering connection
-
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#peer-aws" class="nav-link active" id="aws-tab" data-toggle="tab" role="tab" aria-controls="peer-aws" aria-selected="true">
-      <i class="fab fa-aws" aria-hidden="true"></i>
-      AWS
-    </a>
-  </li>
-  <li>
-    <a href="#peer-gcp" class="nav-link" id="gcp-tab" data-toggle="tab" role="tab" aria-controls="peer-gcp" aria-selected="false">
-      <i class="fab fa-google" aria-hidden="true"></i>
-      GCP
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="peer-aws" class="tab-pane fade show active" role="tabpanel" aria-labelledby="aws-tab">
-    {{% includeMarkdown "peer/peer-aws.md" /%}}
-  </div>
-  <div id="peer-gcp" class="tab-pane fade" role="tabpanel" aria-labelledby="gcp-tab">
-    {{% includeMarkdown "peer/peer-gcp.md" /%}}
-  </div>
-</div>
-
-## Next steps
-
-- [Configure your cloud provider](../cloud-configure-provider)
-- [Add the application VPC CIDR to the cluster IP allow list](../../../cloud-secure-clusters/add-connections/)
