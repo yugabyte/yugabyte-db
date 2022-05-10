@@ -16,6 +16,12 @@
 
 #include <future>
 
+// This include is needed because we use std::shared_future<Result<IpAddress>>, and IpAddress
+// is an alias for boost::asio::ip::address. If we just include net_fwd.h, we get this compilation
+// error with GCC 11:
+// https://gist.githubusercontent.com/mbautin/ed9e5d17f39fc0066eba77ce15cbbef9/raw
+#include <boost/asio/ip/address.hpp>
+
 #include "yb/common/value.pb.h"
 
 #include "yb/master/master_heartbeat.fwd.h"

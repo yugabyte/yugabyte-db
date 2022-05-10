@@ -40,6 +40,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <shared_mutex>
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <gflags/gflags.h>
@@ -197,6 +198,7 @@ namespace log {
 
 using env_util::OpenFileForRandom;
 using std::shared_ptr;
+using std::shared_lock;
 using std::unique_ptr;
 using strings::Substitute;
 

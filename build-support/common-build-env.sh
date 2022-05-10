@@ -190,7 +190,6 @@ readonly -a VALID_COMPILER_TYPES=(
   clang12
   clang13
   clang14
-  zapcc
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -920,7 +919,7 @@ put_path_entry_first() {
   export PATH=$path_entry:$PATH
 }
 
-add_path_entry() {
+add_path_entry_last() {
   expect_num_args 1 "$@"
   local path_entry=$1
   if [[ $PATH != *:$path_entry && $PATH != $path_entry:* && $PATH != *:$path_entry:* ]]; then
@@ -998,6 +997,8 @@ find_compiler_by_type() {
         fi
         cc_executable=$gcc_bin_dir/gcc
         cxx_executable=$gcc_bin_dir/g++
+        # This is needed for other tools, such as "as" (the assembler).
+        put_path_entry_first "$gcc_bin_dir"
       else
         # shellcheck disable=SC2230
         cc_executable=$(which "gcc-$gcc_major_version")
@@ -1069,15 +1070,6 @@ find_compiler_by_type() {
             break
           fi
         done
-      fi
-    ;;
-    zapcc)
-      if [[ -n ${YB_ZAPCC_INSTALL_PATH:-} ]]; then
-        cc_executable=$YB_ZAPCC_INSTALL_PATH/bin/zapcc
-        cxx_executable=$YB_ZAPCC_INSTALL_PATH/bin/zapcc++
-      else
-        cc_executable=zapcc
-        cxx_executable=zapcc++
       fi
     ;;
     *)
@@ -1817,6 +1809,9 @@ find_or_download_thirdparty() {
   if [[ -n ${YB_THIRDPARTY_DIR:-} ]]; then
     finalize_yb_thirdparty_dir
     if [[ -d $YB_THIRDPARTY_DIR ]]; then
+      if [[ ! -f "${BUILD_ROOT}/thirdparty_path.txt" ]]; then
+        save_thirdparty_info_to_build_dir
+      fi
       return
     fi
   fi
