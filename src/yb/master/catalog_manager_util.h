@@ -109,6 +109,8 @@ class CatalogManagerUtil {
   static void GetAllAffinitizedZones(
       const ReplicationInfoPB* replication_info, vector<AffinitizedZonesSet>* affinitized_zones);
 
+  static CHECKED_STATUS CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
+
   template<class LoadState>
   static void FillTableLoadState(const scoped_refptr<TableInfo>& table_info, LoadState* state) {
     auto tablets = table_info->GetTablets(IncludeInactive::kTrue);
