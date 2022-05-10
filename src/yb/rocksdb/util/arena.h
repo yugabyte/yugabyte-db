@@ -35,8 +35,9 @@
 #include <assert.h>
 #include <stdint.h>
 
-#include <cstddef>
 #include <cerrno>
+#include <cstddef>
+#include <memory>
 #include <vector>
 
 #include "yb/rocksdb/util/allocator.h"

@@ -34,7 +34,7 @@ jobs:
     release_artifact: false
 
   - os: alma8
-    compiler: gcc9
+    compiler: gcc11
     build_type: fastdebug
     release_artifact: false
 
@@ -49,6 +49,6 @@ jobs:
     release_artifact: true
 
   - os: ubuntu20.04
-    compiler: gcc9
+    compiler: clang12
     build_type: debug
     release_artifact: false
