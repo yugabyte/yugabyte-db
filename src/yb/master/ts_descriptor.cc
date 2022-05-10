@@ -39,6 +39,7 @@
 #include "yb/common/wire_protocol.pb.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_util.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -252,34 +253,14 @@ CloudInfoPB TSDescriptor::GetCloudInfo() const {
   return ts_information_->registration().common().cloud_info();
 }
 
-template<typename Lambda>
-bool TSDescriptor::DoesRegistrationMatch(Lambda predicate) const {
-  TSRegistrationPB reg = GetRegistration();
-  if (std::find_if(reg.common().private_rpc_addresses().begin(),
-                   reg.common().private_rpc_addresses().end(),
-                   predicate) != reg.common().private_rpc_addresses().end()) {
-    return true;
-  }
-  if (std::find_if(reg.common().broadcast_addresses().begin(),
-                   reg.common().broadcast_addresses().end(),
-                   predicate) != reg.common().broadcast_addresses().end()) {
-    return true;
-  }
-  return false;
-}
-
 bool TSDescriptor::IsBlacklisted(const BlacklistSet& blacklist) const {
-  auto predicate = [&blacklist](const HostPortPB& rhs) {
-    return blacklist.count(HostPortFromPB(rhs)) > 0;
-  };
-  return DoesRegistrationMatch(predicate);
+  TSRegistrationPB reg = GetRegistration();
+  return yb::master::IsBlacklisted(reg.common(), blacklist);
 }
 
 bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
-  auto predicate = [&hp](const HostPortPB& rhs) {
-    return rhs.host() == hp.host() && rhs.port() == hp.port();
-  };
-  return DoesRegistrationMatch(predicate);
+  TSRegistrationPB reg = GetRegistration();
+  return yb::master::IsRunningOn(reg.common(), hp);
 }
 
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {

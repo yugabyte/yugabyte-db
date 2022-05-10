@@ -53,6 +53,23 @@ struct GetMasterRegistrationData {
       : proxy(proxy_cache, hp) {}
 };
 
+bool DoesRegistrationMatch(
+    const ServerRegistrationPB& registration, std::function<bool(const HostPortPB&)> predicate) {
+  if (std::find_if(
+          registration.private_rpc_addresses().begin(),
+          registration.private_rpc_addresses().end(),
+          predicate) != registration.private_rpc_addresses().end()) {
+    return true;
+  }
+  if (std::find_if(
+          registration.broadcast_addresses().begin(),
+          registration.broadcast_addresses().end(),
+          predicate) != registration.broadcast_addresses().end()) {
+    return true;
+  }
+  return false;
+}
+
 } // namespace
 
 Status GetMasterEntryForHosts(rpc::ProxyCache* proxy_cache,
@@ -244,6 +261,28 @@ TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id) {
 TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id) {
   DCHECK(IsTablegroupParentTableId(table_id)) << table_id;
   return table_id.substr(0, 32);
+}
+
+bool IsBlacklisted(const ServerRegistrationPB& registration, const BlacklistSet& blacklist) {
+  auto predicate = [&blacklist](const HostPortPB& rhs) {
+    return blacklist.count(HostPortFromPB(rhs)) > 0;
+  };
+  return DoesRegistrationMatch(registration, predicate);
+}
+
+bool IsRunningOn(const ServerRegistrationPB& registration, const HostPortPB& hp) {
+  auto predicate = [&hp](const HostPortPB& rhs) {
+    return rhs.host() == hp.host() && rhs.port() == hp.port();
+  };
+  return DoesRegistrationMatch(registration, predicate);
+}
+
+BlacklistSet ToBlacklistSet(const BlacklistPB& blacklist) {
+  BlacklistSet blacklist_set;
+  for (const auto& hp : blacklist.hosts()) {
+    blacklist_set.insert(HostPortFromPB(hp));
+  }
+  return blacklist_set;
 }
 
 } // namespace master

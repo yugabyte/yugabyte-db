@@ -99,6 +99,12 @@ TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id);
 
 TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id);
 
+bool IsBlacklisted(const ServerRegistrationPB& registration, const BlacklistSet& blacklist);
+
+bool IsRunningOn(const ServerRegistrationPB& registration, const HostPortPB& hp);
+
+BlacklistSet ToBlacklistSet(const BlacklistPB& blacklist);
+
 } // namespace master
 } // namespace yb
 

@@ -1440,7 +1440,7 @@ Status ClusterLoadBalancer::MoveLeader(const TabletId& tablet_id,
 
 void ClusterLoadBalancer::GetAllAffinitizedZones(
   const ReplicationInfoPB& replication_info, vector<AffinitizedZonesSet>* affinitized_zones) const {
-  CatalogManagerUtil::GetAllAffinitizedZones(&replication_info, affinitized_zones);
+  CatalogManagerUtil::GetAllAffinitizedZones(replication_info, affinitized_zones);
 }
 
 void ClusterLoadBalancer::InitializeTSDescriptors() {
