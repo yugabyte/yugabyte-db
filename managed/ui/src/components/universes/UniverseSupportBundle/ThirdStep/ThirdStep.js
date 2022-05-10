@@ -16,7 +16,7 @@ const statusElementsIcons = {
   'Running': <span className="status creating">Creating <i className="fa fa-spinner fa-spin"/></span>
 }
 
-const getActions = (uuid, row, handleViewLogs, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle, creatingBundle) => {
+const getActions = (uuid, row, handleViewLogs, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle, creatingBundle, deleteBundleUUID, setDeleteBundleUUID) => {
   const isReady = row.status === 'Success';
   return (
     <>
@@ -28,8 +28,9 @@ const getActions = (uuid, row, handleViewLogs, handleDeleteBundle, isConfirmDele
           }}
           createdOn={row.creationDate}
           confirmDelete={() => {
+            handleDeleteBundle(deleteBundleUUID);
+            setDeleteBundleUUID('');
             setIsConfirmDeleteOpen(false);
-            handleDeleteBundle(row.bundleUUID);
           }}/>
       )}
       <DropdownButton
@@ -67,7 +68,8 @@ const getActions = (uuid, row, handleViewLogs, handleDeleteBundle, isConfirmDele
           disabled={creatingBundle}
           value="Delete"
           onClick={() => {
-            setIsConfirmDeleteOpen(true)
+            setIsConfirmDeleteOpen(true);
+            setDeleteBundleUUID(row.bundleUUID);
           }}
         >
           <i className="fa fa-trash"/> Delete
@@ -106,6 +108,7 @@ export const ThirdStep = withRouter(({
 
   const [creatingBundle, setCreatingBundle] = useState(supportBundles && Array.isArray(supportBundles) && supportBundles.find((supportBundle) => supportBundle.status === 'Running') !== undefined);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [deleteBundleUUID, setDeleteBundleUUID] = useState('');
 
   useEffect(() => {
     if(supportBundles && Array.isArray(supportBundles) && supportBundles.find((supportBundle) => supportBundle.status === 'Running') !== undefined) {
@@ -171,7 +174,7 @@ export const ThirdStep = withRouter(({
             <TableHeaderColumn
               dataField="bundleUUID"
               dataFormat={(bundleUUID, row) => {
-                return getActions(bundleUUID, row, router.push, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle, creatingBundle);
+                return getActions(bundleUUID, row, router.push, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle, creatingBundle, deleteBundleUUID, setDeleteBundleUUID);
               }}
             />
           </BootstrapTable>
