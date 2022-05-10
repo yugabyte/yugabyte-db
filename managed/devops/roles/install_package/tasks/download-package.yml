@@ -98,6 +98,12 @@
     remote_src: True
   tags: yb-prebuilt-ami
 
+- name: Download package | Clean up temporary remote downloads
+  file:
+    path: "{{ remote_tmp_package }}"
+    state: absent
+  tags: yb-prebuilt-ami
+
 - name: Download package | Unpack package "{{ tmp_package_location }}"
   unarchive:
     src: "{{ tmp_package_location }}"
