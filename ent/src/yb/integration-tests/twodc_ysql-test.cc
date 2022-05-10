@@ -289,7 +289,10 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
       std::string with_clause =
           colocation_id_string.empty() ? colocated_clause
                                        : Format("$0, $1", colocation_id_string, colocated_clause);
-      query += Format("WITH ($0) SPLIT INTO $1 TABLETS", with_clause, num_tablets);
+      query += Format("WITH ($0)", with_clause);
+      if (!colocated) {
+         query += Format(" SPLIT INTO $0 TABLETS", num_tablets);
+      }
     }
     EXPECT_OK(conn.Execute(query));
     return GetTable(cluster, namespace_name, table_name);
