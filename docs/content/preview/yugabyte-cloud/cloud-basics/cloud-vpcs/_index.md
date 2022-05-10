@@ -49,7 +49,7 @@ VPC peering is not supported in free clusters.
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./cloud-configure-provider/">
+    <a class="section-link icon-offset" href="./cloud-add-vpc-aws/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
         <div class="title">Create a VPC network</div>

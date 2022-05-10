@@ -85,6 +85,7 @@ For more information on creating clusters, refer to [Create a cluster](../../cre
 After creating a VPC in YugabyteDB Managed that uses AWS, you can peer it with an AWS application VPC.
 
 > You need the following details for the AWS application VPC you are peering with:
+>
 > - Account ID
 > - VPC ID
 > - VPC region

@@ -14,7 +14,7 @@ showAsideToc: true
 
 A virtual private cloud (VPC) is a virtual network where you can deploy clusters that you want to peer with application VPCs hosted with the same provider. The VPC reserves a range of IP addresses with the cloud provider you select. You must set up a dedicated VPC before deploying your cluster. A VPC must be created before you can configure a peering connection.
 
-**VPCs** on the **VPC Network** tab displays a list of VPCs configured for your cloud that includes the VPC name, provider, region, CIDR, number of peerings, number of clusters deployed in the VPC, and status.
+**VPCs** on the **VPC Network** tab displays a list of VPCs configured for your cloud that includes the VPC name, provider, region, CIDR, number of peering connections, number of clusters deployed in the VPC, and status.
 
 ![VPCs](/images/yb-cloud/cloud-vpc.png)
 
