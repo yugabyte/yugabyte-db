@@ -3947,21 +3947,6 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
   return Status::OK();
 }
 
-Status CatalogManager::CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info) const {
-  auto& placement_info = replication_info.live_replicas();
-  if (!placement_info.placement_blocks().empty()) {
-    for (const auto& cloud_info : replication_info.affinitized_leaders()) {
-      if (!CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(placement_info, cloud_info)) {
-        return STATUS_FORMAT(
-            InvalidArgument, "Placement info $0 does not contain preferred zone cloud info $1",
-            placement_info, TSDescriptor::generate_placement_id(cloud_info));
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
 Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
                                            const Schema& schema,
                                            const PartitionSchema& partition_schema,
@@ -10420,7 +10405,7 @@ Status CatalogManager::ValidateReplicationInfo(
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }
 
-  s = CheckValidLeaderAffinity(req->replication_info());
+  s = CatalogManagerUtil::CheckValidLeaderAffinity(req->replication_info());
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }
