@@ -192,6 +192,7 @@ class MasterPathHandlers {
   void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, Webserver::WebResponse* resp,
                                    const Webserver::PathHandlerCallback& callback);
   void RedirectToLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  Result<std::string> GetLeaderAddress(const Webserver::WebRequest& req);
   void RootHandler(const Webserver::WebRequest& req,
                    Webserver::WebResponse* resp);
   void HandleTabletServers(const Webserver::WebRequest& req,
