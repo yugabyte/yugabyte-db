@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: cloud-add-peering
     parent: cloud-vpcs
-    weight: 40
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---

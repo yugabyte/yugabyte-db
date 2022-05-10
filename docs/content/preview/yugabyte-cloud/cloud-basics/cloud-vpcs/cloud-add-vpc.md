@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: cloud-add-vpc
     parent: cloud-vpcs
-    weight: 30
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---
