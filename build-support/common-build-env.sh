@@ -498,15 +498,7 @@ set_default_compiler_type() {
     if is_mac; then
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
-      if [[ ${build_type:-} == "tsan" ]]; then
-        # TODO: upgrade Clang version used for TSAN as well.
-        YB_COMPILER_TYPE=clang7
-      elif [[ $( uname -m ) == "aarch64" ]] || ! is_redhat_family; then
-        # TODO: produce a third-party build for aarch64 with Clang 12, and on Ubuntu.
-        YB_COMPILER_TYPE=clang11
-      else
-        YB_COMPILER_TYPE=clang12
-      fi
+      YB_COMPILER_TYPE=clang12
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
