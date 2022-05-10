@@ -24,6 +24,26 @@ ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
                DEPS ${PGWRAPPER_LIBS})
 
+# We indirectly use some headers that are generated during while processing the protobufs below.
+add_dependencies(
+  yb_pgwrapper
+  gen_src_yb_tserver_backup_proto
+  gen_src_yb_docdb_docdb_proto
+  gen_src_yb_util_opid_proto
+  gen_src_yb_tablet_metadata_proto
+  gen_src_yb_tablet_operations_proto
+  gen_src_yb_tablet_tablet_proto
+  gen_src_yb_tablet_tablet_types_proto
+  gen_src_yb_tserver_tserver_proto
+  gen_src_yb_tserver_tserver_types_proto
+  gen_src_yb_cdc_cdc_consumer_proto
+  gen_src_yb_encryption_encryption_proto
+  gen_src_yb_master_master_heartbeat_proto
+  gen_src_yb_master_master_types_proto
+  gen_src_yb_tserver_tserver_service_proto
+  gen_src_yb_rpc_any_proto
+  )
+
 set(PQ_UTILS_SRCS
     libpq_utils.cc)
 set(PQ_UTILS_DEPS
