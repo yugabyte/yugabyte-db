@@ -12,6 +12,7 @@
       - package is defined
       - user_name is defined
       - symlink_folders is defined
+      - num_releases_to_keep is defined
 
 - set_fact:
     package_folder: "{{ package | basename | extract_archive_folder_name }}"
