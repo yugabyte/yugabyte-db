@@ -9,9 +9,9 @@ import static com.yugabyte.yw.common.AssertHelper.assertConflict;
 import static com.yugabyte.yw.common.AssertHelper.assertForbidden;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static com.yugabyte.yw.models.Users.Role;
@@ -57,7 +57,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.scheduler.Scheduler;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -186,7 +185,9 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
-    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.ldap.use_ldap", "true", false);
     when(ldapUtil.loginWithLdap(any())).thenReturn(user);
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
@@ -195,7 +196,9 @@ public class SessionControllerTest {
     assertNotNull(json.get("authToken"));
     assertAuditEntry(1, customer.uuid);
 
-    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.ldap.use_ldap", "false", false);
   }
 
   @Test
@@ -208,7 +211,9 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password1");
-    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.ldap.use_ldap", "true", false);
     when(ldapUtil.loginWithLdap(any())).thenReturn(null);
     Result result =
         assertPlatformException(() -> route(fakeRequest("POST", "/api/login").bodyJson(loginJson)));
@@ -220,7 +225,9 @@ public class SessionControllerTest {
         allOf(notNullValue(), containsString("Invalid User Credentials")));
     assertAuditEntry(0, customer.uuid);
 
-    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.ldap.use_ldap", "false", false);
   }
 
   @Test
@@ -252,7 +259,9 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
-    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.ldap.use_ldap", "true", false);
     when(ldapUtil.loginWithLdap(any())).thenReturn(null);
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
@@ -261,7 +270,9 @@ public class SessionControllerTest {
     assertNotNull(json.get("authToken"));
     assertAuditEntry(1, customer.uuid);
 
-    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.ldap.use_ldap", "false", false);
   }
 
   @Test

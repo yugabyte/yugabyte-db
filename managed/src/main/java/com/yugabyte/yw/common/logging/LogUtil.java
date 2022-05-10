@@ -7,7 +7,6 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.AuditLoggingConfig;
-
 import javax.annotation.Nullable;
 import javax.validation.constraints.NotNull;
 import org.apache.commons.lang3.StringUtils;
@@ -109,14 +108,16 @@ public class LogUtil {
       @NotNull String level,
       @Nullable String rolloverPattern,
       @Nullable Integer maxHistory) {
-    sConfigFactory.globalRuntimeConf().setValue(LOGGING_CONFIG_KEY, level);
+    sConfigFactory.globalRuntimeConf().setValue(LOGGING_CONFIG_KEY, level, false);
     if (rolloverPattern != null) {
-      sConfigFactory.globalRuntimeConf().setValue(LOGGING_ROLLOVER_PATTERN_KEY, rolloverPattern);
+      sConfigFactory
+          .globalRuntimeConf()
+          .setValue(LOGGING_ROLLOVER_PATTERN_KEY, rolloverPattern, false);
     }
     if (maxHistory != null) {
       sConfigFactory
           .globalRuntimeConf()
-          .setValue(LOGGING_MAX_HISTORY_KEY, String.valueOf(maxHistory));
+          .setValue(LOGGING_MAX_HISTORY_KEY, String.valueOf(maxHistory), false);
     }
   }
 
@@ -130,14 +131,16 @@ public class LogUtil {
 
     sConfigFactory
         .globalRuntimeConf()
-        .setValue(AUDIT_LOG_OUTPUT_TO_STDOUT_KEY, String.valueOf(outputToStdout));
+        .setValue(AUDIT_LOG_OUTPUT_TO_STDOUT_KEY, String.valueOf(outputToStdout), false);
     sConfigFactory
         .globalRuntimeConf()
-        .setValue(AUDIT_LOG_OUTPUT_TO_FILE_KEY, String.valueOf(outputToFile));
-    sConfigFactory.globalRuntimeConf().setValue(AUDIT_LOG_ROLLOVER_PATTERN_KEY, rolloverPattern);
+        .setValue(AUDIT_LOG_OUTPUT_TO_FILE_KEY, String.valueOf(outputToFile), false);
     sConfigFactory
         .globalRuntimeConf()
-        .setValue(AUDIT_LOG_MAX_HISTORY_KEY, String.valueOf(maxHistory));
+        .setValue(AUDIT_LOG_ROLLOVER_PATTERN_KEY, rolloverPattern, false);
+    sConfigFactory
+        .globalRuntimeConf()
+        .setValue(AUDIT_LOG_MAX_HISTORY_KEY, String.valueOf(maxHistory), false);
   }
 
   /**
