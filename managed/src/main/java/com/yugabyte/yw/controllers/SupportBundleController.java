@@ -69,7 +69,7 @@ public class SupportBundleController extends AuthenticatedController {
   @ApiOperation(
       value = "Download support bundle",
       nickname = "downloadSupportBundle",
-      response = SupportBundle.class,
+      response = String.class,
       produces = "application/x-compressed")
   public Result get(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);

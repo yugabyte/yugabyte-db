@@ -2424,30 +2424,6 @@
       },
       "type" : "object"
     },
-    "FileSystem" : {
-      "properties" : {
-        "fileStores" : {
-          "$ref" : "#/definitions/IterableFileStore"
-        },
-        "open" : {
-          "type" : "boolean"
-        },
-        "readOnly" : {
-          "type" : "boolean"
-        },
-        "rootDirectories" : {
-          "$ref" : "#/definitions/IterablePath"
-        },
-        "separator" : {
-          "type" : "string"
-        },
-        "userPrincipalLookupService" : {
-          "$ref" : "#/definitions/UserPrincipalLookupService"
-        }
-      },
-      "required" : [ "fileStores", "open", "readOnly", "rootDirectories", "separator", "userPrincipalLookupService" ],
-      "type" : "object"
-    },
     "GCSLocation" : {
       "properties" : {
         "paths" : {
@@ -2773,15 +2749,6 @@
         }
       },
       "required" : [ "instanceTypeCode", "providerUuid" ],
-      "type" : "object"
-    },
-    "Iterable" : {
-      "type" : "object"
-    },
-    "IterableFileStore" : {
-      "type" : "object"
-    },
-    "IterablePath" : {
       "type" : "object"
     },
     "KeyInfo" : {
@@ -3862,31 +3829,6 @@
       },
       "type" : "object"
     },
-    "Path" : {
-      "properties" : {
-        "absolute" : {
-          "type" : "boolean"
-        },
-        "fileName" : {
-          "$ref" : "#/definitions/Path"
-        },
-        "fileSystem" : {
-          "$ref" : "#/definitions/FileSystem"
-        },
-        "nameCount" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "parent" : {
-          "$ref" : "#/definitions/Path"
-        },
-        "root" : {
-          "$ref" : "#/definitions/Path"
-        }
-      },
-      "required" : [ "absolute", "fileName", "fileSystem", "nameCount", "parent", "root" ],
-      "type" : "object"
-    },
     "PlacementAZ" : {
       "properties" : {
         "isAffinitized" : {
@@ -4762,38 +4704,6 @@
         }
       },
       "required" : [ "clusters", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
-      "type" : "object"
-    },
-    "SupportBundle" : {
-      "properties" : {
-        "bundleUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "endDate" : {
-          "format" : "date-time",
-          "type" : "string"
-        },
-        "fileName" : {
-          "type" : "string"
-        },
-        "path" : {
-          "$ref" : "#/definitions/Path"
-        },
-        "scopeUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "startDate" : {
-          "format" : "date-time",
-          "type" : "string"
-        },
-        "status" : {
-          "enum" : [ "Running", "Success", "Failed" ],
-          "type" : "string"
-        }
-      },
-      "required" : [ "bundleUUID", "endDate", "fileName", "path", "scopeUUID", "startDate", "status" ],
       "type" : "object"
     },
     "SystemdUpgradeParams" : {
@@ -6240,9 +6150,6 @@
           "type" : "string"
         }
       },
-      "type" : "object"
-    },
-    "UserPrincipalLookupService" : {
       "type" : "object"
     },
     "UserProfileData" : {
@@ -11498,7 +11405,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/SupportBundle"
+              "type" : "string"
             }
           }
         },
