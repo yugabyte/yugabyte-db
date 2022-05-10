@@ -20,7 +20,7 @@ To use pgAdmin with YugabyteDB, you need to have YugabyteDB up and running, the 
 
 ### YugabyteDB
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequisites](../#yugabytedb-prerequisites).
 
 ### PostgreSQL JDBC driver
 
@@ -56,4 +56,4 @@ You can begin exploring YugabyteDB databases.
 
 For details on using pgAdmin, click **Help** in the pgAdmin menu.
 
-If you're looking for sample databases to explore YugabyteDB using pgAdmin, refer to [Sample data](../../sample-data/).
+If you're looking for sample databases to explore YugabyteDB using pgAdmin, refer to [Sample datasets](../../sample-data/).

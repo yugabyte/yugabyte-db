@@ -12,19 +12,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This tutorial shows how to install the [Cassandra Workbench](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra) extension in Visual Studio Code and configure a connection.
+[Cassandra Workbench](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra) is a free Visual Studio Code extension for browsing and querying Cassandra databases. It also features autocomplete and syntax highlighting.
+
+This tutorial shows how to install Cassandra Workbench and configure a connection.
 
 ## Before you begin
 
-To use Cassandra Workbench with YugabyteDB, you need to have YugabyteDB up and running, and Visual Studio Code.
+To use Cassandra Workbench with YugabyteDB, you need to have the following
 
-### YugabyteDB
-
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../#yugabytedb-prerequisites).
-
-### Visual Studio Code
-
-You can download Visual Studio Code from <https://code.visualstudio.com> for Windows, Mac or Linux.
+- YugabyteDB up and running. Refer to [YugabyteDB Prerequisites](../#yugabytedb-prerequisites).
+- Visual Studio Code [installed](https://code.visualstudio.com).
 
 ## Install the Cassandra Workbench extension
 
@@ -46,8 +43,8 @@ For more information on managing extensions in Visual Studio Code, refer to [Ins
 
 ## Create a configuration
 
-1. Click the Cassandra Workbench icon in the **Activity** bar in Visual Studio Code.
-
+1. Click the Cassandra Workbench icon in the **Activity** bar in Visual Studio Code.\
+\
     ![Open Cassandra Workbench](/images/develop/tools/vscodeworkbench/cloudicon.png)
 
 1. Open the Command Palette (View>Command Palette) and enter the following command to generate the .cassandraWorkbench.jsonc configuration file:

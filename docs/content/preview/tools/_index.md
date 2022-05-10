@@ -15,7 +15,7 @@ menu:
     weight: 2900
 ---
 
-Because YugabyteDB is PostgreSQL- and Cassandra-compatible, you can use third-party clients to connect to your YugabyteDB clusters.
+Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters.
 
 ### YugabyteDB prerequisites
 

@@ -87,7 +87,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 - **database** name; the default YSQL database is yugabyte
 - **username** and **password** of a user with permissions for the database; the default user is admin
 
-Your client may also require the use of the cluster certificate. Refer to [Download the cluster certificate](../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+Your client may also require the use of the cluster's certificate. Refer to [Download the cluster certificate](../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 For detailed steps for configuring popular third party tools, see [Third party tools](../../../tools/).
 
