@@ -81,8 +81,8 @@ Enforce that duplicate values in a table are not allowed.
 
 ### CONCURRENTLY
 Enable online schema migration (see [Semantics](#semantics) for details), with some restrictions:
-* Upon creating an index on a temporary table, online schema migration will be disabled.
-* `CREATE INDEX CONCURRENTLY` is not supported for partitioned table.
+* When creating an index on a temporary table, online schema migration is disabled.
+* `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables.
 * `CREATE INDEX CONCURRENTLY` is not supported inside a transaction block.
 
 ### NONCONCURRENTLY
