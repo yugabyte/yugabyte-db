@@ -22,15 +22,19 @@
 
   .form-group {
     display: flex;
+    align-items: center;
+    min-height: 35px;
 
     &>span {
       margin-right: 10px;
     }
-
+    .yb-field-group{
+      padding-bottom: 0px;
+    }
     .yb-field-group>.btn-group-radio {
       display: inline-flex;
       align-items: center;
-
+      margin-bottom: 2px;
       input {
         margin: 0 10px 0 0;
       }
