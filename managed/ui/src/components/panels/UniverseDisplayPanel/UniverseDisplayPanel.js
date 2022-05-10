@@ -13,9 +13,9 @@ import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { YBButton } from '../../common/forms/fields';
 import {
   getPrimaryCluster,
-  getReadOnlyCluster,
   getClusterProviderUUIDs,
-  getProviderMetadata
+  getProviderMetadata,
+  getUniverseNodeCount
 } from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { TimestampWithTimezone } from '../../common/timestampWithTimezone/TimestampWithTimezone';
@@ -47,7 +47,6 @@ class UniverseDisplayItem extends Component {
     if (!isNonEmptyObject(primaryCluster) || !isNonEmptyObject(primaryCluster.userIntent)) {
       return <span />;
     }
-    const readOnlyCluster = getReadOnlyCluster(universe.universeDetails.clusters);
     const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
     const clusterProviders = providers.data.filter((p) => clusterProviderUUIDs.includes(p.uuid));
     const replicationFactor = <span>{`${primaryCluster.userIntent.replicationFactor}`}</span>;
@@ -55,10 +54,8 @@ class UniverseDisplayItem extends Component {
       return getProviderMetadata(provider).name;
     });
     const universeProviderText = universeProviders.join(', ');
-    let nodeCount = primaryCluster.userIntent.numNodes;
-    if (isNonEmptyObject(readOnlyCluster)) {
-      nodeCount += readOnlyCluster.userIntent.numNodes;
-    }
+
+    const nodeCount = getUniverseNodeCount(universe.universeDetails.nodeDetailsSet);
     const numNodes = <span>{nodeCount}</span>;
     let costPerMonth = <span>n/a</span>;
     if (isFinite(universe.pricePerHour)) {

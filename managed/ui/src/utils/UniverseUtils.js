@@ -1,8 +1,17 @@
 // Copyright (c) YugaByte, Inc.
+import _ from 'lodash';
 
 import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from './ObjectUtils';
 import { PROVIDER_TYPES, IN_DEVELOPMENT_MODE } from '../config';
-import _ from 'lodash';
+import { NodeState } from '../redesign/helpers/dtos';
+
+export const nodeInClusterStates = [
+  NodeState.Live,
+  NodeState.Stopping,
+  NodeState.Stopped,
+  NodeState.Starting,
+  NodeState.Unreachable
+];
 
 export function isNodeRemovable(nodeState) {
   return nodeState === 'To Be Added';
@@ -76,27 +85,18 @@ export function getClusterProviderUUIDs(clusters) {
   return providers;
 }
 
-export function getUniverseNodes(clusters) {
-  const primaryCluster = getPrimaryCluster(clusters);
-  const readOnlyCluster = getReadOnlyCluster(clusters);
-  let numNodes = 0;
-  if (
-    isNonEmptyObject(primaryCluster) &&
-    isNonEmptyObject(primaryCluster.userIntent) &&
-    isDefinedNotNull(primaryCluster.userIntent.numNodes)
-  ) {
-    numNodes += primaryCluster.userIntent.numNodes;
-  }
-  if (
-    isNonEmptyObject(readOnlyCluster) &&
-    isNonEmptyObject(readOnlyCluster.userIntent) &&
-    isDefinedNotNull(readOnlyCluster.userIntent.numNodes)
-  ) {
-    numNodes += readOnlyCluster.userIntent.numNodes;
-  }
-
-  return numNodes;
-}
+/**
+ * @returns The number of nodes in "Live" or "Stopped" state.
+ * Restricted to a particular cluster if provided.
+ */
+export const getUniverseNodeCount = (nodeDetailsSet, cluster = null) => {
+  const nodes = nodeDetailsSet ?? [];
+  return nodes.filter(
+    (node) =>
+      (cluster === null || node.placementUuid === cluster.uuid) &&
+      _.includes(nodeInClusterStates, node.state)
+  ).length;
+};
 
 export function getProviderMetadata(provider) {
   return PROVIDER_TYPES.find((providerType) => providerType.code === provider.code);

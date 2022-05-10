@@ -25,7 +25,7 @@ import {
 import {
   getClusterProviderUUIDs,
   getProviderMetadata,
-  getUniverseNodes,
+  getUniverseNodeCount,
   isPausableUniverse
 } from '../../../utils/UniverseUtils';
 import {
@@ -526,7 +526,7 @@ export const UniverseView = (props) => {
   if (universes) {
     universes.forEach(function (universeItem) {
       if (isNonEmptyObject(universeItem.universeDetails)) {
-        numNodes += getUniverseNodes(universeItem.universeDetails.clusters);
+        numNodes += getUniverseNodeCount(universeItem.universeDetails.nodeDetailsSet);
       }
       if (isDefinedNotNull(universeItem.pricePerHour)) {
         totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
