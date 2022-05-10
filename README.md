@@ -45,7 +45,7 @@ To learn about other features, available in `pg_stat_monitor`, see the [Features
 
 `pg_stat_monitor` supports PostgreSQL versions 11 and above. It is compatible with both PostgreSQL provided by PostgreSQL Global Development Group (PGDG) and [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution).
 
-The `RPM` (for RHEL and CentOS) and the `DEB` (for Debian and Ubuntu) packages are available from Percona repositories for PostgreSQL versions [11](https://www.percona.com/downloads/percona-postgresql-11/LATEST/), [12](https://www.percona.com/downloads/postgresql-distribution-12/LATEST/), and [13](https://www.percona.com/downloads/postgresql-distribution-13/LATEST/).
+The `RPM` (for RHEL and CentOS) and the `DEB` (for Debian and Ubuntu) packages are available from Percona repositories for PostgreSQL versions [11](https://www.percona.com/downloads/percona-postgresql-11/LATEST/), [12](https://www.percona.com/downloads/postgresql-distribution-12/LATEST/), [13](https://www.percona.com/downloads/postgresql-distribution-13/LATEST/) and [14](https://www.percona.com/downloads/postgresql-distribution-14/LATEST/).
 
 The RPM packages are also available in the official PostgreSQL (PGDG) yum repositories.
 
