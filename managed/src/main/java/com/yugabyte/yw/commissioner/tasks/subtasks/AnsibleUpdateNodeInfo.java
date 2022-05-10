@@ -54,7 +54,7 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
     if (Strings.isNullOrEmpty(response.message)) {
       String msg =
           String.format(
-              "Node % in universe %s is not found.", taskParams.nodeName, taskParams.universeUUID);
+              "Node %s in universe %s is not found.", taskParams.nodeName, taskParams.universeUUID);
       log.error(msg);
       throw new RuntimeException(msg);
     }

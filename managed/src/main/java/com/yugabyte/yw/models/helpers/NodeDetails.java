@@ -100,7 +100,7 @@ public class NodeDetails {
     // Set after the node has been removed (unjoined) from the cluster.
     Removed(ADD, RELEASE),
     // Set when node is about to enter the Live state from Removed/Decommissioned state.
-    Adding(DELETE),
+    Adding(DELETE, RELEASE),
     // Set when a stopped/removed node is about to enter the Decommissioned state.
     // The actions in Removed state should apply because of the transition from Removed to
     // BeingDecommissioned.
