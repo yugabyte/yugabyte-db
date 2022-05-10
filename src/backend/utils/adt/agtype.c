@@ -8933,7 +8933,9 @@ Datum age_collect_aggtransfn(PG_FUNCTION_ARGS)
     }
     /* otherwise, retrieve the state */
     else
+    {
         castate = (agtype_in_state *) PG_GETARG_POINTER(0);
+    }
 
     /*
      * Extract the variadic args, of which there should only be one.
@@ -8941,9 +8943,13 @@ Datum age_collect_aggtransfn(PG_FUNCTION_ARGS)
      * skipped over.
      */
     if (PG_ARGISNULL(1))
+    {
         nargs = 0;
+    }
     else
+    {
         nargs = extract_variadic_args(fcinfo, 1, true, &args, &types, &nulls);
+    }
 
     if (nargs == 1)
     {
@@ -8962,15 +8968,21 @@ Datum age_collect_aggtransfn(PG_FUNCTION_ARGS)
                                                                  0);
                 /* add the arg if not agtype null */
                 if (agtv_value->type != AGTV_NULL)
+                {
                     add_agtype(args[0], nulls[0], castate, types[0], false);
+                }
             }
             else
+            {
                 add_agtype(args[0], nulls[0], castate, types[0], false);
+            }
         }
     }
     else if (nargs > 1)
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("collect() invalid number of arguments")));
+    }
 
     /* restore the old context */
     MemoryContextSwitchTo(old_mcxt);
@@ -8988,8 +9000,23 @@ Datum age_collect_aggfinalfn(PG_FUNCTION_ARGS)
 
     /* verify we are in an aggregate context */
     Assert(AggCheckCallContext(fcinfo, NULL) == AGG_CONTEXT_AGGREGATE);
-    /* get the state */
-    castate = (agtype_in_state *) PG_GETARG_POINTER(0);
+    /*
+     * Get the state. There are cases where the age_collect_aggtransfn never
+     * gets called. So, check to see if this is one.
+     */
+    if (PG_ARGISNULL(0))
+    {
+        /* create and initialize the state */
+        castate = palloc0(sizeof(agtype_in_state));
+        memset(castate, 0, sizeof(agtype_in_state));
+        /* start the array */
+        castate->res = push_agtype_value(&castate->parse_state,
+                                         WAGT_BEGIN_ARRAY, NULL);
+    }
+    else
+    {
+        castate = (agtype_in_state *) PG_GETARG_POINTER(0);
+    }
     /* switch to the correct aggregate context */
     old_mcxt = MemoryContextSwitchTo(fcinfo->flinfo->fn_mcxt);
     /* Finish/close the array */

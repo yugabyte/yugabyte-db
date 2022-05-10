@@ -2182,6 +2182,8 @@ AS (zip1 agtype, zip2 agtype);
 SELECT * FROM cypher('UCSC', $$ RETURN collect(5) $$) AS (result agtype);
 -- should return an empty aray
 SELECT * FROM cypher('UCSC', $$ RETURN collect(NULL) $$) AS (empty agtype);
+SELECT * FROM cypher('UCSC', $$ MATCH (u) WHERE u.name =~ "doesn't exist" RETURN collect(u.name) $$) AS (name agtype);
+
 -- should fail
 SELECT * FROM cypher('UCSC', $$ RETURN collect() $$) AS (collect agtype);
 

@@ -5224,6 +5224,12 @@ SELECT * FROM cypher('UCSC', $$ RETURN collect(NULL) $$) AS (empty agtype);
  []
 (1 row)
 
+SELECT * FROM cypher('UCSC', $$ MATCH (u) WHERE u.name =~ "doesn't exist" RETURN collect(u.name) $$) AS (name agtype);
+ name 
+------
+ []
+(1 row)
+
 -- should fail
 SELECT * FROM cypher('UCSC', $$ RETURN collect() $$) AS (collect agtype);
 ERROR:  function ag_catalog.age_collect() does not exist
