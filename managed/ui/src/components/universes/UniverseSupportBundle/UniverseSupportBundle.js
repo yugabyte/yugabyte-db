@@ -38,7 +38,8 @@ export const UniverseSupportBundle = (props) => {
     modal: {showModal, visibleModal},
   } = props;
   const [steps, setSteps] = useState(stepsObj.firstStep);
-  const [payload, setPayload] = useState(updateOptions(filterTypes[0].value, [true, true, true,true, true, true, true, true], () =>{}));
+  const defaultOptions = updateOptions(filterTypes[0].value, [true, true, true,true, true, true, true, true], () =>{});
+  const [payload, setPayload] = useState(defaultOptions);
 
   const dispatch = useDispatch();
   const [supportBundles] = useSelector(getSupportBundles);
@@ -78,8 +79,9 @@ export const UniverseSupportBundle = (props) => {
 
   const saveSupportBundle = (universeUUID) => {
     dispatch(crateSupportBundle(universeUUID, payload)).then(() => {
-      handleStepChange(stepsObj.thirdStep)
+      handleStepChange(stepsObj.thirdStep);
       listSupportBundle(universeUUID);
+      setPayload(defaultOptions);
     });
   };
 
