@@ -30,7 +30,9 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB Managed supports virtual private cloud (VPC) networks on GCP. Using YugabyteDB Managed, you can create a VPC on GCP, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on GCP.
+YugabyteDB Managed supports virtual private cloud (VPC) networks on AWS and GCP.
+
+Using YugabyteDB Managed, you can create a VPC on GCP, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on GCP.
 
 To create a VPC network on GCP, you need to complete the following tasks:
 
@@ -39,7 +41,7 @@ To create a VPC network on GCP, you need to complete the following tasks:
 | 1. Create the VPC. | Reserves a range of IP addresses for the network.<br>The status of the VPC is _Active_ when done. |
 | 2. Deploy a cluster in the VPC. | This can be done at any time - you don't need to wait until the VPC is peered. |
 | 3. Create a peering connection. | Connects your VPC and the application VPC on the cloud provider network.<br>The status of the peering connection is _Pending_ when done. |
-| 4. Create a GCP peering connection. | Confirms the connection between your VPC and the application VPC.<br>The status of the peering connection is _Active_ when done. |
+| 4. Complete the peering in GCP. | Confirms the connection between your VPC and the application VPC.<br>The status of the peering connection is _Active_ when done. |
 | 5. Add the application VPC to the IP allow list. | Allows the peered application VPC to connect to the cluster.<br>Add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster. |
 
 With the exception of 4, these tasks are performed in YugabyteDB Managed.
@@ -106,7 +108,7 @@ To create a peering connection, do the following:
 
 The peering connection is created with a status of _Pending_.
 
-## Create a peering connection in GCP
+## Complete the peering in GCP
 
 To complete a _Pending_ GCP peering connection, you need to sign in to GCP and create a peering connection.
 
@@ -129,8 +131,20 @@ In the Google Cloud Console, do the following:
 
 When finished, the status of the peering connection in YugabyteDB Managed changes to _Active_ if the connection is successful.
 
-{{< warning title="Important" >}}
+## Add the application VPC to the cluster IP allow list
 
-If you have an _Active_ peering connection but are unable to connect to a cluster in the VPC, ensure that you have added the CIDR block of the peered application VPC to your cluster's IP allow list. For information on adding IP allow lists, refer to [Assign IP allow lists](../../../cloud-secure-clusters/add-connections/).
+> You need the CIDR address for the GCP application VPC you are peering with.
 
-{{< /warning >}}
+To add the application VPC to the cluster IP allow list:
+
+1. On the **Clusters** page, select the cluster you are peering, and click **Add IP Allow List** to display the **Add IP Allow List** sheet.
+
+1. Click **Create New List and Add to Cluster**.
+
+1. Enter a name and description for the list. For example, the name and details of your application VPC.
+
+1. Add at least one of the CIDR blocks associated with the peered application VPC.
+
+1. Click **Save** when done.
+
+For more information on IP allow lists, refer to [IP allow lists](../../../cloud-secure-clusters/add-connections/).

@@ -30,7 +30,9 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB Managed supports virtual private cloud (VPC) networks on AWS. Using YugabyteDB Managed, you can create a VPC on AWS, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on AWS.
+YugabyteDB Managed supports virtual private cloud (VPC) networks on AWS and GCP.
+
+Using YugabyteDB Managed, you can create a VPC on AWS, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on AWS.
 
 To create a VPC network in AWS, you need to complete the following tasks:
 
@@ -147,8 +149,20 @@ To add a routing table entry:
 
 When finished, the status of the peering connection in YugabyteDB Managed changes to _Active_ if the connection is successful.
 
-{{< warning title="Important" >}}
+## Add the application VPC to the cluster IP allow list
 
-If you have an _Active_ peering connection but are unable to connect to a cluster in the VPC, ensure that you have added the CIDR block of the peered application VPC to your cluster's IP allow list. For information on adding IP allow lists, refer to [Assign IP allow lists](../../../cloud-secure-clusters/add-connections/).
+> You need the CIDR address for the AWS application VPC you are peering with.
 
-{{< /warning >}}
+To add the application VPC to the cluster IP allow list:
+
+1. On the **Clusters** page, select the cluster you are peering, and click **Add IP Allow List** to display the **Add IP Allow List** sheet.
+
+1. Click **Create New List and Add to Cluster**.
+
+1. Enter a name and description for the list.
+
+1. Add at least one of the CIDR blocks associated with the peered application VPC.
+
+1. Click **Save** when done.
+
+For more information on IP allow lists, refer to [IP allow lists](../../../cloud-secure-clusters/add-connections/).
