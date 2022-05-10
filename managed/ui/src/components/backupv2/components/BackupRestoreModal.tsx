@@ -7,6 +7,14 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
+//
+//
+//    Note:
+//    If you change any functionality/api here, please make sure to change the same(if needed) in BackupAdvancedRestore.tsx too
+//
+//
+//
+
 import React, { FC, useState } from 'react';
 import { Alert, Col, Row } from 'react-bootstrap';
 import { getKMSConfigs, IBackup, IUniverse, Keyspace_Table, restoreEntireBackup } from '..';
@@ -219,10 +227,6 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
           });
         } else {
           restore.mutate({ backup_details: backup_details as IBackup, values });
-        }
-        if (currentStep !== STEPS.length - 1) {
-          setCurrentStep(currentStep + 1);
-        } else {
         }
       }}
       initialValues={initialValues}

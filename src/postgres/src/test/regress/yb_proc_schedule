@@ -1,6 +1,7 @@
 # src/test/regress/yb_proc_schedule
 #
 ####################################################################################################
-# This suite includes tests on the partition_hash function
+# This suite includes postgres proc tests.
 ####################################################################################################
 test: yb_hash_code
+test: yb_function

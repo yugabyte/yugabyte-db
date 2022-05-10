@@ -39,6 +39,7 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
       return {
         keyspace: table.keyspace,
         storageLocation: table.storageLocation,
+        defaultLocation: table.defaultLocation,
         index
       };
     });
@@ -70,7 +71,7 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
                 btnText="Copy Location"
                 onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                   e.stopPropagation();
-                  copy(row.storageLocation);
+                  copy(row.storageLocation ?? row.defaultLocation);
                   toast.success(
                     <>
                       <i className="fa fa-check" /> Copied
@@ -155,7 +156,7 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
                 btnText="Copy Location"
                 onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                   e.stopPropagation();
-                  copy(row.storageLocation);
+                  copy(row.storageLocation ?? row.defaultLocation);
                   toast.success(
                     <>
                       <i className="fa fa-check" /> Copied

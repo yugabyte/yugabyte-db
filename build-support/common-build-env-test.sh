@@ -164,7 +164,7 @@ test_set_cmake_build_type_and_compiler_type   asan       linux-gnu clang7     fa
 test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc        N/A        N/A     1
 test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc8       N/A        gcc8    1
 test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc9       N/A        gcc9    1
-test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang7  0
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang12 0
 test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu clang7     fastdebug  clang7  0
 test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc        N/A        N/A     1
 test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc8       N/A        gcc8    1

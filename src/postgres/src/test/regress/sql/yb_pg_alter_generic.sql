@@ -461,20 +461,6 @@ SELECT nspname, prsname
   FROM pg_ts_parser t, pg_namespace n
   WHERE t.prsnamespace = n.oid AND nspname like 'alt_nsp%'
   ORDER BY nspname, prsname;
-
----
---- Validate yb_db_admin role can ALTER function
----
-CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql
-  AS 'SELECT $1 + 1';
-SET SESSION AUTHORIZATION yb_db_admin;
-ALTER FUNCTION alt_func1(int) OWNER TO regress_alter_generic_user2;
-ALTER FUNCTION alt_func1(int) RENAME TO func_renamed;
-ALTER FUNCTION func_renamed(int) SET SCHEMA alt_nsp1;
--- validate regress_alter_generic_user2 can operate on function
-ALTER FUNCTION func_renamed(int) OWNER TO regress_alter_generic_user1;
-ALTER FUNCTION func_renamed(int) RENAME TO func_renamed2;
-ALTER FUNCTION func_renamed2(int) SET SCHEMA alt_nsp1;
 ---
 --- Cleanup resources
 ---

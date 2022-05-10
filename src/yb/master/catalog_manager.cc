@@ -477,6 +477,9 @@ DEFINE_bool(enable_truncate_on_pitr_table, false,
     "When enabled, truncate table will be allowed on PITR tables");
 TAG_FLAG(enable_truncate_on_pitr_table, runtime);
 
+DEFINE_test_flag(double, fault_crash_after_registering_split_children, 0.0,
+                 "Crash after registering the children for a tablet split.");
+
 namespace yb {
 namespace master {
 
@@ -2669,6 +2672,7 @@ Status CatalogManager::DoSplitTablet(
   }
   source_tablet_lock.Commit();
   source_table_lock.Commit();
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_after_registering_split_children);
 
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.

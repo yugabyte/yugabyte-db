@@ -48,6 +48,7 @@ import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import Replication from '../../xcluster/Replication';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import {UniverseSupportBundle} from "../UniverseSupportBundle/UniverseSupportBundle";
+import { YBTag } from '../../common/YBTag';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
 
@@ -444,7 +445,7 @@ class UniverseDetail extends Component {
             isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
               <Tab.Pane
                 eventKey={'backups'}
-                tabtitle="Backups"
+                tabtitle={<>Backups{(featureFlags.test['backupv2'] || featureFlags.released['backupv2']) && <YBTag>Beta</YBTag> } </>}
                 key="backups-tab"
                 mountOnEnter={true}
                 unmountOnExit={true}
@@ -694,7 +695,7 @@ class UniverseDetail extends Component {
                                   onClick={showSupportBundleModal}
                                 >
                                   <YBLabelWithIcon icon="fa fa-file-archive-o">
-                                    Support Bundles (Beta)
+                                    Support Bundles <YBTag>Beta</YBTag>
                                   </YBLabelWithIcon>
                                 </YBMenuItem>
                               }

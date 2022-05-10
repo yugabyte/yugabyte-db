@@ -930,7 +930,7 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
   ASSERT_OK(session_.ExecuteQuery("INSERT INTO basic(key, json) values ('test7', '2.0');"));
   ASSERT_OK(session_.ExecuteQuery("INSERT INTO basic(key, json) values ('test8', '{\"b\" : 1}');"));
 
-  for (const string& key : {"test", "test0"} ) {
+  for (auto key : {"test"s, "test0"s} ) {
     MyTable::ColumnsTuple output(key, CassandraJson(""));
     table.SelectOneRow(&session_, &output);
     table.Print("RESULT OUTPUT", output);

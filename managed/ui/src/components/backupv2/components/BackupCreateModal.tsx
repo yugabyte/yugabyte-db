@@ -57,7 +57,7 @@ const DURATION_OPTIONS = DURATIONS.map((t: string) => {
   };
 });
 
-const SCHEDULE_DURATION_OPTIONS = ['Mins', 'Hours', ...DURATIONS].map((t: string) => {
+const SCHEDULE_DURATION_OPTIONS = ['Minutes', 'Hours', ...DURATIONS].map((t: string) => {
   return {
     value: t,
     label: t
@@ -416,7 +416,10 @@ function BackupConfigurationForm({
             ]}
             onChange={(_: any, val: any) => {
               setFieldValue('db_to_backup', val);
-              if (values['api_type'].value === BACKUP_API_TYPES.YCQL) {
+              if (
+                values['api_type'].value === BACKUP_API_TYPES.YCQL ||
+                values['api_type'].value === BACKUP_API_TYPES.YEDIS
+              ) {
                 setFieldValue('selected_ycql_tables', []);
                 //All keyspace selected
                 if (val.value === null) {
@@ -428,7 +431,8 @@ function BackupConfigurationForm({
           />
         </Col>
       </Row>
-      {values['api_type'].value === BACKUP_API_TYPES.YCQL && (
+      {(values['api_type'].value === BACKUP_API_TYPES.YCQL ||
+        values['api_type'].value === BACKUP_API_TYPES.YEDIS) && (
         <Row>
           <Col lg={12} className="no-padding">
             {TABLE_BACKUP_OPTIONS.map((target) => (
@@ -577,7 +581,7 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
   isEditMode
 }) => {
   const tablesInKeyspaces = tablesList
-    ?.filter((t) => t.tableType === BACKUP_API_TYPES.YCQL)
+    ?.filter((t) => t.tableType === values['api_type'].value)
     .filter(
       (t) => values['db_to_backup']?.value === null || t.keySpace === values['db_to_backup']?.value
     );
