@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: kafka-connect-yugabytedb
     parent: connectors
-    weight: 2930
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---
