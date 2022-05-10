@@ -114,19 +114,24 @@ Learn more about using histograms from the [usage example](#histogram-1).
 
 ### `pg_stat_monitor` view
 
-The statistics gathered by the module are made available via the view named `pg_stat_monitor`. This view contains one row for each distinct combination of metrics and whether it is a top-level statement or not (up to the maximum number of distinct statements that the module can track). For details about available counters, refer to the [`pg_stat_monitor` view reference](https://github.com/percona/pg_stat_monitor/blob/master/docs/REFERENCE.md).
+The statistics gathered by the module are made available via the view named `pg_stat_monitor`. This view contains one row for each distinct combination of metrics and whether it is a top-level statement or not (up to the maximum number of distinct statements that the module can track). For details about available counters, refer to the [`pg_stat_monitor` view reference](REFERENCE.md).
 
 The following are the primary keys for pg_stat_monitor:
 
-* `bucket`,
-* `userid`,
-* `dbid`,
-* `client_ip`,
-* `application_name`.
+* `bucket`
+*  `userid`
+*  `datname`
+*  `queryid`
+*  `client_ip`
+*  `planid`
+*  `application_name`
+*  `toplevel`.
 
-A new row is created for each key in the `pg_stat_monitor` view.
+> **NOTE**: The `toplevel` key is considered starting with PostgreSQL 14 and above. For PostgreSQL 13 and earlier versions, the `toplevel` value is set to 1 by default, and thus, ignored.
 
-`pg_stat_monitor` inherits the metrics available in `pg_stat_statements`, plus provides additional ones. See the [`pg_stat_monitor` vs `pg_stat_statements` comparison](https://github.com/percona/pg_stat_monitor/blob/master/docs/REFERENCE.md) for details.
+A new row is created for each key in the `pg_stat_monitor` view. 
+
+`pg_stat_monitor` inherits the metrics available in `pg_stat_statements`, plus provides additional ones. See the [`pg_stat_monitor` vs `pg_stat_statements` comparison](COMPARISON.md) for details.
 
 For security reasons, only superusers and members of the `pg_read_all_stats` role are allowed to see the SQL text and `queryid` of queries executed by other users. Other users can see the statistics, however, if the view has been installed in their database.
 
