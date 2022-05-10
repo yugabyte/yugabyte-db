@@ -95,6 +95,7 @@ Addresses have the following restrictions:
 
 You can calculate ranges beforehand using [IP Address Guide's CIDR to IPv4 Conversion calculator](https://www.ipaddressguide.com/cidr).
 
+<!--
 ## Create the VPC network
 
 To create a VPC network, you need to complete the following tasks:
@@ -127,3 +128,4 @@ To create a VPC network, you need to complete the following tasks:
     - Add at least one of the CIDR blocks associated with the peered application VPC to the IP allow list for your cluster.
 
 With the exception of 4, these tasks are performed in YugabyteDB Managed.
+-->

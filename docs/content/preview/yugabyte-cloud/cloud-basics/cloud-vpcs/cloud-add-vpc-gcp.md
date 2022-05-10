@@ -30,7 +30,9 @@ showAsideToc: true
 
 </ul>
 
-To create a VPC network in GCP, you need to complete the following tasks:
+YugabyteDB Managed supports virtual private cloud (VPC) networks on GCP. Using YugabyteDB Managed, you can create a VPC on GCP, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on GCP.
+
+To create a VPC network on GCP, you need to complete the following tasks:
 
 | Task | Notes |
 | :--- | :--- |

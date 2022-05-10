@@ -30,6 +30,8 @@ showAsideToc: true
 
 </ul>
 
+YugabyteDB Managed supports virtual private cloud (VPC) networks on AWS. Using YugabyteDB Managed, you can create a VPC on AWS, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on AWS.
+
 To create a VPC network in AWS, you need to complete the following tasks:
 
 | Task | Notes |
