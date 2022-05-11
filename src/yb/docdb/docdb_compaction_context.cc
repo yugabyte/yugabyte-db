@@ -71,7 +71,7 @@ struct PackedRowData {
   ValueBuffer old_value;
   Slice old_value_slice;
   SchemaVersion old_schema_version;
-  CompactionSchemaPacking old_packing;
+  CompactionSchemaInfo old_packing;
 
   bool repacking; // Whether we have started repacking the row.
 
@@ -79,16 +79,19 @@ struct PackedRowData {
   // So we will trigger table change on the first record.
   ByteBuffer<1 + kUuidSize> active_coprefix{"FAKE_PREFIX"s};
 
-  CompactionSchemaPacking new_packing;
+  CompactionSchemaInfo new_packing;
   boost::optional<RowPacker> packer;
+
+  HybridTime history_cutoff;
 
   // Schema version ranges for each found table.
   // That could be a surprise, but when we are talking about range and use pair to represent range
   // first usually means min value of the range, while second means max value of the range.
   std::unordered_map<Uuid, std::pair<SchemaVersion, SchemaVersion>, UuidHash> used_schema_versions;
 
-  PackedRowData(rocksdb::CompactionFeed* next_feed_, SchemaPackingProvider* provider)
-      : next_feed(*next_feed_), schema_packing_provider(provider) {
+  PackedRowData(rocksdb::CompactionFeed* next_feed_, SchemaPackingProvider* provider,
+                HybridTime history_cutoff_)
+      : next_feed(*next_feed_), schema_packing_provider(provider), history_cutoff(history_cutoff_) {
   }
 
   bool active() const {
@@ -170,7 +173,7 @@ struct PackedRowData {
   Status StartRepacking() {
     if (old_schema_version != old_packing.schema_version) {
       old_packing = VERIFY_RESULT(schema_packing_provider->CotablePacking(
-          new_packing.cotable_id, old_schema_version));
+          new_packing.cotable_id, old_schema_version, history_cutoff));
     }
     repacking = true;
     if (!packer) {
@@ -236,6 +239,9 @@ struct PackedRowData {
   // Updates current coprefix. Coprefix is located at start of the key and identifies cotable or
   // colocation.
   Status UpdateCoprefix(Slice coprefix, SchemaVersion schema_version) {
+    if (!schema_packing_provider) {
+      return Status::OK();
+    }
     if (coprefix == active_coprefix.AsSlice()) {
       return Status::OK();
     }
@@ -243,18 +249,18 @@ struct PackedRowData {
     active_coprefix = coprefix;
     if (coprefix.empty()) {
       new_packing = VERIFY_RESULT(schema_packing_provider->CotablePacking(
-          Uuid::Nil(), kLatestSchemaVersion));
+          Uuid::Nil(), kLatestSchemaVersion, history_cutoff));
     } else if (coprefix.TryConsumeByte(KeyEntryTypeAsChar::kColocationId)) {
       if (coprefix.size() != sizeof(ColocationId)) {
         return STATUS_FORMAT(Corruption, "Wrong colocation size: $0", coprefix.ToDebugHexString());
       }
       uint32_t colocation_id = BigEndian::Load32(coprefix.data());
       new_packing = VERIFY_RESULT(schema_packing_provider->ColocationPacking(
-          colocation_id, kLatestSchemaVersion));
+          colocation_id, kLatestSchemaVersion, history_cutoff));
     } else if (coprefix.TryConsumeByte(KeyEntryTypeAsChar::kTableId)) {
       auto cotable_id = VERIFY_RESULT(Uuid::FromComparable(coprefix));
       new_packing = VERIFY_RESULT(schema_packing_provider->CotablePacking(
-          cotable_id, kLatestSchemaVersion));
+          cotable_id, kLatestSchemaVersion, history_cutoff));
     } else {
       return STATUS_FORMAT(Corruption, "Wrong coprefix: $0", coprefix.ToDebugHexString());
     }
@@ -277,7 +283,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed {
       SchemaPackingProvider* schema_packing_provider)
       : next_feed_(*next_feed), retention_(std::move(retention)), key_bounds_(key_bounds),
         is_major_compaction_(is_major_compaction),
-        packed_row_(next_feed, schema_packing_provider) {
+        packed_row_(next_feed, schema_packing_provider, retention_.history_cutoff) {
   }
 
   Status Feed(const Slice& internal_key, const Slice& value) override;
@@ -367,8 +373,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     // TODO: switch this to VLOG if it becomes too chatty.
     LOG(INFO) << "DocDB compaction feed is being used for a "
               << (is_major_compaction_ ? "major" : "minor") << " compaction"
-              << ", history_cutoff=" << history_cutoff
-              << ", deleted columns: " << AsString(*retention_.deleted_cols);
+              << ", history_cutoff=" << history_cutoff;
     feed_usage_logged_ = true;
   }
 
@@ -423,6 +428,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   sub_key_ends_.resize(num_shared_components);
 
   RETURN_NOT_OK(SubDocKey::DecodeDocKeyAndSubKeyEnds(key, &sub_key_ends_));
+  RETURN_NOT_OK(packed_row_.UpdateCoprefix(key.Prefix(sub_key_ends_[0]), kLatestSchemaVersion));
   const size_t new_stack_size = sub_key_ends_.size();
 
   // Remove overwrite hybrid_times for components that are no longer relevant for the current
@@ -515,7 +521,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     return PassToNextFeed(internal_key, value);
   }
 
-  // Check for CQL columns deleted from the schema. This is done regardless of whether this is a
+  // Check for columns deleted from the schema. This is done regardless of whether this is a
   // major or minor compaction.
   //
   // TODO: could there be a case when there is still a read request running that uses an old schema,
@@ -524,14 +530,15 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   if (sub_key_ends_.size() > 1) {
     // 0 - end of cotable id section.
     // 1 - end of doc key section.
-    // Column ID is the first subkey in every CQL row.
+    // Column ID is the first subkey in every row.
     VLOG(4) << "First subkey type: " << DecodeKeyEntryType(key[sub_key_ends_[1]]);
     if (key[sub_key_ends_[1]] == KeyEntryTypeAsChar::kColumnId) {
       Slice column_id_slice = key.WithoutPrefix(sub_key_ends_[1] + 1);
       auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&column_id_slice));
       ColumnId column_id;
       RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
-      if (retention_.deleted_cols->count(column_id) != 0) {
+
+      if (packed_row_.new_packing.deleted_cols.count(column_id)) {
         return Status::OK();
       }
 
@@ -770,19 +777,13 @@ std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactor
 // ------------------------------------------------------------------------------------------------
 
 HistoryRetentionDirective ManualHistoryRetentionPolicy::GetRetentionDirective() {
-  std::lock_guard<std::mutex> lock(deleted_cols_mtx_);
   return {history_cutoff_.load(std::memory_order_acquire),
-          std::make_shared<ColumnIds>(deleted_cols_), table_ttl_.load(std::memory_order_acquire),
+          table_ttl_.load(std::memory_order_acquire),
           ShouldRetainDeleteMarkersInMajorCompaction::kFalse};
 }
 
 void ManualHistoryRetentionPolicy::SetHistoryCutoff(HybridTime history_cutoff) {
   history_cutoff_.store(history_cutoff, std::memory_order_release);
-}
-
-void ManualHistoryRetentionPolicy::AddDeletedColumn(ColumnId col) {
-  std::lock_guard<std::mutex> lock(deleted_cols_mtx_);
-  deleted_cols_.insert(col);
 }
 
 void ManualHistoryRetentionPolicy::SetTableTTLForTests(MonoDelta ttl) {
