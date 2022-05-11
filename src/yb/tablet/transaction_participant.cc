@@ -1486,7 +1486,8 @@ class TransactionParticipant::Impl
   }
 
   OpId GetLatestCheckPoint() REQUIRES(mutex_) {
-    return CoarseMonoClock::Now() < cdc_sdk_min_checkpint_op_id_expiration_
+    return CoarseMonoClock::Now() < cdc_sdk_min_checkpint_op_id_expiration_ &&
+                   cdc_sdk_min_checkpint_op_id_ != OpId::Invalid()
                ? cdc_sdk_min_checkpint_op_id_
                : OpId::Max();
   }
@@ -1594,7 +1595,7 @@ class TransactionParticipant::Impl
 
   rpc::Poller poller_;
 
-  OpId cdc_sdk_min_checkpint_op_id_ = OpId::Max();
+  OpId cdc_sdk_min_checkpint_op_id_ = OpId::Invalid();
   CoarseTimePoint cdc_sdk_min_checkpint_op_id_expiration_ = CoarseTimePoint::min();
 };
 

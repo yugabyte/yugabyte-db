@@ -112,7 +112,6 @@ public class TestArrayTypes extends CDCBaseClass {
       assertFalse(statement.execute(HelperValues.createTableWithMultiDimensionalArrayColumns));
       CDCSubscriber testSubscriber = new CDCSubscriber("testmulti", getMasterAddresses());
       testSubscriber.createStream("proto");
-      testSubscriber.setCheckpoint(0, 0, true);
 
       String varBit = "'{{1011, 011101, 1101110111}, {1011, 011101, 1101110111}}'::varbit(10)[]";
       String booleanVal = "'{{FALSE, TRUE, TRUE, FALSE}, {FALSE, TRUE, TRUE, FALSE}}'::boolean[]";
@@ -229,7 +228,6 @@ public class TestArrayTypes extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber("testsingle", getMasterAddresses());
       testSubscriber.createStream("proto");
-      testSubscriber.setCheckpoint(0, 0, true);
       String insertIntoTable = "insert into testsingle values (1, " +
         "'{1011, 011101, 1101110111}', " +
         "'{FALSE, TRUE, TRUE, FALSE}', " +
