@@ -485,6 +485,22 @@ public class AsyncYBClient implements AutoCloseable {
     return d;
   }
 
+  public Deferred<SetCheckpointResponse> setCheckpointWithBootstrap(YBTable table,
+                                                                    String streamId,
+                                                                    String tabletId,
+                                                                    long term,
+                                                                    long index,
+                                                                    boolean initialCheckpoint,
+                                                                    boolean bootstrap) {
+    checkIsClosed();
+    SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
+        tabletId, term, index, initialCheckpoint, bootstrap);
+    Deferred d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
   /**
    * Check if the server is ready to serve requests.
    * @param hp host port of the server.
