@@ -1,11 +1,10 @@
 ---
-title: Using DBeaver with YCQL
-headerTitle: Using DBeaver with YCQL
+title: Using DBeaver
 linkTitle: DBeaver
 description: Use the DBeaver multi-platform database tool to explore and query YugabyteDB.
 menu:
   preview:
-    identifier: dbeaver-ycql
+    identifier: dbeaver-2-ycql
     parent: tools
     weight: 40
 isTocNested: true
