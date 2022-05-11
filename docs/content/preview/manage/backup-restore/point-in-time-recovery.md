@@ -19,14 +19,14 @@ showAsideToc: true
 _Point-in-time recovery_ (or PITR) in YugabyteDB is designed to provide an ability to recover from a user or software error, while minimizing RPO, RTO and overall impact of the cluster.
 
 PITR is particularly useful in case of:
-* DDL errors, like an accidental table removal
-* DML errors, like when an incorrect update statement is executed against one of the tables
+* DDL errors, like an accidental table removal.
+* DML errors, like when an incorrect update statement is executed against one of the tables.
 
 In such scenarios, you would typically know the time when the data was corrupted, and would want to restore to the closest possible uncorrupted state. With PITR, you can achieve that by providing a timestamp to restore to. You can specify the time with the precision of up to 1 microsecond - something that is not possible with the regular snapshots which are typically taken hourly or daily.
 
 ## How Does PITR Work?
 
-PITR in YugabyteDB is based on a combination of the flashback capability and periodic [distributed snapshots](snapshot-ysql.md).
+PITR in YugabyteDB is based on a combination of the flashback capability and periodic [distributed snapshots](../snapshot-ysql.md).
 
 Flashback is a feature that allows to rewind the data back in time. At any moment, YugabyteDB stores not only the latest state of the data, but also the recent history of changes. Time period the history is maintained for is customizable and can be set via the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). With flashback, you can rollback to any point in time within this interval. The change history is also preserved when a snapshot is taken, which means that by creating snapshots periodically, you effectively increase the flashback retention interval.
 
@@ -37,7 +37,7 @@ For example, if your overall retention target for PITR is 7 days, you can use th
 
 {{< note title="Note on the history retention interval" >}}
 
-When configuring PITR, it is important to make sure the change history is continuous. To make sure that's the case, it is recommended that the history retention interval is slightly larger than the interval between snapshots. For example, if snapshots are taken daily (every 24 hours), the history retention interval should be set to 25 hours. This creates an overlap that guarantees continuity.
+When using PITR, it is important to have continuous change history. To make sure that's the case, it is recommended that the history retention interval is slightly larger than the interval between snapshots. For example, if snapshots are taken daily (every 24 hours), the history retention interval should be set to 25 hours. This creates an overlap that guarantees continuity.
 
 {{< /note >}}
 
@@ -50,7 +50,7 @@ There are no technical limitations on the retention target. However, it's import
 The configuration above ensures that at any moment there is a continuous change history maintained for the last 7 days. When you want to restore, YugabyteDB will pick the closest snapshot to the timestamp you provide, and then use flashback within that snapshot.
 
 Let's say the snapshots are taken daily at 11:00PM, current time is 5:00PM on April 14th, and you want to restore to 3:00PM on April 12th. In this case, YugabyteDB will:
-1. Locate the snapshot taken on April 12th (the closest snapshot taken after the restore time).
+1. Locate the snapshot taken on April 12th (the closest snapshot taken *after* the restore time).
 2. Restore to that snapshot.
 3. Rewind back 8 hours to rollback to the state at 3:00PM (as opposed to 11:00PM which is when the snapshot was taken).
 
@@ -62,16 +62,16 @@ YugabyteDB exposes the PITR functionality through a set of [snapshot schedule](.
 
 {{< note >}}
 
-You're required to create a snapshot schedule for any database/keyspace you want to have PITR enabled for.
+Creating a snapshot schedule for a database or a keyspace effectively enables PITR for that database/keyspace. You can't recover to point in time unless you create a schedule.
 
 {{< /note >}}
 
 ### Creating a Schedule
 
 To create a schedule and enable PITR, use the [`create-snapshot-schedule`](../../../admin/yb-admin/#create-snapshot-schedule) command. It takes three parameters:
-1. Interval between snapshots (in minutes)
-2. Retention time for every snapshot (in minutes)
-3. The name of the database or keyspace
+1. Interval between snapshots (in minutes).
+2. Retention time for every snapshot (in minutes).
+3. The name of the database or keyspace.
 
 Assuming that the history retention interval is set to 25 hours, and the retention target is 7 days, you should create a schedule that creates a snapshot once a day (every 1,440 minutes), and retains it for 7 days (10,080 minutes):
 
@@ -87,7 +87,7 @@ Once completed, the command will return and print out the unique ID of the newly
 }
 ```
 
-You can use this ID to [delete the schedule](LINK) or to [restore to a point in time](LINK).
+You can use this ID to [delete the schedule](#deleting-a-schedule) or to [restore to a point in time](#restoring-to-a-point-in-time).
 
 ### Deleting a Schedule
 
@@ -99,7 +99,7 @@ $ ./bin/yb_admin delete-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 
 ### Listing Existing Schedules
 
-To print out the list of schedules that currently exist in the cluster, use the [`list-snapshot-schedules`](../../../admin/yb-admin/#delete-snapshot-schedules) command:
+To print out the list of schedules that currently exist in the cluster, use the [`list-snapshot-schedules`](../../../admin/yb-admin/#list-snapshot-schedules) command:
 
 ```sh
 $ ./bin/yb_admin list-snapshot-schedules
@@ -147,8 +147,8 @@ For the second parameter, you have two options. You can either restore to an abs
 
 To restore to an absolute time you need to provide a timestamp you want to restore to. The following formats are supported:
 1. [Unix timestamp](https://www.unixtimestamp.com) in seconds, milliseconds or microseconds.
-2. [YSQL timestamp](../../api/ysql/datatypes/type_datetime/).
-3. [YCQL timestamp](../../api/ycql/type_datetime/#timestamp).
+2. [YSQL timestamp](../../../api/ysql/datatypes/type_datetime/).
+3. [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp).
 
 For example, here is how you can restore to 1:00PM PDT on May 1st 2022 using a Unix timestamp:
 
