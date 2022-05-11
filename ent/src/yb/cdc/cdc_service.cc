@@ -126,7 +126,7 @@ DEFINE_double(cdc_get_changes_free_rpc_ratio, .10,
               "When the TServer only has this percentage of RPCs remaining because the rest are "
               "GetChanges, reject additional requests to throttle/backoff and prevent deadlocks.");
 
-DEFINE_bool(enable_update_local_peer_min_index, true,
+DEFINE_bool(enable_update_local_peer_min_index, false,
             "Enable each local peer to update its own log checkpoint instead of the leader "
             "updating all peers.");
 
@@ -667,6 +667,13 @@ CHECKED_STATUS VerifyArg(const SetCDCCheckpointRequestPB& req) {
     return STATUS(InvalidArgument, "Stream ID is required to set checkpoint");
   }
 
+  if (req.has_checkpoint()) {
+    OpId op_id = OpId::FromPB(req.checkpoint().op_id());
+    if (op_id.term < OpId::Invalid().term || op_id.index < OpId::Invalid().index) {
+      LOG(WARNING) << "Received Invalid OpId " << op_id;
+      return STATUS_FORMAT(InvalidArgument, "Valid OpId is required to set checkpoint : $0", op_id);
+    }
+  }
   return Status::OK();
 }
 
@@ -706,7 +713,10 @@ void CDCServiceImpl::CreateEntryInCdcStateTable(
     const CDCStreamId& stream_id,
     const TableId& table_id,
     const TabletId& tablet_id) {
-  OpId op_id;
+  // For CDCSDK the initial checkpoint for each tablet will be maintained
+  // in cdc_state table as -1.-1(Invaild). Checkpoint will be updated when client call
+  // setCDCCheckpoint.
+  OpId op_id = OpId::Invalid();
 
   const auto cdc_state_table_op = cdc_state_table->NewWriteOp(
       QLWriteRequestPB::QL_STMT_INSERT);
@@ -914,18 +924,18 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
 
   ProducerTabletInfo producer_tablet{"" /* UUID */, req.stream_id(), req.tablet_id()};
   OpId checkpoint;
-  bool set_latest_entry = req.has_bootstrap();
+  bool set_latest_entry = req.bootstrap();
 
   if (set_latest_entry) {
     checkpoint = tablet_peer->log()->GetLatestEntryOpId();
   } else {
     checkpoint = OpId::FromPB(req.checkpoint().op_id());
   }
-
   auto session = client()->NewSession();
   session->SetDeadline(deadline);
   RETURN_NOT_OK_SET_CODE(
-      UpdateCheckpoint(producer_tablet, checkpoint, checkpoint, session, GetCurrentTimeMicros()),
+      UpdateCheckpoint(
+          producer_tablet, checkpoint, checkpoint, session, GetCurrentTimeMicros(), true),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   if (req.has_initial_checkpoint() || set_latest_entry) {
@@ -1120,6 +1130,19 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     if (record.source_type == XCLUSTER) {
       op_id = *result;
     } else {
+      // This is the initial checkpoint set in cdc_state table, during create of CDCSDK
+      // create stream, so throw an exeception to client to call setCDCCheckpoint or  take Snapshot.
+      if (*result == OpId::Invalid()) {
+        SetupErrorAndRespond(
+            resp->mutable_error(),
+            STATUS_FORMAT(
+                InvalidArgument,
+                "Invalid checkpoint $0 for tablet $1. Hint: set checkpoint explicitly or take "
+                    "snapshot",
+                *result, req->tablet_id()),
+            CDCErrorPB::INTERNAL_ERROR, &context);
+        return;
+      }
       result->ToPB(&cdc_sdk_op_id);
       op_id = OpId::FromPB(cdc_sdk_op_id);
     }
@@ -1237,10 +1260,24 @@ Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
   return Status::OK();
 }
 
-void CDCServiceImpl::ComputeLagMetric(int64_t last_replicated_micros,
-                                      int64_t metric_last_timestamp_micros,
-                                      int64_t cdc_state_last_replication_time_micros,
-                                      scoped_refptr<AtomicGauge<int64_t>> metric) {
+void CDCServiceImpl::RetainIntents(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& cdc_sdk_op_id) {
+  if (cdc_sdk_op_id == OpId::Invalid()) {
+    return;
+  }
+
+  auto txn_participant = tablet_peer->tablet()->transaction_participant();
+  if (txn_participant) {
+    txn_participant->SetRetainOpId(cdc_sdk_op_id);
+  }
+}
+
+void CDCServiceImpl::ComputeLagMetric(
+    int64_t last_replicated_micros,
+    int64_t metric_last_timestamp_micros,
+    int64_t cdc_state_last_replication_time_micros,
+    scoped_refptr<AtomicGauge<int64_t>>
+        metric) {
   if (metric_last_timestamp_micros == 0) {
     // The tablet metric timestamp is uninitialized, so try to use last replicated time in cdc
     // state.
@@ -1407,15 +1444,30 @@ MicrosTime CDCServiceImpl::GetLastReplicatedTime(
   return status.ok() ? data.log_ht.GetPhysicalValueMicros() : 0;
 }
 
-void PopulateTabletMinCheckpoint(const string& tablet_id,
-                                 const OpId& checkpoint,
-                                 CDCRequestSource cdc_source_type,
-                                 TabletOpIdMap* tablet_min_checkpoint_index) {
-  auto& tablet_op_id = (*tablet_min_checkpoint_index)[tablet_id];
-  tablet_op_id.cdc_op_id = min(tablet_op_id.cdc_op_id, checkpoint);
+void SetMinCDCSDKCheckpoint(const OpId& checkpoint, OpId* cdc_sdk_op_id) {
+  if (*cdc_sdk_op_id != OpId::Invalid()) {
+    *cdc_sdk_op_id = min(*cdc_sdk_op_id, checkpoint);
+  } else {
+    *cdc_sdk_op_id = checkpoint;
+  }
+}
 
+void PopulateTabletMinCheckpoint(
+    const string& tablet_id, const OpId& checkpoint, CDCRequestSource cdc_source_type,
+    TabletOpIdMap* tablet_min_checkpoint_index) {
+  auto& tablet_op_id = (*tablet_min_checkpoint_index)[tablet_id];
+
+  tablet_op_id.cdc_op_id = min(tablet_op_id.cdc_op_id, checkpoint);
+  // Case:1  2 different CDCSDK stream(stream-1 and stream-2) on same tablet_id.
+  //        for stream-1 there is get changes call and stream-2 there is not get change
+  //        call(i.e initial checkpoint is -1.-1).
+  //
+  // Case:2 for the same tablet_id we read CDC stream-1 and we set cdc_sdk_op_id = Invalid(-1.-1)
+  //       then we read CDCSDK stream-2 which have valid checkpoint detail in cdc_state table,
+  //       update cdc_sdk_op_id to checkpoint.
+  //
   if (cdc_source_type == CDCSDK) {
-    tablet_op_id.cdc_sdk_op_id = min(tablet_op_id.cdc_sdk_op_id, checkpoint);
+    SetMinCDCSDKCheckpoint(checkpoint, &tablet_op_id.cdc_sdk_op_id);
   }
 }
 
@@ -1429,7 +1481,7 @@ Status CDCServiceImpl::SetInitialCheckPoint(
   TabletOpIdMap& tablet_min_checkpoint_map = *result;
   auto& tablet_op_id = tablet_min_checkpoint_map[tablet_id];
   tablet_op_id.cdc_op_id = min(checkpoint, tablet_op_id.cdc_op_id);
-  tablet_op_id.cdc_sdk_op_id = min(checkpoint, tablet_op_id.cdc_sdk_op_id);
+  SetMinCDCSDKCheckpoint(checkpoint, &tablet_op_id.cdc_sdk_op_id);
 
   // Update the minimum checkpoint op_id on LEADER for log cache eviction for all stream type.
   RETURN_NOT_OK_SET_CODE(
@@ -1437,14 +1489,10 @@ Status CDCServiceImpl::SetInitialCheckPoint(
       CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   // Update the minimum checkpoint op_id for LEADER for intent cleanup for CDCSDK Stream type.
-  auto txn_participant = tablet_peer->tablet()->transaction_participant();
-  if (txn_participant == nullptr) {
-    return STATUS_FORMAT(
-        InternalError, "Cannot read data as the transaction participant context is null");
-  }
-  txn_participant->SetRetainOpId(tablet_op_id.cdc_sdk_op_id);
-  // Even if the flag is enable_update_local_peer_min_index is set, for the first time
-  // we need to set it to follower too.
+  RetainIntents(tablet_peer, tablet_op_id.cdc_sdk_op_id);
+
+  //  Even if the flag is enable_update_local_peer_min_index is set, for the first time
+  //  we need to set it to follower too.
   return UpdatePeersCdcMinReplicatedIndex(tablet_id, tablet_op_id);
 }
 
@@ -1468,8 +1516,10 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     LOG(WARNING) << "Scan of table " << kCdcStateTableName.table_name() << " failed: " << status;
     failer_status = status;
   };
-  options.columns = std::vector<std::string>{master::kCdcTabletId, master::kCdcStreamId,
-      master::kCdcCheckpoint, master::kCdcLastReplicationTime};
+  options.columns = std::vector<std::string>{
+      master::kCdcTabletId, master::kCdcStreamId, master::kCdcCheckpoint,
+      master::kCdcLastReplicationTime};
+
   for (const auto& row : client::TableRange(**cdc_state_table_result, options)) {
     count++;
     auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
@@ -1505,7 +1555,11 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     if (!input_tablet_id.empty() && input_tablet_id != tablet_id) {
       continue;
     }
-    PopulateTabletMinCheckpoint(tablet_id, *result, record.source_type, &tablet_min_checkpoint_map);
+    // Ignoring those non-bootstarped CDCSDK stream
+    if (*result != OpId::Invalid()) {
+      PopulateTabletMinCheckpoint(
+          tablet_id, *result, record.source_type, &tablet_min_checkpoint_map);
+    }
   }
 
   if (!failer_status.ok()) {
@@ -1558,11 +1612,7 @@ void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
           UpdatePeersCdcMinReplicatedIndex(tablet_id, tablet.second),
           "UpdatePeersCdcMinReplicatedIndex failed");
     } else {
-      auto txn_participant = tablet_peer->tablet()->transaction_participant();
-      if (txn_participant == nullptr) {
-        continue;
-      }
-      txn_participant->SetRetainOpId(tablet.second.cdc_sdk_op_id);
+      RetainIntents(tablet_peer, tablet.second.cdc_sdk_op_id);
     }
   }
 }
@@ -1859,11 +1909,8 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
     return STATUS(TryAgain, "Tablet peer is not ready to set its log cdc index");
   }
   RETURN_NOT_OK(tablet_peer->set_cdc_min_replicated_index(replicated_index));
-  auto txn_participant = tablet_peer->tablet()->transaction_participant();
-  if (txn_participant == nullptr) {
-    return STATUS(InternalError, "Cannot read data as the transaction participant context is null");
-  }
-  txn_participant->SetRetainOpId(cdc_sdk_replicated_op);
+
+  RetainIntents(tablet_peer, cdc_sdk_replicated_op);
 
   return Status::OK();
 }
@@ -2524,14 +2571,16 @@ void CDCServiceImpl::UpdateCDCTabletMetrics(
   }
 }
 
-Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
-                                        const OpId& sent_op_id,
-                                        const OpId& commit_op_id,
-                                        const client::YBSessionPtr& session,
-                                        uint64_t last_record_hybrid_time) {
+Status CDCServiceImpl::UpdateCheckpoint(
+    const ProducerTabletInfo& producer_tablet,
+    const OpId& sent_op_id,
+    const OpId& commit_op_id,
+    const client::YBSessionPtr& session,
+    uint64_t last_record_hybrid_time,
+    const bool force_update) {
   bool update_cdc_state = impl_->UpdateCheckpoint(producer_tablet, sent_op_id, commit_op_id);
 
-  if (update_cdc_state) {
+  if (update_cdc_state || force_update) {
     auto cdc_state = VERIFY_RESULT(GetCdcStateTable());
     const auto op = cdc_state->NewUpdateOp();
     auto* const req = op->mutable_request();
