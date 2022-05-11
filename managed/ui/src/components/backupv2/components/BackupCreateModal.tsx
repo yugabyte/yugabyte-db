@@ -159,7 +159,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     },
     onError: (err: any) => {
       onHide();
-      toast.error(err.data.error);
+      toast.error(err?.data?.error ?? 'An Error occurred');
     }
   });
 

@@ -36,6 +36,7 @@ import { useSearchParam } from 'react-use';
 import { AssignBackupStorageConfig } from './AssignBackupStorageConfig';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { BackupAdvancedRestore } from './BackupAdvancedRestore';
+import { AccountLevelBackupEmpty, UniverseLevelBackupEmpty } from './BackupEmpty';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -228,6 +229,28 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   };
 
   const backups: IBackup[] = backupsList?.data.entities;
+
+  if (backups?.length === 0) {
+    return allowTakingBackup ? (
+      <>
+        <UniverseLevelBackupEmpty
+          onActionButtonClick={() => {
+            setShowBackupCreateModal(true);
+          }}
+        />
+        <BackupCreateModal
+          visible={showBackupCreateModal}
+          onHide={() => {
+            setShowBackupCreateModal(false);
+          }}
+          currentUniverseUUID={universeUUID}
+        />
+      </>
+    ) : (
+      <AccountLevelBackupEmpty />
+    );
+  }
+
   return (
     <Row className="backup-v2">
       <Row className="backup-actions">
