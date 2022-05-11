@@ -28,11 +28,12 @@ import { BackupCreateModal } from '../components/BackupCreateModal';
 
 import { convertScheduleToFormValues, convertMsecToTimeFrame } from './ScheduledBackupUtils';
 
-import './ScheduledBackupList.scss';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router';
 import { keyBy } from 'lodash';
 import { FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
+import { ScheduledBackupEmpty } from '../components/BackupEmpty';
+import './ScheduledBackupList.scss';
 
 const wrapTableName = (tablesList: string[] | undefined) => {
   if (!Array.isArray(tablesList) || tablesList.length === 0) {
@@ -104,6 +105,31 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
       setPage(page + 1);
     }
   };
+
+  if (schedules?.length === 0) {
+    return (
+      <>
+        <ScheduledBackupEmpty
+          onActionButtonClick={() => {
+            setShowCreateModal(true);
+          }}
+        />
+        <BackupCreateModal
+          visible={showCreateModal}
+          onHide={() => {
+            setShowCreateModal(false);
+            if (editPolicyData) {
+              setEditPolicyData(undefined);
+            }
+          }}
+          editValues={editPolicyData}
+          currentUniverseUUID={universeUUID}
+          isScheduledBackup
+          isEditMode={editPolicyData !== undefined}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="schedule-list-panel">
