@@ -15,7 +15,7 @@ package org.yb.cdc.ysql;
 
 import org.apache.log4j.Logger;
 
-import static org.yb.AssertionWrappers.*;;
+import static org.yb.AssertionWrappers.*;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -39,7 +39,6 @@ public class TestCompoundKey extends CDCBaseClass {
                                           String sqlScript) throws Exception {
     CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
     testSubscriber.createStream("proto");
-    testSubscriber.setCheckpoint(0, 0, true);
 
     if (!sqlScript.isEmpty()) {
       TestUtils.runSqlScript(connection, sqlScript);
@@ -226,7 +225,6 @@ public class TestCompoundKey extends CDCBaseClass {
     try {
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
-      testSubscriber.setCheckpoint(0, 0, true);
 
       ExpectedRecordCPKProto[] expectedRecords = {
         new ExpectedRecordCPKProto(1, 2, 3, 4, Op.INSERT),

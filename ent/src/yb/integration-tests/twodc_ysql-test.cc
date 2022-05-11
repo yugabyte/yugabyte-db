@@ -500,10 +500,11 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     return Status::OK();
   }
 };
-INSTANTIATE_TEST_CASE_P(TwoDCTestParams, TwoDCYsqlTest,
-                        ::testing::Values(TwoDCTestParams(1, true), TwoDCTestParams(1, false),
-                                          TwoDCTestParams(0, true), TwoDCTestParams(0, false)));
-
+INSTANTIATE_TEST_CASE_P(
+    TwoDCTestParams, TwoDCYsqlTest,
+    ::testing::Values(
+        TwoDCTestParams(1, true, true), TwoDCTestParams(1, false, false),
+        TwoDCTestParams(0, true, true), TwoDCTestParams(0, false, false)));
 
 TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   YB_SKIP_TEST_IN_TSAN();
