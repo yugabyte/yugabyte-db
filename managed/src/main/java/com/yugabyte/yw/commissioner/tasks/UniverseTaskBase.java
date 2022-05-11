@@ -1856,6 +1856,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     NodeTaskParams preflightTaskParams = new NodeTaskParams();
     UserIntent userIntent = cluster.userIntent;
     preflightTaskParams.nodeName = currentNode.nodeName;
+    preflightTaskParams.nodeUuid = currentNode.nodeUuid;
     preflightTaskParams.deviceInfo = userIntent.deviceInfo;
     preflightTaskParams.azUuid = currentNode.azUuid;
     preflightTaskParams.universeUUID = taskParams().universeUUID;
