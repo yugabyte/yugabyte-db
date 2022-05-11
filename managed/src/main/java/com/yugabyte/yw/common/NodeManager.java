@@ -184,9 +184,11 @@ public class NodeManager extends DevopsBase {
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
-      NodeInstance node = NodeInstance.getOrBadRequest(nodeTaskParam.nodeUuid);
+      // Instance may not be present if it is deleted from NodeInstance table
+      // after a release action.
+      NodeInstance node = NodeInstance.get(nodeTaskParam.nodeUuid);
       command.add("--node_metadata");
-      command.add(node.getDetailsJson());
+      command.add(node == null ? "{}" : node.getDetailsJson());
     }
     return command;
   }

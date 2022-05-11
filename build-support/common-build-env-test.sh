@@ -188,21 +188,10 @@ test_set_cmake_build_type_and_compiler_type   release    linux-gnu clang      re
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc        release    gcc     0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc8       release    gcc8    0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc9       release    gcc9    0
-
-# TODO: use Clang 12 uniformly for all achitectures, and get rid of conditional checks here.
-if [[ $arch == "x86_64" && $OSTYPE == linux* ]] && is_redhat_family; then
-  test_set_cmake_build_type_and_compiler_type asan       linux-gnu auto       fastdebug  clang12 0
-  test_set_cmake_build_type_and_compiler_type debug      linux-gnu auto       debug      clang12 0
-  test_set_cmake_build_type_and_compiler_type FaStDeBuG  linux-gnu auto       fastdebug  clang12 0
-  test_set_cmake_build_type_and_compiler_type release    linux-gnu auto       release    clang12 0
-fi
-
-if [[ $arch == "aarch64" && $OSTYPE == linux* ]]; then
-  test_set_cmake_build_type_and_compiler_type asan       linux-gnu auto       fastdebug  clang11 0
-  test_set_cmake_build_type_and_compiler_type debug      linux-gnu auto       debug      clang11 0
-  test_set_cmake_build_type_and_compiler_type FaStDeBuG  linux-gnu auto       fastdebug  clang11 0
-  test_set_cmake_build_type_and_compiler_type release    linux-gnu auto       release    clang11 0
-fi
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang12 0
+test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      clang12 0
+test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  clang12 0
+test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    clang12 0
 
 # -------------------------------------------------------------------------------------------------
 

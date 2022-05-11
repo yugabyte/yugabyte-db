@@ -475,7 +475,7 @@ CHECKED_STATUS AddDeltaToSstFile(
                 HybridTime(metadata_pb.start_hybrid_time()), FileType::kSST));
             metadata_pb.set_start_hybrid_time(new_start_ht.ToUint64());
             txn_metadata_buffer.clear();
-            pb_util::SerializeToString(metadata_pb, &txn_metadata_buffer);
+            RETURN_NOT_OK(pb_util::SerializeToString(metadata_pb, &txn_metadata_buffer));
             add_kv(key, txn_metadata_buffer);
           } else {
             delta_data.AddEarlyTime(HybridTime(metadata_pb.start_hybrid_time()));
@@ -644,7 +644,7 @@ CHECKED_STATUS ChangeTimeInWalDir(
           batch.set_mono_time(read_result.entry_metadata.back().entry_time.ToUInt64());
         }
         buffer.clear();
-        pb_util::AppendToString(batch, &buffer);
+        RETURN_NOT_OK(pb_util::AppendToString(batch, &buffer));
         num_entries += batch.entry().size();
         RETURN_NOT_OK(new_segment.WriteEntryBatch(Slice(buffer)));
         batch.clear_entry();
