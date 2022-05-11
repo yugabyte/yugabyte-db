@@ -1,5 +1,5 @@
 
-[TODO]
+[TODO] Need Oracle steps.
 
 Create a database user and provide the user with READ access to all the resources which need to be migrated.
 

@@ -12,9 +12,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page describes the general migration process from other RDBMS to YugabyteDB (YSQL API).
+This page describes the general migration process from other RDBMS to YugabyteDB (YSQL API). The high-level process of moving from any source database to YugabyteDB is outlined below.
 
-The process of migrating to YugabyteDB largely looks similar to the process of migrating an application to PostgreSQL. There are some minor differences between YugabyteDB and PostgreSQL, which are covered in detail in [Migrate from PostgreSQL to YugabyteDB](../migrate-from-postgresql/). The high-level process of moving from any source database to YugabyteDB is outlined below.
+<!-- The process of migrating to YugabyteDB largely looks similar to the process of migrating an application to PostgreSQL. There are some minor differences between YugabyteDB and PostgreSQL, which are covered in detail in [Migrate from PostgreSQL to YugabyteDB](../migrate-from-postgresql/).  -->
 
 ### Step 1. Prepare the source database
 
@@ -56,7 +56,7 @@ Import the data into YugabyteDB using the COPY command from CSV files, or progra
 
 ### Step 7. Finalize DDL (schema)
 
-If any constraints and triggers were disabled to speed up data import, recreate those.
+If any indexes, constraints and triggers were disabled to speed up data import, recreate those.
 
 ### Step 8. Verify the migration
 

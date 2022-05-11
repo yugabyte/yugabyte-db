@@ -41,7 +41,7 @@ Before performing migration from your source database to YugabyteDB,
 
 ### Review your sharding strategies
 
-YugabyteDB supports two primary ways of sharding: by HASH and RANGE. The default sharding method is set to HASH as we believe that this is the better option for most OLTP applications. You can read more about why in [Hash and range sharding](../architecture/docdb-sharding/sharding/). When exporting out of a PostgreSQL database, be aware that if you want RANGE partitioning, you must call it out in the schema creation.
+YugabyteDB supports two primary ways of sharding: by HASH and RANGE. The default sharding method is set to HASH as we believe that this is the better option for most OLTP applications. You can read more about why in [Hash and range sharding](/preview/architecture/docdb-sharding/sharding/). When exporting out of a PostgreSQL database, be aware that if you want RANGE partitioning, you must call it out in the schema creation.
 
 For most workloads, it is recommended to use HASH partitioning because it efficiently partitions the data, and spreads it evenly across all nodes.
 
@@ -79,8 +79,8 @@ The following table summarizes the arguments and options you can pass to the yb_
 
 Currently, yb_migrate doesn't support the following features:
 
-<!-- | Feature | Description/Alternatives  | Github issue |
-| :------ | :---------- | :----------- |
+| Feature | Description/Alternatives  | Issue tracker |
+| :-------| :---------- | :----------- |
 | BLOB and CLOB | yb_migrate currently ignores all columns of type BLOB/CLOB. <br>  Use another mechanism to load the attributes till this feature is supported.| https://github.com/yugabyte/yb-db-migration/issues/43 |
-| Tablespaces |  If the source database is PostgreSQL, manually creating Tablespaces in the target Yugabyte database might  work. | https://github.com/yugabyte/yb-db-migration/issues/47 |
-| ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | https://github.com/yugabyte/yb-db-migration/issues/48 | -->
+| Tablespaces |  Currently the YB migration engine cannot handle migration of tables associated with certain TABLESPACES automatically. <br> The workaround is to manually create the required tablespace in Yugabyte and then start the migration.<br> Alternatively if that tablespace is not relevant in the YugabyteDB distributed cluster then the user can remove the tablespace association of the table from the create table definition. | https://github.com/yugabyte/yb-db-migration/issues/47 |
+| ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | https://github.com/yugabyte/yb-db-migration/issues/48 |

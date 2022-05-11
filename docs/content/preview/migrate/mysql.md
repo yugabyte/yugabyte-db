@@ -1,5 +1,5 @@
 
-Create a database user and provide the user with READ access to all the resources which need to be migrated. Replace the `'localhost'` from the following commands with an appropriate hostname in your setup.
+Create a database user and provide the user with READ access to all the resources which need to be migrated. Replace `'localhost'` from the following commands with an appropriate hostname in your setup.
 
 - Create a new user `ybmigrate`.
 

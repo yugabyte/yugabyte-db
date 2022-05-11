@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page describes the migration process from other RDBMS (PostgreSQL, MySQL or Oracle) to YugabyteDB (YSQL API).
+This page lists the detailed steps to migrate from PostgreSQL, MySQL or Oracle to YugabyteDB (YSQL API).
 
 ## Prerequisites
 
@@ -68,6 +68,14 @@ mkdir -p ~/export-dirs/sakila
 export EXPORT_DIR=~/export-dirs/sakila
 ```
 
+### 3. YugabyteDB deployment
+
+If you don't have a cluster setup yet, you can choose one of the following ways to deploy a cluster.
+
+- Create a local YugabyteDB cluster using the steps under [Quick start](../../quick-start/).
+- Follow the steps to [Create YugabyteDB universe deployments](../../yugabyte-platform/create-deployments/) using YugabyteDB Anywhere.
+- Follow the steps to [Deploy clusters in YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/).
+
 Proceed with the database migration from your source database to YugabyteDB (YSQL API) using the following steps:
 
 ## Step 1: Prepare the source database
@@ -117,7 +125,7 @@ Currently `yb_migrate` supports migrating all schemas of the source database. It
 
 ### Create the target database
 
-- Create the target database in a YugabyteDB cluster. The database name can be same or different from the source database name. If the target database name is not provided, yb_migrate assumes the same name as the source database. If you choose the target database name different from the source database name, you'll have to provide the `--target-db-name` argument to the `yb_migrate import` commands.
+- Create the target database in your YugabyteDB cluster. The database name can be same or different from the source database name. If the target database name is not provided, yb_migrate assumes the same name as the source database. If you choose the target database name different from the source database name, you'll have to provide the `--target-db-name` argument to the `yb_migrate import` commands.
 
 ```sql
 CREATE DATABASE sakila;
@@ -156,11 +164,11 @@ export TARGET_DB_USER=ybmigrate
 export TARGET_DB_PASSWORD=password
 ```
 
-If you want yb_migrate to connect to the target database over SSL, refer to [SSL Connectivity](../../reference/connectors/yb-migration-reference/#ssl-connectivity) in the References section.
+If you want yb_migrate to connect to the target database over SSL, refer to [SSL Connectivity](../../reference/connectors/yb-migration-reference/#ssl-connectivity) in the Reference section.
 
 {{< warning title="Warning while deleting the ybmigrate user" >}}
 
-After migration, all the migrated objects (tables, views, and so on) are owned by the `ybmigrate` user. You should transfer the ownership of the objects to some other user (example: `yugabyte`) and then delete the `ybmigrate` user. Example steps to delete the user are:
+After migration, all the migrated objects (tables, views, and so on) are owned by the `ybmigrate` user. You should transfer the ownership of the objects to some other user (for example, `yugabyte`) and then delete the `ybmigrate` user. Example steps to delete the user are:
 
 ```sql
 REASSIGN OWNED BY ybmigrate TO yugabyte;
@@ -190,11 +198,11 @@ yb_migrate export schema --export-dir ${EXPORT_DIR} \
 
 ### Analyze Schema
 
-Using [ora2pg](https://ora2pg.darold.net) and [pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html), yb_migrate can extract and convert the source database schema to an equivalent PostgreSQL schema. The schema, however, may not be suitable yet to be imported into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, you may need some minor changes to the schema.
+Using [ora2pg](https://ora2pg.darold.net) and [pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html), yb_migrate can extract and convert the source database schema to an equivalent PostgreSQL schema. The schema, however, may not be suitable yet to be imported into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, you may need minor manual changes to the schema.
 
-Refer to [Data modeling](/../../database-migration-engine/references/#data-modeling) to know more about modeling data for YugabyteDB.
+Refer to [Data modeling](../../reference/connectors/yb-migration-reference/#data-modeling) to learn more about modeling strategies using YugabyteDB.
 
-The `yb_migrate analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) phase and prepares a report that lists the DDL statements which need changes. An example invocation of the command is as follows:
+The `yb_migrate analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) phase and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command is as follows:
 
 ```sh
 yb_migrate analyze-schema --export-dir ${EXPORT_DIR} \
@@ -213,7 +221,7 @@ The `--output-format` can be `html`, `txt`, `json`, or `xml`. The above command 
 
 - Fix all the issues listed in the generated schema analysis report by manually editing the SQL DDL files from the `EXPORT_DIR/schema/*`.
 
-- Re-run the `yb_migrate analyze-schema` command after making the manual changes. The command will generate a fresh report taking into account your changes. Repeat these steps until the generated report contains no issues.
+- Re-run the `yb_migrate analyze-schema` command after making the manual changes. The command will generate a fresh report using your changes. Repeat these steps until the generated report contains no issues.
 
 ## Step 4: Export data
 
@@ -229,7 +237,7 @@ yb_migrate export data --export-dir ${EXPORT_DIR} \
         --source-db-schema ${SOURCE_DB_SCHEMA}
 ```
 
-The options passed to the command are similar to the `yb_migrate export schema` command. To export only a subset of the tables, pass a comma separated list of table names in the `--table-list` argument. To speed up the data export of larger source databases, you can pass values greater than 1 to the `--parallel-jobs` argument. It will cause yb_migrate to dump multiple tables concurrently.
+The options passed to the command are similar to the [`yb_migrate export schema`](#export-schema) command. To export only a subset of the tables, pass a comma separated list of table names in the `--table-list` argument. To speed up the data export of larger source databases, you can pass values greater than 1 to the `--parallel-jobs` argument. It will cause yb_migrate to dump multiple tables concurrently.
 
 ## Step 5: Import the schema
 
@@ -244,11 +252,11 @@ yb_migrate import schema --export-dir ${EXPORT_DIR} \
         --target-db-name ${TARGET_DB_NAME}
 ```
 
-If yb_migrate terminates before it imports the entire schema, you can rerun it by adding `--ignore-exist` option.
+yb_migrate applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target database. If yb_migrate terminates before it imports the entire schema, you can rerun it by adding `--ignore-exist` option.
 
 {{< note title="Note" >}}
 
-The `yb_migrate import schema` command does not import indexes yet. This is done to speed up the data import phase. The indexes will be created by `yb_migrate import data` command after importing the data.
+The `yb_migrate import schema` command does not import indexes yet. This is done to speed up the data import phase. The indexes will be created by `yb_migrate import data` command after importing the data in the next step.
 
 {{< /note >}}
 
@@ -265,9 +273,11 @@ yb_migrate import data --export-dir ${EXPORT_DIR} \
         --target-db-name ${TARGET_DB_NAME}
 ```
 
+In the import data phase, yb_migrate splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_ ,each of which contains at most `--batch-size` number of records. yb_migrate concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are utilized. This phase is designed to be _restartable_ if yb_migrate terminates when the data import is in progress. Upon a restart, the data import resumes from its current state.
+
 The `yb_migrate import data` command reads data files located in the `EXPORT_DIR/data`. The command, by default, creates one database connection to each of the nodes of the target YugabyteDB cluster. You can increase the number of connections by specifying the total connection count in the `--parallel-jobs` argument. The command will equally distribute the connections among all the nodes of the cluster. It splits the larger tables into smaller chunks, each containing at most `--batch-size` number of records. By default, the `--batch-size` is 100,000 records.
 
-Run the `yb_migrate import data status --export-dir ${EXPORT_DIR}` command to get an overall progress of the data import operation. While importing a very large database, you should run the import data command in a `screen` session, so that the import is not terminated when the terminal session stops. If the `yb_migrate import data` command terminates before it could complete the data ingestion, you can rerun it with the same arguments and the command will resume the data import operation.
+Run the `yb_migrate import data status --export-dir ${EXPORT_DIR}` command to get an overall progress of the data import operation. While importing a very large database, you should run the import data command in a `screen` session, so that the import is not terminated when the terminal session stops. If the `yb_migrate import data` command terminates before it could complete the data ingestion, you can re-run it with the same arguments and the command will resume the data import operation.
 
 ## Step 7: Finalize DDL
 
@@ -277,7 +287,7 @@ The creation of indexes are automatically handled by the `yb_migrate import data
 
 ## Step 8: Verify migration
 
-After the successful execution of the `yb_migrate import data` command, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count in each table.
+After the successful execution of the `yb_migrate import data` command, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
 [Verify a migration](../../migrate/migrate-from-postgresql/verify-migration/) to validate queries and ensure a successful migration.
 <!-- The validation queries can be as simple as checking the row count in each table or it can utilise some domain knowledge e.g. match the sum of the `amount` column in the `payments` table. -->

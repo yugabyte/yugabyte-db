@@ -11,11 +11,11 @@ menu:
     weight: 730
 ---
 
-The steps below cover how to manually migrate PostgreSQL data and applications to YugabyteDB. The sections below assume that you have read [Migration process overview](../migration-process-overview/).
+The steps below cover how to *manually* migrate PostgreSQL data and applications to YugabyteDB.
 
 {{< note title="Note" >}}
 
-There are a number of tools that can be used to automate the entire migration from PostgreSQL, which will be covered in separate sections.
+Use [YB migration engine](../../migrate/) to automate the entire migration from PostgreSQL. Read the [Migration process overview](../migration-process-overview/) to perform an automatic migration.
 
 {{< /note >}}
 
