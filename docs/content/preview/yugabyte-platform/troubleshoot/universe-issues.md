@@ -321,7 +321,7 @@ The diagnostic information can be analyzed locally or the bundle can be forwarde
 
 You can create a support bundle as follows:
 
-- Open the universe that nees to be diagnosed and click **Actions > Support Bundles**.
+- Open the universe that needs to be diagnosed and click **Actions > Support Bundles**.
 
 - If the universe already has support bundles, they are displayed by the **Support Bundle** dialog. If there are no bundles for the universe, use the **Support Bundles** dialog to generate a bundle by clicking **Create Support Bundle**, as per the following illustration:
 
@@ -341,7 +341,7 @@ You can create a support bundle as follows:
 
 - Click **Create Bundle**.
 
-  YugabyteDB Anywhere starts collecting files from all the nodes in the cluster into an archive. Note that this process might take a few minutes. When finished, the bundle's status is displayed as **Ready**, as per the followingn illustration:
+  YugabyteDB Anywhere starts collecting files from all the nodes in the cluster into an archive. Note that this process might take a few minutes. When finished, the bundle's status is displayed as **Ready**, as per the following illustration:
 
   <br><br>
 
