@@ -77,8 +77,10 @@ The following table summarizes the arguments and options you can pass to the yb_
 
 ## Unsupported features
 
-Currently, yb_migrate doesn't support following features:
+Currently, yb_migrate doesn't support the following features:
 
-- BLOB and CLOB
-- TABLESPACES
-- ALTER VIEW
+| Feature | Description/Alternatives  | Github issue |
+| :------ | :---------- | :----------- |
+| BLOB and CLOB | yb_migrate currently ignores all columns of type BLOB/CLOB. <br>  Use another mechanism to load the attributes till this feature is supported.| https://github.com/yugabyte/yb-db-migration/issues/43 |
+| Tablespaces |  If the source database is PostgreSQL, manually creating Tablespaces in the target Yugabyte database might  work. | https://github.com/yugabyte/yb-db-migration/issues/47 |
+| ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | https://github.com/yugabyte/yb-db-migration/issues/48 |

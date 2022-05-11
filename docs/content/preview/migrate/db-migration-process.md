@@ -36,12 +36,12 @@ cd yb-db-migration/installer_scripts
 - Depending on the Linux distribution (CentOS or Ubuntu) you're running, execute the appropriate installer script:
 
 ```sh
-//CentOS
+#CentOS
 ./yb_migrate_installer__centos.sh
 ```
 
 ```sh
-//Ubuntu
+#Ubuntu
 ./yb_migrate_installer__ubuntu.sh
 ```
 
@@ -156,7 +156,7 @@ export TARGET_DB_USER=ybmigrate
 export TARGET_DB_PASSWORD=password
 ```
 
-If you want yb_migrate to connect to the target database over SSL, refer to [SSL Connectivity](./../reference/connectors/yb-migration-reference/#ssl-connectivity) in the References section.
+If you want yb_migrate to connect to the target database over SSL, refer to [SSL Connectivity](../../reference/connectors/yb-migration-reference/#ssl-connectivity) in the References section.
 
 {{< warning title="Warning while deleting the ybmigrate user" >}}
 

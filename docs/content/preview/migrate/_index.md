@@ -61,7 +61,7 @@ This page provides general information and references to help you get started wi
 
 YB migration engine is an open-source database migration engine provided by YugabyteDB. The engine manages the entire lifecycle of a database migration including cluster preparation for data import, schema-migration and data-migration using [yb_migrate](https://github.com/yugabyte/yb-db-migration).
 
-yb_migrate is a command line executable program that supports migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database. yb_migrate keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*. For more information, refer to [Export directory](../../reference/connectors/yb-migration-reference/#export-directory) in the Reference section.
+yb_migrate is a command line executable program that supports migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database. yb_migrate keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*. For more information, refer to [Export directory](../reference/connectors/yb-migration-reference/#export-directory) in the Reference section.
 
 ### Migration modes
 
@@ -71,7 +71,7 @@ yb_migrate is a command line executable program that supports migrating database
 | Online | In this mode, the source database can continue to change. After the full initial migration, yb_migrate continues replicating source database changes to the target database. <br> The process runs continuously till you decide to switch over to the YugabyteDB database. |
 
 {{< note title="Note" >}}
-yb_migrate supports only `offline` migration mode. The `online` migration mode is currently under development.
+yb_migrate supports only `offline` migration mode. The `online` migration mode is currently under development. For more details, refer to the [github issue](https://github.com/yugabyte/yb-db-migration/issues/50).
 {{< /note >}}
 
 ### Migration workflow
