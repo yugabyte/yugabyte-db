@@ -47,7 +47,9 @@ Regardless of the alert level, you create an alert as follows:
 
   <br><br>
 
-  Templates are available for alerts related to YugabyteDB Anywhere operations, YugabyteDB operations, as well as YSQL and YCQL performance.<br>
+  Templates are available for alerts related to YugabyteDB Anywhere operations, YugabyteDB operations, as well as YSQL and YCQL performance. For supplemental information on templates, see [Templates reference](#templates-reference).
+
+  <br>
 
   Most of the template fields are self-explanatory. The following fields are of note:
 
@@ -58,6 +60,167 @@ Regardless of the alert level, you create an alert as follows:
   - The **Destination** field allows you to select one of the previously defined recipients of the alert. For more information, see [Define alert destinations](#define-alert-destinations).
 
 - Click **Save**.
+
+### Templates reference
+
+Alert templates available in YugabyteDB Anywhere have been created using Prometheus expressions. Although not required, you might be inclined to consult the following list of expressions:
+
+- ```expression
+  expr: count by (node_prefix) (yb_node_ysql_write_read{node_prefix=""} < 1)
+  ```
+
+- ```expression
+  expr: ybp_universe_encryption_key_expiry_days{universe_uuid=""} < 3
+  ```
+
+- ```expression
+  expr: count by (node_prefix) 
+  (label_replace(max_over_time(up{export_type=~"master_export|tserver_export",node_prefix=""}[15m]), "exported_instance", "$1", "instance", "(.*)") < 1 and on (node_prefix, export_type, exported_instance) (min_over_time(ybp_universe_node_function{node_prefix=""}[15m]) == 1)) > 0
+  ```
+
+- ```expression
+  expr: ybp_health_check_redis_connectivity_error{universe_uuid=""} > 0
+  ```
+
+- ```expression
+  expr: ybp_health_check_tserver_core_files{universe_uuid=""} > 0
+  ```
+
+- ```expression
+  expr: min by (node_name) (ybp_health_check_n2n_cert_validity_days{universe_uuid=""} < 30)
+  ```
+
+- ```expression
+  expr: count by(node_prefix)  ((100 - (avg by (node_prefix, instance)(avg_over_time(irate(node_cpu_seconds_total{job="node",mode="idle", node_prefix=""}[1m])[30m:])) * 100)) > 90)
+  ```
+
+- ```expression
+  expr: count by(node_prefix)  ((100 - (avg by (node_prefix, instance) (avg_over_time(irate(node_cpu_seconds_total{job="node",mode="idle", node_prefix=""}[1m])[30m:])) * 100)) > 95)
+  ```
+
+- ```expression
+  expr: min by (node_name) (ybp_health_check_n2n_ca_cert_validity_days{universe_uuid=""} < 30)
+  ```
+
+- ```expression
+  expr: count by (node_prefix) (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint="/mnt/.*", node_prefix=""}) / sum without (saved_name)                                           (node_filesystem_size_bytes{mountpoint="/mnt/.*", node_prefix=""}) * 100) > 70)
+  ```
+
+- ```expression
+  expr: max by (node_prefix) (count by (node_prefix, exported_instance) (max_over_time(yb_node_leaderless_tablet{node_prefix=""}[5m])) > 0)
+  ```
+
+- ```expression
+  expr: count by (node_prefix) (yb_node_oom_kills_10min{node_prefix=""} > 1) > 0
+  ```
+
+- ```expression
+  expr: count by (node_prefix) (yb_node_oom_kills_10min{node_prefix=""} > 3) > 0
+  ```
+
+- ```expression
+  expr: last_over_time(ybp_schedule_backup_status{universe_uuid = ""}[1d]) < 1
+  ```
+
+- ```expression
+  expr: sum by (universe_uuid) (ybp_health_check_node_master_fatal_logs{universe_uuid=""} < bool 1) + sum by (universe_uuid) (ybp_health_check_node_tserver_fatal_logs{universe_uuid=""} < bool 1) > 0
+  ```
+
+- ```expression
+  expr: sum by (node_prefix) (increase(rpcs_queue_overflow{node_prefix=""}[10m])) + sum by (node_prefix) (increase(rpcs_timed_out_in_queue{node_prefix=""}[10m])) > 1
+  ```
+
+- ```expression
+  expr: max by (node_prefix) (changes(node_boot_time{node_prefix=""}[30m])) > 0
+  ```
+
+- ```expression
+  expr: max by (node_prefix) (changes(node_boot_time{node_prefix=""}[30m])) > 2
+  ```
+
+- ```expression
+  expr: last_over_time(ybp_alert_manager_status{customer_uuid = ""}[1d]) < 1
+  ```
+
+- ```expression
+  expr: sum by (node_prefix) (increase(majority_sst_files_rejections{node_prefix=""}[10m])) > 0
+  ```
+
+- ```expression
+  expr: max by (node_prefix) (count by (node_prefix, exported_instance) (max_over_time(yb_node_underreplicated_tablet{node_prefix=""}[5m])) > 0)
+  ```
+
+- ```expression
+  expr: max by (node_prefix) (changes(yb_node_boot_time{node_prefix=""}[30m]) and on (node_prefix) (max_over_time(ybp_universe_update_in_progress{node_prefix=""}[31m]) == 0)) > 0
+  ```
+
+- ```
+  expr: max by (node_prefix) (changes(yb_node_boot_time{node_prefix=""}[30m]) and on (node_prefix) (max_over_time(ybp_universe_update_in_progress{node_prefix=""}[31m]) == 0)) > 2
+  ```
+
+- ```expression
+  expr: min by (node_name) (ybp_health_check_c2n_cert_validity_days{universe_uuid=""} < 30)
+  ```
+
+- ```expression
+  expr: last_over_time(ybp_health_check_status{universe_uuid = ""}[1d]) < 1
+  ```
+
+- ```expression
+  expr: ybp_health_check_tserver_version_mismatch{universe_uuid=""} + ybp_health_check_master_version_mismatch{universe_uuid=""} > 0
+  ```
+
+- ```expression
+  expr: count by (node_prefix) (max_over_time(up{export_type="node_export",node_prefix=""}[15m]) < 1) > 0
+  ```
+
+- ```expression
+  expr: last_over_time(ybp_alert_config_writer_status[1d]) < 1
+  ```
+
+- ```expression
+  expr: last_over_time(ybp_alert_query_status[1d]) < 1
+  ```
+
+- ```expression
+  expr: last_over_time(ybp_health_check_notification_status{universe_uuid = ""}[1d]) < 1
+  ```
+
+- ```expression
+  expr: ybp_health_check_cqlsh_connectivity_error{universe_uuid=""} > 0
+  ```
+
+- ```expression
+  expr: sum by (node_prefix) (increase(leader_memory_pressure_rejections{node_prefix=""}[10m])) + sum by (node_prefix) (increase(follower_memory_pressure_rejections{node_prefix=""}[10m])) + sum by (node_prefix) (increase(operation_memory_pressure_rejections{node_prefix=""}[10m])) > 0
+  ```
+
+- ```expression
+  expr: last_over_time(ybp_alert_manager_channel_status{customer_uuid = ""}[1d]) < 1
+  ```
+
+- ```expression
+  expr: min by (node_name) (ybp_health_check_c2n_ca_cert_validity_days{universe_uuid=""} < 30)
+  ```
+
+- ```expression
+  expr: max by (node_prefix) (yb_node_is_master_leader{node_prefix=""}) < 1
+  ```
+
+- ```expression
+  expr: ybp_universe_inactive_cron_nodes{universe_uuid = ""} > 0
+  ```
+
+- ```expression
+  expr: count by (universe_uuid) (ybp_health_check_used_fd_pct{universe_uuid=""} > 70)
+  ```
+
+- ```expression
+  expr: max by (node_prefix) (max_over_time(hybrid_clock_skew{node_prefix=""}[10m])) / 1000 > 500
+  ```
+
+- ```expression
+  expr: last_over_time(ybp_create_backup_status{universe_uuid = ""}[1d]) < 1
+  ```
 
 ## Define notification channels
 
