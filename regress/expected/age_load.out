@@ -190,6 +190,16 @@ SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country2 {iso2 : 'AT'})
  1688849860263940 | "Austria" | "AT"
 (1 row)
 
+SELECT * FROM cypher('agload_test_graph', $$
+    MATCH (u:Country {region : "Europe"})
+    WHERE u.name =~ 'Cro.*'
+    RETURN u.name, u.region
+$$) AS (result_1 agtype, result_2 agtype);
+ result_1  | result_2 
+-----------+----------
+ "Croatia" | "Europe"
+(1 row)
+
 SELECT drop_graph('agload_test_graph', true);
 NOTICE:  drop cascades to 7 other objects
 DETAIL:  drop cascades to table agload_test_graph._ag_label_vertex

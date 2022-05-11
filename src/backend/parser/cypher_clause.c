@@ -2543,7 +2543,7 @@ static void transform_match_pattern(cypher_parsestate *cpstate, Query *query,
         Expr *prop_qual = makeBoolExpr(AND_EXPR,
                                        cpstate->property_constraint_quals, -1);
 
-        if (quals == NIL)
+        if (expr == NULL)
         {
             expr = prop_qual;
         }
@@ -2560,13 +2560,19 @@ static void transform_match_pattern(cypher_parsestate *cpstate, Query *query,
 
         where_qual = (Expr *)transform_cypher_expr(cpstate, where,
                                                    EXPR_KIND_WHERE);
-
-        if (quals == NIL)
+        if (expr == NULL)
         {
             expr = where_qual;
         }
         else
         {
+            /*
+             * coerce the WHERE clause to a boolean before AND with the property
+             * contraints, otherwise there could be evaluation issues.
+             */
+            where_qual = (Expr *)coerce_to_boolean(pstate, (Node *)where_qual,
+                                                   "WHERE");
+
             expr = makeBoolExpr(AND_EXPR, list_make2(expr, where_qual), -1);
         }
     }

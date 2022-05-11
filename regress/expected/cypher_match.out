@@ -1065,6 +1065,26 @@ $$) as (f agtype, t agtype);
 (9 rows)
 
 --
+-- Constraints and WHERE clause together
+--
+SELECT * FROM cypher('cypher_match', $$
+    CREATE ({i: 1, j: 2, k: 3}), ({i: 1, j: 3}), ({i:2, k: 3})
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (n {j: 2})
+    WHERE n.i = 1
+    RETURN n
+$$) as (n agtype);
+                                          n                                           
+--------------------------------------------------------------------------------------
+ {"id": 281474976710662, "label": "", "properties": {"i": 1, "j": 2, "k": 3}}::vertex
+(1 row)
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);

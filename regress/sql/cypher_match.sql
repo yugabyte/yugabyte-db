@@ -537,6 +537,19 @@ SELECT * FROM cypher('cypher_match', $$
 $$) as (f agtype, t agtype);
 
 --
+-- Constraints and WHERE clause together
+--
+SELECT * FROM cypher('cypher_match', $$
+    CREATE ({i: 1, j: 2, k: 3}), ({i: 1, j: 3}), ({i:2, k: 3})
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (n {j: 2})
+    WHERE n.i = 1
+    RETURN n
+$$) as (n agtype);
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);

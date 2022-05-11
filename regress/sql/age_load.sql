@@ -53,4 +53,10 @@ SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country {iso2 : 'AT'})
 SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country2 {iso2 : 'AT'})
     RETURN id(n), n.name, n.iso2 $$) as ("id(n)" agtype, "n.name" agtype, "n.iso2" agtype);
 
+SELECT * FROM cypher('agload_test_graph', $$
+    MATCH (u:Country {region : "Europe"})
+    WHERE u.name =~ 'Cro.*'
+    RETURN u.name, u.region
+$$) AS (result_1 agtype, result_2 agtype);
+
 SELECT drop_graph('agload_test_graph', true);
