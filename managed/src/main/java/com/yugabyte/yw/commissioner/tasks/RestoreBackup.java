@@ -102,6 +102,7 @@ public class RestoreBackup extends UniverseTaskBase {
     restoreParams.backupStorageInfoList = new ArrayList<>();
     restoreParams.actionType = actionType;
     restoreParams.backupStorageInfoList.add(backupStorageInfo);
+    restoreParams.disableChecksum = params.disableChecksum;
 
     return restoreParams;
   }
