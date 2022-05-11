@@ -1,4 +1,4 @@
-# Licensed to the Apache Software Foundation (ASF) under one
+  # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
 # regarding copyright ownership.  The ASF licenses this file
@@ -97,6 +97,10 @@ ADD_YB_LIBRARY(
   tablet
   SRCS ${TABLET_SRCS}
   DEPS ${TABLET_DEPS})
+
+# read_query.h and write_query.h include tserver.fwd.h, and are included from some sources in the
+# tablet code, so tserver proto generation has to happen before compiling this library.
+add_dependencies(tablet gen_src_yb_tserver_tserver_proto)
 
 ADD_YB_LIBRARY(
   tablet_error
