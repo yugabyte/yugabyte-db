@@ -27,13 +27,16 @@ To connect to a cluster using `ysqlsh`:
     - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
     - `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
 
+1. Enter your password when prompted.
+
 The `ysqlsh` shell opens connected to the remote cluster.
 
 ```output
 ysqlsh (11.2-YB-2.6.1.0-b0)
+SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 
-yugabyte=#
+yugabyte=>
 ```
 
 <!-- markdownlint-disable-file MD041 -->
