@@ -48,6 +48,10 @@ macro(YRPC_PROCESS_FILE FIL MESSAGES)
     SET(REL_DIR "${REL_DIR}/")
   endif()
 
+  # For all the header files generated here, make sure they are also checked for in the
+  # validate_proto_deps function in dep_graph_common.py. This will make sure that we don't add
+  # depenedencies on these header files without also adding a dependency on a target that will
+  # generate them. A failure to do so may result in non-deterministic build failures.
   set(PROTO_CC_OUT "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.pb.cc")
   set(PROTO_H_OUT "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.pb.h")
   set(SERVICE_CC "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.service.cc")

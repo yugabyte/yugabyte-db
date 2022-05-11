@@ -275,8 +275,8 @@ class DependencyGraphBuilder:
 
             start_time_sec = time.time()
             logging.info("Parsing the output of 'ninja -t deps' to infer dependencies")
-            logging.info("Parsing dependencies took %.1f seconds", time.time() - start_time_sec)
             self.parse_depend_file('ninja_deps.txt')
+            logging.info("Parsing dependencies took %.1f seconds", time.time() - start_time_sec)
 
     def register_dependency(self,
                             dependent: str,
