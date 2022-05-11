@@ -2600,6 +2600,54 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TestSerializableStrongReadLockNotAbor
       << "Update status: " << update_status << ".\n";
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ColocatedCompaction)) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+
+  const std::string kDatabaseName = "testdb";
+  const auto kNumTables = 3;
+  constexpr int kKeys = 100;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  for (int i = 0; i < kNumTables; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(R"#(
+        CREATE TABLE test$0 (
+          key INTEGER NOT NULL PRIMARY KEY,
+          value INTEGER,
+          string VARCHAR
+        )
+      )#", i));
+    for (int j = 0; j < kKeys; ++j) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO test$0(key, value, string) VALUES($1, -$1, '$2')", i, j,
+          RandomHumanReadableString(128_KB)));
+    }
+  }
+
+  ASSERT_OK(cluster_->FlushTablets());
+  uint64_t files_size = 0;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+  }
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", kNumTables - 1));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", 0));
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  uint64_t new_files_size = 0;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    new_files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+  }
+
+  LOG(INFO) << "Old files size: " << files_size << ", new files size: " << new_files_size;
+  ASSERT_LE(new_files_size * 2, files_size);
+  ASSERT_GE(new_files_size * 3, files_size);
+}
+
 // Use special mode when non leader master times out all rpcs.
 // Then step down master leader and perform backup.
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
