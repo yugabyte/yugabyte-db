@@ -93,11 +93,16 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           universe =
               saveUniverseDetails(
                   u -> {
+                    NodeDetails node = u.getNode(taskParams().nodeName);
                     Map<String, NodeInstance> nodeMap =
                         NodeInstance.pickNodes(
                             onpremAzToNodes, currentNode.cloudInfo.instance_type);
-                    NodeInstance node = nodeMap.get(currentNode.nodeName);
-                    currentNode.nodeUuid = nodeInstance.getNodeUuid();
+                    node.nodeUuid = nodeMap.get(currentNode.nodeName).getNodeUuid();
+                    currentNode.nodeUuid = node.nodeUuid;
+                    // This needs to be set because DB fetch of this universe later can override the
+                    // field
+                    // as the universe details object is transient and not tracked by DB.
+                    u.setUniverseDetails(u.getUniverseDetails());
                     // Perform preflight check. If it fails, the node must not be in use,
                     // otherwise running it second time can succeed. This check must be
                     // performed only when a new node is picked as Add after Remove can
