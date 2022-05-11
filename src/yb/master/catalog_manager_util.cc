@@ -488,7 +488,7 @@ Status CatalogManagerUtil::CheckValidLeaderAffinity(const ReplicationInfoPB& rep
   auto& placement_info = replication_info.live_replicas();
   if (!placement_info.placement_blocks().empty()) {
     vector<AffinitizedZonesSet> affinitized_zones;
-    GetAllAffinitizedZones(&replication_info, &affinitized_zones);
+    GetAllAffinitizedZones(replication_info, &affinitized_zones);
 
     std::set<string> visited_zones;
     for (const auto& zone_set : affinitized_zones) {
