@@ -90,6 +90,8 @@ public class CreateBackup extends UniverseTaskBase {
     tableBackupParams.parallelism = params().parallelism;
     tableBackupParams.timeBeforeDelete = params().timeBeforeDelete;
     tableBackupParams.backupType = params().backupType;
+    tableBackupParams.isFullBackup = CollectionUtils.isEmpty(params().keyspaceTableList);
+    tableBackupParams.disableChecksum = params().disableChecksum;
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().universeUUID);
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
@@ -291,6 +293,7 @@ public class CreateBackup extends UniverseTaskBase {
                 BackupVersion.V2);
         backup.setTaskUUID(userTaskUUID);
         tableBackupParams.backupUuid = backup.backupUUID;
+        tableBackupParams.disableChecksum = params().disableChecksum;
         log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
         for (BackupTableParams backupParams : backupParamsList) {
@@ -372,6 +375,7 @@ public class CreateBackup extends UniverseTaskBase {
     backupParams.scheduleUUID = params().scheduleUUID;
     backupParams.setKeyspace(tableKeySpace);
     backupParams.backupType = backupType;
+    backupParams.disableChecksum = params().disableChecksum;
 
     if (tableName != null && tableUUID != null) {
       if (backupParams.tableNameList == null) {
@@ -415,6 +419,7 @@ public class CreateBackup extends UniverseTaskBase {
     backupParams.parallelism = params().parallelism;
     backupParams.timeBeforeDelete = params().timeBeforeDelete;
     backupParams.scheduleUUID = params().scheduleUUID;
+    backupParams.disableChecksum = params().disableChecksum;
     return backupParams;
   }
 
