@@ -26,7 +26,7 @@ In such scenarios, you would typically know the time when the data was corrupted
 
 ## How Does PITR Work?
 
-PITR in YugabyteDB is based on a combination of the flashback capability and periodic [distributed snapshots](../snapshot-ysql.md).
+PITR in YugabyteDB is based on a combination of the flashback capability and periodic [distributed snapshots](../snapshot-ysql).
 
 Flashback is a feature that allows to rewind the data back in time. At any moment, YugabyteDB stores not only the latest state of the data, but also the recent history of changes. Time period the history is maintained for is customizable and can be set via the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). With flashback, you can rollback to any point in time within this interval. The change history is also preserved when a snapshot is taken, which means that by creating snapshots periodically, you effectively increase the flashback retention interval.
 
