@@ -141,15 +141,44 @@ To restore, use the [`restore-snapshot-schedule`](../../../admin/yb-admin/#resto
 1. The ID of the schedule.
 2. Target restore time.
 
-For the second parameter, you have two options. You can either restore to an absolute time, providing a specific timestamp, or to a relative time (for example, to 10 minutes ago from now).
+For the second parameter, you have two options. You can either restore to an absolute time, providing a specific timestamp, or to a time that is relative to the current (for example, to 10 minutes ago from now).
 
 ### Restoring to an Absolute Time
 
-TBD
+To restore to an absolute time you need to provide a timestamp you want to restore to. The following formats are supported:
+1. [Unix timestamp](https://www.unixtimestamp.com) in seconds, milliseconds or microseconds.
+2. [YSQL timestamp](../../api/ysql/datatypes/type_datetime/).
+3. [YCQL timestamp](../../api/ycql/type_datetime/#timestamp).
+
+For example, here is how you can restore to 1:00PM PDT on May 1st 2022 using a Unix timestamp:
+
+```sh
+$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 1651435200
+```
+
+The equivalent command that uses a YCQL timestamp will look like this:
+
+```sh
+$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 2022-05-01 13:00-0700
+```
 
 ### Restoring to a Relative Time
 
-TBD
+Alternatively, you can restore to a time relative to the current moment, by specifying how much time back you would like to rollback a database or keyspace to.
+
+For example, to restore to 5 minutes ago, run the following command:
+
+```sh
+$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 5m
+```
+
+Or, to restore to 1 hour ago, use the following:
+
+```sh
+$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 1h
+```
+
+For detailed information on the relative time formatting, refer to the [`restore-snapshot-schedule` reference](../../../admin/yb-admin/#restore-snapshot-schedule).
 
 ## Limitations
 
