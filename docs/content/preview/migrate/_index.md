@@ -71,7 +71,8 @@ yb_migrate is a command line executable program that supports migrating database
 | Online | In this mode, the source database can continue to change. After the full initial migration, yb_migrate continues replicating source database changes to the target database. <br> The process runs continuously till you decide to switch over to the YugabyteDB database. |
 
 {{< note title="Note" >}}
-yb_migrate supports only `offline` migration mode. The `online` migration mode is currently under development. For more details, refer to the [github issue](https://github.com/yugabyte/yb-db-migration/issues/50).
+yb_migrate supports only `offline` migration mode. The `online` migration mode is currently under development.
+ <!-- For more details, refer to the [github issue](https://github.com/yugabyte/yb-db-migration/issues/50). -->
 {{< /note >}}
 
 ### Migration workflow
