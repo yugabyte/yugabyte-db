@@ -230,7 +230,10 @@ public class CustomerTask extends Model {
     Abort,
 
     @EnumValue("CreateSupportBundle")
-    CreateSupportBundle;
+    CreateSupportBundle,
+
+    @EnumValue("CreateTableSpaces")
+    CreateTableSpaces;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -327,6 +330,8 @@ public class CustomerTask extends Model {
           return completed ? "Task aborted " : "Aborting task ";
         case CreateSupportBundle:
           return completed ? "Created Support Bundle in " : "Creating Support Bundle in ";
+        case CreateTableSpaces:
+          return completed ? "Created tablespaces in " : "Creating tablespaces in ";
         default:
           return null;
       }

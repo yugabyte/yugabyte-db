@@ -289,7 +289,10 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
       std::string with_clause =
           colocation_id_string.empty() ? colocated_clause
                                        : Format("$0, $1", colocation_id_string, colocated_clause);
-      query += Format("WITH ($0) SPLIT INTO $1 TABLETS", with_clause, num_tablets);
+      query += Format("WITH ($0)", with_clause);
+      if (!colocated) {
+         query += Format(" SPLIT INTO $0 TABLETS", num_tablets);
+      }
     }
     EXPECT_OK(conn.Execute(query));
     return GetTable(cluster, namespace_name, table_name);
@@ -500,10 +503,11 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     return Status::OK();
   }
 };
-INSTANTIATE_TEST_CASE_P(TwoDCTestParams, TwoDCYsqlTest,
-                        ::testing::Values(TwoDCTestParams(1, true), TwoDCTestParams(1, false),
-                                          TwoDCTestParams(0, true), TwoDCTestParams(0, false)));
-
+INSTANTIATE_TEST_CASE_P(
+    TwoDCTestParams, TwoDCYsqlTest,
+    ::testing::Values(
+        TwoDCTestParams(1, true, true), TwoDCTestParams(1, false, false),
+        TwoDCTestParams(0, true, true), TwoDCTestParams(0, false, false)));
 
 TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   YB_SKIP_TEST_IN_TSAN();

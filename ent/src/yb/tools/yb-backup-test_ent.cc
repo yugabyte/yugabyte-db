@@ -118,6 +118,41 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     SetDbName(db); // Connecting to the recreated 'yugabyte' DB from the moment.
   }
 
+  Result<string> GetTableId(
+      const string& table_name, const string& log_prefix, const string& ns = string()) {
+    LOG(INFO) << log_prefix << ": get table";
+    vector<client::YBTableName> tables = VERIFY_RESULT(client_->ListTables(table_name));
+    if (!ns.empty()) {
+      // Filter tables with provided namespace name.
+      for (vector<client::YBTableName>::iterator it = tables.begin(); it != tables.end();) {
+        if (it->namespace_name()  != ns) {
+          it = tables.erase(it);
+        } else {
+          ++it;
+        }
+      }
+    }
+
+    if (tables.size() != 1) {
+      return STATUS_FORMAT(InternalError, "Expected 1 table: got $0", tables.size());
+    }
+
+    const client::YBTableName name = tables.front();
+    LOG(INFO) << log_prefix << ": found table: " << name.namespace_name()
+              << "." << name.table_name() << " : " << name.table_id();
+    return name.table_id();
+  }
+
+  Result<google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>> GetTablets(
+      const string& table_name, const string& log_prefix, const string& ns = string()) {
+    auto table_id = VERIFY_RESULT(GetTableId(table_name, log_prefix, ns));
+
+    LOG(INFO) << log_prefix << ": get tablets";
+    google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(client_->GetTabletsFromTableId(table_id, -1, &tablets));
+    return tablets;
+  }
+
   void DoTestYEDISBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp);
   void DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp);
@@ -982,25 +1017,6 @@ class YBBackupTestNumTablets : public YBBackupTest {
   }
 
  protected:
-  Result<string> GetTableId(const string& table_name, const string& log_prefix) {
-    LOG(INFO) << log_prefix << ": get table";
-    vector<client::YBTableName> tables = VERIFY_RESULT(client_->ListTables(table_name));
-    if (tables.size() != 1) {
-      return STATUS_FORMAT(InternalError, "Expected 1 table: got $0", tables.size());
-    }
-    return tables.front().table_id();
-  }
-
-  Result<google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>> GetTablets(
-      const string& table_name, const string& log_prefix) {
-    auto table_id = VERIFY_RESULT(GetTableId(table_name, log_prefix));
-
-    LOG(INFO) << log_prefix << ": get tablets";
-    google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
-    RETURN_NOT_OK(client_->GetTabletsFromTableId(table_id, -1, &tablets));
-    return tablets;
-  }
-
   Result<bool> CheckPartitions(
       const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets,
       const vector<string>& expected_splits) {
@@ -1326,6 +1342,90 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackup
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace,
        "--TEST_sleep_during_download_dir", "restore"}));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithLearnerTS)) {
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v INT)"));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 200)"));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (999, 999)"));
+
+  // Create the new DB and the table. Calling 'ysqlsh YSQL_Dump' below (from 'yb_backup restore')
+  // will not create the table as the table has been already created here. The manual table
+  // creation allows to change the number of peers to get the LEARNER peer.
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE DATABASE yugabyte_new WITH TEMPLATE = template0 "
+      "ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8'", "CREATE DATABASE"));
+  SetDbName("yugabyte_new"); // Connecting to the second DB from the moment.
+
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v INT)"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT k, v FROM mytbl",
+      R"#(
+        k | v
+        ---+---
+        (0 rows)
+      )#"
+  ));
+
+  // Wait for a LEARNER peer.
+  bool learner_found = false;
+  int num_new_ts = 0;
+  for (int round = 0; round < 300; ++round) {
+    // Add a new TS every 60 seconds to trigger the load balancer and
+    // so to trigger creation of new peers for existing tables.
+    if (round % 60 == 0 && num_new_ts < 3) {
+      ++num_new_ts;
+      LOG(INFO) << "Add new TS " << num_new_ts;
+      ASSERT_OK(cluster_->AddTabletServer());
+
+      // Delay a new peer commiting from LEARNER to FOLLOWER.
+      vector<ExternalTabletServer*> tservers = cluster_->tserver_daemons();
+      for (ExternalTabletServer* ts : tservers) {
+        ASSERT_OK(cluster_->SetFlag(ts, "inject_delay_commit_pre_voter_to_voter_secs", "20"));
+      }
+    }
+
+    auto tablets = ASSERT_RESULT(GetTablets("mytbl", "", "yugabyte_new"));
+    for (const master::TabletLocationsPB& loc : tablets) {
+      for (const auto& replica : loc.replicas()) {
+        if (replica.role() != PeerRole::LEADER && replica.role() != PeerRole::FOLLOWER) {
+          learner_found = true;
+          break;
+        }
+      }
+      if (learner_found) {
+        break;
+      }
+    }
+
+    LOG(INFO) << "Learner found = " << learner_found << " round = " << round;
+    if (learner_found) {
+      break;
+    }
+    std::this_thread::sleep_for(1s);
+  }
+
+  // LEARNER is found in ~90% of runs.
+  if (!learner_found) {
+    LOG(WARNING) << "Could not catch the LEARNER TS";
+  }
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT k, v FROM mytbl ORDER BY k",
+      R"#(
+          k  |  v
+        -----+-----
+         100 | 200
+        (1 row)
+      )#"
+  ));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }

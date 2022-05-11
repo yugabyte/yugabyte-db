@@ -9,9 +9,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -382,7 +382,10 @@ public class Audit extends Model {
     DeleteInstanceType,
 
     @EnumValue("Get Universe Resources")
-    GetUniverseResources
+    GetUniverseResources,
+
+    @EnumValue("Create TableSpaces")
+    CreateTableSpaces,
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.
