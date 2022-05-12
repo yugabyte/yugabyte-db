@@ -125,6 +125,10 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
 }
 
 static void DoWriteStatArrayElemToJson(JsonWriter *writer, YsqlStatementStat *stat) {
+  writer->String("query_id");
+  // Use Int64 for this uint64 field to keep consistent output with PG.
+  writer->Int64(stat->query_id);
+
   writer->String("query");
   writer->String(stat->query);
 
