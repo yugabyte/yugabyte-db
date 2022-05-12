@@ -55,8 +55,10 @@ The following table explains some of the differences between creating an index o
 | Keeps other transactions alive during `CREATE INDEX`? | mostly | no |
 | Parallelizes index loading? | yes | no |
 
-To enable online schema migration for one `CREATE INDEX`, use `CREATE INDEX CONCURRENTLY`.
+`CREATE INDEX CONCURRENTLY` is supported, though online index backfill is enabled by default. Some restrictions apply (see [CONCURRENTLY](#concurrently)).
+
 To disable online schema migration for YSQL `CREATE INDEX`, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** master and tserver.
+
 To disable online schema migration for one `CREATE INDEX`, use `CREATE INDEX NONCONCURRENTLY`.
 
 {{< note title="Note" >}}
@@ -88,8 +90,6 @@ Enable online schema migration (see [Semantics](#semantics) for details), with s
 ### NONCONCURRENTLY
 
 Disable online schema migration (see [Semantics](#semantics) for details).
-
-Concurrent is the default, but the grammar does not yet support `CONCURRENTLY`.
 
 ### ONLY
 
