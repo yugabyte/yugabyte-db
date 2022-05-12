@@ -896,6 +896,7 @@ class YBBackup:
         self.k8s_namespace_to_cfg = {}
         self.timer = BackupTimer()
         self.tserver_ip_to_web_port = {}
+        self.ip_to_ssh_key_map = {}
         self.secondary_to_primary_ip_map = {}
         self.region_to_location = {}
         self.database_version = YBVersion("unknown")
@@ -996,6 +997,9 @@ class YBBackup:
             # In fact this is IP mapping for TServers and Masters.
             '--ts_secondary_ip_map', default=None,
             help="Map of secondary IPs to primary for ensuring ssh connectivity")
+        parser.add_argument(
+            '--ip_to_ssh_key_path', default=None,
+            help="Map of IPs to their SSH keys")
         parser.add_argument(
             '--k8s_config', required=False,
             help="Namespace to use for kubectl in case of kubernetes deployment")
@@ -1239,6 +1243,9 @@ class YBBackup:
 
         if self.args.ts_secondary_ip_map is not None:
             self.secondary_to_primary_ip_map = json.loads(self.args.ts_secondary_ip_map)
+
+        if self.args.ip_to_ssh_key_path is not None:
+            self.ip_to_ssh_key_map = json.loads(self.args.ip_to_ssh_key_path)
 
         if self.is_k8s():
             self.k8s_namespace_to_cfg = json.loads(self.args.k8s_config)
@@ -1802,6 +1809,9 @@ class YBBackup:
                 '--no-preserve=true'
             ], env=k8s_details.env_config, num_retry=LOCAL_FILE_MAX_RETRIES)
         elif not self.args.no_ssh:
+            ssh_key_path = self.args.ssh_key_path
+            if self.ip_to_ssh_key_map:
+                ssh_key_path = self.ip_to_ssh_key_map.get(dest_ip, ssh_key_path)
             if self.needs_change_user():
                 # TODO: Currently ssh_wrapper_with_sudo.sh will only change users to yugabyte,
                 # not args.remote_user.
@@ -1811,7 +1821,7 @@ class YBBackup:
                         '-S', ssh_wrapper_path,
                         '-o', 'StrictHostKeyChecking=no',
                         '-o', 'UserKnownHostsFile=/dev/null',
-                        '-i', self.args.ssh_key_path,
+                        '-i', ssh_key_path,
                         '-P', self.args.ssh_port,
                         '-q',
                         src,
@@ -1822,7 +1832,7 @@ class YBBackup:
                     ['scp',
                         '-o', 'StrictHostKeyChecking=no',
                         '-o', 'UserKnownHostsFile=/dev/null',
-                        '-i', self.args.ssh_key_path,
+                        '-i', ssh_key_path,
                         '-P', self.args.ssh_port,
                         '-q',
                         src,
@@ -1846,6 +1856,9 @@ class YBBackup:
                 '--no-preserve=true'
             ], env=k8s_details.env_config, num_retry=LOCAL_FILE_MAX_RETRIES)
         elif not self.args.no_ssh:
+            ssh_key_path = self.args.ssh_key_path
+            if self.ip_to_ssh_key_map:
+                ssh_key_path = self.ip_to_ssh_key_map.get(src_ip, ssh_key_path)
             if self.needs_change_user():
                 # TODO: Currently ssh_wrapper_with_sudo.sh will only change users to yugabyte,
                 # not args.remote_user.
@@ -1855,7 +1868,7 @@ class YBBackup:
                         '-S', ssh_wrapper_path,
                         '-o', 'StrictHostKeyChecking=no',
                         '-o', 'UserKnownHostsFile=/dev/null',
-                        '-i', self.args.ssh_key_path,
+                        '-i', ssh_key_path,
                         '-P', self.args.ssh_port,
                         '-q',
                         '%s@%s:%s' % (self.args.ssh_user, src_ip, src),
@@ -1865,7 +1878,7 @@ class YBBackup:
                     ['scp',
                         '-o', 'StrictHostKeyChecking=no',
                         '-o', 'UserKnownHostsFile=/dev/null',
-                        '-i', self.args.ssh_key_path,
+                        '-i', ssh_key_path,
                         '-P', self.args.ssh_port,
                         '-q',
                         '%s@%s:%s' % (self.args.ssh_user, src_ip, src),
@@ -1919,6 +1932,9 @@ class YBBackup:
                 num_retry=num_retries,
                 env=k8s_details.env_config)
         elif not self.args.no_ssh:
+            ssh_key_path = self.args.ssh_key_path
+            if self.ip_to_ssh_key_map:
+                ssh_key_path = self.ip_to_ssh_key_map.get(server_ip, ssh_key_path)
             change_user_cmd = 'sudo -u %s' % (self.args.remote_user) \
                 if self.needs_change_user() else ''
             return self.run_program([
@@ -1929,7 +1945,7 @@ class YBBackup:
                 '-o', 'ControlMaster=auto',
                 '-o', 'ControlPath=~/.ssh/ssh-%r@%h:%p',
                 '-o', 'ControlPersist=1m',
-                '-i', self.args.ssh_key_path,
+                '-i', ssh_key_path,
                 '-p', self.args.ssh_port,
                 '-q',
                 '%s@%s' % (self.args.ssh_user, server_ip),
