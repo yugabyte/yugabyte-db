@@ -60,7 +60,7 @@ By default, only the first column is treated as the hash-partition column. But t
 For example, if the primary key specification is `PRIMARY KEY ((a, b) HASH, c DESC)` then columns `a` & `b` are used together to hash partition the table, and rows that share the same values for `a` and `b` are stored in descending order of their value for `c`.
 
 If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used to hash partition
-the table and rows that share the same value for `a` are stored in ascending order of their value
+the table, and rows that share the same value for `a` are stored in ascending order of their value
 for `b`.
 
 ### Foreign key
