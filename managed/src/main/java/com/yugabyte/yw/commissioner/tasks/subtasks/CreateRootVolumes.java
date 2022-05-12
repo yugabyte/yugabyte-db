@@ -32,8 +32,9 @@ public class CreateRootVolumes extends NodeTaskBase {
   @Override
   public void run() {
     ShellResponse response =
-        getNodeManager().nodeCommand(NodeManager.NodeCommandType.Create_Root_Volumes, taskParams());
-    processShellResponse(response);
+        getNodeManager()
+            .nodeCommand(NodeManager.NodeCommandType.Create_Root_Volumes, taskParams())
+            .processErrors();
     JsonNode parsedResponse = parseShellResponseAsJson(response);
     List<String> disks = Json.fromJson(parsedResponse, CopyOnWriteArrayList.class);
     taskParams().bootDisksPerZone.putIfAbsent(taskParams().azUuid, disks);

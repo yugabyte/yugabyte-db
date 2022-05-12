@@ -219,7 +219,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       if (response.code != 0 && flag) {
         response = getPodError(config);
       }
-      processShellResponse(response);
+      response.processErrors();
     }
   }
 
@@ -227,8 +227,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     ShellResponse response = new ShellResponse();
     response.code = -1;
     ShellResponse podResponse =
-        kubernetesManager.getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
-    processShellResponse(response);
+        kubernetesManager
+            .getPodInfos(config, taskParams().nodePrefix, taskParams().namespace)
+            .processErrors();
     JsonNode podInfos = parseShellResponseAsJson(podResponse);
     boolean flag = false;
     for (JsonNode podInfo : podInfos.path("items")) {

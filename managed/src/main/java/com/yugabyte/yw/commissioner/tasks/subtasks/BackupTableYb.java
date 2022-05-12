@@ -14,18 +14,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
-import play.libs.Json;
-
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import javax.inject.Inject;
-
-import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -56,8 +47,7 @@ public class BackupTableYb extends AbstractTaskBase {
         if (config.isEmpty() || config.getOrDefault(Universe.TAKE_BACKUPS, "true").equals("true")) {
           if (taskParams().backupList != null) {
             for (BackupTableParams backupParams : taskParams().backupList) {
-              ShellResponse response = tableManagerYb.createBackup(backupParams);
-              processShellResponse(response);
+              ShellResponse response = tableManagerYb.createBackup(backupParams).processErrors();
               JsonNode jsonNode = null;
               try {
                 jsonNode = Json.parse(response.message);

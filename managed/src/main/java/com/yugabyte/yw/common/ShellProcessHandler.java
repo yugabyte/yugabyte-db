@@ -31,6 +31,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,7 +52,7 @@ public class ShellProcessHandler {
   static final Pattern ANSIBLE_FAIL_PAT =
       Pattern.compile(
           "(ybops.common.exceptions.YBOpsRuntimeError: Runtime error: "
-              + "Playbook run.* )with args.* (failed with.*) ");
+              + "Playbook run.* )with args.* (failed with.*? [0-9]+)");
   static final Pattern ANSIBLE_FAILED_TASK_PAT =
       Pattern.compile("TASK.*?fatal.*?FAILED.*", Pattern.DOTALL);
   static final String ANSIBLE_IGNORING = "ignoring";
@@ -150,49 +151,19 @@ public class ShellProcessHandler {
         if (logCmdOutput) {
           LOG.debug("Proc stdout for '{}' :", response.description);
         }
-        StringBuilder processOutput = new StringBuilder();
-        Marker fileOnly = MarkerFactory.getMarker("fileOnly");
-        Marker consoleOnly = MarkerFactory.getMarker("consoleOnly");
-
-        outputStream
-            .lines()
-            .forEach(
-                line -> {
-                  processOutput.append(line).append("\n");
-                  if (logCmdOutput) {
-                    LOG.debug(fileOnly, line);
-                  }
-                });
-
-        if (logCmdOutput && cloudLoggingEnabled && processOutput.length() > 0) {
-          LOG.debug(consoleOnly, processOutput.toString());
+        String processOutput = getOutputLines(outputStream, logCmdOutput);
+        String processError = getOutputLines(errorStream, logCmdOutput);
+        try {
+          response.code = process.exitValue();
+        } catch (IllegalThreadStateException itse) {
+          response.code = ERROR_CODE_GENERIC_ERROR;
+          LOG.warn(
+              "Expected process to be shut down, marking this process as failed '{}'",
+              response.description,
+              itse);
         }
-
-        if (logCmdOutput) {
-          LOG.debug("Proc stderr for '{}' :", response.description);
-        }
-        StringBuilder processError = new StringBuilder();
-        errorStream
-            .lines()
-            .forEach(
-                line -> {
-                  processError.append(line).append("\n");
-                  if (logCmdOutput) {
-                    LOG.debug(fileOnly, line);
-                  }
-                });
-
-        if (logCmdOutput && cloudLoggingEnabled && processError.length() > 0) {
-          LOG.debug(consoleOnly, processError.toString());
-        }
-
-        response.code = process.exitValue();
-        response.message =
-            (response.code == ERROR_CODE_SUCCESS)
-                ? processOutput.toString().trim()
-                : processError.toString().trim();
-        String ansibleErrMsg =
-            getAnsibleErrMsg(response.code, processOutput.toString(), processError.toString());
+        response.message = (response.code == ERROR_CODE_SUCCESS) ? processOutput : processError;
+        String ansibleErrMsg = getAnsibleErrMsg(response.code, processOutput, processError);
         if (ansibleErrMsg != null) {
           response.message = ansibleErrMsg;
         }
@@ -239,6 +210,26 @@ public class ShellProcessHandler {
     }
 
     return response;
+  }
+
+  private String getOutputLines(BufferedReader reader, boolean logOutput) {
+    Marker fileMarker = MarkerFactory.getMarker("fileOnly");
+    Marker consoleMarker = MarkerFactory.getMarker("consoleOnly");
+    String lines =
+        reader
+            .lines()
+            .peek(
+                line -> {
+                  if (logOutput) {
+                    LOG.debug(fileMarker, line);
+                  }
+                })
+            .collect(Collectors.joining("\n"))
+            .trim();
+    if (logOutput && cloudLoggingEnabled && lines.length() > 0) {
+      LOG.debug(consoleMarker, lines);
+    }
+    return lines;
   }
 
   private long getMaxLogMsgSize() {

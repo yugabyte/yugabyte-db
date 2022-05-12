@@ -102,7 +102,7 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
                 leaderMasterNode, universe, "upgrade_ysql", timeout);
 
         if (numAttempts == MAX_ATTEMPTS) {
-          processShellResponse(response);
+          response.processErrors();
         } else {
           if (response.code == ERROR_CODE_SUCCESS) {
             log.info("Successfully performed YSQL upgrade");

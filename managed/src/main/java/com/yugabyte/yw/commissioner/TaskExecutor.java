@@ -754,6 +754,7 @@ public class TaskExecutor {
         updateTaskDetailsOnError(TaskInfo.State.Failure, e);
         Throwables.propagate(e);
       } finally {
+        log.debug("Completed task {}", task.getName());
         taskCompletionTime = Instant.now();
         writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
         publishAfterTask(t);

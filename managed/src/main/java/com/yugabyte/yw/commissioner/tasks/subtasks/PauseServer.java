@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import javax.inject.Inject;
@@ -51,9 +50,7 @@ public class PauseServer extends NodeTaskBase {
       // Update the node state as stopping also can not set the node state to stopped
       // as it will be not reachable.
       setNodeState(NodeDetails.NodeState.Stopping);
-      ShellResponse response =
-          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Pause, taskParams());
-      processShellResponse(response);
+      getNodeManager().nodeCommand(NodeManager.NodeCommandType.Pause, taskParams()).processErrors();
       pauseUniverse(taskParams().nodeName);
       setNodeState(NodeDetails.NodeState.Stopped);
     } catch (Exception e) {

@@ -74,9 +74,9 @@ public class AnsibleSetupServer extends NodeTaskBase {
       log.info("Skipping ansible provision.");
     } else {
       // Execute the ansible command.
-      ShellResponse response =
-          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Provision, taskParams());
-      processShellResponse(response);
+      getNodeManager()
+          .nodeCommand(NodeManager.NodeCommandType.Provision, taskParams())
+          .processErrors();
       setNodeStatus(NodeStatus.builder().nodeState(NodeState.ServerSetup).build());
     }
   }
