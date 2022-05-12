@@ -2,7 +2,7 @@
 title: Migration process overview
 headerTitle: Migration process overview
 linkTitle: Migration process overview
-description: Overview of the process for migrating data and applications from other databases to YugabyteDB.
+description: Overview of the process for migrating other databases to YugabyteDB.
 menu:
   preview:
     identifier: migration-overview
@@ -34,11 +34,11 @@ Migrate the schema from the source database to YugabyteDB. Migrating an applicat
 
 The set of modifications to a PostgreSQL schema in order to get it to run on YugabyteDB is outlined in the section on migrating your schema from PostgreSQL to YugabyteDB.
 
-### Step 4. Migrate DML statements
+<!-- ### Step 4. Migrate DML statements
 
-The next step is to migrate the DML statements used by the application to YugabyteDB. The support for DML in YugabyteDB is very similar to what PostgreSQL supports with some exceptions. These are outlined in the section on migrating an app from PostgreSQL to YugabyteDB.
+The next step is to migrate the DML statements used by the application to YugabyteDB. The support for DML in YugabyteDB is very similar to what PostgreSQL supports with some exceptions. These are outlined in the section on migrating an app from PostgreSQL to YugabyteDB. -->
 
-### Step 5. Export data from source
+### Step 4. Export data from source
 
 The next step of the migration is to export the data from the various tables in the source database into a CSV format, which can subsequently be imported into YugabyteDB. Most databases support exporting data into a CSV format, which is the recommended option. For larger datasets, a parallel export is recommended.
 
@@ -50,14 +50,14 @@ Migrating to another database is a good trigger event to modify applications (in
 
 Suggestions to prepare the YugabyteDB cluster for an efficient data import. -->
 
-### Step 6. Import data
+### Step 5. Import data
 
 Import the data into YugabyteDB using the COPY command from CSV files, or programmatically.
 
-### Step 7. Finalize DDL (schema)
+### Step 6. Finalize DDL (schema)
 
 If any indexes, constraints and triggers were disabled to speed up data import, recreate those.
 
-### Step 8. Verify the migration
+### Step 7. Verify the migration
 
 Check that the list of tables, indexes, constraints, and triggers match between the source database and YugabyteDB.

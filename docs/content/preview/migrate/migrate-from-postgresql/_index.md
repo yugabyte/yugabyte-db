@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: migrate-from-postgresql
     parent: migrate
-    weight: 730
+    weight: 740
 ---
 
 The steps below cover how to *manually* migrate PostgreSQL data and applications to YugabyteDB.

@@ -40,7 +40,7 @@ Below are some recommendations when performing batch loads of data programmatica
 
 5. It may be necessary to increase the parallelism of the load in certain scenarios. For example, in the case of a loader using a single thread to load data, it may not be possible to utilize a large cluster optimally. In these cases, it may be necessary to increase the number of threads or run multiple loaders in parallel.
 
-6. Note that `INSERT .. ON CONFLICT` statements are not yet fully optimized as of YugabyteDB v2.2, so it is recommended to use simple INSERT statements if possible
+6. Note that `INSERT .. ON CONFLICT` statements are not yet fully optimized as of YugabyteDB v2.2, so it is recommended to use INSERT statements if possible
 
 ## Indexes during data load
 
@@ -52,5 +52,4 @@ This recommendation is subject to change in the near future with the introductio
 
 ## Disable constraints and triggers temporarily
 
-While loading data that is exported from another RDBMS, the source data set may not necessarily need to be checked for relational integrity since this was already performed when inserting into the source database. In such cases, disable checks such as FOREIGN KEY constraints, as well as triggers if possible. This would reduce the number of steps the database needs to perform while inserting data, which would speed up data loading.
-
+While loading data that is exported from another RDBMS, the source data set may not necessarily need to be checked for relational integrity because this was already performed when inserting into the source database. In such cases, disable checks such as FOREIGN KEY constraints, as well as triggers if possible. This would reduce the number of steps the database needs to perform while inserting data, which would speed up data loading.

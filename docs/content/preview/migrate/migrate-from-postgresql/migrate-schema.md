@@ -30,7 +30,6 @@ Altering the primary key of a table after creation is a planned feature, the cur
 
 {{< /note >}}
 
-
 ## Use `HASH` sort order
 
 In YugabyteDB, the sort order of the primary key (or index) of a table determines the data distribution strategy for that primary key (or index) table across the nodes of a cluster. Thus, the choice of the sort order is critical in determining the data distribution strategy.
@@ -84,7 +83,7 @@ CREATE TABLE test1 (
 
 Attempting to create this table would result in the following error.
 
-```
+```output
 ERROR:  0A000: COLLATE not supported yet
 LINE 2:     a text COLLATE "de_DE" PRIMARY KEY,
                    ^
@@ -126,13 +125,13 @@ One of the following techniques is recommended (in the order of preference) to i
 
 In order to use the `SERIAL` data type and not incur a performance penalty on `INSERT` operations, setting the cache size to 1000 is recommended. This can be achieved in the example table above by running an `ALTER` command on the sequence in the following manner.
 
-```
+```plpgsql
 ALTER SEQUENCE contacts_contact_id_seq CACHE 1000;
 ```
 
 You can find the name of the sequence as shown below.
 
-```
+```plpgsql
 yugabyte=# SELECT pg_get_serial_sequence('contacts', 'contact_id');
      pg_get_serial_sequence
 --------------------------------

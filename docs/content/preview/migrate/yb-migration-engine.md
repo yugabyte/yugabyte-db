@@ -1,19 +1,52 @@
 ---
-title: Database migration process
-headerTitle: Database migration process
-linkTitle: Database migration process (beta)
-description: Overview of the yb_migrate database engine for migrating data and applications from other databases to YugabyteDB.
+title: Migrate using YB migration engine
+headerTitle: Migrate using YB migration engine
+linkTitle: Migrate using YB migration engine (beta)
+description: Use yb_migrate for schema and data migration from other databases to YugabyteDB.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
-    identifier: db-migration-process
+    identifier: yb-migration-engine
     parent: migrate
     weight: 730
 isTocNested: true
 showAsideToc: true
 ---
 
-This page lists the detailed steps to migrate from PostgreSQL, MySQL or Oracle to YugabyteDB (YSQL API).
+## YB migration engine
+
+YB migration engine is an open-source database migration engine provided by YugabyteDB. The engine manages the entire lifecycle of a database migration including cluster preparation for data import, schema-migration and data-migration using [yb_migrate](https://github.com/yugabyte/yb-db-migration).
+
+### yb_migrate
+
+yb_migrate is a command line executable program that supports migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database. yb_migrate keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*. For more information, refer to [Export directory](../../reference/connectors/yb-migration-reference/#export-directory) in the Reference section.
+
+### Migration modes
+
+| Mode |  Description |
+| :------------- | :----------- |
+| Offline | In this mode, the source database should not change during the migration.<br> The offline migration is considered complete when all the requested schema objects and data are migrated to the target database. |
+| Online | In this mode, the source database can continue to change. After the full initial migration, yb_migrate continues replicating source database changes to the target database. <br> The process runs continuously till you decide to switch over to the YugabyteDB database. |
+
+{{< note title="Note" >}}
+yb_migrate supports only `offline` migration mode. The `online` migration mode is currently under development. For more details, refer to this [github issue](https://github.com/yugabyte/yb-db-migration/issues/50).
+{{< /note >}}
+
+### Migration workflow
+
+A typical migration workflow using yb_migrate consists of the following steps:
+
+- [Install yb_migrate](#1-install-yb-migrate) on a *migrator machine*.
+- Convert the source database schema to PostgreSQL format using the [`yb_migrate export schema`](#export-schema) command.
+- Generate a *Schema Analysis Report* using the [`yb_migrate analyze-schema`](#analyze-schema) command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB.
+- [Manually](#manually-edit-the-schema) change the exported schema as suggested in the Schema Analysis Report.
+- Dump the source database in the local files on the migrator machine using the [`yb_migrate export data`](#step-4-export-data) command.
+- Import the schema in the target YugabyteDB database using the [`yb_migrate import schema`](#step-5-import-the-schema) command.
+- Import the data in the target YugabyteDB database using the [`yb_migrate import data`](#step-6-import-data) command.
+
+![img](/images/migrate/yb_migrate.png)
+
+The following section lists the detailed steps to migrate from PostgreSQL, MySQL or Oracle to YugabyteDB (YSQL API) using YB migration engine.
 
 ## Prerequisites
 
@@ -141,12 +174,12 @@ export TARGET_DB_NAME=sakila
 
 User creation steps differ depending on the type of YugabyteDB deployment and version.
 
-- For YugabyteDB Managed or YugabyteDB Anywhere versions (2.13.1 and above) or (2.12.4 and above), create a user with `yb_db_admin` and `yb_extension` role using the following commands:
+- For YugabyteDB Managed or YugabyteDB Anywhere versions (2.13.1 and above) or (2.12.4 and above), create a user with `yb_db_admin` and `yb_superuser` role using the following commands:
 
 ```sql
 CREATE USER ybmigrate PASSWORD 'password';
 GRANT yb_db_admin TO ybmigrate;
-GRANT yb_extension TO ybmigrate;
+GRANT yb_superuser TO ybmigrate;
 ```
 
 - For YugabyteDB Anywhere versions below (2.13.1 or 2.12.4), create a user and role with the superuser privileges.
@@ -282,8 +315,6 @@ Run the `yb_migrate import data status --export-dir ${EXPORT_DIR}` command to ge
 ## Step 7: Finalize DDL
 
 The creation of indexes are automatically handled by the `yb_migrate import data` command after it successfully loads the data in the [import data](#step-6-import-data) phase. The command creates the indexes listed in the schema.
-
-**TODO** Add about how triggers are enabled or handled.
 
 ## Step 8: Verify migration
 
