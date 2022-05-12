@@ -28,22 +28,24 @@ In such scenarios, you would typically know the time when the data was corrupted
 
 PITR in YugabyteDB is based on a combination of the flashback capability and periodic [distributed snapshots](../snapshot-ysql).
 
-Flashback is a feature that allows to rewind the data back in time. At any moment, YugabyteDB stores not only the latest state of the data, but also the recent history of changes. Time period the history is maintained for is customizable and can be set via the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). With flashback, you can rollback to any point in time within this interval. The change history is also preserved when a snapshot is taken, which means that by creating snapshots periodically, you effectively increase the flashback retention interval.
+Flashback is a feature that allows to rewind the data back in time. At any moment, YugabyteDB stores not only the latest state of the data, but also the recent history of changes. With flashback, you can rollback to any point in time within the history retention period. The history is also preserved when a snapshot is taken, which means that by creating snapshots periodically, you effectively increase the flashback retention.
 
 For example, if your overall retention target for PITR is 7 days, you can use the following configuration:
-1. History retention interval is set to 25 hours (the corresponding flag value is 90,000 seconds).
-2. Snapshots are taken every 24 hours.
-3. The retention period for every snapshot is 7 days.
+1. History retention interval is 24 hours.
+2. Snapshots are taken daily.
+3. Each snapshot is kept for 7 days.
 
-{{< note title="Note on the history retention interval" >}}
+{{< note title="Note on the history retention interval flag" >}}
 
-When using PITR, it is important to have continuous change history. To make sure that's the case, it is recommended that the history retention interval is slightly larger than the interval between snapshots. For example, if snapshots are taken daily (every 24 hours), the history retention interval should be set to 25 hours. This creates an overlap that guarantees continuity.
+By default, the history retention period is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). This flag is applied to every keyspace of database.
+
+However, when [PITR is enabled](#creating-a-schedule) for a keyspace or database, YugabyteDB adjusts the history retention based on the interval between the snapshots. You're not required to manually set the cluster-wide flag in order to use PITR.
 
 {{< /note >}}
 
 {{< note title="Note on space consumption" >}}
 
-There are no technical limitations on the retention target. However, it's important to keep in mind that by increasing the history retention interval and the number of snapshots stored, you also increase the amount of space required for the database. The actual overhead depends on the workload, so we recommend to estimate it by running tests based on your applications.
+There are no technical limitations on the retention target. However, it's important to keep in mind that by increasing the number of snapshots stored, you also increase the amount of space required for the database. The actual overhead depends on the workload, so we recommend to estimate it by running tests based on your applications.
 
 {{< /note >}}
 
