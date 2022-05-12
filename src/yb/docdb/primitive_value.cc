@@ -2254,7 +2254,23 @@ KeyEntryValue KeyEntryValue::FromQLValuePB(const QLValuePB& value, SortingType s
   return DoFromQLValuePB(value, sorting_type);
 }
 
+KeyEntryValue KeyEntryValue::FromQLValuePBForKey(const QLValuePB& value, SortingType sorting_type) {
+  if (IsNull(value)) {
+    return KeyEntryValue::NullValue(sorting_type);
+  }
+  return DoFromQLValuePB(value, sorting_type);
+}
+
 KeyEntryValue KeyEntryValue::FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type) {
+  return DoFromQLValuePB(value, sorting_type);
+}
+
+KeyEntryValue KeyEntryValue::FromQLValuePBForKey(
+    const LWQLValuePB& value,
+    SortingType sorting_type) {
+  if (IsNull(value)) {
+    return KeyEntryValue::NullValue(sorting_type);
+  }
   return DoFromQLValuePB(value, sorting_type);
 }
 
