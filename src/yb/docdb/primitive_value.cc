@@ -1692,6 +1692,14 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
   LOG(FATAL) << "Unsupported datatype in PrimitiveValue: " << value.value_case();
 }
 
+PrimitiveValue PrimitiveValue::FromQLValuePBForKey(const QLValuePB& value,
+                                                   ColumnSchema::SortingType sorting_type) {
+  if (IsNull(value)) {
+    return PrimitiveValue::NullValue(sorting_type);
+  }
+  return FromQLValuePB(value, sorting_type);
+}
+
 void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
                                  const std::shared_ptr<QLType>& ql_type,
                                  QLValuePB* ql_value) {

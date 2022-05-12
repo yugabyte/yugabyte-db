@@ -215,6 +215,9 @@ class PrimitiveValue {
   static PrimitiveValue FromQLValuePB(const QLValuePB& value,
                                       ColumnSchema::SortingType sorting_type);
 
+  static PrimitiveValue FromQLValuePBForKey(const QLValuePB& value,
+                                            ColumnSchema::SortingType sorting_type);
+
   // Set a primitive value in a QLValuePB.
   static void ToQLValuePB(const PrimitiveValue& pv,
                           const std::shared_ptr<QLType>& ql_type,

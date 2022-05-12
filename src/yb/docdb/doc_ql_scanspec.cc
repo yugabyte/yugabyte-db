@@ -126,7 +126,7 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
       range_options_indexes_.emplace_back(condition.operands(0).column_id());
 
       if (condition.op() == QL_OP_EQUAL) {
-        auto pv = PrimitiveValue::FromQLValuePB(condition.operands(1).value(), sortingType);
+        auto pv = PrimitiveValue::FromQLValuePBForKey(condition.operands(1).value(), sortingType);
         (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
       } else { // QL_OP_IN
         DCHECK_EQ(condition.op(), QL_OP_IN);
@@ -140,7 +140,7 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
         for (int i = 0; i < opt_size; i++) {
           int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
           const auto &elem = options.elems(elem_idx);
-          auto pv = PrimitiveValue::FromQLValuePB(elem, sortingType);
+          auto pv = PrimitiveValue::FromQLValuePBForKey(elem, sortingType);
           (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
         }
       }
