@@ -350,11 +350,12 @@ static void PrepareIndexWriteStmt(YBCPgStatement stmt,
                                   Relation index,
                                   Datum *values,
                                   bool *isnull,
-                                  int natts,
+                                  int n_bound_atts,
                                   Datum ybbasectid,
                                   bool ybctid_as_value)
 {
-	TupleDesc tupdesc = RelationGetDescr(index);
+	TupleDesc tupdesc		= RelationGetDescr(index);
+	int		  indnkeyatts	= IndexRelationGetNumberOfKeyAttributes(index);
 
 	if (ybbasectid == 0)
 	{
@@ -364,15 +365,22 @@ static void PrepareIndexWriteStmt(YBCPgStatement stmt,
 	}
 
 	bool has_null_attr = false;
-	for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
+	for (AttrNumber attnum = 1; attnum <= n_bound_atts; ++attnum)
 	{
 		Oid   type_id = GetTypeId(attnum, tupdesc);
 		Oid   collation_id = YBEncodingCollation(stmt, attnum,
 												 ybc_get_attcollation(tupdesc, attnum));
 		Datum value   = values[attnum - 1];
 		bool  is_null = isnull[attnum - 1];
-		has_null_attr = has_null_attr || is_null;
 		BindColumn(stmt, attnum, type_id, collation_id, value, is_null);
+
+		/*
+		 * If any of the indexed columns is null, we need to take case of
+		 * SQL null != null semantics.
+		 * For details, see comment on kYBUniqueIdxKeySuffix.
+		 */
+		has_null_attr = has_null_attr || (is_null && attnum <= indnkeyatts);
+
 	}
 
 	const bool unique_index = index->rd_index->indisunique;
