@@ -266,45 +266,56 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
   @Test
   public void addUniqueWithInclude() throws Exception {
     try (Statement stmt = connection.createStatement()) {
-      stmt.execute("CREATE TABLE test(i1 int, i2 int)");
-      stmt.execute("ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE (i1) INCLUDE (i2)");
+      stmt.execute("CREATE TABLE test(i1 int, i2 int, i3 int)");
+      stmt.execute("ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE (i3) INCLUDE (i1, i2)");
 
       // Check that index is created properly
       assertQuery(
           stmt,
-          "SELECT pg_get_indexdef(i.indexrelid)\n" +
-              "FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid\n" +
-              "WHERE i.indrelid = 'test'::regclass",
+          "SELECT pg_get_indexdef(i.indexrelid)" +
+              " FROM pg_index i" +
+              " WHERE i.indrelid = 'test'::regclass",
           new Row("CREATE UNIQUE INDEX test_constr ON public.test " +
-                      "USING lsm (i1 HASH) INCLUDE (i2)")
+                      "USING lsm (i3 HASH) INCLUDE (i1, i2)")
       );
 
-      // Valid insertions
-      stmt.execute("INSERT INTO test(i1, i2) VALUES (1, 3), (2, 4), (3, 3)");
+      // Valid DMLs
+      stmt.execute("INSERT INTO test(i3, i2) VALUES (1, 3), (2, 4), (3, 3), (4, NULL)");
+      stmt.execute("UPDATE test SET i2 = 2 WHERE i2 = 4");
+      stmt.execute("UPDATE test SET i1 = 1 WHERE i1 IS NULL AND i3 = 4");
 
-      // Invalid insertion
-      runInvalidQuery(stmt, "INSERT INTO test(i1, i2) VALUES (1, 3)", "duplicate");
+      // Invalid DMLs
+      runInvalidQuery(stmt, "INSERT INTO test(i3, i2) VALUES (1, 3)", "duplicate");
+      runInvalidQuery(stmt, "INSERT INTO test(i3, i2) VALUES (4, NULL)", "duplicate");
+      runInvalidQuery(stmt, "INSERT INTO test(i3) VALUES (4)", "duplicate");
+
+      // Check the resulting table content
+      assertQuery(stmt, "SELECT * FROM test ORDER BY i3, i2, i1",
+          new Row(null, 3, 1),
+          new Row(null, 2, 2),
+          new Row(null, 3, 3),
+          new Row(1, null, 4));
 
       // Selection containing inequality (<) on i1 is a full table scan until we support proper
       // range scan on index.
       assertQuery(
           stmt,
-          "EXPLAIN (COSTS OFF) SELECT * FROM test WHERE (i1, i2) < (4, 4)",
+          "EXPLAIN (COSTS OFF) SELECT * FROM test WHERE (i3, i2) < (4, 4)",
           new Row("Seq Scan on test"),
-          new Row("  Filter: (ROW(i1, i2) < ROW(4, 4))")
+          new Row("  Filter: (ROW(i3, i2) < ROW(4, 4))")
       );
 
       // Switch to a unique index without importing i2
       stmt.execute("ALTER TABLE test DROP CONSTRAINT test_constr");
-      stmt.execute("ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE (i1)");
+      stmt.execute("ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE (i3)");
 
       // Selection containing inequality (<) on i1 is a full table scan until we support proper
       // range scan on index.
       assertQuery(
           stmt,
-          "EXPLAIN (COSTS OFF) SELECT * FROM test WHERE (i1, i2) < (4, 4)",
+          "EXPLAIN (COSTS OFF) SELECT * FROM test WHERE (i3, i2) < (4, 4)",
           new Row("Seq Scan on test"),
-          new Row("  Filter: (ROW(i1, i2) < ROW(4, 4))")
+          new Row("  Filter: (ROW(i3, i2) < ROW(4, 4))")
       );
     }
   }
