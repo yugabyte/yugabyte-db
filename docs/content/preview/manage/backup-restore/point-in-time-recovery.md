@@ -52,9 +52,9 @@ The configuration above ensures that at any moment there is a continuous change 
 Let's say the snapshots are taken daily at 11:00PM, current time is 5:00PM on April 14th, and you want to restore to 3:00PM on April 12th. In this case, YugabyteDB will:
 1. Locate the snapshot taken on April 12th (the closest snapshot taken *after* the restore time).
 2. Restore to that snapshot.
-3. Rewind back 8 hours to rollback to the state at 3:00PM (as opposed to 11:00PM which is when the snapshot was taken).
+3. Flashback 8 hours to restore to the state at 3:00PM (as opposed to 11:00PM which is when the snapshot was taken).
 
-[PIC?]
+![Point-In-Time Recovery](/images/manage/backup-restore/pitr.png)
 
 ## Enabling and Disabling PITR
 
