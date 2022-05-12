@@ -257,7 +257,8 @@ public class NodeManager extends DevopsBase {
     if ((type == NodeCommandType.Provision
             || type == NodeCommandType.Destroy
             || type == NodeCommandType.Create
-            || type == NodeCommandType.Disk_Update)
+            || type == NodeCommandType.Disk_Update
+            || type == NodeCommandType.Update_Mounted_Disks)
         && keyInfo.sshUser != null) {
       subCommand.add("--ssh_user");
       subCommand.add(keyInfo.sshUser);
