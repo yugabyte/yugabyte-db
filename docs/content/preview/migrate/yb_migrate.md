@@ -227,11 +227,11 @@ User creation steps slightly differ depending on the YugabyteDB deployment and v
 
 - **YugabyteDB Managed or YugabyteDB Anywhere version >= 2.13.1, 2.12.4**
 
-  Create a user with `yb_db_admin` and `yb_extension` role:
+  Create a user with `yb_db_admin` and `yb_superuser` role:
 
       CREATE USER ybmigrate PASSWORD 'password';
       GRANT yb_db_admin TO ybmigrate;
-      GRANT yb_extension TO ybmigrate;
+      GRANT yb_superuser TO ybmigrate;
 
 - **YugabyteDB Anywhere version < 2.13.1, 2.12.4**
 
