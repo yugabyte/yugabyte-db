@@ -64,7 +64,7 @@ To create a VPC, do the following:
 1. Choose the provider (GCP).
 1. Choose one of the following options:
     - **Automated** - VPCs are created globally and assigned to all regions supported by YugabyteDB Managed.
-    - **Custom** - Select a region. Click **Add Region** to add additional regions. CIDR addresses in different regions cannot overlap. Use network sizes of /24, /25, or /26.
+    - **Custom** - Select a region. Click **Add Region** to add additional regions. CIDR addresses in different regions cannot overlap.
 1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc). For Automated, use network sizes of /16, /17, or /18; for Custom, use /24, /25, or /26. Ensure the address _does not overlap_ with that of the application VPC.
 1. Click **Save**.
 
