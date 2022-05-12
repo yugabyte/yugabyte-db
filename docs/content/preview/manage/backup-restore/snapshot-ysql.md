@@ -93,7 +93,7 @@ YugabyteDB supports distributed backup and restore of YSQL databases. Backing up
 1. Create the snapshot metadata file. Export the snapshot metadata using the following [`yb-admin export_snapshot`](../../../admin/yb-admin/#export-snapshot) command:
 
     ```sh
-    ./bin/yb-admin export_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794 test.snapshot
+    ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> export_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794 test.snapshot
     ```
 
 1. Copy the YSQL metadata dump and the snapshot metadata files to a snapshot directory. Create a snapshot directory and copy the YSQL metadata dump (created in step 4) and the snapshot metadata (created in step 6) into the directory.
