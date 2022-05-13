@@ -5301,9 +5301,17 @@
           },
           "type" : "array",
           "uniqueItems" : true
+        },
+        "universeUUIDList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
         }
       },
-      "required" : [ "status", "taskTypes" ],
+      "required" : [ "status", "taskTypes", "universeUUIDList" ],
       "type" : "object"
     },
     "SchedulePagedApiQuery" : {

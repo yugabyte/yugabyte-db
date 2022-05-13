@@ -11,13 +11,9 @@ package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.Collection;
-import java.util.EnumSet;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 import lombok.Builder;
-import lombok.NonNull;
 import lombok.Value;
 
 @Value
@@ -26,4 +22,5 @@ public class ScheduleFilter {
   UUID customerUUID;
   Set<Schedule.State> status;
   Set<TaskType> taskTypes;
+  private Set<UUID> universeUUIDList;
 }

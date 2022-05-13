@@ -412,9 +412,11 @@ public class Schedule extends Model {
     ExpressionList<Schedule> query =
         find.query().setPersistenceContextScope(PersistenceContextScope.QUERY).where();
     query.eq("customer_uuid", filter.getCustomerUUID());
-
     appendInClause(query, "status", filter.getStatus());
     appendInClause(query, "task_type", filter.getTaskTypes());
+    if (!CollectionUtils.isEmpty(filter.getUniverseUUIDList())) {
+      appendInClause(query, "owner_uuid", filter.getUniverseUUIDList());
+    }
     return query;
   }
 
