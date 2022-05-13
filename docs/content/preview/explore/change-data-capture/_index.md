@@ -18,17 +18,23 @@ Change data capture (CDC) is a process to capture changes made to data in the da
 
 ### On this page
 
-* [Prerequisites](#prerequisites)
-* [Process architecture](#process-architecture)
-* [Debezium connector for YugabyteDB](#debezium-connector-for-yugabytedb)
-* [Java console client](#cdc-java-console-client)
-* [Tserver configuration](#tserver-configuration)
-* [Consistency semantics](#consistency-semantics)
-* [Performance impact](#performance-impact)
-* [yb-admin commands](#yb-admin-commands)
-* [DDL command support](#ddl-command-support)
-* [Snapshot support](#snapshot-support)
-* [Limitations](#limitations)
+- [What is CDC?](#what-is-cdc)
+  - [Prerequisites](#prerequisites)
+  - [Process Architecture](#process-architecture)
+    - [CDC Streams](#cdc-streams)
+    - [DB Stream](#db-stream)
+  - [Debezium connector for YugabyteDB](#debezium-connector-for-yugabytedb)
+  - [CDC Java console client](#cdc-java-console-client)
+  - [TServer configuration](#tserver-configuration)
+  - [Consistency Semantics](#consistency-semantics)
+    - [Per-Tablet Ordered Delivery Guarantee](#per-tablet-ordered-delivery-guarantee)
+    - [At least Once Delivery](#at-least-once-delivery)
+    - [No Gaps in Change Stream](#no-gaps-in-change-stream)
+  - [Performance Impact](#performance-impact)
+  - [yb-admin commands](#yb-admin-commands)
+  - [DDL command support](#ddl-command-support)
+  - [Snapshot support](#snapshot-support)
+  - [Limitations](#limitations)
 
 ## What is CDC?
 
@@ -36,7 +42,7 @@ The core primitive of CDC is the _stream_. Streams can be enabled/disabled on da
 
 ### Prerequisites
 
-* YugabyteDB version 2.13.0 or higher.
+* The database/table should be created using YugabyteDB version 2.13 or higher.
 * There should be a primary key on the table you want to stream the changes from.
 
 Be aware of the following:
@@ -148,6 +154,7 @@ The snapshot feature uses the `cdc_snapshot_batch_size` GFlag. This flag's defau
 * DROP and TRUNCATE commands aren't supported. If a user tries to issue these commands on a table while a stream ID is there for the table, the server might crash, the behaviour is unstable. Issues for TRUNCATE [10010](https://github.com/yugabyte/yugabyte-db/issues/10010) and DROP [10069](https://github.com/yugabyte/yugabyte-db/issues/10069).
 * If a stream ID is created, and after that a new table is created, the existing stream ID is not able to stream data from the newly created table. The user needs to create a new stream ID. Issue [10921](https://github.com/yugabyte/yugabyte-db/issues/10921).
 * A single stream can only be used to stream data from one namespace only.
+* Enabling CDC on tables created using previous versions of YugabyteDB is not supported, even after YugabyteDB is upgraded to version 2.13 or higher.
 
 In addition, CDC support for the following features will be added in upcoming releases:
 
