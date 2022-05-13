@@ -9,7 +9,7 @@
 
 import moment from 'moment';
 import React, { FC, useMemo, useReducer, useState } from 'react';
-import { Col, DropdownButton, MenuItem, Row } from 'react-bootstrap';
+import { DropdownButton, MenuItem, Row } from 'react-bootstrap';
 import { BootstrapTable, RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-table';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
@@ -36,6 +36,7 @@ import { useSearchParam } from 'react-use';
 import { AssignBackupStorageConfig } from './AssignBackupStorageConfig';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { BackupAdvancedRestore } from './BackupAdvancedRestore';
+import clsx from 'clsx';
 import { AccountLevelBackupEmpty, UniverseLevelBackupEmpty } from './BackupEmpty';
 
 const reactWidgets = require('react-widgets');
@@ -87,6 +88,22 @@ const TIME_RANGE_OPTIONS = [
   }
 ];
 
+const MORE_FILTER_OPTIONS = [
+  {
+    label: 'Filter by:',
+    options: [
+      {
+        label: 'Backups with deleted source universe',
+        value: 'onlyShowDeletedUniverses'
+      },
+      {
+        label: 'Backups with deleted config file',
+        value: 'onlyShowDeletedConfigs'
+      }
+    ]
+  }
+];
+
 const DEFAULT_TIME_STATE: TIME_RANGE_STATE = {
   startTime: null,
   endTime: null,
@@ -113,7 +130,8 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const [showAdvancedRestore, setShowAdvancedRestore] = useState(false);
 
   const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
-  const [status, setStatus] = useState<any[]>([]);
+  const [status, setStatus] = useState<any[]>([BACKUP_STATUS_OPTIONS[0]]);
+  const [moreFilters, setMoreFilters] = useState<any>([]);
 
   const timeReducer = (_state: TIME_RANGE_STATE, action: OptionTypeBase) => {
     if (action.label === 'Custom') {
@@ -144,6 +162,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
       status,
       DEFAULT_SORT_COLUMN,
       sortDirection,
+      moreFilters,
       universeUUID,
       storage_config_uuid
     ],
@@ -156,6 +175,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         status,
         DEFAULT_SORT_COLUMN,
         sortDirection,
+        moreFilters,
         universeUUID,
         storage_config_uuid
       ),
@@ -253,36 +273,47 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
 
   return (
     <Row className="backup-v2">
-      <Row className="backup-actions">
-        <Col lg={5} className="no-padding">
-          <Row>
-            <Col lg={6} className="no-padding">
-              <YBSearchInput
-                placeHolder="Search universe name"
-                onEnterPressed={(val: string) => setSearchText(val)}
-              />
-            </Col>
-            <Col lg={4}>
-              <YBMultiSelectRedesiged
-                className="backup-status-filter"
-                name="statuses"
-                placeholder=""
-                isMulti={false}
-                options={BACKUP_STATUS_OPTIONS}
-                onChange={(value: any) => {
-                  setStatus(value ? [value] : []);
-                }}
-              />
-            </Col>
-          </Row>
-        </Col>
-        <Col lg={7} className="actions-delete-filters no-padding">
-          <YBButton
-            btnText="Delete"
-            btnIcon="fa fa-trash-o"
-            onClick={() => setShowDeleteModal(true)}
-            disabled={selectedBackups.length === 0}
-          />
+      <div className="backup-actions">
+        <div className="search-and-filter">
+          {!allowTakingBackup && (
+            <>
+              <div className="search-placeholder">
+                <YBSearchInput
+                  placeHolder="Search universe name"
+                  onEnterPressed={(val: string) => setSearchText(val)}
+                />
+              </div>
+              <span className="flex-divider" />
+            </>
+          )}
+          <div className="status-filters">
+            <YBMultiSelectRedesiged
+              className="backup-status-filter"
+              name="statuses"
+              customLabel="Status:"
+              placeholder="Status"
+              isMulti={false}
+              options={BACKUP_STATUS_OPTIONS}
+              value={status}
+              onChange={(value: any) => {
+                setStatus(value ? [value] : []);
+              }}
+            />
+            <YBMultiSelectRedesiged
+              className="backup-status-more-filter"
+              name="more-filters"
+              placeholder="More Filters"
+              customLabel="Filter by:"
+              isMulti={false}
+              options={MORE_FILTER_OPTIONS}
+              isClearable={true}
+              onChange={(value: any) => {
+                setMoreFilters(value ? [value] : []);
+              }}
+            />
+          </div>
+        </div>
+        <div className="actions-delete-filters no-padding">
           {timeRange.label === 'Custom' && (
             <div className="custom-date-picker">
               <DateTimePicker
@@ -338,6 +369,12 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             defaultValue={TIME_RANGE_OPTIONS.find((t) => t.label === 'All time')}
             maxMenuHeight={300}
           ></Select>
+          <YBButton
+            btnText="Delete"
+            btnIcon="fa fa-trash-o"
+            onClick={() => setShowDeleteModal(true)}
+            disabled={selectedBackups.length === 0}
+          />
           {allowTakingBackup && (
             <>
               <YBButton
@@ -367,9 +404,14 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
               </DropdownButton>
             </>
           )}
-        </Col>
-      </Row>
-      <Row className="backup-list-table">
+        </div>
+      </div>
+      <Row
+        className={clsx('backup-list-table', {
+          'account-level-view': !allowTakingBackup,
+          'universe-level-view': allowTakingBackup
+        })}
+      >
         {isLoading && <YBLoading />}
         <BootstrapTable
           data={backups}
