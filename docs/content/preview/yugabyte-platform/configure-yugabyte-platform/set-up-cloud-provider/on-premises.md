@@ -73,10 +73,6 @@ Configuring the on-premises provider consists of a number of steps.
 
 ### Complete the provider information
 
-You start by completing the fields of the **Provider Info** form shown in the following illustration: 
-
-### {#on-premise-provider-info}
-
 You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, click either **Add Configuration** or **Edit Provider**, and then complete the fields of the **Provider Info** form shown in the following illustration:
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-1.png)
@@ -109,6 +105,11 @@ You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, 
   - Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
   - Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
   - The **Node Exporter User** field allows you to override the default Prometheus user. This is useful when the user is preprovisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
+  
+- **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
+
+  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers. 
+  - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ### Configure hardware for YugabyteDB nodes
 
