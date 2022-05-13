@@ -261,6 +261,9 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     DCHECK(!ContainsKey(catalog_manager_->cdc_stream_map_, stream_id))
         << "CDC stream already exists: " << stream_id;
 
+    // If CDCStream entry exists, then the current cluster is a producer.
+    catalog_manager_->SetCDCServiceEnabled();
+
     scoped_refptr<NamespaceInfo> ns;
     scoped_refptr<TableInfo> table;
 
@@ -2526,6 +2529,9 @@ Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
 Status CatalogManager::FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& cluster_config,
                                                 const TSHeartbeatRequestPB* req,
                                                 TSHeartbeatResponsePB* resp) {
+  if (cdc_enabled_.load(std::memory_order_acquire)) {
+    resp->set_xcluster_enabled_on_producer(true);
+  }
   resp->set_cluster_config_version(cluster_config.version());
   if (!cluster_config.has_consumer_registry() ||
       req->cluster_config_version() >= cluster_config.version()) {
@@ -2815,6 +2821,10 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), stream));
     stream_lock.Commit();
   }
+
+  // Now that the stream is set up, mark the entire cluster as a cdc enabled.
+  SetCDCServiceEnabled();
+
   return Status::OK();
 }
 
@@ -5271,6 +5281,10 @@ std::shared_ptr<cdc::CDCServiceProxy> CatalogManager::GetCDCServiceProxy(RemoteT
   auto cdc_service = std::make_shared<cdc::CDCServiceProxy>(&ybclient->proxy_cache(), hostport);
 
   return cdc_service;
+}
+
+void CatalogManager::SetCDCServiceEnabled() {
+  cdc_enabled_.store(true, std::memory_order_release);
 }
 
 }  // namespace enterprise

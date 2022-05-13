@@ -81,13 +81,16 @@ Status TabletServer::RegisterServices() {
   });
 #endif
 
+  cdc_service_ = std::make_shared<CDCServiceImpl>(
+      tablet_manager_.get(), metric_entity(), metric_registry());
+
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_ts_backup_svc_queue_length,
       std::make_unique<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
 
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_xcluster_svc_queue_length,
-      std::make_unique<CDCServiceImpl>(tablet_manager_.get(), metric_entity(), metric_registry())));
+      cdc_service_));
 
   return super::RegisterServices();
 }
@@ -185,6 +188,15 @@ Status TabletServer::ReloadKeysAndCertificates() {
 
 void TabletServer::RegisterCertificateReloader(CertificateReloader reloader) {
   certificate_reloaders_.push_back(std::move(reloader));
+}
+
+Status TabletServer::SetCDCServiceEnabled() {
+  if (!cdc_service_) {
+    LOG(WARNING) << "CDC Service Not Registered";
+  } else {
+    cdc_service_->SetCDCServiceEnabled();
+  }
+  return Status::OK();
 }
 
 } // namespace enterprise

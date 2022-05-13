@@ -19,6 +19,13 @@
   #include "yb/rpc/rpc_fwd.h"
 
 namespace yb {
+
+namespace cdc {
+
+class CDCServiceImpl;
+
+} // namespace cdc
+
 namespace tserver {
 namespace enterprise {
 
@@ -48,6 +55,9 @@ class TabletServer : public yb::tserver::TabletServer {
 
   void RegisterCertificateReloader(CertificateReloader reloader) override;
 
+  // Mark the CDC service as enabled via heartbeat.
+  Status SetCDCServiceEnabled();
+
  protected:
   Status RegisterServices() override;
   Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
@@ -62,6 +72,9 @@ class TabletServer : public yb::tserver::TabletServer {
   // CDC consumer.
   mutable std::mutex cdc_consumer_mutex_;
   std::unique_ptr<CDCConsumer> cdc_consumer_ GUARDED_BY(cdc_consumer_mutex_);
+
+  // CDC service.
+  std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;
 };
 
 } // namespace enterprise
