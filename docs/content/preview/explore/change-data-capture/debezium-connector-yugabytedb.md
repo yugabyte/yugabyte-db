@@ -969,7 +969,7 @@ Advanced connector configuration properties:
 | max.queue.size.in.bytes | 0 | Long value for the maximum size in bytes of the blocking queue. The feature is disabled by default, it will be active if it's set with a positive long value. |
 | max.connector.retries | 5 | Positive integer value for the maximum number of times a retry can happen at the connector level itself. |
 | connector.retry.delay.ms | 60000 | Delay between subsequent retries at the connector level. |
-| ignore.exceptions | `false` | Determines whether the connector ignores exceptions, which should not cause any critical runtime issues. Specify `true` to have the connector log a warning for any exception and proceed. |
+| ignore.exceptions | `false` | Determines whether the connector ignores exceptions, which should not cause any critical runtime issues. With the default value set as `false`, if there is an exception, the connector would throw that exception and would stop further execution. Specify `true` to have the connector log a warning for any exception and proceed. |
 
 ## Troubleshooting
 
