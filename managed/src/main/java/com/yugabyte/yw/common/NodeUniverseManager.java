@@ -5,6 +5,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
@@ -12,9 +13,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.concurrent.TimeUnit;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 @Singleton
 public class NodeUniverseManager extends DevopsBase {
@@ -210,7 +211,8 @@ public class NodeUniverseManager extends DevopsBase {
     if (universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
       String kubeconfig =
           PlacementInfoUtil.getKubernetesConfigPerPod(
-                  cluster.placementInfo, universe.getUniverseDetails().nodeDetailsSet)
+                  cluster.placementInfo,
+                  universe.getUniverseDetails().getNodesInCluster(cluster.uuid))
               .get(node.cloudInfo.private_ip);
       if (kubeconfig == null) {
         throw new RuntimeException("kubeconfig cannot be null");

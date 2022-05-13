@@ -39,6 +39,8 @@ import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricSettings;
 import com.yugabyte.yw.models.Alert;
@@ -511,19 +513,22 @@ public class CustomerController extends AuthenticatedController {
     // We need to figure out the correct namespace for each AZ.  We do
     // that by getting the the universe's provider and then go through
     // the azConfigs.
-    // TODO: account for readonly replicas when we support them for
-    // Kubernetes providers.
-    Provider provider =
-        Provider.get(
-            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
     List<String> namespaces = new ArrayList<>();
-    boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
 
-    for (Region r : Region.getByProvider(provider.uuid)) {
-      for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
-        namespaces.add(
-            PlacementInfoUtil.getKubernetesNamespace(
-                isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig(), newNamingStyle));
+    for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      for (Region r : Region.getByProvider(provider.uuid)) {
+        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
+          boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+          namespaces.add(
+              PlacementInfoUtil.getKubernetesNamespace(
+                  isMultiAZ,
+                  nodePrefix,
+                  az.code,
+                  az.getUnmaskedConfig(),
+                  newNamingStyle,
+                  cluster.clusterType == ClusterType.ASYNC));
+        }
       }
     }
 
