@@ -129,6 +129,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                         AbortTransactionResponsePB* resp,
                         rpc::RpcContext context) override;
 
+  void UpdateTransactionStatusLocation(const UpdateTransactionStatusLocationRequestPB* req,
+                                       UpdateTransactionStatusLocationResponsePB* resp,
+                                       rpc::RpcContext context) override;
+
   void Truncate(const TruncateRequestPB* req,
                 TruncateResponsePB* resp,
                 rpc::RpcContext context) override;
@@ -169,6 +173,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void PerformAtLeader(const Req& req, Resp* resp, rpc::RpcContext* context, const F& f);
 
   Result<uint64_t> DoChecksum(const ChecksumRequestPB* req, CoarseTimePoint deadline);
+
+  Status HandleUpdateTransactionStatusLocation(const UpdateTransactionStatusLocationRequestPB* req,
+                                               UpdateTransactionStatusLocationResponsePB* resp,
+                                               std::shared_ptr<rpc::RpcContext> context);
 
   TabletServerIf *const server_;
 };

@@ -643,7 +643,9 @@ class YBClient {
 
   // Creates a transaction status table. 'table_name' is required to start with
   // kTransactionTablePrefix.
-  CHECKED_STATUS CreateTransactionsStatusTable(const std::string& table_name);
+  CHECKED_STATUS CreateTransactionsStatusTable(
+      const std::string& table_name,
+      const master::ReplicationInfoPB* replication_info = nullptr);
 
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.

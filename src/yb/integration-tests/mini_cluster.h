@@ -98,6 +98,10 @@ struct MiniClusterOptions {
 
   // Cluster id used to create fs path when we create tests with multiple clusters.
   std::string cluster_id{};
+
+  // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
+  // set to a non-zero value, this value is used instead.
+  int transaction_table_num_tablets = 0;
 };
 
 // An in-process cluster with a MiniMaster and a configurable
