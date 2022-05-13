@@ -3399,8 +3399,9 @@ pg_stat_monitor_settings(PG_FUNCTION_ARGS)
 
         if (conf->type == PGC_ENUM)
         {
+	    size_t i;
             strcat(options, conf->guc_options[0]);
-            for (size_t i = 1; i < conf->n_options; ++i)
+            for (i = 1; i < conf->n_options; ++i)
             {
                 strcat(options, ", ");
                 strcat(options, conf->guc_options[i]);
