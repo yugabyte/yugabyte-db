@@ -200,6 +200,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   Status ClearFailedUniverse();
 
+  void SetCDCServiceEnabled();
+
  private:
   friend class SnapshotLoader;
   friend class yb::master::ClusterLoadBalancer;
@@ -481,6 +483,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   GUARDED_BY(should_send_consumer_registry_mutex_);
 
   MasterSnapshotCoordinator snapshot_coordinator_;
+
+  // True when the cluster is a producer of a valid replication stream.
+  std::atomic<bool> cdc_enabled_{false};
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
