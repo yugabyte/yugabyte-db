@@ -100,8 +100,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
                     node.nodeUuid = nodeMap.get(currentNode.nodeName).getNodeUuid();
                     currentNode.nodeUuid = node.nodeUuid;
                     // This needs to be set because DB fetch of this universe later can override the
-                    // field
-                    // as the universe details object is transient and not tracked by DB.
+                    // field as the universe details object is transient and not tracked by DB.
                     u.setUniverseDetails(u.getUniverseDetails());
                     // Perform preflight check. If it fails, the node must not be in use,
                     // otherwise running it second time can succeed. This check must be

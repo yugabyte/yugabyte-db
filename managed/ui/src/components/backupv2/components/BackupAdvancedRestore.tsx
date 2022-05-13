@@ -328,8 +328,10 @@ function RestoreForm({
                 values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Database' : 'Keyspace'
               } name`}
               validate={(name: string) => {
+                // Restoring with duplicate keyspace name is supported in redis
                 if (
                   Array.isArray(tablesInUniverse) &&
+                  values['api_type'].value !== BACKUP_API_TYPES.YEDIS &&
                   find(tablesInUniverse, { tableType: values['api_type'].value, keySpace: name })
                 ) {
                   setFieldValue('should_rename_keyspace', true, false);

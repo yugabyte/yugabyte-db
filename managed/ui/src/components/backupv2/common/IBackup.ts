@@ -69,6 +69,7 @@ export interface IBackup {
   responseList: Keyspace_Table[];
   sse: boolean;
   totalBackupSizeInBytes?: number;
+  kmsConfigUUID?: null | string;
 }
 
 export interface IUniverse {

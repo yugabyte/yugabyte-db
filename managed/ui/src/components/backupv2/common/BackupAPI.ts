@@ -22,6 +22,7 @@ export function getBackupsList(
   states: any[],
   sortBy: string,
   direction: string,
+  moreFilters: any[] | undefined,
   universeUUID?: string,
   storageConfigUUID?: string | null
 ) {
@@ -54,6 +55,11 @@ export function getBackupsList(
     payload.filter['dateRangeStart'] = timeRange.startTime.toISOString();
     payload.filter['dateRangeEnd'] = timeRange.endTime.toISOString();
   }
+
+  if(Array.isArray(moreFilters) && moreFilters?.length > 0){
+    payload.filter[moreFilters[0].value] = true
+  }
+
   return axios.post(`${ROOT_URL}/customers/${cUUID}/backups/page`, payload);
 }
 

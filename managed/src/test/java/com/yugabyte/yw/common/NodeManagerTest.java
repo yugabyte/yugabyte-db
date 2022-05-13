@@ -843,6 +843,11 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         }
 
+        if (configureParams.ybSoftwareVersion != null) {
+          expectedCommand.add("--num_releases_to_keep");
+          expectedCommand.add("3");
+        }
+
         Map<String, String> gflags = new HashMap<>(configureParams.gflags);
 
         if (configureParams.type == Everything) {
