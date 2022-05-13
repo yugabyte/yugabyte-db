@@ -569,7 +569,11 @@ Result<PerformFuture> PgSession::Perform(
   } else {
     pg_txn_manager_->SetupPerformOptions(&options);
   }
-  options.set_force_global_transaction(yb_force_global_transaction);
+  bool global_transaction = yb_force_global_transaction;
+  for (auto i = ops.operations.begin(); !global_transaction && i != ops.operations.end(); ++i) {
+    global_transaction = !(*i)->is_region_local();
+  }
+  options.set_force_global_transaction(global_transaction);
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
@@ -624,11 +628,11 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
        it != fk_reference_intent_.end() && ybctids.size() < buffering_settings_.max_batch_size; ) {
     node = fk_reference_intent_.extract(it++);
     auto& key_ref = node.value();
-    ybctids.push_back({key_ref.table_id, std::move(key_ref.ybctid)});
+    ybctids.emplace_back(key_ref.table_id, std::move(key_ref.ybctid));
   }
 
   // Add the keys found in docdb to the FK cache.
-  RETURN_NOT_OK(reader(&ybctids));
+  RETURN_NOT_OK(reader(&ybctids, fk_intent_region_local_tables_));
   for (auto& it : ybctids) {
     fk_reference_cache_.emplace(it.table_id, std::move(it.ybctid));
   }
@@ -636,8 +640,14 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
   return Find(fk_reference_cache_, table_id, ybctid) != fk_reference_cache_.end();
 }
 
-void PgSession::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {
+void PgSession::AddForeignKeyReferenceIntent(
+    PgOid table_id, bool is_region_local, const Slice& ybctid) {
   if (Find(fk_reference_cache_, table_id, ybctid) == fk_reference_cache_.end()) {
+    if (is_region_local) {
+      fk_intent_region_local_tables_.insert(table_id);
+    } else {
+      fk_intent_region_local_tables_.erase(table_id);
+    }
     fk_reference_intent_.emplace(table_id, ybctid.ToBuffer());
   }
 }

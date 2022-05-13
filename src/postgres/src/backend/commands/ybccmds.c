@@ -652,6 +652,7 @@ YBCDropTable(Oid relationId)
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
 															   YbGetStorageRelid(relation),
 															   false,
+															   false,
 															   &handle),
 									 &not_found);
 		/* Since the creation of the handle could return a 'NotFound' error,
@@ -693,6 +694,7 @@ YBCTruncateTable(Relation rel) {
 	YBCPgStatement  handle;
 	Oid             relationId = RelationGetRelid(rel);
 	Oid             databaseId = YBCGetDatabaseOid(rel);
+	bool            isRegionLocal = YBCIsRegionLocal(rel);
 
 	/* Whether the table is colocated (via DB or a tablegroup) */
 	bool            colocated = YbIsUserTableColocated(databaseId, relationId);
@@ -703,6 +705,7 @@ YBCTruncateTable(Relation rel) {
 		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 												 relationId,
 												 false,
+												 isRegionLocal,
 												 &handle));
 		HandleYBStatus(YBCPgDmlBindTable(handle));
 		int rows_affected_count = 0;
@@ -740,6 +743,7 @@ YBCTruncateTable(Relation rel) {
 			HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 													 indexId,
 													 false,
+													 isRegionLocal,
 													 &handle));
 			HandleYBStatus(YBCPgDmlBindTable(handle));
 			int rows_affected_count = 0;
@@ -1216,6 +1220,7 @@ YBCDropIndex(Oid relationId)
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
 															   relationId,
+															   false,
 															   false,
 															   &handle),
 									 &not_found);

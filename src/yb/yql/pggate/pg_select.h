@@ -27,7 +27,8 @@ namespace pggate {
 class PgSelect : public PgDmlRead {
  public:
   PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
-           const PgObjectId& index_id, const PgPrepareParameters *prepare_params);
+           const PgObjectId& index_id, const PgPrepareParameters *prepare_params,
+           bool is_region_local);
   virtual ~PgSelect();
 
   // Prepare query before execution.
