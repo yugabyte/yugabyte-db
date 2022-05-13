@@ -42,8 +42,10 @@ static MonoDelta kSessionTimeout = 60s;
 
 PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session,
                        const PgObjectId& table_id,
-                       const bool is_single_row_txn)
-    : PgDml(std::move(pg_session), table_id), is_single_row_txn_(is_single_row_txn) {
+                       bool is_single_row_txn,
+                       bool is_region_local)
+    : PgDml(std::move(pg_session), table_id, is_region_local),
+      is_single_row_txn_(is_single_row_txn) {
 }
 
 PgDmlWrite::~PgDmlWrite() {
@@ -152,7 +154,8 @@ Status PgDmlWrite::SetWriteTime(const HybridTime& write_time) {
 }
 
 void PgDmlWrite::AllocWriteRequest() {
-  auto write_op = ArenaMakeShared<PgsqlWriteOp>(arena_ptr(), &arena(), !is_single_row_txn_);
+  auto write_op = ArenaMakeShared<PgsqlWriteOp>(arena_ptr(), &arena(), !is_single_row_txn_,
+                                                is_region_local_);
 
   write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
   write_req_->set_stmt_type(stmt_type());

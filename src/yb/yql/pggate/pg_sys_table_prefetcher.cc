@@ -251,8 +251,10 @@ class Loader {
             << "index_id=" << index_id;
     CHECK(table->schema().table_properties().is_ysql_catalog_table())
         << table_id << " " << table->table_name().table_name() << " is not a catalog table";
+    // System tables are not region local.
     op_info_.emplace_back(
-        ArenaMakeShared<PgsqlReadOp>(arena_, &*arena_, *table), table, index);
+        ArenaMakeShared<PgsqlReadOp>(arena_, &*arena_, *table, false /* is_region_local */),
+        table, index);
     auto& info = op_info_.back();
     auto& req = info.ReadOperation().read_request();
     SetupPaging(&req);

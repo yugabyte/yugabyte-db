@@ -40,15 +40,18 @@ static MonoDelta kSessionTimeout = 60s;
 // PgDml
 //--------------------------------------------------------------------------------------------------
 
-PgDml::PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id)
-    : PgStatement(std::move(pg_session)), table_id_(table_id) {
+PgDml::PgDml(PgSession::ScopedRefPtr pg_session,
+             const PgObjectId& table_id,
+             bool is_region_local)
+    : PgStatement(std::move(pg_session)), table_id_(table_id), is_region_local_(is_region_local) {
 }
 
 PgDml::PgDml(PgSession::ScopedRefPtr pg_session,
              const PgObjectId& table_id,
              const PgObjectId& index_id,
-             const PgPrepareParameters *prepare_params)
-    : PgDml(pg_session, table_id) {
+             const PgPrepareParameters *prepare_params,
+             bool is_region_local)
+    : PgDml(pg_session, table_id, is_region_local) {
 
   if (prepare_params) {
     prepare_params_ = *prepare_params;
