@@ -312,6 +312,11 @@ DEFINE_test_flag(bool, name_transaction_tables_with_tablespace_id, false,
                  "tables with their tablespaces easier, and causes transaction tables created "
                  "automatically for tablespaces to include the tablespace oid in their names.");
 
+DEFINE_test_flag(bool, consider_all_local_transaction_tables_local, false,
+                 "This is only used in tests, and forces the catalog manager to return all tablets "
+                 "of all transaction tables with placements as placement local, regardless of "
+                 "their placement.");
+
 DEFINE_bool(master_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
 
 DEFINE_int32(metrics_snapshots_table_num_tablets, 0,
@@ -4066,7 +4071,9 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTable(
     const CreateTransactionStatusTableRequestPB* req, CreateTransactionStatusTableResponsePB* resp,
     rpc::RpcContext *rpc) {
   const string& table_name = req->table_name();
-  Status s = CreateTransactionStatusTableInternal(rpc, table_name, nullptr /* tablespace_id */);
+  Status s = CreateTransactionStatusTableInternal(
+      rpc, table_name, nullptr /* tablespace_id */,
+      req->has_replication_info() ? &req->replication_info() : nullptr);
   if (s.IsAlreadyPresent()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
   }
@@ -4077,7 +4084,8 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTable(
 }
 
 CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(
-    rpc::RpcContext *rpc, const string& table_name, const TablespaceId* tablespace_id) {
+    rpc::RpcContext *rpc, const string& table_name, const TablespaceId* tablespace_id,
+    const ReplicationInfoPB* replication_info) {
   if (VERIFY_RESULT(TableExists(kSystemNamespaceName, table_name))) {
     return STATUS_SUBSTITUTE(AlreadyPresent, "Table already exists: $0", table_name);
   }
@@ -4091,6 +4099,9 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(
   req.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
   if (tablespace_id) {
     req.set_tablespace_id(*tablespace_id);
+  }
+  if (replication_info) {
+    *req.mutable_replication_info() = *replication_info;
   }
 
   // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
@@ -4155,12 +4166,14 @@ CHECKED_STATUS CatalogManager::CreateLocalTransactionStatusTableIfNeeded(
     table_name = kTransactionTablePrefix + uuid;
   }
 
-  return CreateTransactionStatusTableInternal(rpc, table_name, &tablespace_id);
+  return CreateTransactionStatusTableInternal(rpc, table_name, &tablespace_id,
+                                              nullptr /* replication_info */);
 }
 
 CHECKED_STATUS CatalogManager::CreateGlobalTransactionStatusTableIfNeeded(rpc::RpcContext *rpc) {
   Status s = CreateTransactionStatusTableInternal(
-      rpc, kGlobalTransactionsTableName, nullptr /* tablespace_id */);
+      rpc, kGlobalTransactionsTableName, nullptr /* tablespace_id */,
+      nullptr /* replication_info */);
   if (s.IsAlreadyPresent()) {
     VLOG(1) << "Transaction status table already exists, not creating.";
     return Status::OK();
@@ -4224,7 +4237,9 @@ Result<std::vector<TableInfoPtr>> CatalogManager::GetPlacementLocalTransactionSt
     if (CatalogManagerUtil::DoesPlacementInfoSpanMultipleRegions(txn_table_replicas)) {
       continue;
     }
-    if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(txn_table_replicas, placement)) {
+    if ((FLAGS_TEST_consider_all_local_transaction_tables_local &&
+         !txn_table_replicas.placement_blocks().empty()) ||
+        CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(txn_table_replicas, placement)) {
       same_placement_transaction_tables.push_back(table_info);
     }
   }
