@@ -950,6 +950,32 @@ class TransactionParticipant::Impl
         std::max(ignore_all_transactions_started_before_, limit);
   }
 
+  Result<TransactionMetadata> UpdateTransactionStatusLocation(
+      const TransactionId& transaction_id, const TabletId& new_status_tablet) {
+    loader_.WaitLoaded(transaction_id);
+    MinRunningNotifier min_running_notifier(&applier_);
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = transactions_.find(transaction_id);
+    if (it == transactions_.end()) {
+      // This case may happen if the transaction gets expired before the update RPC is received.
+      auto status = STATUS_FORMAT(
+          NotFound, "Update transaction status location for unknown transaction: $0",
+          transaction_id);
+      LOG(WARNING) << status;
+      return status;
+    }
+
+    auto& transaction = *it;
+    const auto& metadata = transaction->metadata();
+    VLOG_WITH_PREFIX(2) << "Update transaction status location for transaction: "
+                        << metadata.transaction_id << " from tablet " << metadata.status_tablet
+                        << " to " << new_status_tablet;
+    transaction->UpdateTransactionStatusLocation(new_status_tablet);
+    TransactionsModifiedUnlocked(&min_running_notifier);
+    return metadata;
+  }
+
  private:
   class AbortCheckTimeTag;
   class StartTimeTag;
@@ -1739,6 +1765,11 @@ Result<HybridTime> TransactionParticipant::WaitForSafeTime(
 
 void TransactionParticipant::IgnoreAllTransactionsStartedBefore(HybridTime limit) {
   impl_->IgnoreAllTransactionsStartedBefore(limit);
+}
+
+Result<TransactionMetadata> TransactionParticipant::UpdateTransactionStatusLocation(
+      const TransactionId& transaction_id, const TabletId& new_status_tablet) {
+  return impl_->UpdateTransactionStatusLocation(transaction_id, new_status_tablet);
 }
 
 const TabletId& TransactionParticipant::tablet_id() const {

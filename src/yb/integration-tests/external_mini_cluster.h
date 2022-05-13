@@ -172,6 +172,10 @@ struct ExternalMiniClusterOptions {
   // Cluster id used to create fs path when we create tests with multiple clusters.
   std::string cluster_id;
 
+  // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
+  // set to a non-zero value, this value is used instead.
+  int transaction_table_num_tablets = 0;
+
   CHECKED_STATUS RemovePort(const uint16_t port);
   CHECKED_STATUS AddPort(const uint16_t port);
 

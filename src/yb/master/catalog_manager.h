@@ -204,7 +204,8 @@ class CatalogManager :
   // Create a transaction status table with the given name.
   CHECKED_STATUS CreateTransactionStatusTableInternal(rpc::RpcContext* rpc,
                                                       const string& table_name,
-                                                      const TablespaceId* tablespace_id);
+                                                      const TablespaceId* tablespace_id,
+                                                      const ReplicationInfoPB* replication_info);
 
   // Check if there is a transaction table whose tablespace id matches the given tablespace id.
   bool DoesTransactionTableExistForTablespace(
