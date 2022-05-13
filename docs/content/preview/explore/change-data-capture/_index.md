@@ -18,23 +18,17 @@ Change data capture (CDC) is a process to capture changes made to data in the da
 
 ### On this page
 
-- [What is CDC?](#what-is-cdc)
-  - [Prerequisites](#prerequisites)
-  - [Process Architecture](#process-architecture)
-    - [CDC Streams](#cdc-streams)
-    - [DB Stream](#db-stream)
-  - [Debezium connector for YugabyteDB](#debezium-connector-for-yugabytedb)
-  - [CDC Java console client](#cdc-java-console-client)
-  - [TServer configuration](#tserver-configuration)
-  - [Consistency Semantics](#consistency-semantics)
-    - [Per-Tablet Ordered Delivery Guarantee](#per-tablet-ordered-delivery-guarantee)
-    - [At least Once Delivery](#at-least-once-delivery)
-    - [No Gaps in Change Stream](#no-gaps-in-change-stream)
-  - [Performance Impact](#performance-impact)
-  - [yb-admin commands](#yb-admin-commands)
-  - [DDL command support](#ddl-command-support)
-  - [Snapshot support](#snapshot-support)
-  - [Limitations](#limitations)
+* [Prerequisites](#prerequisites)
+* [Process architecture](#process-architecture)
+* [Debezium connector for YugabyteDB](#debezium-connector-for-yugabytedb)
+* [Java console client](#cdc-java-console-client)
+* [Tserver configuration](#tserver-configuration)
+* [Consistency semantics](#consistency-semantics)
+* [Performance impact](#performance-impact)
+* [yb-admin commands](#yb-admin-commands)
+* [DDL command support](#ddl-command-support)
+* [Snapshot support](#snapshot-support)
+* [Limitations](#limitations)
 
 ## What is CDC?
 
@@ -42,7 +36,7 @@ The core primitive of CDC is the _stream_. Streams can be enabled/disabled on da
 
 ### Prerequisites
 
-* The database/table should be created using YugabyteDB version 2.13 or higher.
+* The database and its tables must be created using YugabyteDB version 2.13 or later.
 * There should be a primary key on the table you want to stream the changes from.
 
 Be aware of the following:
