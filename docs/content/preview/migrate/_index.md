@@ -60,15 +60,12 @@ YugabyteDB currently supports:
 
   - Oracle
 
-- migrating from PostgreSQL using ysql_dump and ysql_restore; YugabyteDB-specific versions of the `pg_dump` and `pg_restore` tools respectively.
+- migrating from PostgreSQL using [ysql_dump](../admin/ysql-dump/) and [ysqlsh](../admin/ysqlsh/); YugabyteDB-specific versions of the [pg_dump](https://www.postgresql.org/docs/10/app-pgdump.html) and [psql](https://www.postgresql.org/docs/current/app-psql.html) tools respectively.
 
 The [Migration process overview](../migrate/migration-process-overview/) page includes the general list of steps involved in a database migration.
 
 ## Get started
 
-<!-- - Refer to [Migrate using YB migration engine](../migrate/db-migration-process/), to get started with database migration using the YB migration engine. -->
-
-<!-- - Refer to [Migrate from PostgreSQL using ysql_dump and ysql_restore](../migrate/migrate-from-postgresql/) to migrate from PostgreSQL to YugabyteDB. -->
 
 <div class="row">
  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -86,10 +83,10 @@ The [Migration process overview](../migrate/migration-process-overview/) page in
     <a class="section-link icon-offset" href="migrate-from-postgresql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Migrate from PostgreSQL using ysql_dump and ysql_restore</div>
+        <div class="title">Migrate from PostgreSQL using ysql_dump and ysqlsh</div>
       </div>
       <div class="body">
-        Perform database migration from PostgreSQL to YugabyteDB using ysql_dump and ysql_restore.
+        Perform database migration from PostgreSQL to YugabyteDB using ysql_dump and ysqlsh.
       </div>
     </a>
   </div>
