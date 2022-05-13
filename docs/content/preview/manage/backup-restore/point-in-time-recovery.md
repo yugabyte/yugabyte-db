@@ -30,14 +30,14 @@ PITR in YugabyteDB is based on a combination of the flashback capability and per
 
 Flashback is a feature that allows to rewind the data back in time. At any moment, YugabyteDB stores not only the latest state of the data, but also the recent history of changes. With flashback, you can rollback to any point in time within the history retention period. The history is also preserved when a snapshot is taken, which means that by creating snapshots periodically, you effectively increase the flashback retention.
 
-For example, if your overall retention target for PITR is 7 days, you can use the following configuration:
+For example, if your overall retention target for PITR is 3 days, you can use the following configuration:
 1. History retention interval is 24 hours.
 2. Snapshots are taken daily.
-3. Each snapshot is kept for 7 days.
+3. Each snapshot is kept for 3 days.
 
 {{< note title="Note on the history retention interval flag" >}}
 
-By default, the history retention period is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). This flag is applied to every keyspace of database.
+By default, the history retention period is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). This flag is applied cluster-wide, i.e. to every YSQL database and YCQL keyspace.
 
 However, when [PITR is enabled](#creating-a-schedule) for a database or a keyspace, YugabyteDB adjusts the history retention for that database/keyspace based on the interval between the snapshots. You're *not* required to manually set the cluster-wide flag in order to use PITR.
 
@@ -49,18 +49,17 @@ There are no technical limitations on the retention target. However, it's import
 
 {{< /note >}}
 
-The configuration above ensures that at any moment there is a continuous change history maintained for the last 7 days. When you want to restore, YugabyteDB will pick the closest snapshot to the timestamp you provide, and then use flashback within that snapshot.
+The configuration above ensures that at any moment there is a continuous change history maintained for the last 3 days. When you trigger a restore, YugabyteDB will pick the closest snapshot to the timestamp you provide, and then use flashback within that snapshot.
 
 Let's say the snapshots are taken daily at 11:00PM, current time is 5:00PM on April 14th, and you want to restore to 3:00PM on April 12th. In this case, YugabyteDB will:
-1. Locate the snapshot taken on April 12th (the closest snapshot taken *after* the restore time).
-2. Restore to that snapshot.
-3. Flashback 8 hours to restore to the state at 3:00PM (as opposed to 11:00PM which is when the snapshot was taken).
+1. Locate the snapshot taken on April 12th (which is the closest snapshot taken *after* the restore time), and restore that snapshot.
+2. Flashback 8 hours to restore to the state at 3:00PM (as opposed to 11:00PM which is when the snapshot was taken).
 
 ![Point-In-Time Recovery](/images/manage/backup-restore/pitr.png)
 
 ## Enabling and Disabling PITR
 
-YugabyteDB exposes the PITR functionality through a set of [snapshot schedule](../../../admin/yb-admin/#backup-and-snapshot-commands) CLI commands. A schedule automatically manages periodic snapshots for a YSQL database or a YCQL keyspace, and enables PITR for the same database/keyspace.
+YugabyteDB exposes the PITR functionality through a set of [snapshot schedule](../../../admin/yb-admin/#backup-and-snapshot-commands) CLI commands. A schedule is an entity that automatically manages periodic snapshots for a YSQL database or a YCQL keyspace, and enables PITR for the same database/keyspace.
 
 {{< note >}}
 
@@ -75,10 +74,10 @@ To create a schedule and enable PITR, use the [`create-snapshot-schedule`](../..
 2. Retention time for every snapshot (in minutes).
 3. The name of the database or keyspace.
 
-Assuming that the history retention interval is set to 25 hours, and the retention target is 7 days, you should create a schedule that creates a snapshot once a day (every 1,440 minutes), and retains it for 7 days (10,080 minutes):
+Assuming the retention target is 3 days, you should create a schedule that creates a snapshot once a day (every 1,440 minutes), and retains it for 3 days (4,320 minutes):
 
 ```sh
-$ ./bin/yb_admin create-snapshot-schedule 1440 10080 my_database
+$ ./bin/yb_admin create-snapshot-schedule 1440 4320 my_database
 ```
 
 Once completed, the command will return and print out the unique ID of the newly created snapshot schedule:
@@ -89,7 +88,7 @@ Once completed, the command will return and print out the unique ID of the newly
 }
 ```
 
-You can use this ID to [delete the schedule](#deleting-a-schedule) or to [restore to a point in time](#restoring-to-a-point-in-time).
+You can use this ID to [delete the schedule](#deleting-a-schedule) or [restore to a point in time](#restoring-to-a-point-in-time).
 
 ### Deleting a Schedule
 
@@ -101,7 +100,7 @@ $ ./bin/yb_admin delete-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 
 ### Listing Existing Schedules
 
-To print out the list of schedules that currently exist in the cluster, use the [`list-snapshot-schedules`](../../../admin/yb-admin/#list-snapshot-schedules) command:
+When you want to see the list of schedules that currently exist in the cluster, use the [`list-snapshot-schedules`](../../../admin/yb-admin/#list-snapshot-schedules) command:
 
 ```sh
 $ ./bin/yb_admin list-snapshot-schedules
@@ -155,13 +154,15 @@ To restore to an absolute time you need to provide a timestamp you want to resto
 For example, here is how you can restore to 1:00PM PDT on May 1st 2022 using a Unix timestamp:
 
 ```sh
-$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 1651435200
+$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+                                           1651435200
 ```
 
 The equivalent command that uses a YCQL timestamp will look like this:
 
 ```sh
-$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 2022-05-01 13:00-0700
+$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+                                           2022-05-01 13:00-0700
 ```
 
 ### Restoring to a Relative Time
@@ -171,13 +172,15 @@ Alternatively, you can restore to a time relative to the current moment, by spec
 For example, to restore to 5 minutes ago, run the following command:
 
 ```sh
-$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 5m
+$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+                                           minus 5m
 ```
 
 Or, to restore to 1 hour ago, use the following:
 
 ```sh
-$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 1h
+$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+                                           minus 1h
 ```
 
 For detailed information on the relative time formatting, refer to the [`restore-snapshot-schedule` reference](../../../admin/yb-admin/#restore-snapshot-schedule).
