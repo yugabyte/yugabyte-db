@@ -55,7 +55,6 @@ static bool oid_wraparound = false;
 /*--- Functions --- */
 
 PGDLLEXPORT void _PG_init(void);
-PGDLLEXPORT void _PG_fini(void);
 
 PGDLLEXPORT Datum hypopg_reset(PG_FUNCTION_ARGS);
 
@@ -158,17 +157,6 @@ _PG_init(void)
 							 NULL);
 
 	EmitWarningsOnPlaceholders("hypopg");
-}
-
-void
-_PG_fini(void)
-{
-	/* uninstall hooks */
-	ProcessUtility_hook = prev_utility_hook;
-	ExecutorEnd_hook = prev_ExecutorEnd_hook;
-	get_relation_info_hook = prev_get_relation_info_hook;
-	explain_get_index_name_hook = prev_explain_get_index_name_hook;
-
 }
 
 /*---------------------------------
