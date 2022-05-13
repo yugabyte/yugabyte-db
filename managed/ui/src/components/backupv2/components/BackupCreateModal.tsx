@@ -50,6 +50,11 @@ type ToogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'sch
 
 const DURATIONS = ['Days', 'Months', 'Years'];
 
+const PARALLEL_THREADS_RANGE = {
+  MIN: 1,
+  MAX: 100
+};
+
 const DURATION_OPTIONS = DURATIONS.map((t: string) => {
   return {
     value: t,
@@ -90,8 +95,14 @@ const validationSchema = Yup.object().shape({
     then: Yup.number().min(1, 'Duration must be greater than or equal to one')
   }),
   parallel_threads: Yup.number()
-    .min(1, 'Parallel threads should be greater than or equal to 1')
-    .max(100, 'Parallel threads should be less than or equal to 100')
+    .min(
+      PARALLEL_THREADS_RANGE.MIN,
+      `Parallel threads should be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`
+    )
+    .max(
+      PARALLEL_THREADS_RANGE.MAX,
+      `Parallel threads should be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`
+    )
 });
 
 const initialValues = {
@@ -107,7 +118,7 @@ const initialValues = {
   selected_ycql_tables: [],
   keep_indefinitely: false,
   search_text: '',
-  parallel_threads: 8
+  parallel_threads: PARALLEL_THREADS_RANGE.MIN
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -127,6 +138,16 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       enabled: visible
     }
   );
+
+  const universeDetails = useSelector(
+    (state: any) => state.universe?.currentUniverse?.data?.universeDetails
+  );
+
+  const primaryCluster = find(universeDetails?.clusters, { clusterType: 'PRIMARY' });
+
+  initialValues['parallel_threads'] =
+    Math.min(primaryCluster?.userIntent?.numNodes, PARALLEL_THREADS_RANGE.MAX) ||
+    PARALLEL_THREADS_RANGE.MIN;
 
   const queryClient = useQueryClient();
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);

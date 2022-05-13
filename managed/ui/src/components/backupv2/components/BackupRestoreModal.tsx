@@ -42,6 +42,7 @@ import { components } from 'react-select';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { isFunction } from 'lodash';
+import { BACKUP_API_TYPES } from '../common/IBackup';
 import './BackupRestoreModal.scss';
 
 interface RestoreModalProps {
@@ -51,11 +52,12 @@ interface RestoreModalProps {
 }
 
 const TEXT_RESTORE = 'Restore';
+const TEXT_RENAME_DATABASE = 'Next: Rename Databases/Keyspaces';
 
 const STEPS = [
   {
     title: 'Restore Backup',
-    submitLabel: 'Next: Rename Databases/Keyspaces',
+    submitLabel: TEXT_RESTORE,
     component: RestoreChooseUniverseForm,
     footer: () => null
   },
@@ -142,6 +144,11 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
       doRestore: boolean;
     }
   ) => {
+    // Restoring with duplicate keyspace name is supported in redis
+    if (values['backup']['backupType'] === BACKUP_API_TYPES.YEDIS) {
+      isFunction(options.setSubmitting) && options.setSubmitting(false);
+      return;
+    }
     setIsFetchingTables(true);
     options.setFieldValue('should_rename_keyspace', true, false);
     options.setFieldValue('disable_keyspace_rename', true, false);
@@ -175,7 +182,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     options.setFieldValue('should_rename_keyspace', hasErrors, false);
     options.setFieldValue('disable_keyspace_rename', hasErrors, false);
 
-    setOverrideSubmitLabel(hasErrors ? undefined : TEXT_RESTORE);
+    setOverrideSubmitLabel(hasErrors ? TEXT_RENAME_DATABASE : TEXT_RESTORE);
 
     isFunction(options.setSubmitting) && options.setSubmitting(false);
 
@@ -396,7 +403,7 @@ function RestoreChooseUniverseForm({
               checked: values['should_rename_keyspace'],
               onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
                 setFieldValue('should_rename_keyspace', event.target.checked);
-                setOverrideSubmitLabel(event.target.checked ? undefined : TEXT_RESTORE);
+                setOverrideSubmitLabel(event.target.checked ? TEXT_RENAME_DATABASE : TEXT_RESTORE);
               }
             }}
             disabled={values['disable_keyspace_rename']}
