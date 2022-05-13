@@ -79,7 +79,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
   const [currentStep, setCurrentStep] = useState(0);
   const [isFetchingTables, setIsFetchingTables] = useState(false);
 
-  const [overrideSubmitLabel, setOverrideSubmitLabel] = useState<undefined | string>(undefined);
+  const [overrideSubmitLabel, setOverrideSubmitLabel] = useState(TEXT_RESTORE);
 
   const { data: universeList, isLoading: isUniverseListLoading } = useQuery(['universe'], () =>
     fetchUniversesList().then((res) => res.data as IUniverse[])
@@ -147,6 +147,9 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     // Restoring with duplicate keyspace name is supported in redis
     if (values['backup']['backupType'] === BACKUP_API_TYPES.YEDIS) {
       isFunction(options.setSubmitting) && options.setSubmitting(false);
+      if (options.doRestore) {
+        restore.mutate({ backup_details: backup_details as IBackup, values });
+      }
       return;
     }
     setIsFetchingTables(true);
@@ -225,6 +228,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
         setSubmitting(false);
         if (values['should_rename_keyspace'] && currentStep !== STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
+          setOverrideSubmitLabel(TEXT_RESTORE);
         } else if (currentStep === STEPS.length - 1) {
           await validateTablesAndRestore(values, {
             setFieldValue,
@@ -237,7 +241,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
         }
       }}
       initialValues={initialValues}
-      submitLabel={overrideSubmitLabel ?? STEPS[currentStep].submitLabel}
+      submitLabel={overrideSubmitLabel}
       onHide={() => {
         setCurrentStep(0);
         onHide();

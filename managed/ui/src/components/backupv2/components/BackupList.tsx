@@ -194,6 +194,16 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
     [storageConfigs]
   );
 
+  const isFilterApplied = () => {
+    return (
+      searchText.length !== 0 ||
+      status[0].value !== null ||
+      timeRange.startTime ||
+      timeRange.endTime ||
+      moreFilters.length > 0
+    );
+  };
+
   const getActions = (row: IBackup) => {
     if (row.state === Backup_States.DELETED) {
       return '';
@@ -250,7 +260,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
 
   const backups: IBackup[] = backupsList?.data.entities;
 
-  if (backups?.length === 0) {
+  if (!isFilterApplied() && backups?.length === 0) {
     return allowTakingBackup ? (
       <>
         <UniverseLevelBackupEmpty
