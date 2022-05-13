@@ -166,11 +166,14 @@ class CDCServiceImpl : public CDCServiceIf {
     return server_metrics_;
   }
 
-  // Returns true if this server has received a GetChanges call.
+  // Returns true if this server is a producer of a valid replication stream.
   bool CDCEnabled();
 
   Status RetainIntents(
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& cdc_sdk_op_id);
+
+  // Marks the CDC enable flag as true.
+  void SetCDCServiceEnabled();
 
  private:
   FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);
@@ -361,7 +364,7 @@ class CDCServiceImpl : public CDCServiceIf {
   // get_minimum_checkpoints_and_update_peers_thread_ that it should exit.
   bool cdc_service_stopped_ GUARDED_BY(mutex_){false};
 
-  // True when this service has received a GetChanges request on a valid replication stream.
+  // True when the server is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
 };
 
