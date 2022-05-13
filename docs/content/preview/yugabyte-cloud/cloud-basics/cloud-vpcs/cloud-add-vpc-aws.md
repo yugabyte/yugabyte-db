@@ -4,7 +4,7 @@ headerTitle:
 linkTitle: Create a VPC Network
 description: Create and manage your cloud VPCs.
 aliases:
-  - /preview/yugabyte-cloud/cloud-basics/cloud-configure-provider/
+  - /preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-configure-provider/
 menu:
   preview:
     identifier: cloud-add-vpc-1-aws
