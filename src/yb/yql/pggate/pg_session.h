@@ -233,6 +233,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   void InvalidateForeignKeyReferenceCache() {
     fk_reference_cache_.clear();
     fk_reference_intent_.clear();
+    fk_intent_region_local_tables_.clear();
   }
 
   // Check if initdb has already been run before. Needed to make initdb idempotent.
@@ -245,10 +246,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // the shared memory has not been initialized (e.g. in initdb).
   Result<uint64_t> GetSharedAuthKey();
 
-  using YbctidReader = LWFunction<Status(std::vector<TableYbctid>*)>;
+  using YbctidReader =
+      LWFunction<Status(std::vector<TableYbctid>*, const std::unordered_set<PgOid>&)>;
   Result<bool> ForeignKeyReferenceExists(
       PgOid table_id, const Slice& ybctid, const YbctidReader& reader);
-  void AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid);
+  void AddForeignKeyReferenceIntent(PgOid table_id, bool is_region_local, const Slice& ybctid);
   void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
 
   // Deletes the row referenced by ybctid from FK reference cache.
@@ -307,6 +309,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
   boost::unordered_set<PgForeignKeyReference> fk_reference_cache_;
   boost::unordered_set<PgForeignKeyReference> fk_reference_intent_;
+  std::unordered_set<PgOid> fk_intent_region_local_tables_;
 
   // Should write operations be buffered?
   bool buffering_enabled_ = false;

@@ -59,11 +59,14 @@ YB_DEFINE_ENUM(ExpectedLocality, (kLocal)(kGlobal));
 YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionsGFlag);
 YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionSessionVar);
 YB_STRONGLY_TYPED_BOOL(WaitForHashChange);
+YB_STRONGLY_TYPED_BOOL(InsertToLocalFirst);
 
 constexpr auto kDatabaseName = "yugabyte";
 constexpr auto kTablePrefix = "test";
 const auto kStatusTabletCacheRefreshTimeout = MonoDelta::FromMilliseconds(20000);
 const auto kWaitLoadBalancerTimeout = MonoDelta::FromMilliseconds(30000);
+constexpr auto kLocalRegion = 1;
+constexpr auto kOtherRegion = 2;
 
 } // namespace
 
@@ -316,38 +319,87 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
     return tablet_uuids;
   }
 
-  void CheckInsert(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
-                   SetGlobalTransactionSessionVar session_var, ExpectedLocality expected) {
+  void CheckSuccess(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
+                   SetGlobalTransactionSessionVar session_var, InsertToLocalFirst local_first,
+                   ExpectedLocality expected) {
     auto expected_status_tablets = ASSERT_RESULT(GetStatusTablets(
         to_region, expected != ExpectedLocality::kLocal));
+    ASSERT_FALSE(expected_status_tablets.empty());
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) =
         (set_global_transactions_gflag == SetGlobalTransactionsGFlag::kTrue);
 
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    if (local_first) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0$1(value) VALUES (0)", kTablePrefix, kLocalRegion));
+    }
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0$1(value) VALUES (0)", kTablePrefix, to_region));
     ASSERT_OK(conn.CommitTransaction());
 
     auto last_transaction = transaction_pool_->TEST_GetLastTransaction();
     auto metadata = last_transaction->GetMetadata(TransactionRpcDeadline()).get();
     ASSERT_OK(metadata);
-    ASSERT_FALSE(expected_status_tablets.empty());
     ASSERT_TRUE(std::find(expected_status_tablets.begin(),
                           expected_status_tablets.end(),
                           metadata->status_tablet) != expected_status_tablets.end());
+
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    if (local_first) {
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1", kTablePrefix, kLocalRegion));
+    }
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1", kTablePrefix, to_region));
+    ASSERT_OK(conn.CommitTransaction());
+
+    last_transaction = transaction_pool_->TEST_GetLastTransaction();
+    metadata = last_transaction->GetMetadata(TransactionRpcDeadline()).get();
+    ASSERT_OK(metadata);
+    ASSERT_TRUE(std::find(expected_status_tablets.begin(),
+                          expected_status_tablets.end(),
+                          metadata->status_tablet) != expected_status_tablets.end());
+
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+    if (local_first) {
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1", kTablePrefix, kLocalRegion));
+    }
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1", kTablePrefix, to_region));
+    ASSERT_OK(conn.CommitTransaction());
   }
 
   void CheckAbort(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
-                  SetGlobalTransactionSessionVar session_var, size_t num_aborts) {
+                  SetGlobalTransactionSessionVar session_var, InsertToLocalFirst local_first,
+                  size_t num_aborts) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = set_global_transactions_gflag;
 
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
     for (size_t i = 0; i < num_aborts; ++i) {
       ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+      if (local_first) {
+        ASSERT_OK(conn.ExecuteFormat(
+            "INSERT INTO $0$1(value) VALUES (0)", kTablePrefix, kLocalRegion));
+      }
       ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0$1(value) VALUES (0)", kTablePrefix, to_region));
       ASSERT_OK(conn.RollbackTransaction());
+    }
+
+    for (size_t i = 0; i < num_aborts; ++i) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+      if (local_first) {
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1", kTablePrefix, kLocalRegion));
+      }
+      ASSERT_NOK(conn.FetchFormat("SELECT * FROM $0$1", kTablePrefix, to_region));
+      ASSERT_OK(conn.RollbackTransaction());
+    }
+
+    for (size_t i = 0; i < num_aborts; ++i) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+      if (local_first) {
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1", kTablePrefix, kLocalRegion));
+      }
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1", kTablePrefix, to_region));
+      ASSERT_OK(conn.CommitTransaction());
     }
   }
 
@@ -382,59 +434,59 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelecti
   SetupTables();
 
   // No local transaction tablets yet.
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 
   // Create region 2 local transaction table.
   CreateTransactionTable(2);
 
   // No local transaction tablets in region, but local transaction tablets exist in general.
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 
   // Create region 1 local transaction table.
   CreateTransactionTable(1);
@@ -442,46 +494,50 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelecti
   // Local transaction tablets exist in region.
   // The case of connecting to TS2 with force_global_transactions = false will error out
   // because it is a global transaction, see #10537.
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kLocal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kLocal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kFalse, ExpectedLocality::kGlobal);
   CheckAbort(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
-      1 /* num_aborts */);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, 1 /* num_aborts */);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 }
 
 TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestNonlocalAbort)) {
-  constexpr size_t kNumAborts = 1000;
+  constexpr size_t kNumAborts = 500;
 
   SetupTables();
 
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 
   // Create region 1 local transaction table.
   CreateTransactionTable(1);
 
   CheckAbort(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse, kNumAborts);
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, kNumAborts);
 }
 
 TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestMultiRegionTransactionTable)) {
@@ -492,30 +548,30 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestMultiRegionTransactionTa
   CreateMultiRegionTransactionTable();
 
   // Should be treated the same as no transaction table.
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 }
 
 TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactionTableCreation)) {
@@ -524,57 +580,63 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactio
 
   // The case of connecting to TS2 with force_global_transactions = false will error out
   // because it is a global transaction, see #10537.
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kLocal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kLocal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kFalse, ExpectedLocality::kGlobal);
+  CheckAbort(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, 1 /* num_aborts */);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 
   DropTables();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
   SetupTables();
 
   // Transaction tables created earlier should no longer have a placement and should be unused.
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 }
 
 TEST_F(GeoTransactionsTest,
@@ -584,27 +646,27 @@ TEST_F(GeoTransactionsTest,
 
   // The case of connecting to TS2 with force_global_transactions = false will error out
   // because it is a global transaction, see #10537.
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kLocal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
-  CheckInsert(
-      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
-      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kLocal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 }
 
 TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {

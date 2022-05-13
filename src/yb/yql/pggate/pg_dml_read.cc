@@ -96,8 +96,9 @@ using std::make_shared;
 //--------------------------------------------------------------------------------------------------
 
 PgDmlRead::PgDmlRead(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
-                     const PgObjectId& index_id, const PgPrepareParameters *prepare_params)
-    : PgDml(std::move(pg_session), table_id, index_id, prepare_params) {
+                     const PgObjectId& index_id, const PgPrepareParameters *prepare_params,
+                     bool is_region_local)
+    : PgDml(std::move(pg_session), table_id, index_id, prepare_params, is_region_local) {
 }
 
 PgDmlRead::~PgDmlRead() {
