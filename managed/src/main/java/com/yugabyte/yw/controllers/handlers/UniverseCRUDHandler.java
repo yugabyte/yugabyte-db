@@ -769,9 +769,11 @@ public class UniverseCRUDHandler {
     c.userIntent.providerType = Common.CloudType.valueOf(provider.code);
     c.validate();
 
+    TaskType taskType = TaskType.ReadOnlyClusterCreate;
     if (c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       try {
         checkK8sProviderAvailability(provider, customer);
+        taskType = TaskType.ReadOnlyKubernetesClusterCreate;
       } catch (IllegalArgumentException e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
       }
@@ -780,7 +782,7 @@ public class UniverseCRUDHandler {
     PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
 
     // Submit the task to create the cluster.
-    UUID taskUUID = commissioner.submit(TaskType.ReadOnlyClusterCreate, taskParams);
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
         "Submitted create cluster for {}:{}, task uuid = {}.",
         universe.universeUUID,

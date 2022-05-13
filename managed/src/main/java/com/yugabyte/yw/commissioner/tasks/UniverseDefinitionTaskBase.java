@@ -360,7 +360,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       if (primaryCluster == null) {
         throw new IllegalStateException(
-            "Primary cluster not found in task nor universe {} " + universe.universeUUID);
+            String.format(
+                "Primary cluster not found in task for universe %s", universe.universeUUID));
       }
     }
 
