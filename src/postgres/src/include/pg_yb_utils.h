@@ -604,4 +604,9 @@ void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntr
  */
 void YbRegisterSysTableForPrefetching(int sys_table_id);
 
+/*
+ * Returns true if the relation is a non-system relation in the same region.
+ */
+bool YBCIsRegionLocal(Relation rel);
+
 #endif /* PG_YB_UTILS_H */

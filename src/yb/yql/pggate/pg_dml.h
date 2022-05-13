@@ -96,11 +96,12 @@ class PgDml : public PgStatement {
  protected:
   // Method members.
   // Constructor.
-  PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
+  PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_region_local);
   PgDml(PgSession::ScopedRefPtr pg_session,
         const PgObjectId& table_id,
         const PgObjectId& index_id,
-        const PgPrepareParameters *prepare_params);
+        const PgPrepareParameters *prepare_params,
+        bool is_region_local);
 
   // Allocate protobuf for a SELECTed expression.
   virtual LWPgsqlExpressionPB *AllocTargetPB() = 0;
@@ -190,6 +191,9 @@ class PgDml : public PgStatement {
                                           .index_only_scan = false,
                                           .use_secondary_index = false,
                                           .querying_colocated_table = false };
+
+  // Whether or not the statement accesses data within the local region.
+  const bool is_region_local_;
 
   // -----------------------------------------------------------------------------------------------
   // Data members for nested query: This is used for an optimization in PgGate.
