@@ -32,22 +32,22 @@ showAsideToc: true
 
 You can use YugabyteDB Anywhere to back up your YugabyteDB universe YCQL data.
 
-To schedule backups for a later time or as a recurring task, see [Schedule universe YCQL data backups](../../schedule-data-backups/ycql).
+To view existing backups, as well as restore or delete them, navigate to your universe and select **Backups**, as per the following illustration:
 
-To immediately back up your YugabyteDB universe YCQL data, perform the following:
+![Create Backup](/images/yp/create-backup-new-1.png)
 
-1. Navigate to your universe and select **Backups**.
+The **Backups** page allows you to create new backups that start immediately, as follows: 
 
-1. Click **Create Backup** to open the **Create Backup** dialog shown in the following illustration:
+- Select the time period for the backup and click **Backup now** to open the dialog shown in the following illustration:<br><br>
 
-    <br/><br/>
+  ![Backup](/images/yp/create-backup-new-3.png)<br><br>
 
-    ![Create Backup - YCQL](/images/yp/create-backup-ycql.png)<br><br>
+- In the **Backup Now** dialog, select YCQL as the API type and then complete all the other fields.
 
-1. Complete the fields presented in the **YCQL** tab.
+  Notice that the contents of the **Select the storage config you want to use for your backup** field list depends on your existing backup storage configurations. For more information, see [Configure backup storage](../../configure-backup-storage/).
 
-    Notice that the contents of the **Storage** field list depends on your existing backup storage configurations.
-
-1. Click **OK** to start the requested backup immediately.
+- Click **Backup**.
 
 If the universe has [encryption at rest enabled](../../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file containing key references is also backed up.
+
+For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe YCQL data backups](../../schedule-data-backups/ycql/).
