@@ -800,11 +800,9 @@ YBShouldRestartAllChildrenIfOneCrashes() {
 		ereport(LOG, (errmsg("YBShouldRestartAllChildrenIfOneCrashes returning 0, YBIsEnabledInPostgresEnvVar is false")));
 		return true;
 	}
-	const char* flag_file_path =
-		getenv("YB_PG_NO_RESTART_ALL_CHILDREN_ON_CRASH_FLAG_PATH");
 	// We will use PostgreSQL's default behavior (restarting all children if one of them crashes)
 	// if the flag env variable is not specified or the file pointed by it does not exist.
-	return !flag_file_path || access(flag_file_path, F_OK) == -1;
+	return YBCIsEnvVarTrueWithDefault("FLAGS_yb_pg_terminate_child_backend", true);
 }
 
 bool

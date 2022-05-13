@@ -124,8 +124,6 @@ public enum TaskType {
 
   SyncXClusterConfig("SyncXClusterConfig"),
 
-  XClusterConfigUpdateMasterAddresses("XClusterConfigUpdateMasterAddresses"),
-
   CreateSupportBundle("CreateSupportBundle"),
 
   // Tasks belonging to subtasks classpath
@@ -228,6 +226,8 @@ public enum TaskType {
 
   XClusterConfigSync("subtasks.xcluster.XClusterConfigSync"),
 
+  XClusterConfigUpdateMasterAddresses("subtasks.xcluster.XClusterConfigUpdateMasterAddresses"),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
 
@@ -312,7 +312,11 @@ public enum TaskType {
 
   UpdateMountedDisks("subtasks.UpdateMountedDisks"),
 
-  TransferXClusterCerts("subtasks.TransferXClusterCerts");
+  TransferXClusterCerts("subtasks.TransferXClusterCerts"),
+
+  CreateTableSpacesInUniverse("CreateTableSpacesInUniverse"),
+
+  CreateTableSpaces("subtasks.CreateTableSpaces");
 
   private String relativeClassPath;
 

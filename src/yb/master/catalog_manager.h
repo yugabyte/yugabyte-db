@@ -637,8 +637,6 @@ class CatalogManager :
                                          const TSDescriptorVector& ts_descs,
                                          ValidateReplicationInfoResponsePB* resp);
 
-  CHECKED_STATUS CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info) const;
-
   // Loops through the table's placement infos and populates the corresponding config from
   // each placement.
   CHECKED_STATUS HandlePlacementUsingReplicationInfo(
@@ -1378,8 +1376,12 @@ class CatalogManager :
 
   virtual void SysCatalogLoaded(int64_t term) {}
 
-  // Respect leader affinity with master sys catalog tablet by stepping down if we don't match
-  // the cluster config affinity specification.
+  // Ensure the sys catalog tablet respects the leader affinity and blacklist configuration.
+  // Chooses an unblacklisted master in the highest priority affinity location to step down to. If
+  // this master is not blacklisted and there is no unblacklisted master in a higher priority
+  // affinity location than this one, does nothing.
+  // If there is no unblacklisted master in an affinity zone, chooses an arbitrary master to step
+  // down to.
   CHECKED_STATUS SysCatalogRespectLeaderAffinity();
 
   virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) override {
@@ -1714,6 +1716,11 @@ class CatalogManager :
 
   void InitializeGlobalLoadState(
       TSDescriptorVector ts_descs, CMGlobalLoadState* state);
+
+  // Send a step down request for the sys catalog tablet to the specified master. If the step down
+  // RPC response has an error, returns false. If the step down RPC is successful, returns true.
+  // For any other failure, returns a non-OK status.
+  Result<bool> SysCatalogLeaderStepDown(const ServerEntryPB& master);
 
   // Attempts to remove a colocated table from tablegroup.
   // NOOP if the table does not belong to one.

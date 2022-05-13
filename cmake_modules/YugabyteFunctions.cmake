@@ -131,33 +131,6 @@ function(DETECT_BREW)
   set(LINUXBREW_LIB_DIR "${LINUXBREW_DIR}/lib" PARENT_SCOPE)
 endfunction()
 
-# Ensures that the YB_COMPILER_TYPE environment variable matches the auto-detected compiler family.
-# Also this sets the convienience variables IS_GCC and IS_CLANG.
-function(INIT_COMPILER_TYPE_FROM_BUILD_ROOT)
-  get_filename_component(BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
-
-  if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "")
-    # TODO: deduplicate this.
-    string(REGEX MATCH "^.*-zapcc-.*$" RE_MATCH_RESULT "${BUILD_ROOT_BASENAME}")
-    if (NOT "${RE_MATCH_RESULT}" STREQUAL "")
-      set(ENV{YB_COMPILER_TYPE} "zapcc")
-    else()
-      string(REGEX MATCH "^.*-gcc-.*$" RE_MATCH_RESULT "${BUILD_ROOT_BASENAME}")
-      if (NOT "${RE_MATCH_RESULT}" STREQUAL "")
-        set(ENV{YB_COMPILER_TYPE} "gcc")
-      else()
-        string(REGEX MATCH "^.*-clang-.*$" RE_MATCH_RESULT "${BUILD_ROOT_BASENAME}")
-        if (NOT "${RE_MATCH_RESULT}" STREQUAL "")
-          set(ENV{YB_COMPILER_TYPE} "clang")
-        endif()
-      endif()
-    endif()
-  endif()
-
-  # Make sure we can use $ENV{YB_COMPILER_TYPE} and ${YB_COMPILER_TYPE} interchangeably.
-  SET(YB_COMPILER_TYPE "$ENV{YB_COMPILER_TYPE}" PARENT_SCOPE)
-endfunction()
-
 # Makes sure that we are using a supported compiler family.
 function(EXPECT_COMPILER_TYPE_TO_BE_SET)
   if (NOT DEFINED YB_COMPILER_TYPE OR "${YB_COMPILER_TYPE}" STREQUAL "")
@@ -171,25 +144,19 @@ function(VALIDATE_COMPILER_TYPE)
     set(ENV{YB_COMPILER_TYPE} "${COMPILER_FAMILY}")
   endif()
 
-  if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "zapcc")
-    if (NOT IS_CLANG)
-      message(FATAL_ERROR
-              "Compiler type is zapcc but the compiler family is '${COMPILER_FAMILY}' "
-              "(expected to be clang)")
-    endif()
-  endif()
-
-  if("${YB_COMPILER_TYPE}" MATCHES "^gcc.*$" AND NOT IS_GCC)
+  if(NOT "${YB_COMPILER_TYPE}" MATCHES "^${COMPILER_FAMILY}([0-9]*)$")
     message(FATAL_ERROR
             "Compiler type '${YB_COMPILER_TYPE}' does not match the compiler family "
             "'${COMPILER_FAMILY}'.")
   endif()
 
-  if(("${YB_COMPILER_TYPE}" STREQUAL "gcc8" AND NOT "${COMPILER_VERSION}" MATCHES "^8[.].*$") OR
-     ("${YB_COMPILER_TYPE}" STREQUAL "gcc9" AND NOT "${COMPILER_VERSION}" MATCHES "^9[.].*$"))
+  # On macOS, we use the compiler type of simply "clang", without a major version suffix.
+  # On Linux, we validate that the major version in the compiler type matches the actual one.
+  if(NOT "${YB_COMPILER_TYPE}" STREQUAL "clang" AND
+     NOT "${COMPILER_VERSION}" MATCHES "^${CMAKE_MATCH_1}[.].*$")
     message(FATAL_ERROR
-            "Invalid compiler version '${COMPILER_VERSION}' for compiler type "
-            "'${YB_COMPILER_TYPE}'.")
+            "Compiler version ${COMPILER_VERSION} does not match the major version "
+            "${CMAKE_MATCH_1} from the compiler type ${YB_COMPILER_TYPE}.")
   endif()
 
   if (NOT IS_GCC AND

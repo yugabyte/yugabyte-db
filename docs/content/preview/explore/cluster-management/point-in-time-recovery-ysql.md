@@ -222,8 +222,6 @@ Relative times can be in any of the following formats (again, note that you can 
 * Traditional PostgreSQL: `3 days 4 hours 5 minutes 6 seconds`
 * SQL standard: `D H:M:S`
 
-**Careful!** If you specify a time prior to when you created the table, the restore will leave the table intact, but empty.
-
 Refer to the yb-admin [_restore-snapshot-schedule_ command](../../../admin/yb-admin/#restore-snapshot-schedule) for more details.
 
 ## Undo metadata changes

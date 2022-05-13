@@ -21,7 +21,6 @@ import { YBLoading } from '../../common/indicators';
 import { BackupDetails } from './BackupDetails';
 import {
   BACKUP_STATUS_OPTIONS,
-  calculateDuration,
   CALDENDAR_ICON,
   convertArrayToMap,
   DATE_FORMAT,
@@ -35,6 +34,8 @@ import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { BackupCreateModal } from './BackupCreateModal';
 import { useSearchParam } from 'react-use';
 import { AssignBackupStorageConfig } from './AssignBackupStorageConfig';
+import { formatBytes } from '../../xcluster/ReplicationUtils';
+import { BackupAdvancedRestore } from './BackupAdvancedRestore';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -108,6 +109,8 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showBackupCreateModal, setShowBackupCreateModal] = useState(false);
   const [showAssignConfigModal, setShowAssignConfigModal] = useState(false);
+  const [showAdvancedRestore, setShowAdvancedRestore] = useState(false);
+
   const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
   const [status, setStatus] = useState<any[]>([]);
 
@@ -232,7 +235,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           <Row>
             <Col lg={6} className="no-padding">
               <YBSearchInput
-                placeHolder="Search universe name, Storage Config, Database/Keyspace name"
+                placeHolder="Search universe name"
                 onEnterPressed={(val: string) => setSearchText(val)}
               />
             </Col>
@@ -313,14 +316,33 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             maxMenuHeight={300}
           ></Select>
           {allowTakingBackup && (
-            <YBButton
-              btnText="Backup now"
-              onClick={() => {
-                setShowBackupCreateModal(true);
-              }}
-              btnClass="btn btn-orange backup-now-button"
-              btnIcon="fa fa-upload"
-            />
+            <>
+              <YBButton
+                btnText="Backup now"
+                onClick={() => {
+                  setShowBackupCreateModal(true);
+                }}
+                btnClass="btn btn-orange backup-now-button"
+                btnIcon="fa fa-upload"
+              />
+              <DropdownButton
+                className="actions-btn"
+                title="•••"
+                id="advanced-backup-dropdown"
+                noCaret
+                pullRight
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowAdvancedRestore(true);
+                  }}
+                >
+                  Advanced Restore
+                </MenuItem>
+              </DropdownButton>
+            </>
           )}
         </Col>
       </Row>
@@ -406,13 +428,13 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             Expiration
           </TableHeaderColumn>
           <TableHeaderColumn
-            dataField="duration"
+            dataField="totalBackupSizeInBytes"
             dataFormat={(_, row) => {
-              return calculateDuration(row.createTime, row.updateTime);
+              return row.totalBackupSizeInBytes ? formatBytes(row.totalBackupSizeInBytes) : '-';
             }}
             width="20%"
           >
-            Duration
+            Size
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="storageConfigUUID"
@@ -487,6 +509,15 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setShowAssignConfigModal(false);
         }}
       />
+      {allowTakingBackup && (
+        <BackupAdvancedRestore
+          onHide={() => {
+            setShowAdvancedRestore(false);
+          }}
+          visible={showAdvancedRestore}
+          currentUniverseUUID={universeUUID}
+        />
+      )}
     </Row>
   );
 };

@@ -181,6 +181,7 @@ public class TaskExecutor {
         log.debug("Found task: {}", className);
       } catch (ClassNotFoundException e) {
         log.error("Could not find task for task type " + taskType, e);
+        throw new RuntimeException(e);
       }
     }
     TASK_TYPE_TO_CLASS_MAP = ImmutableBiMap.copyOf(typeMap);
@@ -790,6 +791,7 @@ public class TaskExecutor {
         updateTaskDetailsOnError(TaskInfo.State.Failure, e);
         Throwables.propagate(e);
       } finally {
+        log.debug("Completed task {}", task.getName());
         taskCompletionTime = Instant.now();
         writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
         publishAfterTask(t);
@@ -1052,7 +1054,7 @@ public class TaskExecutor {
               log.error("Ignoring error for " + subTaskGroup.toString(), e);
             } else {
               // Postpone throwing this error later when all the subgroups are done.
-              throw new RuntimeException(subTaskGroup.toString() + " failed.");
+              throw new RuntimeException(subTaskGroup.toString() + " failed.", e);
             }
             anyRe = e;
           }
@@ -1062,7 +1064,7 @@ public class TaskExecutor {
         subTaskGroups.clear();
       }
       if (anyRe != null) {
-        throw new RuntimeException("One or more SubTaskGroups failed while running.");
+        throw new RuntimeException("One or more SubTaskGroups failed while running.", anyRe);
       }
     }
 

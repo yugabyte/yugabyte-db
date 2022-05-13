@@ -35,6 +35,14 @@
     }
   }
 
+  #advanced-backup-dropdown {
+    font-size: 12px;
+    color: #818182;
+    border-radius: 8px;
+    height: 40px;
+    width: 50px;
+  }
+
   .backup-status-filter {
     width: 250px;
   }
@@ -76,12 +84,12 @@
     z-index: 0 !important;
   }
 
-  .action-danger > a {
+  .action-danger>a {
     color: $YB_ERROR_ICON_COLOR !important;
   }
 
   .backup-list-table {
-    .react-bs-table .table-bordered > tbody > tr > td {
+    .react-bs-table .table-bordered>tbody>tr>td {
       vertical-align: middle;
       height: 45px;
       padding: 0 !important;
@@ -142,4 +150,13 @@
 .select__value-container {
   max-height: 48px;
   overflow-y: auto !important;
+}
+
+
+// for content-title
+#backups-v2-title {
+  display: flex;
+  .yb-tag{
+    margin-top: 4px;
+  }
 }

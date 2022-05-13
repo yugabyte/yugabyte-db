@@ -1648,6 +1648,7 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
     // TODO(bogdan): Figure out how to handle read replias and leader affinity.
     replication_info.clear_read_replicas();
     replication_info.clear_affinitized_leaders();
+    replication_info.clear_multi_affinitized_leaders();
   } else {
     // Table replication info exists, copy it over.
     replication_info.CopyFrom(table->replication_info().get());

@@ -1798,8 +1798,8 @@ export default class ClusterFields extends Component {
         const smartResizePossible =
           isDefinedNotNull(currentProvider) &&
           (currentProvider.code === 'aws' || currentProvider.code === 'gcp') &&
-          !this.state.awsInstanceWithEphemeralStorage &&
-          !this.state.gcpInstanceWithEphemeralStorage &&
+          !isEphemeralAwsStorageInstance(this.currentInstanceType) &&
+          deviceInfo.storageType !== 'Scratch' &&
           clusterType !== 'async';
 
         const volumeSize = (

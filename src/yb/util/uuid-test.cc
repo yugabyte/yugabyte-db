@@ -17,6 +17,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+using namespace std::literals;
+
 namespace yb {
 
 class UuidTest : public YBTest {
@@ -31,8 +33,7 @@ class UuidTest : public YBTest {
     // Test encode and decode.
     std::string encoded_bytes;
     uuid_orig.EncodeToComparable(&encoded_bytes);
-    Uuid decoded_uuid_new;
-    ASSERT_OK(decoded_uuid_new.DecodeFromComparable(encoded_bytes));
+    Uuid decoded_uuid_new = ASSERT_RESULT(Uuid::FromComparable(encoded_bytes));
 
     // Test string conversion.
     std::string strval_new;
@@ -51,14 +52,14 @@ class UuidTest : public YBTest {
 
 TEST_F(UuidTest, TestRoundTrip) {
   // Test all types of UUID.
-  for (const std::string& strval : {
-      "123e4567-e89b-02d3-a456-426655440000",
-      "123e4567-e89b-12d3-a456-426655440000",
-      "123e4567-e89b-22d3-a456-426655440000",
-      "123e4567-e89b-32d3-a456-426655440000",
-      "123e4567-e89b-42d3-a456-426655440000",
-      "11111111-1111-1111-1111-111111111111",
-      "00000000-0000-0000-0000-000000000000"}) {
+  for (auto strval : {
+      "123e4567-e89b-02d3-a456-426655440000"s,
+      "123e4567-e89b-12d3-a456-426655440000"s,
+      "123e4567-e89b-22d3-a456-426655440000"s,
+      "123e4567-e89b-32d3-a456-426655440000"s,
+      "123e4567-e89b-42d3-a456-426655440000"s,
+      "11111111-1111-1111-1111-111111111111"s,
+      "00000000-0000-0000-0000-000000000000"s}) {
     RunRoundTrip(strval);
   }
 }

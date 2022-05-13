@@ -557,9 +557,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // disabled. We do so, for example, when StillHasOrphanedPostSplitData() returns true.
   bool ShouldDisableLbMove();
 
-  void ForceRocksDBCompactInTest();
+  void TEST_ForceRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
-  CHECKED_STATUS ForceFullRocksDBCompact();
+  CHECKED_STATUS ForceFullRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
   docdb::DocDB doc_db() const { return { regular_db_.get(), intents_db_.get(), &key_bounds_ }; }
 
@@ -975,8 +975,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   template <class F>
   auto GetRegularDbStat(const F& func, const decltype(func())& default_value) const;
 
-  Result<docdb::CompactionSchemaPacking> GetSchemaPacking(
-    const Uuid& uuid, uint32_t schema_version);
+  HybridTime DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMetaData*>& inputs);
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 

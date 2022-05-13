@@ -152,7 +152,7 @@ class DBTestUniversalCompactionDeletion : public DBTestBase {
       const std::vector<LiveFileMetaData>& files, const std::string& description) {
     std::vector<std::string> file_paths;
     for (const auto& file : files) {
-      file_paths.push_back(dbname_ + file.name);
+      file_paths.push_back(dbname_ + file.Name());
     }
     return WaitFilePathsDeleted(std::move(file_paths), description);
   }
@@ -254,10 +254,10 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesMinPendingOutput) {
     std::vector<LiveFileMetaData> live_files;
     db_->GetLiveFilesMetaData(&live_files);
     for (auto file : live_files) {
-      input_files_2.insert(file.name);
+      input_files_2.insert(file.Name());
     }
     for (auto file : live_files_1) {
-      input_files_2.erase(file.name);
+      input_files_2.erase(file.Name());
     }
   }
 
@@ -330,7 +330,7 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesDelayedByScheduledC
         std::vector<LiveFileMetaData> files;
         db_->GetLiveFilesMetaData(&files);
         for (auto file : files) {
-          if (file.name == '/' + compaction_1_output) {
+          if (file.Name() == '/' + compaction_1_output) {
             return true;
           }
         }

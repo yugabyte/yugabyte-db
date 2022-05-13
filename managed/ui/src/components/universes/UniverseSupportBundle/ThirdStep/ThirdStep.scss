@@ -27,7 +27,7 @@
   .create-bundle {
     width: 100%;
     display: flex;
-    justify-content: end;
+    justify-content: flex-end;
     margin-bottom: 16px;
   }
 
@@ -44,6 +44,12 @@
 
     th {
       text-transform: none;
+      width: 140px;
+      font-weight: bold;
+
+      &:last-child {
+        width: 50px;
+      }
     }
 
     tbody {
@@ -60,12 +66,14 @@
     td {
       vertical-align: middle;
       overflow: visible;
+      width: 150px;
 
       > * {
         overflow: visible;
       }
 
       &:last-child {
+        width: 50px;
         text-align: right !important;
       }
     }
@@ -117,6 +125,21 @@
 .support-bundle-confirm-delete {
   .modal-content {
     top: 200px;
-    width: 750px;
+    width: 557px;
+    left: 93px;
+
+    .modal-body {
+      height: 175px;
+
+      .created-on-date {
+        font-weight: bold;
+      }
+    }
+  }
+}
+
+.modal-backdrop {
+  &.in {
+    opacity: 0;
   }
 }

@@ -831,6 +831,10 @@ class DB {
 
   virtual UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) { return nullptr; }
 
+  virtual UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType type) {
+    return nullptr;
+  }
+
   virtual void ListenFilesChanged(std::function<void()> listener) {}
 
   // Obtains the meta data of the specified column family of the DB.

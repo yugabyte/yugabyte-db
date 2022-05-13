@@ -62,7 +62,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.SetDBCredentials,
             request().body().asJson());
-    return withMessage("Created user in DB.");
+    return withMessage("Updated user in DB.");
   }
 
   @ApiOperation(

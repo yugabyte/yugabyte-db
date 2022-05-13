@@ -7,6 +7,7 @@ import { YBButton, YBControlledNumericInput, YBFormInput } from '../../../common
 import { AzureRegions } from './AzureRegions';
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
 import { FIELD_TYPE, NTPConfig, NTP_TYPES } from './NTPConfig';
+import { YBTag } from '../../../common/YBTag';
 
 const initialValues = {
   providerName: '', // not a part of config payload
@@ -16,7 +17,7 @@ const initialValues = {
   AZURE_TENANT_ID: '',
   AZURE_SUBSCRIPTION_ID: '',
   AZURE_RG: '',
-  ntp_option: NTP_TYPES.MANUAL,
+  ntp_option: NTP_TYPES.PROVIDER,
   ntpServers: [],
   setUpChrony: true
 };
@@ -262,7 +263,7 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
                 </Row>
                 <Row className="config-provider-row">
                 <Col lg={3}>
-                    <div className="form-item-custom-label">NTP Setup</div>
+                    <div className="form-item-custom-label">NTP Setup<YBTag>Beta</YBTag></div>
                   </Col>
                   <Col lg={7}>
                     <NTPConfig onChange={setFieldValue} fieldType={FIELD_TYPE.FORMIK} hideHelp/>

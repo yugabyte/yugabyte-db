@@ -946,8 +946,7 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       if (out) {
         string bytes;
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
-        new(&out->uuid_val_) Uuid();
-        RETURN_NOT_OK(out->uuid_val_.DecodeFromComparable(bytes));
+        new(&out->uuid_val_) Uuid(VERIFY_RESULT(Uuid::FromComparable(bytes)));
       } else {
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
       }
@@ -959,8 +958,7 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       if (out) {
         string bytes;
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
-        new(&out->uuid_val_) Uuid();
-        RETURN_NOT_OK(out->uuid_val_.DecodeFromComparable(bytes));
+        new(&out->uuid_val_) Uuid(VERIFY_RESULT(Uuid::FromComparable(bytes)));
       } else {
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
       }
@@ -1215,9 +1213,7 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes to decode Uuid: $0, need $1",
             slice.size(), kUuidSize);
       }
-      Slice slice_temp(slice.data(), slice.size());
-      new(&uuid_val_) Uuid();
-      RETURN_NOT_OK(uuid_val_.DecodeFromComparableSlice(slice_temp));
+      new(&uuid_val_) Uuid(VERIFY_RESULT(Uuid::FromComparable(slice)));
       type_ = value_type;
       return Status::OK();
     }

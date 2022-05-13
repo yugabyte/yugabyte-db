@@ -42,6 +42,10 @@ DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bi
 DEFINE_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
+DEFINE_string(yb_backend_oom_score_adj, "900",
+              "oom_score_adj of postgres backends in linux environments");
+DEFINE_bool(yb_pg_terminate_child_backend, true,
+            "Terminate other active server processes when a backend is killed");
 DEFINE_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
 DEFINE_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
@@ -427,6 +431,10 @@ Status PgWrapper::Start() {
   pg_proc_->SetEnv("LD_LIBRARY_PATH", boost::join(ld_library_path, ":"));
   pg_proc_->ShareParentStderr();
   pg_proc_->ShareParentStdout();
+  pg_proc_->SetEnv("FLAGS_yb_pg_terminate_child_backend",
+                    FLAGS_yb_pg_terminate_child_backend ? "true" : "false");
+  pg_proc_->SetEnv("FLAGS_yb_backend_oom_score_adj", FLAGS_yb_backend_oom_score_adj);
+
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
   pg_proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   pg_proc_->InheritNonstandardFd(conf_.tserver_shm_fd);

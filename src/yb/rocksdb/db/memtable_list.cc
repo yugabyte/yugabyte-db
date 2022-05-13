@@ -112,6 +112,23 @@ int MemTableList::NumNotFlushed() const {
   return size;
 }
 
+// Usually immutable mem table list is empty, and frontier could be taken from active mem table.
+// So we implement logic to avoid doing clone when there is just one frontier source.
+UserFrontierPtr MemTableList::GetFrontier(UserFrontierPtr frontier, UpdateUserValueType type) {
+  for (const auto& mem : current_->memlist_) {
+    auto current = mem->GetFrontier(type);
+    if (!current) {
+      continue;
+    }
+    if (!frontier) {
+      frontier = current;
+      continue;
+    }
+    frontier->Update(*current, type);
+  }
+  return frontier;
+}
+
 int MemTableList::NumFlushed() const {
   return static_cast<int>(current_->memlist_history_.size());
 }

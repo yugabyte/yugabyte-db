@@ -727,8 +727,7 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
     // identify the first and the last compaction input files
     // in the current level.
     for (size_t f = 0; f < current_files.size(); ++f) {
-      if (input_files->find(TableFileNameToNumber(current_files[f].name)) !=
-          input_files->end()) {
+      if (input_files->count(current_files[f].name_id)) {
         first_included = std::min(first_included, static_cast<int>(f));
         last_included = std::max(last_included, static_cast<int>(f));
         if (is_first) {
@@ -769,11 +768,10 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
     for (int f = first_included; f <= last_included; ++f) {
       if (current_files[f].being_compacted) {
         return STATUS(Aborted,
-            "Necessary compaction input file " + current_files[f].name +
+            "Necessary compaction input file " + current_files[f].Name() +
             " is currently being compacted.");
       }
-      input_files->insert(
-          TableFileNameToNumber(current_files[f].name));
+      input_files->insert(current_files[f].name_id);
     }
 
     // update smallest and largest key
@@ -802,12 +800,11 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
             comparator, aggregated_file_meta, next_lv_file)) {
           if (next_lv_file.being_compacted) {
             return STATUS(Aborted,
-                "File " + next_lv_file.name +
+                "File " + next_lv_file.Name() +
                 " that has overlapping key range with one of the compaction "
                 " input file is currently being compacted.");
           }
-          input_files->insert(
-              TableFileNameToNumber(next_lv_file.name));
+          input_files->insert(next_lv_file.name_id);
         }
       }
     }
@@ -859,7 +856,7 @@ Status CompactionPicker::SanitizeCompactionInputFiles(
     bool found = false;
     for (auto level_meta : cf_meta.levels) {
       for (auto file_meta : level_meta.files) {
-        if (file_num == TableFileNameToNumber(file_meta.name)) {
+        if (file_num == file_meta.name_id) {
           if (file_meta.being_compacted) {
             return STATUS(Aborted,
                 "Specified compaction input file " +

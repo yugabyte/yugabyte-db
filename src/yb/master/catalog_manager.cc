@@ -477,6 +477,9 @@ DEFINE_bool(enable_truncate_on_pitr_table, false,
     "When enabled, truncate table will be allowed on PITR tables");
 TAG_FLAG(enable_truncate_on_pitr_table, runtime);
 
+DEFINE_test_flag(double, fault_crash_after_registering_split_children, 0.0,
+                 "Crash after registering the children for a tablet split.");
+
 namespace yb {
 namespace master {
 
@@ -732,6 +735,58 @@ Result<bool> DoesTableExist(const Result<TableInfoPtr>& result) {
     return false;
   }
   return result.status();
+}
+
+const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklist_leader) {
+  return blacklist_leader ? pb.leader_blacklist() : pb.server_blacklist();
+}
+
+// Orders all servers in the masters argument by their score in ascending order. Scores are inverse
+// priorities, i.e. masters with lower scores have a greater priority to act as the sys catalog
+// tablet leader. Scores are computed from the affinitized_zones and the blacklist. All masters with
+// a score greater than or equal to the current leader are dropped from the list. Also returns a
+// bool which is true if the current leader is a valid choice for the sys catalog tablet leader.
+//
+// If a master is blacklisted, it has the highest possible score.
+// Otherwise if a master is not in any affinitized zone, it has the second highest score.
+// Otherwise the score of a master is the index of its placement zone in the affinitized_zones
+// input.
+const std::pair<std::vector<std::pair<ServerEntryPB, size_t>>, bool>
+GetMoreEligibleSysCatalogLeaders(
+    const vector<AffinitizedZonesSet>& affinitized_zones, const BlacklistSet& blacklist,
+    const std::vector<ServerEntryPB>& masters, const ServerRegistrationPB& current_leader) {
+  std::unordered_map<CloudInfoPB, size_t, cloud_hash, cloud_equal_to> cloud_info_scores;
+  for (size_t i = 0; i < affinitized_zones.size(); ++i) {
+    for (const auto& cloud_info : affinitized_zones[i]) {
+      cloud_info_scores.insert({cloud_info, i});
+    }
+  }
+  auto get_score = [&](const ServerRegistrationPB& registration) {
+    if (IsBlacklisted(registration, blacklist)) {
+      return affinitized_zones.size() + 1;
+    } else {
+      auto cloud_score = cloud_info_scores.find(registration.cloud_info());
+      if (cloud_score == cloud_info_scores.end()) {
+        return affinitized_zones.size();
+      } else {
+        return cloud_score->second;
+      }
+    }
+  };
+
+  auto my_score = get_score(current_leader);
+  std::vector<std::pair<ServerEntryPB, size_t>> scored_masters;
+  for (const auto& master : masters) {
+    auto master_score = get_score(master.registration());
+    if (master_score < my_score) {
+      scored_masters.push_back({master, get_score(master.registration())});
+    }
+  }
+
+  std::sort(scored_masters.begin(), scored_masters.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.second < rhs.second;
+  });
+  return {scored_masters, my_score == 0 || my_score < affinitized_zones.size()};
 }
 
 }  // anonymous namespace
@@ -2669,6 +2724,7 @@ Status CatalogManager::DoSplitTablet(
   }
   source_tablet_lock.Commit();
   source_table_lock.Commit();
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_after_registering_split_children);
 
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
@@ -3937,21 +3993,6 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       s = STATUS(InvalidArgument, msg);
       LOG(WARNING) << msg;
       return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
-    }
-  }
-
-  return Status::OK();
-}
-
-Status CatalogManager::CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info) const {
-  auto& placement_info = replication_info.live_replicas();
-  if (!placement_info.placement_blocks().empty()) {
-    for (const auto& cloud_info : replication_info.affinitized_leaders()) {
-      if (!CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(placement_info, cloud_info)) {
-        return STATUS_FORMAT(
-            InvalidArgument, "Placement info $0 does not contain preferred zone cloud info $1",
-            placement_info, TSDescriptor::generate_placement_id(cloud_info));
-      }
     }
   }
 
@@ -10416,7 +10457,7 @@ Status CatalogManager::ValidateReplicationInfo(
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }
 
-  s = CheckValidLeaderAffinity(req->replication_info());
+  s = CatalogManagerUtil::CheckValidLeaderAffinity(req->replication_info());
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }
@@ -10607,7 +10648,7 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
   auto l = ClusterConfig()->LockForRead();
 
   // Fine to pass in empty defaults if server_blacklist or leader_blacklist is not filled.
-  const BlacklistPB& state = blacklist_leader ? l->pb.leader_blacklist() : l->pb.server_blacklist();
+  const auto& state = GetBlacklist(l->pb, blacklist_leader);
   int64_t blacklist_replicas = GetNumRelevantReplicas(state, blacklist_leader);
   int64_t initial_load = (blacklist_leader) ?
                                 state.initial_leader_load(): state.initial_replica_load();
@@ -10616,14 +10657,15 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
   // load is reported as 0 on the blacklisted tservers after this time then it means that
   // the transfer is successfully complete.
   if (blacklist_replicas == 0 &&
-  TimeSinceElectedLeader() <= MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs)) {
-      LOG(INFO) << "Master leadership has changed. Reporting progress as 0 until the catalog " <<
-                   "manager gets the correct estimates of the remaining load on the blacklisted" <<
-                   "tservers.";
-      resp->set_percent(0);
-      resp->set_total(initial_load);
-      resp->set_remaining(initial_load);
-      return Status::OK();
+      TimeSinceElectedLeader() <=
+          MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs)) {
+    LOG(INFO) << "Master leadership has changed. Reporting progress as 0 until the catalog "
+              << "manager gets the correct estimates of the remaining load on the blacklisted"
+              << "tservers.";
+    resp->set_percent(0);
+    resp->set_total(initial_load);
+    resp->set_remaining(initial_load);
+    return Status::OK();
   }
 
   // On change of master leader, initial_load_ information may be lost temporarily. Reset to
@@ -10890,64 +10932,35 @@ void CatalogManager::RebuildYQLSystemPartitions() {
 Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   auto l = ClusterConfig()->LockForRead();
 
+  auto blacklist = ToBlacklistSet(GetBlacklist(l->pb, /*leader_blacklist=*/true));
+  bool i_am_blacklisted = IsBlacklisted(server_registration_, blacklist);
+
   vector<AffinitizedZonesSet> affinitized_zones;
   RETURN_NOT_OK(GetAllAffinitizedZones(&affinitized_zones));
 
-  if (affinitized_zones.empty()) {
+  if (affinitized_zones.empty() && !i_am_blacklisted) {
     return Status::OK();
   }
 
   std::vector<ServerEntryPB> masters;
   RETURN_NOT_OK(master_->ListMasters(&masters));
 
-  for (const auto& zone_set : affinitized_zones) {
-    for (const CloudInfoPB& cloud_info : zone_set) {
-      // Do nothing if already on a high priority affinitized zone.
-      if (CatalogManagerUtil::IsCloudInfoEqual(cloud_info, server_registration_.cloud_info())) {
-        return Status::OK();
-      }
-    }
-
-    // Try to find a master within this priority group of affinitized zones that we can step down
-    // to.
-    for (const ServerEntryPB& master : masters) {
-      auto master_cloud_info = master.registration().cloud_info();
-
-      for (const CloudInfoPB& config_cloud_info : zone_set) {
-        if (CatalogManagerUtil::IsCloudInfoEqual(config_cloud_info, master_cloud_info)) {
-          if (PREDICT_FALSE(
-                  GetAtomicFlag(&FLAGS_TEST_crash_server_on_sys_catalog_leader_affinity_move))) {
-            LOG_WITH_PREFIX(FATAL) << "For test: Crashing the server instead of performing sys "
-                                      "catalog leader affinity move.";
-          }
-          YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
-              << "Sys catalog tablet is not in an affinitized zone, "
-              << "sending step down request to master uuid "
-              << master.instance_id().permanent_uuid() << " in zone "
-              << TSDescriptor::generate_placement_id(master_cloud_info);
-          std::shared_ptr<TabletPeer> tablet_peer;
-          RETURN_NOT_OK(GetTabletPeer(sys_catalog_->tablet_id(), &tablet_peer));
-
-          consensus::LeaderStepDownRequestPB req;
-          req.set_tablet_id(sys_catalog_->tablet_id());
-          req.set_dest_uuid(sys_catalog_->tablet_peer()->permanent_uuid());
-          req.set_new_leader_uuid(master.instance_id().permanent_uuid());
-
-          consensus::LeaderStepDownResponsePB resp;
-          RETURN_NOT_OK(tablet_peer->consensus()->StepDown(&req, &resp));
-          if (resp.has_error()) {
-            YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
-                << "Step down failed: " << resp.error().status().message();
-            break;
-          }
-          LOG_WITH_PREFIX(INFO) << "Successfully stepped down to new master";
-          return Status::OK();
-        }
-      }
+  auto[sorted_scored_masters, i_am_eligible] = GetMoreEligibleSysCatalogLeaders(
+      affinitized_zones, blacklist, masters, server_registration_);
+  for (const auto& scored_master : sorted_scored_masters) {
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10) << Format(
+        "Sys catalog tablet leader is $0. Stepping down to master uuid $1 in zone $2.",
+        (i_am_blacklisted ? "blacklisted" : "not in an affinitized zone"),
+        scored_master.first.instance_id().permanent_uuid(),
+        TSDescriptor::generate_placement_id(scored_master.first.registration().cloud_info()));
+    if (VERIFY_RESULT(SysCatalogLeaderStepDown(scored_master.first))) {
+      return Status::OK();
     }
   }
-
-  return STATUS(NotFound, "Couldn't step down to a master in an affinitized zone");
+  if (!i_am_eligible)
+    return STATUS(NotFound, "Couldn't step down to an unblacklisted master in an affinitized zone");
+  else
+    return Status::OK();
 }
 
 Status CatalogManager::GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) {
@@ -10955,7 +10968,7 @@ Status CatalogManager::GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affin
   RETURN_NOT_OK(GetClusterConfig(&config));
   auto& replication_info = config.replication_info();
 
-  CatalogManagerUtil::GetAllAffinitizedZones(&replication_info, affinitized_zones);
+  CatalogManagerUtil::GetAllAffinitizedZones(replication_info, affinitized_zones);
 
   return Status::OK();
 }
@@ -10967,13 +10980,7 @@ Result<BlacklistSet> CatalogManager::BlacklistSetFromPB(bool leader_blacklist) c
   }
   auto l = cluster_config->LockForRead();
 
-  const auto& blacklist_pb = leader_blacklist ? l->pb.leader_blacklist() : l->pb.server_blacklist();
-  BlacklistSet blacklist_set;
-  for (int i = 0; i < blacklist_pb.hosts_size(); i++) {
-    blacklist_set.insert(HostPortFromPB(blacklist_pb.hosts(i)));
-  }
-
-  return blacklist_set;
+  return ToBlacklistSet(GetBlacklist(l->pb, leader_blacklist));
 }
 
 void CatalogManager::ProcessTabletStorageMetadata(
@@ -11062,6 +11069,31 @@ void CatalogManager::InitializeGlobalLoadState(
     }
     CatalogManagerUtil::FillTableLoadState(id_and_info.second, state);
   }
+}
+
+Result<bool> CatalogManager::SysCatalogLeaderStepDown(const ServerEntryPB& master) {
+    if (PREDICT_FALSE(
+            GetAtomicFlag(&FLAGS_TEST_crash_server_on_sys_catalog_leader_affinity_move))) {
+      LOG_WITH_PREFIX(FATAL) << "For test: Crashing the server instead of performing sys "
+                                "catalog leader affinity move.";
+    }
+  std::shared_ptr<TabletPeer> tablet_peer;
+  RETURN_NOT_OK(GetTabletPeer(sys_catalog_->tablet_id(), &tablet_peer));
+
+  consensus::LeaderStepDownRequestPB req;
+  req.set_tablet_id(sys_catalog_->tablet_id());
+  req.set_dest_uuid(sys_catalog_->tablet_peer()->permanent_uuid());
+  req.set_new_leader_uuid(master.instance_id().permanent_uuid());
+
+  consensus::LeaderStepDownResponsePB resp;
+  RETURN_NOT_OK(tablet_peer->consensus()->StepDown(&req, &resp));
+  if (resp.has_error()) {
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
+        << "Step down failed: " << resp.error().status().message();
+    return false;
+  }
+  LOG_WITH_PREFIX(INFO) << "Successfully stepped down to new master";
+  return true;
 }
 
 std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {

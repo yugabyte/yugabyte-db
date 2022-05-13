@@ -36,6 +36,16 @@ using namespace std::literals;
 namespace yb {
 namespace pgwrapper {
 
+const std::string& DefaultColumnSeparator() {
+  static const std::string result = ", ";
+  return result;
+}
+
+const std::string& DefaultRowSeparator() {
+  static const std::string result = "; ";
+  return result;
+}
+
 namespace {
 
 // Converts the given element of the ExecStatusType enum to a string.
@@ -274,7 +284,7 @@ Result<PGResultPtr> PGConn::FetchMatrix(const std::string& command, int rows, in
   return res;
 }
 
-Result<std::string> PGConn::FetchRowAsString(const std::string& command) {
+Result<std::string> PGConn::FetchRowAsString(const std::string& command, const std::string& sep) {
   auto res = VERIFY_RESULT(Fetch(command));
 
   auto fetched_rows = PQntuples(res.get());
@@ -283,7 +293,23 @@ Result<std::string> PGConn::FetchRowAsString(const std::string& command) {
         RuntimeError, "Fetched $0 rows, while 1 expected", fetched_rows);
   }
 
-  return RowToString(res.get(), 0);
+  return RowToString(res.get(), 0, sep);
+}
+
+Result<std::string> PGConn::FetchAllAsString(
+    const std::string& command, const std::string& column_sep, const std::string& row_sep) {
+  auto res = VERIFY_RESULT(Fetch(command));
+
+  std::string result;
+  auto fetched_rows = PQntuples(res.get());
+  for (int i = 0; i != fetched_rows; ++i) {
+    if (i) {
+      result += row_sep;
+    }
+    result += VERIFY_RESULT(RowToString(res.get(), i, column_sep));
+  }
+
+  return result;
 }
 
 CHECKED_STATUS PGConn::StartTransaction(IsolationLevel isolation_level) {
@@ -501,12 +527,12 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
   }
 }
 
-Result<std::string> RowToString(PGresult* result, int row) {
+Result<std::string> RowToString(PGresult* result, int row, const std::string& sep) {
   int cols = PQnfields(result);
   std::string line;
   for (int col = 0; col != cols; ++col) {
     if (col) {
-      line += ", ";
+      line += sep;
     }
     line += CHECK_RESULT(ToString(result, row, col));
   }

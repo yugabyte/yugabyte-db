@@ -1,7 +1,7 @@
 ---
 title: Upgrade the YugabyteDB software
 headerTitle: Upgrade the YugabyteDB software
-linkTitle: Upgrade YugabyteDB software
+linkTitle: Upgrade YugabyteDB
 description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software.
 menu:
   preview:
@@ -18,6 +18,6 @@ You can perform a rolling upgrade on a live universe deployment as follows:
 
 1. Navigate to **Universes** and select your universe.
 1. Click **Actions > Upgrade Software**.
-1. In the **Upgrade Software** dialog, ensure that **Rolling Upgrade** is enabled, define the delay between servers or accept the default value, and then use the **Server Version** field to select the new YugabyteDB version, as per the following illustration:
+1. In the **Upgrade Software** dialog, ensure that **Rolling Upgrade** is enabled, define the delay between servers or accept the default value, and then use the **Server Version** field to select the new YugabyteDB version, as per the following illustration:<br><br><br>
 
     ![Upgrade Universe Confirmation](/images/ee/upgrade-univ-2.png)

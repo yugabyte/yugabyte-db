@@ -15,6 +15,7 @@
 
 #include <vector>
 
+#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/status.h"
 
@@ -57,7 +58,8 @@ class CompactionContext {
 };
 
 struct CompactionContextOptions {
-  bool is_full_compaction;
+  // In YugabyteDB we use only level0, so for code simplicity pass level0 inputs only.
+  const std::vector<FileMetaData*>& level0_inputs;
 };
 
 }  // namespace rocksdb

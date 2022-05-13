@@ -9,7 +9,7 @@ const initialStateFeatureInTest = {
   enableXCluster: false,
   enableGeoPartitioning: false,
   enableHCVault: true,
-  enableHCVaultEAT: false,
+  enableHCVaultEAT: true,
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false,
   backupv2: false,
@@ -26,12 +26,12 @@ const initialStateFeatureReleased = {
   enableXCluster: true,
   enableGeoPartitioning: false,
   enableHCVault: true,
-  enableHCVaultEAT: false,
+  enableHCVaultEAT: true,
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false,
   backupv2: false,
   enableOIDC: false,
-  supportBundle: false
+  supportBundle: true
 };
 
 export const FeatureFlag = (

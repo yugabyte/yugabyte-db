@@ -419,7 +419,10 @@ CHECKED_STATUS ValidateAndAddPreferredZone(
         placement_info);
   }
 
-  *zone_set->add_zones() = cloud_info;
+  if (zone_set) {
+    *zone_set->add_zones() = cloud_info;
+  }
+
   visited_zones->emplace(cloud_info_str);
 
   return Status::OK();
@@ -457,10 +460,10 @@ CHECKED_STATUS CatalogManagerUtil::SetPreferredZones(
 }
 
 void CatalogManagerUtil::GetAllAffinitizedZones(
-    const ReplicationInfoPB* replication_info, vector<AffinitizedZonesSet>* affinitized_zones) {
-  if (replication_info->multi_affinitized_leaders_size()) {
+    const ReplicationInfoPB& replication_info, vector<AffinitizedZonesSet>* affinitized_zones) {
+  if (replication_info.multi_affinitized_leaders_size()) {
     // New persisted version
-    for (auto& zone_set : replication_info->multi_affinitized_leaders()) {
+    for (auto& zone_set : replication_info.multi_affinitized_leaders()) {
       AffinitizedZonesSet new_zone_set;
       for (auto& ci : zone_set.zones()) {
         new_zone_set.insert(ci);
@@ -472,13 +475,31 @@ void CatalogManagerUtil::GetAllAffinitizedZones(
   } else {
     // Old persisted version
     AffinitizedZonesSet new_zone_set;
-    for (auto& ci : replication_info->affinitized_leaders()) {
+    for (auto& ci : replication_info.affinitized_leaders()) {
       new_zone_set.insert(ci);
     }
     if (!new_zone_set.empty()) {
       affinitized_zones->push_back(new_zone_set);
     }
   }
+}
+
+Status CatalogManagerUtil::CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info) {
+  auto& placement_info = replication_info.live_replicas();
+  if (!placement_info.placement_blocks().empty()) {
+    vector<AffinitizedZonesSet> affinitized_zones;
+    GetAllAffinitizedZones(replication_info, &affinitized_zones);
+
+    std::set<string> visited_zones;
+    for (const auto& zone_set : affinitized_zones) {
+      for (const auto& cloud_info : zone_set) {
+        RETURN_NOT_OK(
+            ValidateAndAddPreferredZone(placement_info, cloud_info, &visited_zones, nullptr));
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 bool CMPerTableLoadState::CompareLoads(const TabletServerId &ts1, const TabletServerId &ts2) {

@@ -1352,7 +1352,8 @@ Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(const string&
     if (!s.ok() || resp.has_error()) {
         LOG(WARNING) << "Encountered error while waiting for setup_universe_replication to complete"
                      << " : " << (!s.ok() ? s.ToString() : resp.error().status().message());
-    } else if (resp.has_done() && resp.done()) {
+    }
+    if (resp.has_done() && resp.done()) {
       return StatusFromPB(resp.replication_error());
     }
 

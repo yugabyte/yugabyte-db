@@ -95,9 +95,8 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
       if (IsNull(temp.Value())) {
         result_writer.SetNull();
       } else {
-        common::Jsonb jsonb;
-        temp.MoveToJsonb(&jsonb);
-        RETURN_NOT_OK(jsonb.ApplyJsonbOperators(json_ops, &result_writer.NewValue()));
+        RETURN_NOT_OK(common::Jsonb::ApplyJsonbOperators(
+            temp.Value().jsonb_value(), json_ops, &result_writer.NewValue()));
       }
       break;
     }
@@ -947,14 +946,6 @@ std::string QLTableRow::ToString(const Schema& schema) const {
   return ret;
 }
 
-void QLExprResult::MoveToJsonb(common::Jsonb* out) {
-  if (existing_value_) {
-    out->Assign(existing_value_->jsonb_value());
-    existing_value_ = nullptr;
-  } else {
-    out->Assign(std::move(*value_.mutable_jsonb_value()));
-  }
-}
 
 const QLValuePB& QLExprResult::Value() {
   if (existing_value_) {
@@ -986,12 +977,6 @@ QLExprResultWriter QLExprResult::Writer() {
   return QLExprResultWriter(this);
 }
 
-void LWExprResult::MoveToJsonb(common::Jsonb* out) {
-  if (value_) {
-    out->Assign(value_->jsonb_value().ToBuffer());
-    value_ = nullptr;
-  }
-}
 
 void LWExprResult::MoveTo(LWQLValuePB* out) {
   if (value_) {

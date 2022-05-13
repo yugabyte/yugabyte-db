@@ -13,6 +13,8 @@
 
 #include "yb/rocksdb/metadata.h"
 
+#include "yb/rocksdb/db/filename.h"
+
 #include "yb/util/format.h"
 
 namespace rocksdb {
@@ -61,9 +63,17 @@ std::string UserFrontiers::ToString() const {
   return ::yb::Format("{ smallest: $0 largest: $1 }", Smallest(), Largest());
 }
 
+std::string SstFileMetaData::Name() const {
+  return MakeTableFileName(/* path= */ "", name_id);
+}
+
+std::string SstFileMetaData::FullName() const {
+  return MakeTableFileName(db_path, name_id);
+}
+
 std::string LiveFileMetaData::ToString() const {
   return YB_STRUCT_TO_STRING(
-      total_size, base_size, uncompressed_size, name, db_path, imported,
+      total_size, base_size, uncompressed_size, name_id, db_path, imported,
       being_compacted, column_family_name, level, smallest, largest);
 }
 

@@ -40,6 +40,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <shared_mutex>
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <gflags/gflags.h>
@@ -197,6 +198,7 @@ namespace log {
 
 using env_util::OpenFileForRandom;
 using std::shared_ptr;
+using std::shared_lock;
 using std::unique_ptr;
 using strings::Substitute;
 
@@ -1694,7 +1696,7 @@ Status LogEntryBatch::Serialize() {
   total_size_bytes_ = entry_batch_pb_.ByteSize();
   buffer_.reserve(total_size_bytes_);
 
-  pb_util::AppendToString(entry_batch_pb_, &buffer_);
+  RETURN_NOT_OK(pb_util::AppendToString(entry_batch_pb_, &buffer_));
 
   state_ = kEntrySerialized;
   return Status::OK();
