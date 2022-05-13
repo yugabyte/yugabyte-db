@@ -1,3 +1,10 @@
+4.6.2
+BUG FIXES
+=========
+
+-- Fix bug introduced in verson 4.6.1 when pg_jobmon is installed and in use. Caused error to be raised around assignment of search_path variables. Thanks to @Dakotah312 on Github for reporting this issue (Github Issue #461).
+
+
 4.6.1
 NEW FEATURES
 ============

@@ -11,6 +11,7 @@ v_count             int := 0;
 v_job_id            bigint;
 v_jobmon            text;
 v_jobmon_schema     text;
+v_new_search_path   text;
 v_old_search_path   text;
 v_parent_schema     text;
 v_parent_tablename  text;
@@ -34,7 +35,13 @@ IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
         SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
+        IF length(v_old_search_path) > 0 THEN
+           v_new_search_path := '@extschema@,pg_temp,'||v_old_search_path;
+        ELSE
+            v_new_search_path := '@extschema@,pg_temp';
+        END IF;
+        v_new_search_path := format('%s,%s',v_jobmon_schema, v_new_search_path);
+        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
     END IF;
 END IF;
 
@@ -137,5 +144,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 
