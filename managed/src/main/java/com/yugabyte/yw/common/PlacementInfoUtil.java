@@ -2269,9 +2269,14 @@ public class PlacementInfoUtil {
   // of azName. In case of single AZ providers, the azName is passed
   // as null.
   public static String getKubernetesNamespace(
-      String nodePrefix, String azName, Map<String, String> azConfig, boolean newNamingStyle) {
+      String nodePrefix,
+      String azName,
+      Map<String, String> azConfig,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster) {
     boolean isMultiAZ = (azName != null);
-    return getKubernetesNamespace(isMultiAZ, nodePrefix, azName, azConfig, newNamingStyle);
+    return getKubernetesNamespace(
+        isMultiAZ, nodePrefix, azName, azConfig, newNamingStyle, isReadOnlyCluster);
   }
 
   /**
@@ -2284,11 +2289,20 @@ public class PlacementInfoUtil {
       String nodePrefix,
       String azName,
       Map<String, String> azConfig,
-      boolean newNamingStyle) {
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster) {
     String namespace = azConfig.get("KUBENAMESPACE");
     if (StringUtils.isBlank(namespace)) {
       int suffixLen = isMultiAZ ? azName.length() + 1 : 0;
+      String readClusterSuffix =
+          "-rr"; // Avoid using "-readcluster" so user has more room for specifying the name.
+      if (isReadOnlyCluster) {
+        suffixLen += readClusterSuffix.length();
+      }
       namespace = Util.sanitizeKubernetesNamespace(nodePrefix, suffixLen);
+      if (isReadOnlyCluster) {
+        namespace = String.format("%s%s", namespace, readClusterSuffix);
+      }
       if (isMultiAZ && !newNamingStyle) {
         namespace = String.format("%s-%s", namespace, azName);
       }
@@ -2305,7 +2319,7 @@ public class PlacementInfoUtil {
    */
   @Deprecated
   public static Map<String, String> getConfigPerNamespace(
-      PlacementInfo pi, String nodePrefix, Provider provider) {
+      PlacementInfo pi, String nodePrefix, Provider provider, boolean isReadOnlyCluster) {
     Map<String, String> namespaceToConfig = new HashMap<>();
     Map<UUID, Map<String, String>> azToConfig = getConfigPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
@@ -2317,7 +2331,8 @@ public class PlacementInfoUtil {
 
       String azName = AvailabilityZone.get(entry.getKey()).code;
       String namespace =
-          getKubernetesNamespace(isMultiAZ, nodePrefix, azName, entry.getValue(), false);
+          getKubernetesNamespace(
+              isMultiAZ, nodePrefix, azName, entry.getValue(), false, isReadOnlyCluster);
       namespaceToConfig.put(namespace, kubeconfig);
       if (!isMultiAZ) {
         break;
@@ -2369,15 +2384,16 @@ public class PlacementInfoUtil {
     List<String> masters = new ArrayList<String>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
-    if (!isMultiAZ) {
-      return null;
-    }
-
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
       AvailabilityZone az = AvailabilityZone.get(entry.getKey());
       String namespace =
           getKubernetesNamespace(
-              isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig(), newNamingStyle);
+              isMultiAZ,
+              nodePrefix,
+              az.code,
+              az.getUnmaskedConfig(),
+              newNamingStyle, /*isReadOnlyCluster*/
+              false);
       String domain = azToDomain.get(entry.getKey());
       String helmFullName =
           getHelmFullNameWithSuffix(isMultiAZ, nodePrefix, az.code, newNamingStyle);

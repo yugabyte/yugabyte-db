@@ -103,7 +103,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       String softwareVersion,
       boolean isMasterChanged,
       boolean isTServerChanged) {
-    createSingleKubernetesExecutorTask(CommandType.POD_INFO, placementInfo);
+    createSingleKubernetesExecutorTask(
+        CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
+    // TODO upgrade of read cluster.
 
     KubernetesPlacement placement = new KubernetesPlacement(placementInfo);
     Provider provider =
