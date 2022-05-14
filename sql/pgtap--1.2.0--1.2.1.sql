@@ -181,4 +181,131 @@ RETURNS TEXT AS $$
         ),
         $2
     );
+CREATE OR REPLACE FUNCTION _lang ( NAME, NAME, NAME[] )
+RETURNS NAME AS $$
+    SELECT l.lanname
+      FROM tap_funky f
+      JOIN pg_catalog.pg_language l ON f.langoid = l.oid
+     WHERE f.schema = $1
+       and f.name   = $2
+       AND f.args   = _funkargs($3)
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _lang ( NAME, NAME[] )
+RETURNS NAME AS $$
+    SELECT l.lanname
+      FROM tap_funky f
+      JOIN pg_catalog.pg_language l ON f.langoid = l.oid
+     WHERE f.name = $1
+       AND f.args = _funkargs($2)
+       AND f.is_visible;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _returns ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT returns
+      FROM tap_funky
+     WHERE schema = $1
+       AND name   = $2
+       AND args   = _funkargs($3)
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _returns ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT returns
+      FROM tap_funky
+     WHERE name = $1
+       AND args = _funkargs($2)
+       AND is_visible;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _definer ( NAME, NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT is_definer
+      FROM tap_funky
+     WHERE schema = $1
+       AND name   = $2
+       AND args   = _funkargs($3)
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _definer ( NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT is_definer
+      FROM tap_funky
+     WHERE name = $1
+       AND args = _funkargs($2)
+       AND is_visible;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _type_func ( "char", NAME, NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT kind = $1
+      FROM tap_funky
+     WHERE schema = $2
+       AND name   = $3
+       AND args   = _funkargs($4)
+$$ LANGUAGE SQL;
+
+-- _type_func(type, function, args[])
+CREATE OR REPLACE FUNCTION _type_func ( "char", NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT kind = $1
+      FROM tap_funky
+     WHERE name = $2
+       AND args = _funkargs($3)
+       AND is_visible;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _strict ( NAME, NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT is_strict
+      FROM tap_funky
+     WHERE schema = $1
+       AND name   = $2
+       AND args   = _funkargs($3)
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _strict ( NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT is_strict
+      FROM tap_funky
+     WHERE name = $1
+       AND args = _funkargs($2)
+       AND is_visible;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _vol ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _expand_vol(volatility)
+      FROM tap_funky f
+     WHERE f.schema = $1
+       and f.name   = $2
+       AND f.args   = _funkargs($3)
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _vol ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _expand_vol(volatility)
+      FROM tap_funky f
+     WHERE f.name = $1
+       AND f.args = _funkargs($2)
+       AND f.is_visible;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_func_owner ( NAME, NAME, NAME[] )
+RETURNS NAME AS $$
+    SELECT owner
+      FROM tap_funky
+     WHERE schema = $1
+       AND name   = $2
+       AND args   = _funkargs($3)
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_func_owner ( NAME, NAME[] )
+RETURNS NAME AS $$
+    SELECT owner
+      FROM tap_funky
+     WHERE name = $1
+       AND args = _funkargs($2)
+       AND is_visible
 $$ LANGUAGE SQL;

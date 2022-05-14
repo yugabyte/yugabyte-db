@@ -3733,14 +3733,8 @@ regard to its arguments. Some examples:
     );
 
     SELECT has_function( 'do_something' );
-    SELECT has_function( 'do_something', ARRAY['integer'] );
+    SELECT has_function( 'do_something', ARRAY['int'] );
     SELECT has_function( 'do_something', ARRAY['numeric'] );
-
-The `:args` argument should be formatted as it would be displayed in the view
-of a function using the `\df` command in `psql`. For example, even if you have
-a numeric column with a precision of 8, you should specify `ARRAY['numeric']`.
-If you created a `varchar(64)` column, you should pass the `:args` argument as
-`ARRAY['character varying']`.
 
 If you wish to use the two-argument form of `has_function()`, specifying only
 the schema and the function name, you must cast the `:function` argument to
@@ -5303,9 +5297,9 @@ Feeling Funky
 
 Perhaps more important than testing the database schema is testing your custom
 functions. Especially if you write functions that provide the interface for
-clients to interact with the database, making sure that they work will save
-you time in the long run. So check out these assertions to maintain your
-sanity.
+clients to interact with the database, making sure that they work will save you
+time in the long run. So use these assertions to save yourself heartache in the
+future.
 
 ### `can()` ###
 
@@ -5428,15 +5422,14 @@ But then you check with `has_function()` first, right?
 `:description`
 : A short description of the test.
 
-Tests that a particular function returns a particular data type. The `:args[]`
-and `:type` arguments should be formatted as they would be displayed in the
-view of a function using the `\df` command in `psql`. For example, use
-"character varying" rather than "varchar", and "boolean" rather than "bool".
-For set returning functions, the `:type` argument should start with "setof "
-(yes, lowercase). Examples:
+Tests that a particular function returns a particular data type. The `:type`
+argument should be formatted as it would be displayed in the view of a function
+using the `\df` command in `psql`. For example, use "character varying" rather
+than "varchar", and "boolean" rather than "bool". For set returning functions,
+the `:type` argument should start with "setof " (yes, lowercase). Examples:
 
-    SELECT function_returns( 'myschema', 'foo', ARRAY['integer', 'text'], 'integer' );
-    SELECT function_returns( 'do_something', 'setof bool' );
+    SELECT function_returns( 'myschema', 'foo', ARRAY['int', 'text'], 'integer' );
+    SELECT function_returns( 'do_something', 'setof boolean' );
     SELECT function_returns( 'do_something', ARRAY['integer'], 'boolean' );
     SELECT function_returns( 'do_something', ARRAY['numeric'], 'numeric' );
 

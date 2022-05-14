@@ -110,13 +110,6 @@ die() {
   exit $return
 }
 
-file_sanity() {
-  for file in "$@"; do
-    [ -e "$file" ] || die 1 "error: file '$file' does not exist"
-    [ -r "$file" ] || die 1 "error: file '$file' is not readable"
-  done
-}
-
 db_exists() {
     local exists
     exists=`psql -qtc "SELECT EXISTS( SELECT 1 FROM pg_database WHERE datname = '$dbname' )" postgres $@ | tr -d ' '`

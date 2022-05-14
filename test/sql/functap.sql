@@ -114,18 +114,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_function( 'lower', '{text}'::name[] ),
+    has_function( 'abs', '{int}'::name[] ),
     true,
     'simple function with 1 arg',
-    'Function lower(text) should exist',
+    'Function abs(int) should exist',
     ''
 );
 
 SELECT * FROM check_test(
-    has_function( 'decode', '{text,text}'::name[] ),
+    has_function( 'age', '{timestamptz,timestamptz}'::name[] ),
     true,
     'simple function with 2 args',
-    'Function decode(text, text) should exist',
+    'Function age(timestamptz, timestamptz) should exist',
     ''
 );
 
@@ -393,7 +393,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_lang_is( 'someschema', 'bah', '{"integer", "text"}'::name[], 'plpgsql', 'whatever' ),
+    function_lang_is( 'someschema', 'bah', '{"int", "text"}'::name[], 'plpgsql', 'whatever' ),
     true,
     'function_lang_is(schema, func, args, plpgsql, desc)',
     'whatever',
@@ -401,10 +401,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_lang_is( 'someschema', 'bah', '{"integer", "text"}'::name[], 'plpgsql' ),
+    function_lang_is( 'someschema', 'bah', '{"int", "text"}'::name[], 'plpgsql' ),
     true,
     'function_lang_is(schema, func, args, plpgsql)',
-    'Function someschema.bah(integer, text) should be written in plpgsql',
+    'Function someschema.bah(int, text) should be written in plpgsql',
     ''
 );
 
@@ -426,11 +426,11 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_lang_is( 'someschema', 'why', '{"integer", "text"}'::name[], 'plpgsql' ),
+    function_lang_is( 'someschema', 'why', '{"int", "text"}'::name[], 'plpgsql' ),
     false,
     'function_lang_is(schema, func, args, plpgsql)',
-    'Function someschema.why(integer, text) should be written in plpgsql',
-    '    Function someschema.why(integer, text) does not exist'
+    'Function someschema.why(int, text) should be written in plpgsql',
+    '    Function someschema.why(int, text) does not exist'
 );
 
 SELECT * FROM check_test(
@@ -483,7 +483,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_lang_is( 'oww', '{"integer", "text"}'::name[], 'plpgsql', 'whatever' ),
+    function_lang_is( 'oww', '{"int", "text"}'::name[], 'plpgsql', 'whatever' ),
     true,
     'function_lang_is(func, args, plpgsql, desc)',
     'whatever',
@@ -491,10 +491,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_lang_is( 'oww', '{"integer", "text"}'::name[], 'plpgsql' ),
+    function_lang_is( 'oww', '{"int", "text"}'::name[], 'plpgsql' ),
     true,
     'function_lang_is(func, args, plpgsql)',
-    'Function oww(integer, text) should be written in plpgsql',
+    'Function oww(int, text) should be written in plpgsql',
     ''
 );
 
@@ -516,11 +516,11 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_lang_is( 'why', '{"integer", "text"}'::name[], 'plpgsql' ),
+    function_lang_is( 'why', '{"int", "text"}'::name[], 'plpgsql' ),
     false,
     'function_lang_is(func, args, plpgsql)',
-    'Function why(integer, text) should be written in plpgsql',
-    '    Function why(integer, text) does not exist'
+    'Function why(int, text) should be written in plpgsql',
+    '    Function why(int, text) does not exist'
 );
 
 SELECT * FROM check_test(
@@ -575,7 +575,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'someschema', 'bah', ARRAY['integer', 'text'], 'boolean', 'whatever' ),
+    function_returns( 'someschema', 'bah', ARRAY['int', 'text'], 'boolean', 'whatever' ),
     true,
     'function_returns(schema, func, args, bool, false)',
     'whatever',
@@ -583,10 +583,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'someschema', 'bah', ARRAY['integer', 'text'], 'boolean' ),
+    function_returns( 'someschema', 'bah', ARRAY['int', 'text'], 'boolean' ),
     true,
     'function_returns(schema, func, args, bool)',
-    'Function someschema.bah(integer, text) should return boolean',
+    'Function someschema.bah(int, text) should return boolean',
     ''
 );
 
@@ -671,7 +671,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'oww', ARRAY['integer', 'text'], 'boolean', 'whatever' ),
+    function_returns( 'oww', ARRAY['int', 'text'], 'boolean', 'whatever' ),
     true,
     'function_returns(func, args, bool, false)',
     'whatever',
@@ -679,10 +679,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'oww', ARRAY['integer', 'text'], 'boolean' ),
+    function_returns( 'oww', ARRAY['int', 'text'], 'boolean' ),
     true,
     'function_returns(func, args, bool)',
-    'Function oww(integer, text) should return boolean',
+    'Function oww(int, text) should return boolean',
     ''
 );
 
@@ -785,7 +785,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    is_definer( 'public', 'oww', ARRAY['int', 'text'], 'whatever' ),
     false,
     'is_definer(schema, func, args, desc)',
     'whatever',
@@ -793,7 +793,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    isnt_definer( 'public', 'oww', ARRAY['int', 'text'], 'whatever' ),
     true,
     'isnt_definer(schema, func, args, desc)',
     'whatever',
@@ -801,18 +801,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_definer( 'public', 'oww', ARRAY['integer', 'text'] ),
+    is_definer( 'public', 'oww', ARRAY['int', 'text'] ),
     false,
     'is_definer(schema, func, args)',
-    'Function public.oww(integer, text) should be security definer',
+    'Function public.oww(int, text) should be security definer',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_definer( 'public', 'oww', ARRAY['integer', 'text'] ),
+    isnt_definer( 'public', 'oww', ARRAY['int', 'text'] ),
     true,
     'isnt_definer(schema, func, args)',
-    'Function public.oww(integer, text) should not be security definer',
+    'Function public.oww(int, text) should not be security definer',
     ''
 );
 
@@ -881,7 +881,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    is_definer( 'public', 'oww', ARRAY['int', 'text'], 'whatever' ),
     false,
     'is_definer(schema, func, args, desc)',
     'whatever',
@@ -889,7 +889,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    isnt_definer( 'public', 'oww', ARRAY['int', 'text'], 'whatever' ),
     true,
     'isnt_definer(schema, func, args, desc)',
     'whatever',
@@ -897,18 +897,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_definer( 'public', 'oww', ARRAY['integer', 'text'] ),
+    is_definer( 'public', 'oww', ARRAY['int', 'text'] ),
     false,
     'is_definer(schema, func, args)',
-    'Function public.oww(integer, text) should be security definer',
+    'Function public.oww(int, text) should be security definer',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_definer( 'public', 'oww', ARRAY['integer', 'text'] ),
+    isnt_definer( 'public', 'oww', ARRAY['int', 'text'] ),
     true,
     'isnt_definer(schema, func, args)',
-    'Function public.oww(integer, text) should not be security definer',
+    'Function public.oww(int, text) should not be security definer',
     ''
 );
 
@@ -977,7 +977,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_definer( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    is_definer( 'oww', ARRAY['int', 'text'], 'whatever' ),
     false,
     'is_definer(func, args, desc)',
     'whatever',
@@ -985,7 +985,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_definer( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    isnt_definer( 'oww', ARRAY['int', 'text'], 'whatever' ),
     true,
     'isnt_definer(func, args, desc)',
     'whatever',
@@ -993,18 +993,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_definer( 'oww', ARRAY['integer', 'text'] ),
+    is_definer( 'oww', ARRAY['int', 'text'] ),
     false,
     'is_definer(func, args)',
-    'Function oww(integer, text) should be security definer',
+    'Function oww(int, text) should be security definer',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_definer( 'oww', ARRAY['integer', 'text'] ),
+    isnt_definer( 'oww', ARRAY['int', 'text'] ),
     true,
     'isnt_definer(func, args)',
-    'Function oww(integer, text) should not be security definer',
+    'Function oww(int, text) should not be security definer',
     ''
 );
 
@@ -1078,7 +1078,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_normal_function( 'someschema', 'bah', ARRAY['integer', 'text'], 'whatever' ),
+    is_normal_function( 'someschema', 'bah', ARRAY['int', 'text'], 'whatever' ),
     true,
     'is_normal_function(schema, func, args, desc)',
     'whatever',
@@ -1094,7 +1094,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_normal_function( 'someschema', 'bah', ARRAY['integer', 'text'], 'whatever' ),
+    isnt_normal_function( 'someschema', 'bah', ARRAY['int', 'text'], 'whatever' ),
     false,
     'is_normal_function(schema, func, args, desc)',
     'whatever',
@@ -1161,18 +1161,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_normal_function( 'someschema', 'bah', ARRAY['integer', 'text'] ),
+    is_normal_function( 'someschema', 'bah', ARRAY['int', 'text'] ),
     true,
     'is_normal_function(schema, func2, args)',
-    'Function someschema.bah(integer, text) should be a normal function',
+    'Function someschema.bah(int, text) should be a normal function',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_normal_function( 'someschema', 'bah', ARRAY['integer', 'text'] ),
+    isnt_normal_function( 'someschema', 'bah', ARRAY['int', 'text'] ),
     false,
     'isnt_normal_function(schema, func2, args)',
-    'Function someschema.bah(integer, text) should not be a normal function',
+    'Function someschema.bah(int, text) should not be a normal function',
     ''
 );
 
@@ -1363,7 +1363,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_normal_function( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    is_normal_function( 'oww', ARRAY['int', 'text'], 'whatever' ),
     true,
     'is_normal_function(func, args, desc)',
     'whatever',
@@ -1371,7 +1371,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_normal_function( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    isnt_normal_function( 'oww', ARRAY['int', 'text'], 'whatever' ),
     false,
     'isnt_normal_function(func, args, desc)',
     'whatever',
@@ -1414,18 +1414,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_normal_function( 'oww', ARRAY['integer', 'text'] ),
+    is_normal_function( 'oww', ARRAY['int', 'text'] ),
     true,
     'is_normal_function(func, noargs)',
-    'Function oww(integer, text) should be a normal function',
+    'Function oww(int, text) should be a normal function',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_normal_function( 'oww', ARRAY['integer', 'text'] ),
+    isnt_normal_function( 'oww', ARRAY['int', 'text'] ),
     false,
     'isnt_normal_function(func, noargs)',
-    'Function oww(integer, text) should not be a normal function',
+    'Function oww(int, text) should not be a normal function',
     ''
 );
 
@@ -1602,7 +1602,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_aggregate( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    is_aggregate( 'public', 'oww', ARRAY['int', 'text'], 'whatever' ),
     false,
     'is_aggregate(schema, func, args, desc)',
     'whatever',
@@ -1610,7 +1610,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_aggregate( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    isnt_aggregate( 'public', 'oww', ARRAY['int', 'text'], 'whatever' ),
     true,
     'isnt_aggregate(schema, func, args, desc)',
     'whatever',
@@ -1653,18 +1653,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_aggregate( 'public', 'oww', ARRAY['integer', 'text'] ),
+    is_aggregate( 'public', 'oww', ARRAY['int', 'text'] ),
     false,
     'is_aggregate(schema, func, args)',
-    'Function public.oww(integer, text) should be an aggregate function',
+    'Function public.oww(int, text) should be an aggregate function',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_aggregate( 'public', 'oww', ARRAY['integer', 'text'] ),
+    isnt_aggregate( 'public', 'oww', ARRAY['int', 'text'] ),
     true,
     'isnt_aggregate(schema, func, args)',
-    'Function public.oww(integer, text) should not be an aggregate function',
+    'Function public.oww(int, text) should not be an aggregate function',
     ''
 );
 
@@ -1774,7 +1774,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_aggregate( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    is_aggregate( 'oww', ARRAY['int', 'text'], 'whatever' ),
     false,
     'is_aggregate(func, args, desc)',
     'whatever',
@@ -1782,7 +1782,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_aggregate( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    isnt_aggregate( 'oww', ARRAY['int', 'text'], 'whatever' ),
     true,
     'isnt_aggregate(func, args, desc)',
     'whatever',
@@ -1825,18 +1825,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_aggregate( 'oww', ARRAY['integer', 'text'] ),
+    is_aggregate( 'oww', ARRAY['int', 'text'] ),
     false,
     'is_aggregate(func, args)',
-    'Function oww(integer, text) should be an aggregate function',
+    'Function oww(int, text) should be an aggregate function',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_aggregate( 'oww', ARRAY['integer', 'text'] ),
+    isnt_aggregate( 'oww', ARRAY['int', 'text'] ),
     true,
     'isnt_aggregate(func, args)',
-    'Function oww(integer, text) should not be an aggregate function',
+    'Function oww(int, text) should not be an aggregate function',
     ''
 );
 
@@ -1933,7 +1933,7 @@ SELECT * FROM check_test(
 -- is_window ( NAME, NAME, NAME[], TEXT )
 -- isnt_window ( NAME, NAME, NAME[], TEXT )
 SELECT * FROM check_test(
-    is_window( 'pg_catalog', 'ntile', ARRAY['integer'], 'whatever' ),
+    is_window( 'pg_catalog', 'ntile', ARRAY['int'], 'whatever' ),
     true,
     'is_window(schema, win, arg, desc)',
     'whatever',
@@ -1941,7 +1941,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'pg_catalog', 'ntile', ARRAY['integer'], 'whatever' ),
+    isnt_window( 'pg_catalog', 'ntile', ARRAY['int'], 'whatever' ),
     false,
     'isnt_window(schema, win, arg, desc)',
     'whatever',
@@ -1949,7 +1949,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_window( 'someschema', 'bah', ARRAY['integer', 'text'], 'whatever' ),
+    is_window( 'someschema', 'bah', ARRAY['int', 'text'], 'whatever' ),
     false,
     'is_window(schema, func, arg, desc)',
     'whatever',
@@ -1957,7 +1957,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'someschema', 'bah', ARRAY['integer', 'text'], 'whatever' ),
+    isnt_window( 'someschema', 'bah', ARRAY['int', 'text'], 'whatever' ),
     true,
     'isnt_window(schema, func, arg, desc)',
     'whatever',
@@ -1998,52 +1998,52 @@ SELECT * FROM check_test(
 
 -- Test diagnostics
 SELECT * FROM check_test(
-    is_window( 'someschema', 'nope', ARRAY['integer'], 'whatever' ),
+    is_window( 'someschema', 'nope', ARRAY['int'], 'whatever' ),
     false,
     'is_window(schema, nowin, arg, desc)',
     'whatever',
-    '    Function someschema.nope(integer) does not exist'
+    '    Function someschema.nope(int) does not exist'
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'someschema', 'nope', ARRAY['integer'], 'whatever' ),
+    isnt_window( 'someschema', 'nope', ARRAY['int'], 'whatever' ),
     false,
     'isnt_window(schema, nowin, arg, desc)',
     'whatever',
-    '    Function someschema.nope(integer) does not exist'
+    '    Function someschema.nope(int) does not exist'
 );
 
 -- is_window ( NAME, NAME, NAME[] )
 -- isnt_window ( NAME, NAME, NAME[] )
 SELECT * FROM check_test(
-    is_window( 'pg_catalog', 'ntile', ARRAY['integer'] ),
+    is_window( 'pg_catalog', 'ntile', ARRAY['int'] ),
     true,
     'is_window(schema, win, arg)',
-    'Function pg_catalog.ntile(integer) should be a window function',
+    'Function pg_catalog.ntile(int) should be a window function',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'pg_catalog', 'ntile', ARRAY['integer'] ),
+    isnt_window( 'pg_catalog', 'ntile', ARRAY['int'] ),
     false,
     'isnt_window(schema, win, arg)',
-    'Function pg_catalog.ntile(integer) should not be a window function',
+    'Function pg_catalog.ntile(int) should not be a window function',
     ''
 );
 
 SELECT * FROM check_test(
-    is_window( 'someschema', 'bah', ARRAY['integer', 'text'] ),
+    is_window( 'someschema', 'bah', ARRAY['int', 'text'] ),
     false,
     'is_window(schema, func, arg)',
-    'Function someschema.bah(integer, text) should be a window function',
+    'Function someschema.bah(int, text) should be a window function',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'someschema', 'bah', ARRAY['integer', 'text'] ),
+    isnt_window( 'someschema', 'bah', ARRAY['int', 'text'] ),
     true,
     'isnt_window(schema, func, arg)',
-    'Function someschema.bah(integer, text) should not be a window function',
+    'Function someschema.bah(int, text) should not be a window function',
     ''
 );
 
@@ -2081,19 +2081,19 @@ SELECT * FROM check_test(
 
 -- Test diagnostics
 SELECT * FROM check_test(
-    is_window( 'someschema', 'nada', ARRAY['integer'] ),
+    is_window( 'someschema', 'nada', ARRAY['int'] ),
     false,
     'is_window(schema, nowin, arg)',
-    'Function someschema.nada(integer) should be a window function',
-    '    Function someschema.nada(integer) does not exist'
+    'Function someschema.nada(int) should be a window function',
+    '    Function someschema.nada(int) does not exist'
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'someschema', 'nada', ARRAY['integer'] ),
+    isnt_window( 'someschema', 'nada', ARRAY['int'] ),
     false,
     'isnt_window(schema, nowin, arg)',
-    'Function someschema.nada(integer) should not be a window function',
-    '    Function someschema.nada(integer) does not exist'
+    'Function someschema.nada(int) should not be a window function',
+    '    Function someschema.nada(int) does not exist'
 );
 
 -- is_window ( NAME, NAME, TEXT )
@@ -2217,7 +2217,7 @@ SELECT * FROM check_test(
 -- is_window ( NAME, NAME[], TEXT )
 -- isnt_window ( NAME, NAME[], TEXT )
 SELECT * FROM check_test(
-    is_window( 'ntile', ARRAY['integer'], 'whatever' ),
+    is_window( 'ntile', ARRAY['int'], 'whatever' ),
     true,
     'is_window(win, arg, desc)',
     'whatever',
@@ -2225,7 +2225,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'ntile', ARRAY['integer'], 'whatever' ),
+    isnt_window( 'ntile', ARRAY['int'], 'whatever' ),
     false,
     'isnt_window(win, arg, desc)',
     'whatever',
@@ -2233,7 +2233,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_window( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    is_window( 'oww', ARRAY['int', 'text'], 'whatever' ),
     false,
     'is_window(func, arg, desc)',
     'whatever',
@@ -2241,7 +2241,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    isnt_window( 'oww', ARRAY['int', 'text'], 'whatever' ),
     true,
     'isnt_window(func, arg, desc)',
     'whatever',
@@ -2282,52 +2282,52 @@ SELECT * FROM check_test(
 
 -- Test diagnostics
 SELECT * FROM check_test(
-    is_window( 'nada', ARRAY['integer'], 'whatever' ),
+    is_window( 'nada', ARRAY['int'], 'whatever' ),
     false,
     'is_window(nowin, arg, desc)',
     'whatever',
-    '    Function nada(integer) does not exist'
+    '    Function nada(int) does not exist'
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'nada', ARRAY['integer'], 'whatever' ),
+    isnt_window( 'nada', ARRAY['int'], 'whatever' ),
     false,
     'isnt_window(nowin, arg, desc)',
     'whatever',
-    '    Function nada(integer) does not exist'
+    '    Function nada(int) does not exist'
 );
 
 -- is_window( NAME, NAME[] )
 -- isnt_window( NAME, NAME[] )
 SELECT * FROM check_test(
-    is_window( 'ntile', ARRAY['integer'] ),
+    is_window( 'ntile', ARRAY['int'] ),
     true,
     'is_window(win, arg, desc)',
-    'Function ntile(integer) should be a window function',
+    'Function ntile(int) should be a window function',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'ntile', ARRAY['integer'] ),
+    isnt_window( 'ntile', ARRAY['int'] ),
     false,
     'isnt_window(win, arg, desc)',
-    'Function ntile(integer) should not be a window function',
+    'Function ntile(int) should not be a window function',
     ''
 );
 
 SELECT * FROM check_test(
-    is_window( 'oww', ARRAY['integer', 'text'] ),
+    is_window( 'oww', ARRAY['int', 'text'] ),
     false,
     'is_window(func, arg, desc)',
-    'Function oww(integer, text) should be a window function',
+    'Function oww(int, text) should be a window function',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'oww', ARRAY['integer', 'text'] ),
+    isnt_window( 'oww', ARRAY['int', 'text'] ),
     true,
     'isnt_window(func, arg, desc)',
-    'Function oww(integer, text) should not be a window function',
+    'Function oww(int, text) should not be a window function',
     ''
 );
 
@@ -2365,19 +2365,19 @@ SELECT * FROM check_test(
 
 -- Test diagnostics
 SELECT * FROM check_test(
-    is_window( 'nope', ARRAY['integer'] ),
+    is_window( 'nope', ARRAY['int'] ),
     false,
     'is_window(nowin, arg, desc)',
-    'Function nope(integer) should be a window function',
-    '    Function nope(integer) does not exist'
+    'Function nope(int) should be a window function',
+    '    Function nope(int) does not exist'
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'nope', ARRAY['integer'] ),
+    isnt_window( 'nope', ARRAY['int'] ),
     false,
     'isnt_window(nowin, arg, desc)',
-    'Function nope(integer) should not be a window function',
-    '    Function nope(integer) does not exist'
+    'Function nope(int) should not be a window function',
+    '    Function nope(int) does not exist'
 );
 
 -- is_window( NAME, TEXT )
@@ -2525,7 +2525,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_strict( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    is_strict( 'public', 'oww', ARRAY['int', 'text'], 'whatever' ),
     false,
     'is_strict(schema, func, args, desc)',
     'whatever',
@@ -2533,7 +2533,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_strict( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    isnt_strict( 'public', 'oww', ARRAY['int', 'text'], 'whatever' ),
     true,
     'isnt_strict(schema, func, args, desc)',
     'whatever',
@@ -2541,18 +2541,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_strict( 'public', 'oww', ARRAY['integer', 'text'] ),
+    is_strict( 'public', 'oww', ARRAY['int', 'text'] ),
     false,
     'is_strict(schema, func, args)',
-    'Function public.oww(integer, text) should be strict',
+    'Function public.oww(int, text) should be strict',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_strict( 'public', 'oww', ARRAY['integer', 'text'] ),
+    isnt_strict( 'public', 'oww', ARRAY['int', 'text'] ),
     true,
     'isnt_strict(schema, func, args)',
-    'Function public.oww(integer, text) should not be strict',
+    'Function public.oww(int, text) should not be strict',
     ''
 );
 
@@ -2589,7 +2589,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_strict( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    isnt_strict( 'public', 'oww', ARRAY['int', 'text'], 'whatever' ),
     true,
     'isnt_strict(schema, func, args, desc)',
     'whatever',
@@ -2597,10 +2597,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_strict( 'public', 'oww', ARRAY['integer', 'text'] ),
+    isnt_strict( 'public', 'oww', ARRAY['int', 'text'] ),
     true,
     'isnt_strict(schema, func, args)',
-    'Function public.oww(integer, text) should not be strict',
+    'Function public.oww(int, text) should not be strict',
     ''
 );
 
@@ -2637,7 +2637,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_strict( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    is_strict( 'oww', ARRAY['int', 'text'], 'whatever' ),
     false,
     'is_strict(func, args, desc)',
     'whatever',
@@ -2645,7 +2645,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_strict( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    isnt_strict( 'oww', ARRAY['int', 'text'], 'whatever' ),
     true,
     'isnt_strict(func, args, desc)',
     'whatever',
@@ -2653,18 +2653,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_strict( 'oww', ARRAY['integer', 'text'] ),
+    is_strict( 'oww', ARRAY['int', 'text'] ),
     false,
     'is_strict(func, args)',
-    'Function oww(integer, text) should be strict',
+    'Function oww(int, text) should be strict',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_strict( 'oww', ARRAY['integer', 'text'] ),
+    isnt_strict( 'oww', ARRAY['int', 'text'] ),
     true,
     'isnt_strict(func, args)',
-    'Function oww(integer, text) should not be strict',
+    'Function oww(int, text) should not be strict',
     ''
 );
 
@@ -2719,7 +2719,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    volatility_is( 'public', 'oww', ARRAY['integer', 'text'], 'immutable', 'whatever' ),
+    volatility_is( 'public', 'oww', ARRAY['int', 'text'], 'immutable', 'whatever' ),
     true,
     'function_volatility(schema, func, args, immutable, desc)',
     'whatever',
@@ -2743,10 +2743,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    volatility_is( 'public', 'oww', ARRAY['integer', 'text'], 'immutable' ),
+    volatility_is( 'public', 'oww', ARRAY['int', 'text'], 'immutable' ),
     true,
     'function_volatility(schema, func, args, immutable)',
-    'Function public.oww(integer, text) should be IMMUTABLE'
+    'Function public.oww(int, text) should be IMMUTABLE'
     ''
 );
 
@@ -2799,7 +2799,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    volatility_is( 'oww', ARRAY['integer', 'text'], 'immutable', 'whatever' ),
+    volatility_is( 'oww', ARRAY['int', 'text'], 'immutable', 'whatever' ),
     true,
     'function_volatility(func, args, immutable, desc)',
     'whatever',
@@ -2823,10 +2823,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    volatility_is( 'oww', ARRAY['integer', 'text'], 'immutable' ),
+    volatility_is( 'oww', ARRAY['int', 'text'], 'immutable' ),
     true,
     'function_volatility(func, args, immutable)',
-    'Function oww(integer, text) should be IMMUTABLE'
+    'Function oww(int, text) should be IMMUTABLE'
     ''
 );
 
