@@ -24,7 +24,6 @@ import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
