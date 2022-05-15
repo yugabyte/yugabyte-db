@@ -34,6 +34,11 @@ Revision history for pgTAP
   and `boolean`. The return value argument to `function_returns` and and data
   type tests such as `col_type_is` and `cast_context_is` must still use full
   type names. Thanks to @wphilips53 for the suggestion (#292).
+* Updated type-testing functions to allow short names for types, and updated
+  function-testing functions to allow short names for argument types. This means
+  that common aliases for standard types can be specified as, e.g., `int` and
+  `bool` rather than `integer` and `boolean`. Thanks to @wphilips53 for the
+  suggestion (#292).
 
 1.2.0 2021-12-05T18:08:13Z
 --------------------------

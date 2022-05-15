@@ -82,7 +82,6 @@ CREATE TYPE someschema."myType" AS (
     foo INT
 );
 
-
 RESET client_min_messages;
 
 /****************************************************************************/

@@ -1360,7 +1360,7 @@ SELECT * FROM check_test(
 -- Test has_operator().
 
 SELECT * FROM check_test(
-  has_operator( 'integer', 'pg_catalog', '<=', 'integer', 'boolean', 'desc' ),
+  has_operator( 'integer', 'pg_catalog', '<=', 'int', 'bool', 'desc' ),
   true,
   'has_operator( left, schema, name, right, result, desc )',
   'desc',
@@ -1376,7 +1376,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  has_operator( 'integer', '<=', 'integer', 'boolean', 'desc' ),
+  has_operator( 'integer', '<=', 'int', 'bool', 'desc' ),
   true,
   'has_operator( left, name, right, result, desc )',
   'desc',
@@ -1392,7 +1392,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  has_operator( 'integer', '<=', 'integer', 'desc' ),
+  has_operator( 'integer', '<=', 'int', 'desc' ),
   true,
   'has_operator( left, name, right, desc )',
   'desc',
@@ -1408,7 +1408,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  has_operator( 'integer', 'pg_catalog', '<=', 'text', 'boolean', 'desc' ),
+  has_operator( 'integer', 'pg_catalog', '<=', 'text', 'bool', 'desc' ),
   false,
   'has_operator( left, schema, name, right, result, desc ) fail',
   'desc',
@@ -1424,7 +1424,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  has_operator( 'integer', '<=', 'text', 'boolean', 'desc' ),
+  has_operator( 'integer', '<=', 'text', 'bool', 'desc' ),
   false,
   'has_operator( left, name, right, result, desc ) fail',
   'desc',
@@ -1467,10 +1467,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_operator( 'integer', 'pg_catalog', '<=', 'integer', 'boolean'::name ),
+  hasnt_operator( 'integer', 'pg_catalog', '<=', 'int', 'bool'::name ),
   false,
   'hasnt_operator( left, schema, name, right, result ) fail',
-  'Operator pg_catalog.<=(integer,integer) RETURNS boolean should not exist',
+  'Operator pg_catalog.<=(integer,int) RETURNS bool should not exist',
   ''
 );
 
@@ -1483,10 +1483,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_operator( 'integer', '<=', 'integer', 'boolean'::name ),
+  hasnt_operator( 'integer', '<=', 'int', 'bool'::name ),
   false,
   'hasnt_operator( left, name, right, result ) fail',
-  'Operator <=(integer,integer) RETURNS boolean should not exist',
+  'Operator <=(integer,int) RETURNS bool should not exist',
   ''
 );
 
@@ -1499,10 +1499,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_operator( 'integer', '<=', 'integer'::name ),
+  hasnt_operator( 'integer', '<=', 'int'::name ),
   false,
   'hasnt_operator( left, name, right ) fail',
-  'Operator <=(integer,integer) should not exist',
+  'Operator <=(integer,int) should not exist',
   ''
 );
 
@@ -1515,10 +1515,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_operator( 'integer', 'pg_catalog', '<=', 'text', 'boolean'::name ),
+  hasnt_operator( 'integer', 'pg_catalog', '<=', 'text', 'bool'::name ),
   true,
   'hasnt_operator( left, schema, name, right, result )',
-  'Operator pg_catalog.<=(integer,text) RETURNS boolean should not exist',
+  'Operator pg_catalog.<=(integer,text) RETURNS bool should not exist',
   ''
 );
 
@@ -1531,10 +1531,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_operator( 'integer', '<=', 'text', 'boolean'::name ),
+  hasnt_operator( 'integer', '<=', 'text', 'bool'::name ),
   true,
   'hasnt_operator( left, name, right, result )',
-  'Operator <=(integer,text) RETURNS boolean should not exist',
+  'Operator <=(integer,text) RETURNS bool should not exist',
   ''
 );
 
@@ -1558,7 +1558,7 @@ SELECT * FROM check_test(
 -- Test has_leftop().
 
 SELECT * FROM check_test(
-  has_leftop( 'pg_catalog', '+', 'bigint', 'bigint', 'desc' ),
+  has_leftop( 'pg_catalog', '+', 'bigint', 'int8', 'desc' ),
   true,
   'has_leftop( schema, name, right, result, desc )',
   'desc',
@@ -1574,7 +1574,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  has_leftop( '+', 'bigint', 'bigint', 'desc' ),
+  has_leftop( '+', 'bigint', 'int8', 'desc' ),
   true,
   'has_leftop( name, right, result, desc )',
   'desc',
@@ -1582,10 +1582,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  has_leftop( '+', 'bigint', 'bigint'::name ),
+  has_leftop( '+', 'bigint', 'int8'::name ),
   true,
   'has_leftop( name, right, result )',
-  'Left operator +(NONE,bigint) RETURNS bigint should exist',
+  'Left operator +(NONE,bigint) RETURNS int8 should exist',
   ''
 );
 
@@ -1598,10 +1598,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  has_leftop( '+', 'bigint' ),
+  has_leftop( '+', 'int8' ),
   true,
   'has_leftop( name, right )',
-  'Left operator +(NONE,bigint) should exist',
+  'Left operator +(NONE,int8) should exist',
   ''
 );
 
@@ -1622,7 +1622,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  has_leftop( '+', 'text', 'integer', 'desc' ),
+  has_leftop( '+', 'text', 'inte', 'desc' ),
   false,
   'has_leftop( name, right, result, desc ) fail',
   'desc',
@@ -1630,10 +1630,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  has_leftop( '+', 'text', 'integer'::name ),
+  has_leftop( '+', 'text', 'int'::name ),
   false,
   'has_leftop( name, right, result ) fail',
-  'Left operator +(NONE,text) RETURNS integer should exist',
+  'Left operator +(NONE,text) RETURNS int should exist',
   ''
 );
 
@@ -1657,7 +1657,7 @@ SELECT * FROM check_test(
 -- Test hasnt_leftop().
 
 SELECT * FROM check_test(
-  hasnt_leftop( 'pg_catalog', '+', 'bigint', 'bigint', 'desc' ),
+  hasnt_leftop( 'pg_catalog', '+', 'bigint', 'int8', 'desc' ),
   false,
   'hasnt_leftop( schema, name, right, result, desc ) fail',
   'desc',
@@ -1665,10 +1665,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( 'pg_catalog', '+', 'bigint', 'bigint'::name ),
+  hasnt_leftop( 'pg_catalog', '+', 'bigint', 'int8'::name ),
   false,
   'hasnt_leftop( schema, name, right, result ) fail',
-  'Left operator pg_catalog.+(NONE,bigint) RETURNS bigint should not exist',
+  'Left operator pg_catalog.+(NONE,bigint) RETURNS int8 should not exist',
   ''
 );
 
@@ -1681,10 +1681,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( '+', 'bigint', 'bigint'::name ),
+  hasnt_leftop( '+', 'int8', 'int8'::name ),
   false,
   'hasnt_leftop( name, right, result ) fail',
-  'Left operator +(NONE,bigint) RETURNS bigint should not exist',
+  'Left operator +(NONE,int8) RETURNS int8 should not exist',
   ''
 );
 
@@ -1697,10 +1697,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( '+', 'bigint' ),
+  hasnt_leftop( '+', 'int8' ),
   false,
   'hasnt_leftop( name, right ) fail',
-  'Left operator +(NONE,bigint) should not exist',
+  'Left operator +(NONE,int8) should not exist',
   ''
 );
 
@@ -1729,10 +1729,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( '+', 'text', 'bigint'::name ),
+  hasnt_leftop( '+', 'text', 'int8'::name ),
   true,
   'hasnt_leftop( name, right, result )',
-  'Left operator +(NONE,text) RETURNS bigint should not exist',
+  'Left operator +(NONE,text) RETURNS int8 should not exist',
   ''
 );
 
@@ -1793,7 +1793,7 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            has_rightop( 'bigint', '!', 'desc' ),
+            has_rightop( 'int8', '!', 'desc' ),
             true,
             'has_rightop( left, name, desc )',
             'desc',
@@ -1801,10 +1801,10 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            has_rightop( 'bigint', '!' ),
+            has_rightop( 'int8', '!' ),
             true,
             'has_rightop( left, name )',
-            'Right operator !(bigint,NONE) should exist',
+            'Right operator !(int8,NONE) should exist',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
@@ -1910,7 +1910,7 @@ DECLARE
 BEGIN
     IF pg_version_num() < 140000 THEN
         FOR tap IN SELECT * FROM check_test(
-            hasnt_rightop( 'bigint', 'pg_catalog', '!', 'numeric', 'desc' ),
+            hasnt_rightop( 'int8', 'pg_catalog', '!', 'numeric', 'desc' ),
             false,
             'hasnt_rightop( left, schema, name, result, desc ) fail',
             'desc',
@@ -1926,7 +1926,7 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            hasnt_rightop( 'bigint', '!', 'numeric', 'desc' ),
+            hasnt_rightop( 'int8', '!', 'numeric', 'desc' ),
             false,
             'hasnt_rightop( left, name, result, desc ) fail',
             'desc',
@@ -1942,7 +1942,7 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            hasnt_rightop( 'bigint', '!', 'desc' ),
+            hasnt_rightop( 'int8', '!', 'desc' ),
             false,
             'hasnt_rightop( left, name, desc ) fail',
             'desc',
@@ -2269,7 +2269,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'us_postal_code', 'pg_catalog', 'integer', 'whatever'),
+    domain_type_is( 'public', 'us_postal_code', 'pg_catalog', 'int', 'whatever'),
     false,
     'domain_type_is(schema, domain, schema, type, desc) fail',
     'whatever',
@@ -2278,7 +2278,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'zip_code', 'pg_catalog', 'integer', 'whatever'),
+    domain_type_is( 'public', 'zip_code', 'pg_catalog', 'int', 'whatever'),
     false,
     'domain_type_is(schema, nondomain, schema, type, desc)',
     'whatever',
@@ -2286,7 +2286,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'integer', 'pg_catalog', 'integer', 'whatever'),
+    domain_type_is( 'public', 'integer', 'pg_catalog', 'int', 'whatever'),
     false,
     'domain_type_is(schema, type, schema, type, desc) fail',
     'whatever',
@@ -2310,7 +2310,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'us_postal_code', 'integer', 'whatever'),
+    domain_type_is( 'public', 'us_postal_code', 'int', 'whatever'),
     false,
     'domain_type_is(schema, domain, type, desc) fail',
     'whatever',
@@ -2319,7 +2319,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'zip_code', 'integer', 'whatever'),
+    domain_type_is( 'public', 'zip_code', 'int', 'whatever'),
     false,
     'domain_type_is(schema, nondomain, type, desc)',
     'whatever',
@@ -2327,7 +2327,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'integer', 'integer', 'whatever'),
+    domain_type_is( 'public', 'integer', 'int', 'whatever'),
     false,
     'domain_type_is(schema, type, type, desc) fail',
     'whatever',
@@ -2351,7 +2351,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'us_postal_code', 'integer', 'whatever'),
+    domain_type_is( 'us_postal_code', 'int', 'whatever'),
     false,
     'domain_type_is(domain, type, desc) fail',
     'whatever',
@@ -2360,7 +2360,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'zip_code', 'integer', 'whatever'),
+    domain_type_is( 'zip_code', 'int', 'whatever'),
     false,
     'domain_type_is(nondomain, type, desc)',
     'whatever',
@@ -2368,7 +2368,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'integer', 'integer', 'whatever'),
+    domain_type_is( 'integer', 'int', 'whatever'),
     false,
     'domain_type_is(type, type, desc) fail',
     'whatever',
@@ -2376,7 +2376,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_isnt( 'public', 'us_postal_code', 'public', 'integer', 'whatever'),
+    domain_type_isnt( 'public', 'us_postal_code', 'public', 'int', 'whatever'),
     true,
     'domain_type_isnt(schema, domain, schema, type, desc)',
     'whatever',
@@ -2384,10 +2384,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_isnt( 'public', 'us_postal_code', 'pg_catalog'::name, 'integer'),
+    domain_type_isnt( 'public', 'us_postal_code', 'pg_catalog'::name, 'int4'),
     true,
     'domain_type_isnt(schema, domain, schema, type)',
-    'Domain public.us_postal_code should not extend type pg_catalog.integer',
+    'Domain public.us_postal_code should not extend type pg_catalog.int4',
     ''
 );
 
@@ -2425,10 +2425,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_isnt( 'public'::name, 'us_postal_code', 'integer'),
+    domain_type_isnt( 'public'::name, 'us_postal_code', 'int'),
     true,
     'domain_type_isnt(schema, domain, type)',
-    'Domain public.us_postal_code should not extend type integer', 
+    'Domain public.us_postal_code should not extend type int', 
     ''
 );
 
@@ -2466,10 +2466,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_isnt( 'us_postal_code', 'integer'),
+    domain_type_isnt( 'us_postal_code', 'int'),
     true,
     'domain_type_isnt(domain, type)',
-    'Domain us_postal_code should not extend type integer', 
+    'Domain us_postal_code should not extend type int', 
     ''
 );
 

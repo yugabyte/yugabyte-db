@@ -559,7 +559,7 @@ SELECT * FROM check_test(
 /****************************************************************************/
 -- Test function_returns().
 SELECT * FROM check_test(
-    function_returns( 'someschema', 'huh', '{}'::name[], 'boolean', 'whatever' ),
+    function_returns( 'someschema', 'huh', '{}'::name[], 'bool', 'whatever' ),
     true,
     'function_returns(schema, func, 0 args, bool, desc)',
     'whatever',
@@ -575,7 +575,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'someschema', 'bah', ARRAY['int', 'text'], 'boolean', 'whatever' ),
+    function_returns( 'someschema', 'bah', ARRAY['int', 'text'], 'bool', 'whatever' ),
     true,
     'function_returns(schema, func, args, bool, false)',
     'whatever',
@@ -591,7 +591,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'public', 'pet', '{}'::name[], 'setof boolean', 'whatever' ),
+    function_returns( 'public', 'pet', '{}'::name[], 'setof bool', 'whatever' ),
     true,
     'function_returns(schema, func, 0 args, setof bool, desc)',
     'whatever',
@@ -607,7 +607,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'someschema', 'huh', 'boolean', 'whatever' ),
+    function_returns( 'someschema', 'huh', 'bool', 'whatever' ),
     true,
     'function_returns(schema, func, bool, desc)',
     'whatever',
@@ -623,7 +623,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'someschema', 'bah', 'boolean', 'whatever' ),
+    function_returns( 'someschema', 'bah', 'bool', 'whatever' ),
     true,
     'function_returns(schema, other func, bool, false)',
     'whatever',
@@ -639,7 +639,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'public', 'pet', 'setof boolean', 'whatever' ),
+    function_returns( 'public', 'pet', 'setof bool', 'whatever' ),
     true,
     'function_returns(schema, func, setof bool, desc)',
     'whatever',
@@ -655,7 +655,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'yay', '{}'::name[], 'boolean', 'whatever' ),
+    function_returns( 'yay', '{}'::name[], 'bool', 'whatever' ),
     true,
     'function_returns(func, 0 args, bool, desc)',
     'whatever',
@@ -671,7 +671,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'oww', ARRAY['int', 'text'], 'boolean', 'whatever' ),
+    function_returns( 'oww', ARRAY['int', 'text'], 'bool', 'whatever' ),
     true,
     'function_returns(func, args, bool, false)',
     'whatever',
@@ -687,7 +687,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'pet', '{}'::name[], 'setof boolean', 'whatever' ),
+    function_returns( 'pet', '{}'::name[], 'setof bool', 'whatever' ),
     true,
     'function_returns(func, 0 args, setof bool, desc)',
     'whatever',
@@ -703,7 +703,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'yay', 'boolean', 'whatever' ),
+    function_returns( 'yay', 'bool', 'whatever' ),
     true,
     'function_returns(func, bool, desc)',
     'whatever',
@@ -719,7 +719,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'oww', 'boolean', 'whatever' ),
+    function_returns( 'oww', 'bool', 'whatever' ),
     true,
     'function_returns(other func, bool, false)',
     'whatever',
@@ -735,7 +735,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'pet', 'setof boolean', 'whatever' ),
+    function_returns( 'pet', 'setof bool', 'whatever' ),
     true,
     'function_returns(func, setof bool, desc)',
     'whatever',

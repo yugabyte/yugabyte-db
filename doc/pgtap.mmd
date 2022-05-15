@@ -4499,8 +4499,8 @@ will fail if the table or column in question does not exist.
 The type argument should be formatted as it would be displayed in the view of
 a table using the `\d` command in `psql`. For example, if you have a numeric
 column with a precision of 8, you should specify "numeric(8,0)". If you
-created a `varchar(64)` column, you should pass the type as "character
-varying(64)". Example:
+created a `varchar(64)` column, you should pass the type as "varchar(64)" or
+"character varying(64)". Example:
 
     SELECT col_type_is( 'myschema', 'sometable', 'somecolumn', 'numeric(10,2)' );
 
@@ -5423,10 +5423,9 @@ But then you check with `has_function()` first, right?
 : A short description of the test.
 
 Tests that a particular function returns a particular data type. The `:type`
-argument should be formatted as it would be displayed in the view of a function
-using the `\df` command in `psql`. For example, use "character varying" rather
-than "varchar", and "boolean" rather than "bool". For set returning functions,
-the `:type` argument should start with "setof " (yes, lowercase). Examples:
+argument may be formatted with full or aliased type names, e.g., `integer`,
+`int4`, or `int`. For set returning functions, the `:type` argument should start
+with "setof " (yes, lowercase). Examples:
 
     SELECT function_returns( 'myschema', 'foo', ARRAY['int', 'text'], 'integer' );
     SELECT function_returns( 'do_something', 'setof boolean' );

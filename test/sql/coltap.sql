@@ -167,18 +167,18 @@ SELECT * FROM check_test(
 /****************************************************************************/
 -- Test col_type_is().
 SELECT * FROM check_test(
-    col_type_is( 'public', 'sometab', 'name', 'pg_catalog', 'text', 'name is text' ),
+    col_type_is( 'public', 'sometab', 'ctstz', 'pg_catalog', 'timestamptz', 'ctstz is tstz' ),
     true,
     'col_type_is( sch, tab, col, sch, type, desc )',
-    'name is text',
+    'ctstz is tstz',
     ''
 );
 
 SELECT * FROM check_test(
-    col_type_is( 'public', 'sometab', 'name', 'pg_catalog'::name, 'text' ),
+    col_type_is( 'public', 'sometab', 'ctstz', 'pg_catalog'::name, 'timestamptz' ),
     true,
     'col_type_is( sch, tab, col, sch, type, desc )',
-    'Column public.sometab.name should be type pg_catalog.text',
+    'Column public.sometab.ctstz should be type pg_catalog.timestamptz',
     ''
 );
 
@@ -226,7 +226,7 @@ SELECT * FROM check_test(
 
 -- Try failures.
 SELECT * FROM check_test(
-    col_type_is( 'public', 'sometab', 'name', 'pg_catalog', 'integer', 'whatever' ),
+    col_type_is( 'public', 'sometab', 'name', 'pg_catalog', 'int', 'whatever' ),
     false,
     'col_type_is( sch, tab, col, sch, type, desc ) fail',
     'whatever',
@@ -299,7 +299,7 @@ SELECT * FROM check_test(
     'col_type_is( tab, col, type ) fail',
     'Column sometab.name should be type int4',
     '        have: text
-        want: int4'
+        want: integer'
 );
 
 -- Make sure missing column is in diagnostics.

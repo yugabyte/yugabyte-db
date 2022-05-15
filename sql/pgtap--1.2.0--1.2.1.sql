@@ -309,3 +309,185 @@ RETURNS NAME AS $$
        AND args = _funkargs($2)
        AND is_visible
 $$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _typename ( NAME )
+RETURNS TEXT AS $$
+BEGIN RETURN $1::REGTYPE;
+EXCEPTION WHEN undefined_object THEN RETURN $1;
+END;
+$$ LANGUAGE PLPGSQL STABLE;
+
+CREATE OR REPLACE FUNCTION _quote_ident_like(TEXT, TEXT)
+RETURNS TEXT AS $$
+DECLARE
+    typname TEXT := _typename($1);
+    pcision TEXT := COALESCE(substring($1 FROM '[(][^")]+[)]$'), '');
+BEGIN
+    -- Just return it if rhs isn't quoted.
+    IF $2 !~ '"' THEN RETURN typname || pcision; END IF;
+
+    -- Otherwise return it with the type part quoted.
+    RETURN quote_ident(typname) || pcision;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _retval(TEXT)
+RETURNS TEXT AS $$
+DECLARE
+    setof TEXT := substring($1 FROM '^setof[[:space:]]+');
+BEGIN
+    IF setof IS NULL THEN RETURN _typename($1); END IF;
+    RETURN setof || _typename(substring($1 FROM char_length(setof)+1));
+END;
+$$ LANGUAGE plpgsql;
+
+-- function_returns( schema, function, args[], type, description )
+CREATE OR REPLACE FUNCTION function_returns( NAME, NAME, NAME[], TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, $3, _returns($1, $2, $3), _retval($4), $5 );
+$$ LANGUAGE SQL;
+
+-- function_returns( schema, function, type, description )
+CREATE OR REPLACE FUNCTION function_returns( NAME, NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, _returns($1, $2), _retval($3), $4 );
+$$ LANGUAGE SQL;
+
+-- function_returns( function, args[], type, description )
+CREATE OR REPLACE FUNCTION function_returns( NAME, NAME[], TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, $2, _returns($1, $2), _retval($3), $4 );
+$$ LANGUAGE SQL;
+
+-- function_returns( function, type, description )
+CREATE OR REPLACE FUNCTION function_returns( NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, _returns($1), _retval($2), $3 );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _types_are ( NAME, NAME[], TEXT, CHAR[] )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'types',
+        ARRAY(
+            SELECT t.typname
+              FROM pg_catalog.pg_type t
+              LEFT JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+             WHERE (
+                     t.typrelid = 0
+                 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
+             )
+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+               AND n.nspname = $1
+               AND t.typtype = ANY( COALESCE($4, ARRAY['b', 'c', 'd', 'p', 'e']) )
+            EXCEPT
+            SELECT _typename($2[i])
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT _typename($2[i])
+               FROM generate_series(1, array_upper($2, 1)) s(i)
+            EXCEPT
+            SELECT t.typname
+              FROM pg_catalog.pg_type t
+              LEFT JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+             WHERE (
+                     t.typrelid = 0
+                 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
+             )
+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+               AND n.nspname = $1
+               AND t.typtype = ANY( COALESCE($4, ARRAY['b', 'c', 'd', 'p', 'e']) )
+        ),
+        $3
+    );
+$$ LANGUAGE SQL;
+
+-- types_are( types[], description )
+CREATE OR REPLACE FUNCTION _types_are ( NAME[], TEXT, CHAR[] )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'types',
+        ARRAY(
+            SELECT t.typname
+              FROM pg_catalog.pg_type t
+              LEFT JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+             WHERE (
+                     t.typrelid = 0
+                 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
+             )
+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND pg_catalog.pg_type_is_visible(t.oid)
+               AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
+            EXCEPT
+            SELECT _typename($1[i])
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT _typename($1[i])
+               FROM generate_series(1, array_upper($1, 1)) s(i)
+            EXCEPT
+            SELECT t.typname
+              FROM pg_catalog.pg_type t
+              LEFT JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+             WHERE (
+                     t.typrelid = 0
+                 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
+             )
+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND pg_catalog.pg_type_is_visible(t.oid)
+               AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
+        ),
+        $2
+    );
+$$ LANGUAGE SQL;
+
+-- _op_exists( left_type, schema, name, right_type, return_type )
+CREATE OR REPLACE FUNCTION _op_exists ( NAME, NAME, NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+       SELECT TRUE
+         FROM pg_catalog.pg_operator o
+         JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
+        WHERE n.nspname = $2
+          AND o.oprname = $3
+          AND CASE o.oprkind WHEN 'l' THEN $1 IS NULL
+              ELSE _cmp_types(o.oprleft, _typename($1)) END
+          AND CASE o.oprkind WHEN 'r' THEN $4 IS NULL
+              ELSE _cmp_types(o.oprright, _typename($4)) END
+          AND _cmp_types(o.oprresult, $5)
+   );
+$$ LANGUAGE SQL;
+
+-- _op_exists( left_type, name, right_type, return_type )
+CREATE OR REPLACE FUNCTION _op_exists ( NAME, NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+       SELECT TRUE
+         FROM pg_catalog.pg_operator o
+        WHERE pg_catalog.pg_operator_is_visible(o.oid)
+          AND o.oprname = $2
+          AND CASE o.oprkind WHEN 'l' THEN $1 IS NULL
+              ELSE _cmp_types(o.oprleft, _typename($1)) END
+          AND CASE o.oprkind WHEN 'r' THEN $3 IS NULL
+              ELSE _cmp_types(o.oprright, _typename($3)) END
+          AND _cmp_types(o.oprresult, $4)
+   );
+$$ LANGUAGE SQL;
+
+-- _op_exists( left_type, name, right_type )
+CREATE OR REPLACE FUNCTION _op_exists ( NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+       SELECT TRUE
+         FROM pg_catalog.pg_operator o
+        WHERE pg_catalog.pg_operator_is_visible(o.oid)
+          AND o.oprname = $2
+          AND CASE o.oprkind WHEN 'l' THEN $1 IS NULL
+              ELSE _cmp_types(o.oprleft, _typename($1)) END
+          AND CASE o.oprkind WHEN 'r' THEN $3 IS NULL
+              ELSE _cmp_types(o.oprright, _typename($3)) END
+   );
+$$ LANGUAGE SQL;
