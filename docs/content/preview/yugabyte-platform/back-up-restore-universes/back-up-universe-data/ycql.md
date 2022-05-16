@@ -32,9 +32,11 @@ showAsideToc: true
 
 You can use YugabyteDB Anywhere to back up your YugabyteDB universe YCQL data.
 
-To view existing backups, as well as restore or delete them, navigate to your universe and select **Backups**, as per the following illustration:
+To view, [restore](../../restore-universe-data/ycql/), or delete existing backups for your universe, navigate to that universe and select **Backups**, as per the following illustration:
 
 ![Create Backup](/images/yp/create-backup-new-1.png)
+
+To view details information about an existing backup, click on it to open **Backup Details**.
 
 The **Backups** page allows you to create new backups that start immediately, as follows: 
 
@@ -51,3 +53,5 @@ The **Backups** page allows you to create new backups that start immediately, as
 If the universe has [encryption at rest enabled](../../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file containing key references is also backed up.
 
 For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe YCQL data backups](../../schedule-data-backups/ycql/).
+
+To access a list of all backups from all universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu.
