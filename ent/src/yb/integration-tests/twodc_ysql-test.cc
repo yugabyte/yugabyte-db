@@ -471,6 +471,14 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     }
   }
 
+  void WriteGenerateSeries(uint32_t start, uint32_t end, Cluster* cluster,
+                           const YBTableName& table) {
+    auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
+    auto generate_string = Format("INSERT INTO $0 VALUES (generate_series($1, $2))",
+                                  table.table_name(), start, end);
+    ASSERT_OK(conn.ExecuteFormat(generate_string));
+  }
+
   void WriteTransactionalWorkload(uint32_t start, uint32_t end, Cluster* cluster,
                                   const YBTableName& table) {
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
@@ -540,6 +548,59 @@ INSTANTIATE_TEST_CASE_P(
         TwoDCTestParams(1, true, true), TwoDCTestParams(1, false, false),
         TwoDCTestParams(0, true, true), TwoDCTestParams(0, false, false)));
 
+class TwoDCYsqlTestWithEnableIntentsReplication : public TwoDCYsqlTest {
+};
+
+INSTANTIATE_TEST_CASE_P(
+    TwoDCTestParams, TwoDCYsqlTestWithEnableIntentsReplication,
+    ::testing::Values(TwoDCTestParams(0, true, true), TwoDCTestParams(1, true, true)));
+
+TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeries) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto tables = ASSERT_RESULT(SetUpWithParams({4}, {4}, 3, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  auto producer_table = tables[0];
+  auto consumer_table = tables[1];
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+  ASSERT_EQ(resp.entry().tables_size(), 1);
+  ASSERT_EQ(resp.entry().tables(0), producer_table->id());
+
+  ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
+
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+}
+
+TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeriesMultipleTransactions) {
+  YB_SKIP_TEST_IN_TSAN();
+  // Use a 4 -> 1 mapping to ensure that multiple transactions are processed by the same tablet.
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {4}, 3, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  auto producer_table = tables[0];
+  auto consumer_table = tables[1];
+  ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
+  ASSERT_NO_FATALS(WriteGenerateSeries(51, 100, &producer_cluster_, producer_table->name()));
+  ASSERT_NO_FATALS(WriteGenerateSeries(101, 150, &producer_cluster_, producer_table->name()));
+  ASSERT_NO_FATALS(WriteGenerateSeries(151, 200, &producer_cluster_, producer_table->name()));
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+  ASSERT_EQ(resp.entry().tables_size(), 1);
+  ASSERT_EQ(resp.entry().tables(0), producer_table->id());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+}
+
 TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   YB_SKIP_TEST_IN_TSAN();
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3, 1, false /* colocated */));
@@ -577,6 +638,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
 
 TEST_P(TwoDCYsqlTest, SimpleReplication) {
   YB_SKIP_TEST_IN_TSAN();
+  constexpr auto kNumRecords = 1000;
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -599,15 +661,15 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   // 1. Write some data.
   for (const auto& producer_table : producer_tables) {
     LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-    WriteWorkload(0, 100, &producer_cluster_, producer_table->name());
+    WriteWorkload(0, kNumRecords, &producer_cluster_, producer_table->name());
   }
 
   // Verify data is written on the producer.
   for (const auto& producer_table : producer_tables) {
     auto producer_results = ScanToStrings(producer_table->name(), &producer_cluster_);
-    ASSERT_EQ(100, PQntuples(producer_results.get()));
+    ASSERT_EQ(kNumRecords, PQntuples(producer_results.get()));
     int result;
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < kNumRecords; ++i) {
       result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
       ASSERT_EQ(i, result);
     }
@@ -628,8 +690,8 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
     for (const auto& consumer_table : consumer_tables) {
       LOG(INFO) << "Checking records for table " << consumer_table->name().ToString();
       auto consumer_results = ScanToStrings(consumer_table->name(), &consumer_cluster_);
-
-      if (num_results != PQntuples(consumer_results.get())) {
+      auto consumer_results_size = PQntuples(consumer_results.get());
+      if (num_results != consumer_results_size) {
         return false;
       }
       int result;
@@ -642,16 +704,16 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
     }
     return true;
   };
-  ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(100); },
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(kNumRecords); },
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 
   // 4. Write more data.
   for (const auto& producer_table : producer_tables) {
-    WriteWorkload(100, 105, &producer_cluster_, producer_table->name());
+    WriteWorkload(kNumRecords, kNumRecords + 5, &producer_cluster_, producer_table->name());
   }
 
   // 5. Make sure this data is also replicated now.
-  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(105); },
+  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(kNumRecords + 5); },
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 }
 
