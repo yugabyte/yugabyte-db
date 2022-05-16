@@ -117,6 +117,7 @@ DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_uint64(outstanding_tablet_split_limit);
+DECLARE_uint64(outstanding_tablet_split_limit_per_tserver);
 DECLARE_double(TEST_fail_tablet_split_probability);
 DECLARE_bool(TEST_skip_post_split_compaction);
 DECLARE_int32(TEST_nodes_per_cloud);
@@ -907,6 +908,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit_per_tserver) = 5;
   }
 
  protected:
@@ -1503,7 +1505,7 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplits) {
     peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
     num_tablets = peers.size();
 
-    // There should be kTabletSplitLimit intial tablets + kTabletSplitLimit new tablets per loop.
+    // There should be kTabletSplitLimit initial tablets + kTabletSplitLimit new tablets per loop.
     EXPECT_EQ(num_tablets, (split_round + 2) * kTabletSplitLimit);
   }
 
@@ -1513,6 +1515,94 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplits) {
   // We should either have a way to wait for these tablets to get split, or have a way to delete
   // these tablets in case a tablet split fails.
   cluster_->Shutdown();
+}
+
+TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplitsPerTserver) {
+  constexpr int kNumRowsPerBatch = 2000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit_per_tserver) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 10000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 1.0;
+  // Need to disable load balancing until the first tablet is split, otherwise it might end up
+  // being overreplicated on 4 tservers when we split, resulting in the split children being on 4
+  // tservers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(5));
+
+  SetNumTablets(2);
+  CreateTable();
+
+  auto catalog_mgr = ASSERT_RESULT(catalog_manager());
+  auto table_info = catalog_mgr->GetTableInfo(table_->id());
+
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+  ASSERT_EQ(peers.size(), 2);
+  ASSERT_OK(WriteRows(kNumRowsPerBatch, 1));
+  for (const auto& peer : peers) {
+    ASSERT_OK(WaitFor([&]() {
+      return peer->shared_tablet()->transaction_participant()->TEST_CountIntents().first == 0;
+    }, 30s, "Did not apply transaction from intents db in time."));
+  }
+  // Flush to ensure an SST file is generated so splitting can occur.
+  // One of the tablets (call it A) should be automatically split after the flush. Since RF=3 and we
+  // have 5 tservers, the other tablet (B) must share at least one tserver with A. Since we limit
+  // the number of outstanding splits on a tserver to 1, B should not be split (since that would
+  // result in two outstanding splits on the tserver that hosted a replica of A and B).
+  ASSERT_OK(FlushAllTabletReplicas(peers[0]->tablet_id(), table_->id()));
+  ASSERT_OK(FlushAllTabletReplicas(peers[1]->tablet_id(), table_->id()));
+
+  // Check that no more than 1 split task is created (the split task should be counted as an
+  // ongoing split).
+  SleepForBgTaskIters(4);
+  int num_split_tasks = 0;
+  for (const auto& task : table_info->GetTasks()) {
+    // These tasks will retry automatically until they succeed or fail.
+    if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
+        task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
+      ++num_split_tasks;
+    }
+  }
+  ASSERT_EQ(num_split_tasks, 1);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
+
+  // Check that non-running child tablets count against the per-tserver split limit, and so only
+  // one split is triggered.
+  SleepForBgTaskIters(4);
+  ASSERT_EQ(table_info->GetTablets().size(), 3);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0.0;
+
+  ASSERT_OK(WaitForTabletSplitCompletion(3));
+  ASSERT_NOK(WaitForTabletSplitCompletion(
+      4,                                    // expected_non_split_tablets
+      0,                                    // expected_split_tablets (default)
+      0,                                    // num_replicas_online (default)
+      client::kTableName,                   // table (default)
+      false));                              // core_dump_on_failure
+
+  // Add a 6th tserver. Tablet B should be load balanced onto the three tservers that do not have
+  // replicas of tablet A, and should subsequently split. Note that the children of A should remain
+  // on the same 3 tservers as A, since we don't move compacting tablets (this is important to
+  // ensure that there are no ongoing splits on the 3 tservers that B is on).
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(6));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = true;
+  ASSERT_OK(WaitFor([&]() {
+    std::unordered_set<std::string> seen_tservers;
+    for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
+      seen_tservers.insert(peer->permanent_uuid());
+    }
+    LOG(INFO) << "seen_tservers.size(): " <<  seen_tservers.size();
+    return seen_tservers.size() == 6;
+  }, 30s * kTimeMultiplier, "Did not load balance in time."));
+
+  ASSERT_OK(WaitForTabletSplitCompletion(4));
 }
 
 TEST_F(AutomaticTabletSplitITest, DroppedTablesExcludedFromOutstandingSplitLimit) {
