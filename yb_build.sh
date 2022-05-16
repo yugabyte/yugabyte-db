@@ -796,9 +796,6 @@ while [[ $# -gt 0 ]]; do
         fatal "--gcc / --clang is expected to be followed by compiler major version"
       fi
     ;;
-    --zapcc)
-      YB_COMPILER_TYPE="zapcc"
-    ;;
     --skip-java-build|--skip-java|--sjb|--sj)
       build_java=false
     ;;

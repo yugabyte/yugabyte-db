@@ -123,6 +123,7 @@
 #ifndef YB_UTIL_FLAG_TAGS_H
 #define YB_UTIL_FLAG_TAGS_H
 
+#include <string>
 #include <unordered_set>
 
 #include <boost/preprocessor/cat.hpp>

@@ -424,6 +424,7 @@ class PgApiImpl {
   // Insert.
   CHECKED_STATUS NewInsert(const PgObjectId& table_id,
                            bool is_single_row_txn,
+                           bool is_region_local,
                            PgStatement **handle);
 
   CHECKED_STATUS ExecInsert(PgStatement *handle);
@@ -438,6 +439,7 @@ class PgApiImpl {
   // Update.
   CHECKED_STATUS NewUpdate(const PgObjectId& table_id,
                            bool is_single_row_txn,
+                           bool is_region_local,
                            PgStatement **handle);
 
   CHECKED_STATUS ExecUpdate(PgStatement *handle);
@@ -446,6 +448,7 @@ class PgApiImpl {
   // Delete.
   CHECKED_STATUS NewDelete(const PgObjectId& table_id,
                            bool is_single_row_txn,
+                           bool is_region_local,
                            PgStatement **handle);
 
   CHECKED_STATUS ExecDelete(PgStatement *handle);
@@ -456,6 +459,7 @@ class PgApiImpl {
   // Colocated Truncate.
   CHECKED_STATUS NewTruncateColocated(const PgObjectId& table_id,
                                       bool is_single_row_txn,
+                                      bool is_region_local,
                                       PgStatement **handle);
 
   CHECKED_STATUS ExecTruncateColocated(PgStatement *handle);
@@ -465,6 +469,7 @@ class PgApiImpl {
   CHECKED_STATUS NewSelect(const PgObjectId& table_id,
                            const PgObjectId& index_id,
                            const PgPrepareParameters *prepare_params,
+                           bool is_region_local,
                            PgStatement **handle);
 
   CHECKED_STATUS SetForwardScan(PgStatement *handle, bool is_forward_scan);
@@ -475,6 +480,7 @@ class PgApiImpl {
   // Analyze.
   CHECKED_STATUS NewSample(const PgObjectId& table_id,
                            const int targrows,
+                           bool is_region_local,
                            PgStatement **handle);
 
   CHECKED_STATUS InitRandomState(PgStatement *handle, double rstate_w, uint64 rand_state);
@@ -548,7 +554,7 @@ class PgApiImpl {
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
   void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
   Result<bool> ForeignKeyReferenceExists(PgOid table_id, const Slice& ybctid, PgOid database_id);
-  void AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid);
+  void AddForeignKeyReferenceIntent(PgOid table_id, bool is_region_local, const Slice& ybctid);
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);

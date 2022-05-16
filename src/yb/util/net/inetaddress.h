@@ -18,6 +18,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ip/address_v4.hpp>
@@ -109,7 +110,7 @@ class InetAddress {
 };
 
 void FilterAddresses(const string &transform_spec,
-                     vector<boost::asio::ip::address> *addresses);
+                     std::vector<boost::asio::ip::address> *addresses);
 
 } // namespace yb
 

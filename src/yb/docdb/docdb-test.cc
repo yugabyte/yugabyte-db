@@ -2892,7 +2892,7 @@ class DocDBTestBoundaryValues: public DocDBTestWrapper {
       rocksdb()->GetLiveFilesMetaData(&files);
       ASSERT_EQ(trackers.size(), files.size());
       sort(files.begin(), files.end(), [](const auto &lhs, const auto &rhs) {
-        return lhs.name < rhs.name;
+        return lhs.name_id < rhs.name_id;
       });
 
       for (size_t j = 0; j != trackers.size(); ++j) {

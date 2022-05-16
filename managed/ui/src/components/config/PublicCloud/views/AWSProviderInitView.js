@@ -30,6 +30,7 @@ import _ from 'lodash';
 import { regionsData } from './providerRegionsData';
 import { NTPConfig, NTP_TYPES } from './NTPConfig';
 
+import { YBTag } from '../../../common/YBTag';
 import './providerView.scss';
 
 const validationIsRequired = (value) => (value && value.trim() !== '' ? undefined : 'Required');
@@ -837,7 +838,7 @@ class AWSProviderInitView extends Component {
     return (
       <Row className="config-provider-row">
         <Col lg={3}>
-          <div className="form-item-custom-label">{"NTP Setup"}</div>
+          <div className="form-item-custom-label">NTP Setup<YBTag>Beta</YBTag></div>
         </Col>
         <Col lg={7}>
           <div>{<NTPConfig onChange={change}/>}</div>
@@ -1016,7 +1017,7 @@ let awsProviderConfigForm = reduxForm({
   form: 'awsProviderConfigForm',
   validate,
   initialValues: {
-    ntp_option: NTP_TYPES.MANUAL,
+    ntp_option: NTP_TYPES.PROVIDER,
     ntpServers: []
   }
 })(AWSProviderInitView);

@@ -56,7 +56,8 @@ class PgDmlWrite : public PgDml {
   // Constructor.
   PgDmlWrite(PgSession::ScopedRefPtr pg_session,
              const PgObjectId& table_id,
-             bool is_single_row_txn = false);
+             bool is_single_row_txn,
+             bool is_region_local);
 
   // Allocate write request.
   void AllocWriteRequest();

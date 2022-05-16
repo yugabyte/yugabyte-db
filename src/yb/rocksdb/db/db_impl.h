@@ -229,6 +229,9 @@ class DBImpl : public DB {
 
   UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) override;
 
+  // Calculates specified frontier_type for all mem tables (active and immutable).
+  UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType frontier_type) override;
+
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
   // any column family match the specified name.

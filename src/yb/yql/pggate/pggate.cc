@@ -98,8 +98,8 @@ struct TableHolder {
 
 class PgsqlReadOpWithPgTable : private TableHolder, public PgsqlReadOp {
  public:
-  explicit PgsqlReadOpWithPgTable(Arena* arena, const PgTableDescPtr& descr)
-      : TableHolder(descr), PgsqlReadOp(arena, *table_) {}
+  explicit PgsqlReadOpWithPgTable(Arena* arena, const PgTableDescPtr& descr, bool is_region_local)
+      : TableHolder(descr), PgsqlReadOp(arena, *table_, is_region_local) {}
 
   PgTable& table() {
     return table_;
@@ -152,7 +152,8 @@ std::unique_ptr<tserver::TServerSharedObject> InitTServerSharedObject() {
 
 CHECKED_STATUS FetchExistingYbctids(PgSession::ScopedRefPtr session,
                                     PgOid database_id,
-                                    std::vector<TableYbctid>* ybctids) {
+                                    std::vector<TableYbctid>* ybctids,
+                                    const std::unordered_set<PgOid>& region_local_tables) {
   // Group the items by the table ID.
   std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
     if (a.table_id != b.table_id) {
@@ -175,7 +176,8 @@ CHECKED_STATUS FetchExistingYbctids(PgSession::ScopedRefPtr session,
     }
 
     auto desc = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
-    auto read_op = std::make_shared<PgsqlReadOpWithPgTable>(arena.get(), desc);
+    bool is_region_local = region_local_tables.find(table_id) != region_local_tables.end();
+    auto read_op = std::make_shared<PgsqlReadOpWithPgTable>(arena.get(), desc, is_region_local);
 
     auto* expr_pb = read_op->read_request().add_targets();
     expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
@@ -1128,10 +1130,11 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
 // Insert ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewInsert(const PgObjectId& table_id,
-                            const bool is_single_row_txn,
+                            bool is_single_row_txn,
+                            bool is_region_local,
                             PgStatement **handle) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgInsert>(pg_session_, table_id, is_single_row_txn);
+  auto stmt = std::make_unique<PgInsert>(pg_session_, table_id, is_single_row_txn, is_region_local);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1176,10 +1179,11 @@ Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement *handle, const bool is_bac
 // Update ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewUpdate(const PgObjectId& table_id,
-                            const bool is_single_row_txn,
+                            bool is_single_row_txn,
+                            bool is_region_local,
                             PgStatement **handle) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgUpdate>(pg_session_, table_id, is_single_row_txn);
+  auto stmt = std::make_unique<PgUpdate>(pg_session_, table_id, is_single_row_txn, is_region_local);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1196,10 +1200,11 @@ Status PgApiImpl::ExecUpdate(PgStatement *handle) {
 // Delete ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewDelete(const PgObjectId& table_id,
-                            const bool is_single_row_txn,
+                            bool is_single_row_txn,
+                            bool is_region_local,
                             PgStatement **handle) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgDelete>(pg_session_, table_id, is_single_row_txn);
+  auto stmt = std::make_unique<PgDelete>(pg_session_, table_id, is_single_row_txn, is_region_local);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1213,9 +1218,12 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
   return down_cast<PgDelete*>(handle)->Exec();
 }
 
-Status PgApiImpl::NewSample(const PgObjectId& table_id, const int targrows, PgStatement **handle) {
+Status PgApiImpl::NewSample(const PgObjectId& table_id,
+                            int targrows,
+                            bool is_region_local,
+                            PgStatement **handle) {
   *handle = nullptr;
-  auto sample = std::make_unique<PgSample>(pg_session_, targrows, table_id);
+  auto sample = std::make_unique<PgSample>(pg_session_, targrows, table_id, is_region_local);
   RETURN_NOT_OK(sample->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(sample), handle));
   return Status::OK();
@@ -1269,10 +1277,12 @@ Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool i
 // Colocated Truncate ------------------------------------------------------------------------------
 
 Status PgApiImpl::NewTruncateColocated(const PgObjectId& table_id,
-                                       const bool is_single_row_txn,
+                                       bool is_single_row_txn,
+                                       bool is_region_local,
                                        PgStatement **handle) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgTruncateColocated>(pg_session_, table_id, is_single_row_txn);
+  auto stmt = std::make_unique<PgTruncateColocated>(
+      pg_session_, table_id, is_single_row_txn, is_region_local);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1291,6 +1301,7 @@ Status PgApiImpl::ExecTruncateColocated(PgStatement *handle) {
 Status PgApiImpl::NewSelect(const PgObjectId& table_id,
                             const PgObjectId& index_id,
                             const PgPrepareParameters *prepare_params,
+                            bool is_region_local,
                             PgStatement **handle) {
   // Scenarios:
   // - Sequential Scan: PgSelect to read from table_id.
@@ -1304,10 +1315,12 @@ Status PgApiImpl::NewSelect(const PgObjectId& table_id,
     if (!index_id.IsValid()) {
       return STATUS(InvalidArgument, "Cannot run query with invalid index ID");
     }
-    stmt = std::make_unique<PgSelectIndex>(pg_session_, table_id, index_id, prepare_params);
+    stmt = std::make_unique<PgSelectIndex>(
+        pg_session_, table_id, index_id, prepare_params, is_region_local);
   } else {
     // For IndexScan PgSelect processing will create subquery PgSelectIndex.
-    stmt = std::make_unique<PgSelect>(pg_session_, table_id, index_id, prepare_params);
+    stmt = std::make_unique<PgSelect>(
+        pg_session_, table_id, index_id, prepare_params, is_region_local);
   }
 
   RETURN_NOT_OK(stmt->Prepare());
@@ -1563,13 +1576,15 @@ Result<bool> PgApiImpl::ForeignKeyReferenceExists(
     PgOid table_id, const Slice& ybctid, PgOid database_id) {
   return pg_session_->ForeignKeyReferenceExists(
       table_id, ybctid, make_lw_function(
-          [this, database_id](std::vector<TableYbctid>* ybctids) {
-            return FetchExistingYbctids(pg_session_, database_id, ybctids);
+          [this, database_id](std::vector<TableYbctid>* ybctids,
+                              const std::unordered_set<PgOid>& region_local_tables) {
+            return FetchExistingYbctids(pg_session_, database_id, ybctids, region_local_tables);
           }));
 }
 
-void PgApiImpl::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {
-  pg_session_->AddForeignKeyReferenceIntent(table_id, ybctid);
+void PgApiImpl::AddForeignKeyReferenceIntent(
+    PgOid table_id, bool is_region_local, const Slice& ybctid) {
+  pg_session_->AddForeignKeyReferenceIntent(table_id, is_region_local, ybctid);
 }
 
 void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {

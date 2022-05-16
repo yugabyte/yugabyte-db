@@ -217,8 +217,7 @@ class CatalogManagerIf {
   virtual scoped_refptr<TableInfo> NewTableInfo(TableId id) = 0;
 
   // If is_manual_split is true, we will not call ShouldSplitValidCandidate.
-  virtual CHECKED_STATUS SplitTablet(
-      const TabletId& tablet_id, bool is_manual_split) = 0;
+  virtual CHECKED_STATUS SplitTablet(const TabletId& tablet_id, ManualSplit is_manual_split) = 0;
 
   virtual CHECKED_STATUS TEST_SplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) = 0;

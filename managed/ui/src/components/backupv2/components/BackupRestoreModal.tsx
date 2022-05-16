@@ -7,6 +7,14 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
+//
+//
+//    Note:
+//    If you change any functionality/api here, please make sure to change the same(if needed) in BackupAdvancedRestore.tsx too
+//
+//
+//
+
 import React, { FC, useState } from 'react';
 import { Alert, Col, Row } from 'react-bootstrap';
 import { getKMSConfigs, IBackup, IUniverse, Keyspace_Table, restoreEntireBackup } from '..';
@@ -34,6 +42,7 @@ import { components } from 'react-select';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { isFunction } from 'lodash';
+import { BACKUP_API_TYPES } from '../common/IBackup';
 import './BackupRestoreModal.scss';
 
 interface RestoreModalProps {
@@ -43,11 +52,12 @@ interface RestoreModalProps {
 }
 
 const TEXT_RESTORE = 'Restore';
+const TEXT_RENAME_DATABASE = 'Next: Rename Databases/Keyspaces';
 
 const STEPS = [
   {
     title: 'Restore Backup',
-    submitLabel: 'Next: Rename Databases/Keyspaces',
+    submitLabel: TEXT_RESTORE,
     component: RestoreChooseUniverseForm,
     footer: () => null
   },
@@ -69,7 +79,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
   const [currentStep, setCurrentStep] = useState(0);
   const [isFetchingTables, setIsFetchingTables] = useState(false);
 
-  const [overrideSubmitLabel, setOverrideSubmitLabel] = useState<undefined | string>(undefined);
+  const [overrideSubmitLabel, setOverrideSubmitLabel] = useState(TEXT_RESTORE);
 
   const { data: universeList, isLoading: isUniverseListLoading } = useQuery(['universe'], () =>
     fetchUniversesList().then((res) => res.data as IUniverse[])
@@ -134,6 +144,14 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
       doRestore: boolean;
     }
   ) => {
+    // Restoring with duplicate keyspace name is supported in redis
+    if (values['backup']['backupType'] === BACKUP_API_TYPES.YEDIS) {
+      isFunction(options.setSubmitting) && options.setSubmitting(false);
+      if (options.doRestore) {
+        restore.mutate({ backup_details: backup_details as IBackup, values });
+      }
+      return;
+    }
     setIsFetchingTables(true);
     options.setFieldValue('should_rename_keyspace', true, false);
     options.setFieldValue('disable_keyspace_rename', true, false);
@@ -167,7 +185,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     options.setFieldValue('should_rename_keyspace', hasErrors, false);
     options.setFieldValue('disable_keyspace_rename', hasErrors, false);
 
-    setOverrideSubmitLabel(hasErrors ? undefined : TEXT_RESTORE);
+    setOverrideSubmitLabel(hasErrors ? TEXT_RENAME_DATABASE : TEXT_RESTORE);
 
     isFunction(options.setSubmitting) && options.setSubmitting(false);
 
@@ -210,6 +228,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
         setSubmitting(false);
         if (values['should_rename_keyspace'] && currentStep !== STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
+          setOverrideSubmitLabel(TEXT_RESTORE);
         } else if (currentStep === STEPS.length - 1) {
           await validateTablesAndRestore(values, {
             setFieldValue,
@@ -220,13 +239,9 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
         } else {
           restore.mutate({ backup_details: backup_details as IBackup, values });
         }
-        if (currentStep !== STEPS.length - 1) {
-          setCurrentStep(currentStep + 1);
-        } else {
-        }
       }}
       initialValues={initialValues}
-      submitLabel={overrideSubmitLabel ?? STEPS[currentStep].submitLabel}
+      submitLabel={overrideSubmitLabel}
       onHide={() => {
         setCurrentStep(0);
         onHide();
@@ -392,7 +407,7 @@ function RestoreChooseUniverseForm({
               checked: values['should_rename_keyspace'],
               onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
                 setFieldValue('should_rename_keyspace', event.target.checked);
-                setOverrideSubmitLabel(event.target.checked ? undefined : TEXT_RESTORE);
+                setOverrideSubmitLabel(event.target.checked ? TEXT_RENAME_DATABASE : TEXT_RESTORE);
               }
             }}
             disabled={values['disable_keyspace_rename']}

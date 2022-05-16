@@ -77,6 +77,7 @@ class BFCodegen {
             << "#define YB_UTIL_BFPG_GEN_OPCODES_H_" << endl
             << endl
             << "#include <unordered_map>" << endl
+            << "#include <string>" << endl
             << endl
             << kFileNamespace;
 
@@ -136,6 +137,7 @@ class BFCodegen {
             // Including header files.
             << "#include <iostream>" << endl
             << "#include <unordered_map>" << endl
+            << "#include <string>" << endl
             << "#include \"yb/bfpg/gen_opcodes.h\"" << endl
             << endl
             // Use namespaces.
@@ -170,6 +172,7 @@ class BFCodegen {
             << "#define YB_UTIL_BFPG_GEN_OPERATOR_H_" << endl
             << endl
             << "#include <vector>" << endl
+            << "#include <string>" << endl
             << endl
             << "#include \"yb/bfpg/base_operator.h\"" << endl
             << "#include \"yb/bfpg/bfunc.h\"" << endl

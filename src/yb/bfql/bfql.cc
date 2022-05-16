@@ -17,6 +17,7 @@
 
 #include <functional>
 #include <unordered_map>
+#include <string>
 
 using std::function;
 using std::vector;

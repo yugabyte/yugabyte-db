@@ -42,6 +42,8 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/gutil/macros.h"
 
 #include "yb/integration-tests/mini_cluster_base.h"
@@ -96,6 +98,10 @@ struct MiniClusterOptions {
 
   // Cluster id used to create fs path when we create tests with multiple clusters.
   std::string cluster_id{};
+
+  // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
+  // set to a non-zero value, this value is used instead.
+  int transaction_table_num_tablets = 0;
 };
 
 // An in-process cluster with a MiniMaster and a configurable
@@ -128,7 +134,7 @@ class MiniCluster : public MiniClusterBase {
   CHECKED_STATUS FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
-  CHECKED_STATUS CompactTablets();
+  CHECKED_STATUS CompactTablets(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();
 

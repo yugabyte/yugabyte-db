@@ -481,7 +481,11 @@ void YBInboundCall::Respond(AnyMessageConstPtr response, bool is_success) {
   TRACE_EVENT_FLOW_END0("rpc", "InboundCall", this);
   Status s = SerializeResponseBuffer(response, is_success);
   if (PREDICT_FALSE(!s.ok())) {
-    RespondFailure(ErrorStatusPB::ERROR_APPLICATION, s);
+    if (is_success) {
+      RespondFailure(ErrorStatusPB::ERROR_APPLICATION, s);
+    } else {
+      LOG(DFATAL) << "Failed to serialize failure: " << s;
+    }
     return;
   }
 

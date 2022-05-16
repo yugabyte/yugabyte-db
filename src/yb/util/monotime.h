@@ -271,6 +271,8 @@ class CoarseMonoClock {
   typedef duration Duration;
   typedef std::chrono::time_point<CoarseMonoClock> time_point;
   typedef time_point TimePoint;
+  typedef time_point::period period;
+  typedef time_point::rep rep;
 
   static constexpr bool is_steady = true;
 

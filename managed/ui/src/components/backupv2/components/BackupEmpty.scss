@@ -1,0 +1,44 @@
+@import '../../../_style/colors.scss';
+
+.backup-empty {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 250px;
+  background: rgba(229, 229, 233, 0.2);
+  border: 1px dashed rgba(103, 102, 108, 0.5);
+  border-radius: 8px;
+  justify-content: center;
+  gap: 18px;
+  font-family: 'Inter';
+  font-style: normal;
+
+  .sub-text {
+    color: $YB_DARKER_GRAY;
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 17px;
+  }
+
+  .backup-empty-icon {
+    color: $YB_GRAY_HOVER;
+    font-size: 38px;
+  }
+
+  .backup-empty-button {
+    font-weight: 400;
+    font-size: 15px;
+    line-height: 18px;
+  }
+
+  &.account-level-backup {
+    text-align: center;
+    .backup-empty-icon {
+      margin-bottom: 24px;
+    }
+    .sub-text {
+      margin-bottom: 8px;
+    }
+  }
+}

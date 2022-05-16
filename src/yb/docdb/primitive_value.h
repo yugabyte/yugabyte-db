@@ -387,7 +387,9 @@ class KeyEntryValue {
   static KeyEntryValue NullValue(SortingType sorting_type);
 
   static KeyEntryValue FromQLValuePB(const QLValuePB& value, SortingType sorting_type);
+  static KeyEntryValue FromQLValuePBForKey(const QLValuePB& value, SortingType sorting_type);
   static KeyEntryValue FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type);
+  static KeyEntryValue FromQLValuePBForKey(const LWQLValuePB& value, SortingType sorting_type);
 
   static KeyEntryValue Double(double d, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue Float(float f, SortOrder sort_order = SortOrder::kAscending);

@@ -112,6 +112,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Aborts this transaction.
   void Abort(CoarseTimePoint deadline = CoarseTimePoint());
 
+  // Promote a local transaction into a global transaction.
+  CHECKED_STATUS PromoteToGlobal(CoarseTimePoint deadline = CoarseTimePoint());
+
   // Returns transaction ID.
   const TransactionId& id() const;
 

@@ -250,8 +250,8 @@ inline void UpdateUserValue(UserBoundaryValues* values,
 struct SstFileMetaData {
   typedef FileBoundaryValues<std::string> BoundaryValues;
 
-  SstFileMetaData() {}
-  SstFileMetaData(const std::string& _file_name,
+  SstFileMetaData() = default;
+  SstFileMetaData(uint64_t name_id_,
                   const std::string& _path,
                   uint64_t _total_size,
                   uint64_t _base_size,
@@ -262,7 +262,7 @@ struct SstFileMetaData {
       : total_size(_total_size),
         base_size(_base_size),
         uncompressed_size(_uncompressed_size),
-        name(_file_name),
+        name_id(name_id_),
         db_path(_path),
         smallest(_smallest),
         largest(_largest),
@@ -275,8 +275,8 @@ struct SstFileMetaData {
   uint64_t base_size = 0;
   // Total uncompressed size in bytes.
   uint64_t uncompressed_size = 0;
-  // The name of the file.
-  std::string name;
+  // The name id of the file.
+  uint64_t name_id;
   // The full path where the file locates.
   std::string db_path;
 
@@ -284,6 +284,9 @@ struct SstFileMetaData {
   BoundaryValues largest;
   bool imported = false;
   bool being_compacted = false; // true if the file is currently being compacted.
+
+  std::string Name() const;
+  std::string FullName() const;
 };
 
 // The full set of metadata associated with each SST file.

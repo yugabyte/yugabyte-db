@@ -531,6 +531,9 @@ class YBClient {
   CHECKED_STATUS UpdateCDCStream(const CDCStreamId& stream_id,
                                  const master::SysCDCStreamEntryPB& new_entry);
 
+  Result<bool> IsBootstrapRequired(const TableId& table_id,
+                                   const boost::optional<CDCStreamId>& stream_id = boost::none);
+
   // Update consumer pollers after a producer side tablet split.
   CHECKED_STATUS UpdateConsumerOnProducerSplit(const string& producer_id,
                                                const TableId& table_id,
@@ -640,7 +643,9 @@ class YBClient {
 
   // Creates a transaction status table. 'table_name' is required to start with
   // kTransactionTablePrefix.
-  CHECKED_STATUS CreateTransactionsStatusTable(const std::string& table_name);
+  CHECKED_STATUS CreateTransactionsStatusTable(
+      const std::string& table_name,
+      const master::ReplicationInfoPB* replication_info = nullptr);
 
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.

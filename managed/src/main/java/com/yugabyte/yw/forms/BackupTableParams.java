@@ -150,4 +150,8 @@ public class BackupTableParams extends TableManagerParams {
   public void setFullBackup(boolean isFullBackup) {
     this.isFullBackup = isFullBackup;
   }
+
+  @JsonIgnore public List<UUID> targetAsyncReplicationRelationships;
+
+  @JsonIgnore public List<UUID> sourceAsyncReplicationRelationships;
 }

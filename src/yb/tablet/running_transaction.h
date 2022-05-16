@@ -118,6 +118,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   // Whether this transactions is currently applying intents.
   bool ProcessingApply() const;
 
+  void UpdateTransactionStatusLocation(const TabletId& new_status_tablet);
+
   std::string LogPrefix() const;
 
  private:

@@ -106,14 +106,14 @@ bindColumn(YBCPgStatement stmt,
  * Utility method to set binds for index write statement.
  */
 static void
-doBindsForWrite(YBCPgStatement stmt,
-				void *indexstate,
-				Relation index,
-				Datum *values,
-				bool *isnull,
-				int natts,
-				Datum ybbasectid,
-				bool ybctid_as_value)
+doBindsForIdxWrite(YBCPgStatement stmt,
+				   void *indexstate,
+				   Relation index,
+				   Datum *values,
+				   bool *isnull,
+				   int n_bound_atts,
+				   Datum ybbasectid,
+				   bool ybctid_as_value)
 {
 	GinState *ginstate = (GinState *) indexstate;
 	TupleDesc tupdesc = RelationGetDescr(index);
@@ -123,7 +123,7 @@ doBindsForWrite(YBCPgStatement stmt,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("missing base table ybctid in index write request")));
 
-	for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
+	for (AttrNumber attnum = 1; attnum <= n_bound_atts; ++attnum)
 	{
 		Oid			type_id = GetTypeId(attnum, tupdesc);
 		Oid			collation_id = YBEncodingCollation(stmt, attnum,
@@ -183,12 +183,12 @@ ybginTupleWrite(GinState *ginstate, OffsetNumber attnum,
 		if (isinsert)
 			YBCExecuteInsertIndex(index, &entries[i], &isnull, ybctid,
 								  backfilltime /* backfill_write_time */,
-								  doBindsForWrite, (void *) ginstate);
+								  doBindsForIdxWrite, (void *) ginstate);
 		else
 		{
 			Assert(!backfilltime);
 			YBCExecuteDeleteIndex(index, &entries[i], &isnull, ybctid,
-								  doBindsForWrite, (void *) ginstate);
+								  doBindsForIdxWrite, (void *) ginstate);
 		}
 	}
 

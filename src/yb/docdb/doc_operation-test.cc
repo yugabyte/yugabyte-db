@@ -1258,8 +1258,7 @@ TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
   ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
 
   // Files will be ordered from latest to earliest, so select the nth file from the back.
-  auto last_to_discard =
-      rocksdb::TableFileNameToNumber(files[files.size() - kNumFilesToExpire].name);
+  auto last_to_discard = files[files.size() - kNumFilesToExpire].name_id;
 
   SetMaxFileSizeForCompaction(kMaxFileSize);
 
