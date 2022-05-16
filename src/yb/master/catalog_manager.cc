@@ -4543,6 +4543,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::SYS_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::SNAPSHOT_RESTORATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;

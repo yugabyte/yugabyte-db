@@ -69,8 +69,16 @@ class StateWithTablets {
   void SetInitialTabletsState(SysSnapshotEntryPB::State state);
 
   // Initialize tablet states from serialized data.
-  void InitTablets(
-      const google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>& tablets);
+  template<class Tablets>
+  void InitTablets(const Tablets& tablets) {
+    for (const auto& tablet : tablets) {
+      tablets_.emplace(tablet.id(), tablet.state());
+      if (tablet.state() == initial_state_) {
+        ++num_tablets_in_initial_state_;
+      }
+    }
+    CheckCompleteness();
+  }
 
   template <class TabletIds>
   void InitTabletIds(const TabletIds& tablet_ids, SysSnapshotEntryPB::State state) {
