@@ -43,6 +43,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
+import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -142,6 +143,7 @@ public class Module extends AbstractModule {
       bind(MetricGrafanaController.class).asEagerSingleton();
       bind(PlatformScheduler.class).asEagerSingleton();
       bind(AccessKeyRotationUtil.class).asEagerSingleton();
+      bind(GcpEARServiceUtil.class).asEagerSingleton();
     }
   }
 
