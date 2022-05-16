@@ -147,15 +147,23 @@ struct ExternalTxnApplyStateData {
 
 using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
 
+class ExternalTxnIntentsState {
+ public:
+  IntraTxnWriteId GetWriteIdAndIncrement(const TransactionId& txn_id);
+  void EraseEntry(const TransactionId& txn_id);
+ private:
+  std::mutex mutex_;
+  std::unordered_map<TransactionId, IntraTxnWriteId, TransactionIdHash> map_;
+};
 // Adds external pair to write batch.
 // Returns true if add was skipped because pair is a regular (non external) record.
 bool AddExternalPairToWriteBatch(
     const KeyValuePairPB& kv_pair,
     HybridTime hybrid_time,
-    int write_id,
     ExternalTxnApplyState* apply_external_transactions,
     rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch);
+    rocksdb::WriteBatch* intents_write_batch,
+    ExternalTxnIntentsState* external_txn_intents_state);
 
 // Prepares external part of non transaction write batch.
 // Batch could contain intents for external transactions, in this case those intents
@@ -167,7 +175,8 @@ bool PrepareExternalWriteBatch(
     HybridTime hybrid_time,
     rocksdb::DB* intents_db,
     rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch);
+    rocksdb::WriteBatch* intents_write_batch,
+    ExternalTxnIntentsState* external_txn_intents_state);
 
 YB_STRONGLY_TYPED_BOOL(LastKey);
 
