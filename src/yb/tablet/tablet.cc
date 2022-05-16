@@ -498,6 +498,7 @@ Tablet::Tablet(const TabletInitData& data)
     transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
   }
   SyncRestoringOperationFilter(ResetSplit::kFalse);
+  external_txn_intents_state_ = std::make_unique<docdb::ExternalTxnIntentsState>();
 }
 
 Tablet::~Tablet() {
@@ -1251,7 +1252,8 @@ Status Tablet::ApplyKeyValueRowOperations(
     // See comments for PrepareNonTransactionWriteBatch.
     rocksdb::WriteBatch intents_write_batch;
     PrepareNonTransactionWriteBatch(
-        put_batch, hybrid_time, intents_db_.get(), regular_write_batch_ptr, &intents_write_batch);
+        put_batch, hybrid_time, intents_db_.get(), regular_write_batch_ptr, &intents_write_batch,
+        external_txn_intents_state_.get());
 
     if (regular_write_batch.Count() != 0) {
       WriteToRocksDB(frontiers, regular_write_batch_ptr, StorageDbType::kRegular);
