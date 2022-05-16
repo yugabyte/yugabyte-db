@@ -3507,11 +3507,11 @@ pgsm_emit_log_hook(ErrorData *edata)
 		goto exit;
 
 	if (IsParallelWorker())
-		return;
+		goto exit;
 
 	/* Check if PostgreSQL has finished its own bootstraping code. */
 	if (MyProc == NULL)
-		return;
+		goto exit;
 
 	if ((edata->elevel == ERROR || edata->elevel == WARNING || edata->elevel == INFO || edata->elevel == DEBUG1))
 	{
