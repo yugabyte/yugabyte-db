@@ -184,11 +184,13 @@ void CatalogManagerBgTasks::Run() {
       }
 
       TableInfoMap table_info_map;
+      TabletInfoMap tablet_info_map;
       {
         CatalogManager::SharedLock lock(catalog_manager_->mutex_);
         table_info_map = *catalog_manager_->table_ids_map_;
+        tablet_info_map = *catalog_manager_->tablet_map_;
       }
-      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(table_info_map);
+      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(table_info_map, tablet_info_map);
 
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables();
