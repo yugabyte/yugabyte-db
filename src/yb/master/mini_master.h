@@ -85,6 +85,12 @@ class MiniMaster {
   // Requires that the master is currently started.
   Status Restart();
 
+  // Use custom master_addresses, rpc_bind_addresses, and broadcast_addresses.
+  // Warning: this can be used only when starting a master on its own.
+  void SetCustomAddresses(const std::vector<std::string> &master_addresses,
+                          const std::vector<std::string> &rpc_bind_addresses,
+                          const std::vector<std::string> &broadcast_addresses);
+
   HostPort bound_rpc_addr() const;
   Endpoint bound_http_addr() const;
 
@@ -131,6 +137,13 @@ class MiniMaster {
   int index_;
   std::unique_ptr<Tunnel> tunnel_;
   bool pass_master_addresses_ = true;
+
+  // Whether to use custom master_addresses, rpc_bind_addresses, and
+  // broadcast_addresses.
+  bool use_custom_addresses_ = false;
+  std::vector<std::string> custom_master_addresses_;
+  std::vector<std::string> custom_rpc_addresses_;
+  std::vector<std::string> custom_broadcast_addresses_;
 };
 
 } // namespace master
