@@ -68,9 +68,9 @@ LightweightBoundaries::LightweightBoundaries(Arena* arena,
   user_values = reinterpret_cast<Slice*>(
     arena->AllocateAligned(sizeof(Slice) * num_user_values));
   for (size_t i = 0; i != num_user_values; ++i) {
-    UserBoundaryValue& value = *source.user_values[i];
-    new (user_tags + i) UserBoundaryTag(value.Tag());
-    new (user_values + i) Slice(SliceDup(arena, value.Encode()));
+    const UserBoundaryValue& value = source.user_values[i];
+    new (user_tags + i) UserBoundaryTag(value.tag);
+    new (user_values + i) Slice(SliceDup(arena, value.AsSlice()));
   }
 }
 
