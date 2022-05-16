@@ -946,6 +946,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   HybridTimeLeaseProvider ht_lease_provider_;
 
+  std::unique_ptr<docdb::ExternalTxnIntentsState> external_txn_intents_state_;
+
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
