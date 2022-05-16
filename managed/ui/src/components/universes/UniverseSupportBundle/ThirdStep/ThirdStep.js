@@ -16,23 +16,10 @@ const statusElementsIcons = {
   'Running': <span className="status creating">Creating <i className="fa fa-spinner fa-spin"/></span>
 }
 
-const getActions = (uuid, row, handleViewLogs, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle, creatingBundle, deleteBundleUUID, setDeleteBundleUUID) => {
+const getActions = (uuid, row, handleViewLogs, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle, creatingBundle, setDeleteBundleObj) => {
   const isReady = row.status === 'Success';
   return (
     <>
-      {isConfirmDeleteOpen && (
-        <ConfirmDeleteModal
-          key={`${row.bundleUUID}-modal`}
-          closeModal={() => {
-            setIsConfirmDeleteOpen(false)
-          }}
-          createdOn={row.creationDate}
-          confirmDelete={() => {
-            handleDeleteBundle(deleteBundleUUID);
-            setDeleteBundleUUID('');
-            setIsConfirmDeleteOpen(false);
-          }}/>
-      )}
       <DropdownButton
         id={row.bundleUUID}
         key={row.bundleUUID}
@@ -69,7 +56,7 @@ const getActions = (uuid, row, handleViewLogs, handleDeleteBundle, isConfirmDele
           value="Delete"
           onClick={() => {
             setIsConfirmDeleteOpen(true);
-            setDeleteBundleUUID(row.bundleUUID);
+            setDeleteBundleObj(row);
           }}
         >
           <i className="fa fa-trash"/> Delete
@@ -108,7 +95,7 @@ export const ThirdStep = withRouter(({
 
   const [creatingBundle, setCreatingBundle] = useState(supportBundles && Array.isArray(supportBundles) && supportBundles.find((supportBundle) => supportBundle.status === 'Running') !== undefined);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
-  const [deleteBundleUUID, setDeleteBundleUUID] = useState('');
+  const [deleteBundleObj, setDeleteBundleObj] = useState({});
 
   useEffect(() => {
     if(supportBundles && Array.isArray(supportBundles) && supportBundles.find((supportBundle) => supportBundle.status === 'Running') !== undefined) {
@@ -118,8 +105,21 @@ export const ThirdStep = withRouter(({
     }
   }, [supportBundles, setCreatingBundle]);
 
-
   return (
+    <>
+    {isConfirmDeleteOpen && (
+      <ConfirmDeleteModal
+        closeModal={() => {
+          setIsConfirmDeleteOpen(false)
+        }}
+        createdOn={deleteBundleObj.creationDate}
+        confirmDelete={() => {
+          handleDeleteBundle(deleteBundleObj.bundleUUID);
+          setDeleteBundleObj({});
+          setIsConfirmDeleteOpen(false);
+        }}
+      />
+    )}
     <div className="universe-support-bundle-step-three">
       {
         creatingBundle && (
@@ -174,12 +174,13 @@ export const ThirdStep = withRouter(({
             <TableHeaderColumn
               dataField="bundleUUID"
               dataFormat={(bundleUUID, row) => {
-                return getActions(bundleUUID, row, router.push, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle, creatingBundle, deleteBundleUUID, setDeleteBundleUUID);
+                return getActions(bundleUUID, row, router.push, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle, creatingBundle, setDeleteBundleObj);
               }}
             />
           </BootstrapTable>
         )}
       </div>
     </div>
+    </>
   )
 });
