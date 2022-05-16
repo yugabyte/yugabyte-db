@@ -25,6 +25,7 @@ class DocKey;
 class DocPath;
 class DocRowwiseIterator;
 class DocWriteBatch;
+class ExternalTxnIntentsState;
 class IntentAwareIterator;
 class KeyBytes;
 class KeyValueWriteBatchPB;

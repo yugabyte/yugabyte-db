@@ -1782,7 +1782,7 @@ Status CatalogManager::RestoreSysCatalog(
 
   rocksdb::WriteBatch rocksdb_write_batch;
   PrepareNonTransactionWriteBatch(
-      kv_write_batch, restoration->write_time, nullptr, &rocksdb_write_batch, nullptr);
+      kv_write_batch, restoration->write_time, nullptr, &rocksdb_write_batch, nullptr, nullptr);
   docdb::ConsensusFrontiers frontiers;
   set_op_id(restoration->op_id, &frontiers);
   set_hybrid_time(restoration->write_time, &frontiers);
