@@ -219,7 +219,7 @@ Status RestoreSysCatalogState::AddRestoringEntry(
   auto& entry = *entries_.mutable_entries()->Add();
   entry.set_type(type);
   entry.set_id(id);
-  pb_util::SerializeToString(*pb, buffer);
+  RETURN_NOT_OK(pb_util::SerializeToString(*pb, buffer));
   entry.set_data(buffer->data(), buffer->size());
   restoration_.non_system_objects_to_restore.emplace(id, type);
 
@@ -508,10 +508,13 @@ Result<bool> RestoreSysCatalogState::TEST_MatchTable(
 }
 
 void RestoreSysCatalogState::WriteToRocksDB(
-    docdb::DocWriteBatch* write_batch, const HybridTime& write_time, const OpId& op_id,
-    tablet::Tablet* tablet) {
+    docdb::DocWriteBatch* write_batch, const docdb::KeyValuePairPB& restore_kv,
+    const HybridTime& write_time, const OpId& op_id, tablet::Tablet* tablet) {
   docdb::KeyValueWriteBatchPB kv_write_batch;
   write_batch->MoveToWriteBatchPB(&kv_write_batch);
+
+  // Append restore entry to the write batch.
+  *kv_write_batch.mutable_write_pairs()->Add() = restore_kv;
 
   docdb::NonTransactionalWriter writer(kv_write_batch, write_time);
   rocksdb::WriteBatch rocksdb_write_batch;

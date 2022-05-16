@@ -54,7 +54,6 @@ from yb.common_util import (
     shlex_join,
     check_arch,
     is_macos_arm64,
-    is_macos,
 )
 from yb import compile_commands
 from yb.compile_commands import (
@@ -209,6 +208,11 @@ class PostgresBuilder(YbBuildToolBase):
         parser.add_argument('--step',
                             choices=BUILD_STEPS,
                             help='Run a specific step of the build process')
+        parser.add_argument('--compiler_version',
+                            help='Compiler version (e.g. 14.0.3)')
+        parser.add_argument('--compiler_family',
+                            choices=['gcc', 'clang'],
+                            help='Compiler family (e.g. clang or gcc)')
         parser.add_argument(
             '--shared_library_suffix',
             help='Shared library suffix used on the current platform. Used to set DLSUFFIX '
@@ -249,6 +253,9 @@ class PostgresBuilder(YbBuildToolBase):
             if not self.original_path:
                 logging.warning("PATH is empty")
 
+        self.compiler_family = self.args.compiler_family
+        self.compiler_version = self.args.compiler_version
+
     def adjust_cflags_in_makefile(self) -> None:
         makefile_global_path = os.path.join(self.pg_build_root, 'src/Makefile.global')
         new_makefile_lines = []
@@ -275,18 +282,10 @@ class PostgresBuilder(YbBuildToolBase):
                 makefile_global_out_f.write("\n".join(new_makefile_lines) + "\n")
 
     def is_clang(self) -> bool:
-        return self.compiler_type.startswith('clang')
-
-    def is_clang_version_at_least(self, min_major_version: int) -> bool:
-        if not self.is_clang():
-            return False
-        try:
-            return int(self.compiler_type[5:]) >= min_major_version
-        except ValueError:
-            return False
+        return self.compiler_family == 'clang'
 
     def is_gcc(self) -> bool:
-        return self.compiler_type.startswith('gcc')
+        return self.compiler_family == 'gcc'
 
     def set_env_vars(self, step: str) -> None:
         if step not in BUILD_STEPS:
@@ -294,8 +293,6 @@ class PostgresBuilder(YbBuildToolBase):
                 ("Invalid step specified for setting env vars: must be in {}")
                 .format(BUILD_STEPS))
         is_make_step = step == 'make'
-        is_clang = self.compiler_type.startswith('clang')
-        is_gcc = self.compiler_type.startswith('gcc')
 
         self.set_env_var('YB_PG_BUILD_STEP', step)
         self.set_env_var('YB_THIRDPARTY_DIR', self.thirdparty_dir)

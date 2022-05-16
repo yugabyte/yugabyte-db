@@ -134,6 +134,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                  UpdateCDCStreamResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
+  // Query if Bootstrapping is required for a CDC stream (e.g. Are we missing logs).
+  CHECKED_STATUS IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
+                                     IsBootstrapRequiredResponsePB* resp,
+                                     rpc::RpcContext* rpc);
+
   // Delete CDC streams for a table.
   CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id) override;
   CHECKED_STATUS DeleteCDCStreamsForTables(const vector<TableId>& table_ids) override;
@@ -300,7 +305,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
       Status* complete_status) override;
 
-  CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) override;
+  CHECKED_STATUS VerifyRestoredObjects(
+      const std::unordered_map<std::string, SysRowEntryType>& objects,
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override;
 
   void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) override;
   void CleanupHiddenTablets(
@@ -410,10 +417,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Result<client::internal::RemoteTabletServer*> GetLeaderTServer(
       client::internal::RemoteTabletPtr tablet);
 
-  CHECKED_STATUS IsBootstrapRequired(scoped_refptr<UniverseReplicationInfo> universe,
-                                     const TableId& producer_table,
-                                     const std::unordered_map<TableId, std::string>&
-                                     table_bootstrap_ids);
+  // Consumer API: Find out if bootstrap is required for the Producer tables.
+  CHECKED_STATUS IsBootstrapRequiredOnProducer(scoped_refptr<UniverseReplicationInfo> universe,
+                                               const TableId& producer_table,
+                                               const std::unordered_map<TableId, std::string>&
+                                                 table_bootstrap_ids);
 
   // Gets the set of CDC stream info for an xCluster consumer table.
   XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTable(const TableId& table_id)

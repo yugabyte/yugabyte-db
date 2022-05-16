@@ -172,6 +172,10 @@ struct ExternalMiniClusterOptions {
   // Cluster id used to create fs path when we create tests with multiple clusters.
   std::string cluster_id;
 
+  // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
+  // set to a non-zero value, this value is used instead.
+  int transaction_table_num_tablets = 0;
+
   CHECKED_STATUS RemovePort(const uint16_t port);
   CHECKED_STATUS AddPort(const uint16_t port);
 
@@ -258,7 +262,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   Result<ExternalMaster *> StartMasterWithPeers(const string& peer_addrs);
 
   // Send a ping request to the rpc port of the master. Return OK() only if it is reachable.
-  CHECKED_STATUS PingMaster(ExternalMaster* master) const;
+  CHECKED_STATUS PingMaster(const ExternalMaster* master) const;
 
   // Add a Tablet Server to the blacklist.
   CHECKED_STATUS AddTServerToBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
@@ -486,7 +490,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Get the index of this master in the vector of masters. This might not be the insertion order as
   // we might have removed some masters within the vector.
-  int GetIndexOfMaster(ExternalMaster* master) const;
+  int GetIndexOfMaster(const ExternalMaster* master) const;
 
   // Checks that the masters_ list and opts_ match in terms of the number of elements.
   CHECKED_STATUS CheckPortAndMasterSizes() const;

@@ -622,10 +622,15 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 	/* Handle SPLIT statement, if present */
 	OptSplit *split_options = stmt->split_options;
 	if (split_options)
+	{
+		if (is_colocated_via_database)
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot create colocated table with split option")));
 		CreateTableHandleSplitOptions(
 			handle, desc, split_options, primary_key, namespaceId,
 			is_colocated_via_database || OidIsValid(tablegroupId));
-
+	}
 	/* Create the table. */
 	HandleYBStatus(YBCPgExecCreateTable(handle));
 }
@@ -646,6 +651,7 @@ YBCDropTable(Oid relationId)
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
 															   YbGetStorageRelid(relation),
+															   false,
 															   false,
 															   &handle),
 									 &not_found);
@@ -688,6 +694,7 @@ YBCTruncateTable(Relation rel) {
 	YBCPgStatement  handle;
 	Oid             relationId = RelationGetRelid(rel);
 	Oid             databaseId = YBCGetDatabaseOid(rel);
+	bool            isRegionLocal = YBCIsRegionLocal(rel);
 
 	/* Whether the table is colocated (via DB or a tablegroup) */
 	bool            colocated = YbIsUserTableColocated(databaseId, relationId);
@@ -698,6 +705,7 @@ YBCTruncateTable(Relation rel) {
 		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 												 relationId,
 												 false,
+												 isRegionLocal,
 												 &handle));
 		HandleYBStatus(YBCPgDmlBindTable(handle));
 		int rows_affected_count = 0;
@@ -735,6 +743,7 @@ YBCTruncateTable(Relation rel) {
 			HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 													 indexId,
 													 false,
+													 isRegionLocal,
 													 &handle));
 			HandleYBStatus(YBCPgDmlBindTable(handle));
 			int rows_affected_count = 0;
@@ -1169,6 +1178,7 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 
 	switch (stmt->renameType)
 	{
+		case OBJECT_INDEX:
 		case OBJECT_TABLE:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  relationId,
@@ -1210,6 +1220,7 @@ YBCDropIndex(Oid relationId)
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
 															   relationId,
+															   false,
 															   false,
 															   &handle),
 									 &not_found);

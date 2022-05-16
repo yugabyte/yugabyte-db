@@ -1337,18 +1337,19 @@ ProcessUtilitySlow(ParseState *pstate,
 					Oid			relid;
 					LOCKMODE	lockmode;
 
-					if (stmt->concurrent)
+					if (stmt->concurrent != YB_CONCURRENCY_DISABLED)
 					{
-						if (IsYugaByteEnabled() &&
+						/*
+						 * If concurrency is implicitly enabled, transparently
+						 * switch to nonconcurrent index build.
+						 * TODO(jason): heed issue #6240.
+						 */
+						if (stmt->concurrent == YB_CONCURRENCY_IMPLICIT_ENABLED &&
+							IsYugaByteEnabled() &&
 							!IsBootstrapProcessingMode() &&
 							!YBIsPreparingTemplates() &&
 							IsInTransactionBlock(isTopLevel))
 						{
-							/*
-							 * Transparently switch to nonconcurrent index
-							 * build.
-							 * TODO(jason): heed issue #6240.
-							 */
 							ereport(NOTICE,
 									(errmsg("making create index for table "
 											"\"%s\" nonconcurrent",
@@ -1357,7 +1358,7 @@ ProcessUtilitySlow(ParseState *pstate,
 											   " block cannot be concurrent."),
 									 errhint("Consider running it outside of a"
 											 " transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.")));
-							stmt->concurrent = false;
+							stmt->concurrent = YB_CONCURRENCY_DISABLED;
 						}
 						else
 							PreventInTransactionBlock(isTopLevel,
@@ -1373,8 +1374,8 @@ ProcessUtilitySlow(ParseState *pstate,
 					 * eventually be needed here, so the lockmode calculation
 					 * needs to match what DefineIndex() does.
 					 */
-					lockmode = stmt->concurrent ? ShareUpdateExclusiveLock
-						: ShareLock;
+					lockmode = (stmt->concurrent != YB_CONCURRENCY_DISABLED)
+						? ShareUpdateExclusiveLock : ShareLock;
 					relid =
 						RangeVarGetRelidExtended(stmt->relation, lockmode,
 												 0,
@@ -1419,9 +1420,12 @@ ProcessUtilitySlow(ParseState *pstate,
 					if (get_rel_relkind(relid) == RELKIND_PARTITIONED_TABLE)
 					{
 						/*
-						 * Transparently switch to nonconcurrent index build.
+						 * If CONCURRENTLY is explicitly specified, an error
+						 * will be thrown during the DefineIndex() subroutine.
+						 * If concurrency is implicitly enabled, transparently switch
+						 * to nonconcurrent index build.
 						 */
-						if (stmt->concurrent &&
+						if (stmt->concurrent == YB_CONCURRENCY_IMPLICIT_ENABLED &&
 							IsYugaByteEnabled() &&
 							!IsBootstrapProcessingMode() &&
 							!YBIsPreparingTemplates())
@@ -1431,7 +1435,7 @@ ProcessUtilitySlow(ParseState *pstate,
 											"partitioned table \"%s\" "
 											"nonconcurrent",
 											stmt->relation->relname)));
-							stmt->concurrent = false;
+							stmt->concurrent = YB_CONCURRENCY_DISABLED;
 						}
 					}
 

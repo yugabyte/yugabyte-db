@@ -12,7 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import java.io.File;
@@ -52,7 +52,7 @@ public class DeleteCertificate extends UniverseTaskBase {
 
       File certDirectory = new File(cert.certificate).getParentFile();
       // delete entire certificate directory recursively.
-      if (!Util.deleteDirectory(certDirectory)) {
+      if (!FileUtils.deleteDirectory(certDirectory)) {
         log.error("Failed to delete certificate directory: %s", certDirectory.getAbsolutePath());
       }
 

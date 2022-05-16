@@ -1338,6 +1338,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param universe universe to which the nodes belong.
    * @param nodesToBeCreated nodes to be created.
    * @param ignoreNodeStatus ignore checking node status before creating subtasks if it is set.
+   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createCreateNodeTasks(
@@ -1407,6 +1408,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodesToBeConfigured nodes to be configured.
    * @param isShellMode configure nodes in shell mode if true.
    * @param ignoreNodeStatus ignore node status if it is set.
+   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createConfigureNodeTasks(
@@ -1481,6 +1483,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param universe universe to which the nodes belong.
    * @param nodesToBeProvisioned nodes to be provisioned.
    * @param ignoreNodeStatus ignore node status if it is set.
+   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createProvisionNodeTasks(
@@ -1536,6 +1539,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodesToBeConfigured nodes to be configured.
    * @param isShellMode configure nodes in shell mode if true.
    * @param ignoreNodeStatus ignore node status if it is set.
+   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createConfigureMasterTasks(

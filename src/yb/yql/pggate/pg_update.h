@@ -27,8 +27,11 @@ namespace pggate {
 
 class PgUpdate : public PgDmlWrite {
  public:
-  PgUpdate(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_single_row_txn)
-      : PgDmlWrite(std::move(pg_session), table_id, is_single_row_txn) {}
+  PgUpdate(PgSession::ScopedRefPtr pg_session,
+           const PgObjectId& table_id,
+           bool is_single_row_txn,
+           bool is_region_local)
+      : PgDmlWrite(std::move(pg_session), table_id, is_single_row_txn, is_region_local) {}
 
   StmtOp stmt_op() const override { return StmtOp::STMT_UPDATE; }
 

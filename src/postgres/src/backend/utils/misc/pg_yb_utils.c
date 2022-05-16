@@ -67,12 +67,14 @@
 #include "commands/defrem.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
+#include "optimizer/cost.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "fmgr.h"
 #include "funcapi.h"
@@ -800,11 +802,9 @@ YBShouldRestartAllChildrenIfOneCrashes() {
 		ereport(LOG, (errmsg("YBShouldRestartAllChildrenIfOneCrashes returning 0, YBIsEnabledInPostgresEnvVar is false")));
 		return true;
 	}
-	const char* flag_file_path =
-		getenv("YB_PG_NO_RESTART_ALL_CHILDREN_ON_CRASH_FLAG_PATH");
 	// We will use PostgreSQL's default behavior (restarting all children if one of them crashes)
 	// if the flag env variable is not specified or the file pointed by it does not exist.
-	return !flag_file_path || access(flag_file_path, F_OK) == -1;
+	return YBCIsEnvVarTrueWithDefault("FLAGS_yb_pg_terminate_child_backend", true);
 }
 
 bool
@@ -2307,4 +2307,12 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		}
 	}
 	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id);
+}
+
+bool YBCIsRegionLocal(Relation rel) {
+	double cost = 0.0;
+	return IsNormalProcessingMode() &&
+			!IsSystemRelation(rel) &&
+			get_yb_tablespace_cost(rel->rd_rel->reltablespace, &cost) &&
+			cost <= yb_interzone_cost;
 }

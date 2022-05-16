@@ -48,7 +48,7 @@ export default function AlertsTable({ filters, customer }) {
         const resp = await api.getAlert(variables.uuid);
 
         queryClient.invalidateQueries('alerts');
-        toast.success('Acknowledged!.');
+        toast.success('Acknowledged!');
         if (alertDetails !== null) {
           setAlertDetails(resp);
         }
@@ -81,7 +81,7 @@ export default function AlertsTable({ filters, customer }) {
 
   const setSortOptions = (sortType, sortDirection) => {
     resetPage();
-    let sortColumn = sortType === 'labels' ? 'sourceName' : sortType;
+    const sortColumn = sortType === 'labels' ? 'sourceName' : sortType;
     setSortType(sortColumn);
     setSortDirection(sortDirection.toUpperCase());
   };

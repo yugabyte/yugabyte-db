@@ -87,7 +87,7 @@ export const NTPConfig: FC<NTPConfigProps> = ({
     "Network Time Protocol (NTP) synchronizes machine's times across a network";
 
   const [selectedNTPOption, setSelectedNTPOption] = useState(
-    initialValues.ntp_option ?? NTP_OPTIONS[1].value
+    initialValues.ntp_option ?? NTP_OPTIONS[0].value
   );
 
   return (

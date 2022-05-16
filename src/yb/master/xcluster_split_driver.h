@@ -14,7 +14,7 @@
 #define YB_MASTER_XCLUSTER_SPLIT_DRIVER_H
 
 #include "yb/common/entity_ids_types.h"
-#include "yb/master/catalog_entity_info.h"
+#include "yb/master/tablet_split_fwd.h"
 #include "yb/util/status.h"
 
 namespace yb {

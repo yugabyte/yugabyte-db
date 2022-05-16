@@ -751,6 +751,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         super(ConfigureInstancesMethod, self).prepare()
 
         self.parser.add_argument('--package', default=None)
+        self.parser.add_argument('--num_releases_to_keep', type=int,
+                                 help="Number of releases to keep after upgrade.")
         self.parser.add_argument('--yb_process_type', default=None,
                                  choices=self.VALID_PROCESS_TYPES)
         self.parser.add_argument('--extra_gflags', default=None)
@@ -852,6 +854,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         if args.package is not None:
             self.extra_vars["package"] = args.package
+
+        if args.num_releases_to_keep is not None:
+            self.extra_vars["num_releases_to_keep"] = args.num_releases_to_keep
 
         if args.extra_gflags is not None:
             self.extra_vars["extra_gflags"] = json.loads(args.extra_gflags)
@@ -1224,7 +1229,9 @@ class AbstractAccessMethod(AbstractMethod):
         self.parser.add_argument("--key_file_path", required=True, help="Key file path")
         self.parser.add_argument("--public_key_file", required=False, help="Public key filename")
         self.parser.add_argument("--private_key_file", required=False, help="Private key filename")
-        self.parser.add_argument("--delete_remote", action="store_true")
+        self.parser.add_argument("--delete_remote", action="store_true", help="Delete from cloud")
+        self.parser.add_argument("--ignore_auth_failure", action="store_true",
+                                 help="Ignore cloud auth failure")
 
     def validate_key_files(self, args):
         public_key_file = args.public_key_file

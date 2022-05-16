@@ -129,8 +129,8 @@ struct TableInfo {
   }
 
   // If schema version is kLatestSchemaVersion, then latest possible schema packing is returned.
-  static Result<docdb::CompactionSchemaPacking> Packing(
-      const TableInfoPtr& self, uint32_t schema_version);
+  static Result<docdb::CompactionSchemaInfo> Packing(
+      const TableInfoPtr& self, uint32_t schema_version, HybridTime history_cutoff);
 
   const Schema& schema() const;
 };
@@ -258,6 +258,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   SchemaVersion schema_version(const TableId& table_id = "") const;
 
   const std::string& indexed_table_id(const TableId& table_id = "") const;
+
+  bool is_index(const TableId& table_id = "") const;
 
   bool is_local_index(const TableId& table_id = "") const;
 
@@ -470,11 +472,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // versions is a map from table id to min schema version that should be kept for this table.
   Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions);
 
-  Result<docdb::CompactionSchemaPacking> CotablePacking(
-      const Uuid& cotable_id, uint32_t schema_version) override;
+  Result<docdb::CompactionSchemaInfo> CotablePacking(
+      const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
-  Result<docdb::CompactionSchemaPacking> ColocationPacking(
-      ColocationId colocation_id, uint32_t schema_version) override;
+  Result<docdb::CompactionSchemaInfo> ColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
  private:
   typedef simple_spinlock MutexType;

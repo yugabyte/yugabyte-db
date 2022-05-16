@@ -63,7 +63,9 @@ class SnapshotCoordinatorContext {
   virtual CHECKED_STATUS RestoreSysCatalog(
       SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
       Status* complete_status) = 0;
-  virtual CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) = 0;
+  virtual CHECKED_STATUS VerifyRestoredObjects(
+      const std::unordered_map<std::string, SysRowEntryType>& objects,
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) = 0;
 
   virtual void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) = 0;
 

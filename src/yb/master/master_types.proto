@@ -40,6 +40,7 @@ enum SysRowEntryType {
   UNIVERSE_REPLICATION = 11;
   SNAPSHOT_SCHEDULE = 12;
   DDL_LOG_ENTRY = 13;
+  SNAPSHOT_RESTORATION = 14;
 }
 
 // Master specific errors use this protobuf.

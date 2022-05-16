@@ -64,14 +64,20 @@ export interface IBackup {
   onDemand: boolean;
   createTime: number;
   updateTime: number;
+  completionTime: number;
   expiryTime: number;
   responseList: Keyspace_Table[];
   sse: boolean;
+  totalBackupSizeInBytes?: number;
+  kmsConfigUUID?: null | string;
 }
 
 export interface IUniverse {
   universeUUID: string;
   name: string;
+  universeDetails: {
+    universePaused: boolean;
+  };
 }
 
 export enum RESTORE_ACTION_TYPE {
@@ -86,7 +92,8 @@ export interface TIME_RANGE_STATE {
 
 export enum BACKUP_API_TYPES {
   YSQL = 'PGSQL_TABLE_TYPE',
-  YCQL = 'YQL_TABLE_TYPE'
+  YCQL = 'YQL_TABLE_TYPE',
+  YEDIS = 'REDIS_TABLE_TYPE'
 }
 
 export interface IStorageConfig {

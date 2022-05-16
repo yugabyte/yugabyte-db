@@ -2258,7 +2258,7 @@ void DBFileDumperCommand::DoCommand() {
   std::vector<LiveFileMetaData> metadata;
   db_->GetLiveFilesMetaData(&metadata);
   for (auto& fileMetadata : metadata) {
-    std::string filename = fileMetadata.db_path + fileMetadata.name;
+    std::string filename = fileMetadata.FullName();
     std::cout << filename << " level:" << fileMetadata.level << std::endl;
     std::cout << "------------------------------" << std::endl;
     DumpSstFile(filename, false, true);

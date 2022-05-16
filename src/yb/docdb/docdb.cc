@@ -248,6 +248,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const OperationKind operation_kind,
     const RowMarkType row_mark_type,
     bool transactional_table,
+    bool write_transaction_metadata,
     CoarseTimePoint deadline,
     PartialRangeKeyIntents partial_range_key_intents,
     SharedLockManager *lock_manager) {
@@ -257,7 +258,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
       doc_write_ops, read_pairs, isolation_level, operation_kind, row_mark_type,
       transactional_table, partial_range_key_intents));
   VLOG_WITH_FUNC(4) << "determine_keys_to_lock_result=" << determine_keys_to_lock_result.ToString();
-  if (determine_keys_to_lock_result.lock_batch.empty()) {
+  if (determine_keys_to_lock_result.lock_batch.empty() && !write_transaction_metadata) {
     LOG(ERROR) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
                << ", read pairs: " << yb::ToString(read_pairs);
     return STATUS(Corruption, "Empty lock batch");

@@ -233,8 +233,13 @@ Result<bool> WriteQuery::PrepareExecute() {
     }
   } else {
     const auto* request = operation().request();
-    if (request && request->has_write_batch() && !request->write_batch().read_pairs().empty()) {
-      return SimplePrepareExecute();
+    if (request && request->has_write_batch()) {
+      const auto& write_batch = request->write_batch();
+      // We allow the empty case if transaction is set since that is an update in transaction
+      // metadata.
+      if (!write_batch.read_pairs().empty() || write_batch.has_transaction()) {
+        return SimplePrepareExecute();
+      }
     }
   }
 
@@ -423,7 +428,7 @@ CHECKED_STATUS WriteQuery::DoExecute() {
   docdb::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       doc_ops_, write_batch.read_pairs(), tablet().metrics()->write_lock_latency,
-      isolation_level_, kind(), row_mark_type, transactional_table,
+      isolation_level_, kind(), row_mark_type, transactional_table, write_batch.has_transaction(),
       deadline(), partial_range_key_intents, tablet().shared_lock_manager()));
 
   TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");

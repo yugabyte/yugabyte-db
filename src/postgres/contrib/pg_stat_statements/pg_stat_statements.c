@@ -79,6 +79,8 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
+
+#include "common/pg_yb_common.h"
 #include "yb/server/pgsql_webserver_wrapper.h"
 
 PG_MODULE_MAGIC;
@@ -454,20 +456,20 @@ _PG_fini(void)
 	ProcessUtility_hook = prev_ProcessUtility;
 }
 
-static void 
+static void
 resetYsqlStatementStats()
 {
   pg_stat_statements_reset(NULL);
 }
 
-static void 
+static void
 getYsqlStatementStats(void *cb_arg)
 {
 	HASH_SEQ_STATUS hash_seq;
 	char	   *qbuffer = NULL;
 	Size		qbuffer_size = 0;
 	pgssEntry  *entry;
-  YsqlStatementStat tmp;
+	YsqlStatementStat tmp;
 
 	qbuffer = qtext_load_file(&qbuffer_size);
 	if (qbuffer == NULL)
@@ -495,6 +497,7 @@ getYsqlStatementStats(void *cb_arg)
       tmp.sum_var_time = entry->counters.sum_var_time;
 
       tmp.rows         = entry->counters.rows;
+      tmp.query_id     = entry->key.queryid;
 
       WriteStatArrayElemToJson(cb_arg, &tmp);
     }
@@ -2291,6 +2294,26 @@ gc_fail:
 }
 
 /*
+ * Function that caches environmental variable
+ * FLAGS_TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset.
+ *
+ * This avoids the process of checking the value of the environmental variable
+ * time and again.
+ */
+bool
+yb_lwlock_crash_after_acquire_pg_stat_statements_reset()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue(
+		    "FLAGS_TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset");
+	}
+	return cached_value;
+
+}
+
+/*
  * Release all entries.
  */
 static void
@@ -2308,6 +2331,8 @@ entry_reset(void)
 		hash_search(pgss_hash, &entry->key, HASH_REMOVE, NULL);
 	}
 
+	if (yb_lwlock_crash_after_acquire_pg_stat_statements_reset())
+	  kill(getpid(), 9);
 	/*
 	 * Write new empty query file, perhaps even creating a new one to recover
 	 * if the file was missing.

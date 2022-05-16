@@ -272,10 +272,11 @@ class DependencyGraphBuilder:
             logging.info("Running 'ninja -t deps'")
             subprocess.check_call('{} -t deps >ninja_deps.txt'.format(
                 pipes.quote(ninja_path)), shell=True)
-            start_time = time.time()
+
+            start_time_sec = time.time()
             logging.info("Parsing the output of 'ninja -t deps' to infer dependencies")
-            logging.info("Parsing dependencies took %.1f seconds", time.time() - start_time_sec)
             self.parse_depend_file('ninja_deps.txt')
+            logging.info("Parsing dependencies took %.1f seconds", time.time() - start_time_sec)
 
     def register_dependency(self,
                             dependent: str,

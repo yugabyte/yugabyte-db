@@ -8,7 +8,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import io.ebean.Finder;
@@ -22,7 +22,6 @@ import java.nio.file.Paths;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-import java.util.List;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
@@ -151,7 +150,7 @@ public class SupportBundle extends Model {
     SupportBundle supportBundle = getOrBadRequest(bundleUUID);
     Path bundlePath = supportBundle.getPathObject();
     File file = bundlePath.toFile();
-    InputStream is = Util.getInputStreamOrFail(file);
+    InputStream is = FileUtils.getInputStreamOrFail(file);
     return is;
   }
 

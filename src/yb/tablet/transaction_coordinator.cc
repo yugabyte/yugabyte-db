@@ -258,6 +258,7 @@ class TransactionState {
         case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
         case TransactionStatus::SEALED: FALLTHROUGH_INTENDED;
         case TransactionStatus::COMMITTED: FALLTHROUGH_INTENDED;
+        case TransactionStatus::PROMOTED: FALLTHROUGH_INTENDED;
         case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
         case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS: FALLTHROUGH_INTENDED;
         case TransactionStatus::IMMEDIATE_CLEANUP: FALLTHROUGH_INTENDED;
@@ -359,6 +360,7 @@ class TransactionState {
         return TransactionStatusResult{TransactionStatus::PENDING, status_ht.Decremented()};
       }
       case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
+      case TransactionStatus::PROMOTED: FALLTHROUGH_INTENDED;
       case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
       case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS: FALLTHROUGH_INTENDED;
       case TransactionStatus::IMMEDIATE_CLEANUP: FALLTHROUGH_INTENDED;
@@ -554,6 +556,7 @@ class TransactionState {
       case TransactionStatus::COMMITTED:
         return CommittedReplicationFinished(data);
       case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
+      case TransactionStatus::PROMOTED: FALLTHROUGH_INTENDED;
       case TransactionStatus::PENDING:
         return PendingReplicationFinished(data);
       case TransactionStatus::APPLYING:
@@ -1212,7 +1215,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       postponed_leader_actions_.leader_term = term;
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
-        if (state.status() == TransactionStatus::CREATED) {
+        if (state.status() == TransactionStatus::CREATED ||
+            state.status() == TransactionStatus::PROMOTED) {
           it = managed_transactions_.emplace(
               this, *id, context_.clock().Now(), log_prefix_).first;
         } else {

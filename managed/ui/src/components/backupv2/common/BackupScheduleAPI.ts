@@ -8,8 +8,8 @@
  */
 
 import axios from 'axios';
-import moment from 'moment';
 import { ROOT_URL } from '../../../config';
+import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
 import { prepareBackupCreationPayload } from './BackupAPI';
 import { IBackupSchedule } from './IBackupSchedule';
 
@@ -22,7 +22,7 @@ type Schedule_List_Reponse = {
 
 export const getScheduledBackupList = (pageno: number) => {
   const cUUID = localStorage.getItem('customerId');
-  const records_to_fetch = 10;
+  const records_to_fetch = 500;
   const params = {
     direction: 'ASC',
     filter: {},
@@ -54,12 +54,15 @@ export const createBackupSchedule = (values: Record<string, any>) => {
 
   const payload = prepareBackupCreationPayload(values, cUUID);
 
+  payload['scheduleName'] = values['scheduleName'];
+
   if (values['use_cron_expression']) {
     payload['cronExpression'] = values['cron_expression'];
   } else {
-    payload['schedulingFrequency'] = moment()
-      .add(values['policy_interval'], values['policy_interval_type'].value)
-      .diff(moment(), 'millisecond');
+    payload['schedulingFrequency'] =
+      values['policy_interval'] *
+      MILLISECONDS_IN[values['policy_interval_type'].value.toUpperCase()];
+    payload['frequencyTimeUnit'] = values['policy_interval_type'].value.toUpperCase();
   }
 
   return axios.post(requestUrl, payload);

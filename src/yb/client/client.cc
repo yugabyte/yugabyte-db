@@ -189,6 +189,8 @@ using yb::master::GetCDCStreamRequestPB;
 using yb::master::GetCDCStreamResponsePB;
 using yb::master::UpdateCDCStreamRequestPB;
 using yb::master::UpdateCDCStreamResponsePB;
+using yb::master::IsBootstrapRequiredRequestPB;
+using yb::master::IsBootstrapRequiredResponsePB;
 using yb::master::GetMasterClusterConfigRequestPB;
 using yb::master::GetMasterClusterConfigResponsePB;
 using yb::master::CreateTransactionStatusTableRequestPB;
@@ -1466,6 +1468,28 @@ Status YBClient::UpdateCDCStream(const CDCStreamId& stream_id,
   return Status::OK();
 }
 
+Result<bool> YBClient::IsBootstrapRequired(const TableId& table_id,
+                                           const boost::optional<CDCStreamId>& stream_id) {
+  IsBootstrapRequiredRequestPB req;
+  IsBootstrapRequiredResponsePB resp;
+
+  req.add_table_ids(table_id);
+  if (stream_id) {
+    req.add_stream_ids(*stream_id);
+  }
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, IsBootstrapRequired);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  if (resp.results_size() != 1) {
+    return STATUS(IllegalState, Format("Expected 1 result, received: $0", resp.results_size()));
+  }
+
+  return resp.results(0).bootstrap_required();
+}
+
 Status YBClient::UpdateConsumerOnProducerSplit(
     const string& producer_id,
     const CDCStreamId& stream_id,
@@ -1648,6 +1672,7 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
     // TODO(bogdan): Figure out how to handle read replias and leader affinity.
     replication_info.clear_read_replicas();
     replication_info.clear_affinitized_leaders();
+    replication_info.clear_multi_affinitized_leaders();
   } else {
     // Table replication info exists, copy it over.
     replication_info.CopyFrom(table->replication_info().get());
@@ -1660,7 +1685,8 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
   return table_alterer->replication_info(replication_info)->Alter();
 }
 
-Status YBClient::CreateTransactionsStatusTable(const string& table_name) {
+Status YBClient::CreateTransactionsStatusTable(
+    const string& table_name, const master::ReplicationInfoPB* replication_info) {
   if (table_name.rfind(kTransactionTablePrefix, 0) != 0) {
     return STATUS_FORMAT(
         InvalidArgument, "Name '$0' for transaction table does not start with '$1'", table_name,
@@ -1669,6 +1695,9 @@ Status YBClient::CreateTransactionsStatusTable(const string& table_name) {
   master::CreateTransactionStatusTableRequestPB req;
   master::CreateTransactionStatusTableResponsePB resp;
   req.set_table_name(table_name);
+  if (replication_info) {
+    *req.mutable_replication_info() = *replication_info;
+  }
   CALL_SYNC_LEADER_MASTER_RPC_EX(Admin, req, resp, CreateTransactionStatusTable);
   return Status::OK();
 }

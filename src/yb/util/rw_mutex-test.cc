@@ -31,6 +31,7 @@
 //
 
 #include <mutex>
+#include <shared_mutex>
 #include <thread>
 #include <vector>
 
@@ -44,6 +45,7 @@
 #include "yb/util/test_util.h"
 
 using std::lock_guard;
+using std::shared_lock;
 using std::thread;
 using std::try_to_lock;
 using std::unique_lock;
