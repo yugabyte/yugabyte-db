@@ -41,7 +41,7 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
   bool IsTabletSplittingComplete(const TableInfoMap& table_info_map);
 
   // Perform one round of tablet splitting. This method is not thread-safe.
-  void MaybeDoSplitting(const TableInfoMap& table_info_map);
+  void MaybeDoSplitting(const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map);
 
   void ProcessSplitTabletResult(const TableId& split_table_id,
                                 const SplitTabletIds& split_tablet_ids);
@@ -69,7 +69,7 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
 
   bool HasOutstandingTabletSplits(const TableInfoMap& table_info_map);
 
-  void DoSplitting(const TableInfoMap& table_info_map);
+  void DoSplitting(const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map);
 
   Status ValidateIndexTablePartitioning(const TableInfo& table);
   Status ValidateTableAgainstDisabledList(const TableId& table_id);
