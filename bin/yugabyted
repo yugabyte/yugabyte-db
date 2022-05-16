@@ -2218,7 +2218,7 @@ class YBAdminProxy(object):
     def get_cluster_rf(master_addrs):
         cluster_config = YBAdminProxy.get_cluster_config(master_addrs)
         if cluster_config:
-            if cluster_config.has_key("replicationInfo"):
+            if "replicationInfo" in cluster_config:
                 return cluster_config["replicationInfo"]["liveReplicas"]["numReplicas"]
             else:
                 return 1
