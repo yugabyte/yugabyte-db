@@ -184,11 +184,11 @@ public class NodeManager extends DevopsBase {
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
-      // Instance may not be present if it is deleted from NodeInstance table
-      // after a release action.
-      NodeInstance node = NodeInstance.get(nodeTaskParam.nodeUuid);
+      // Instance may not be present if it is deleted from NodeInstance table after a release
+      // action. Node UUID is not available in 2.6.
+      Optional<NodeInstance> node = NodeInstance.maybeGetByName(nodeTaskParam.getNodeName());
       command.add("--node_metadata");
-      command.add(node == null ? "{}" : node.getDetailsJson());
+      command.add(node.isPresent() ? node.get().getDetailsJson() : "{}");
     }
     return command;
   }
@@ -2040,8 +2040,12 @@ public class NodeManager extends DevopsBase {
       }
     }
     if (nodeTaskParam.nodeUuid == null) {
-      // This is for backward compatibility where node UUID is not set in the Universe.
-      nodeTaskParam.nodeUuid = Util.generateNodeUUID(universe.universeUUID, nodeTaskParam.nodeName);
+      UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
+      if (!Common.CloudType.onprem.equals(userIntent.providerType)) {
+        // This is for backward compatibility where node UUID is not set in the Universe.
+        nodeTaskParam.nodeUuid =
+            Util.generateNodeUUID(universe.universeUUID, nodeTaskParam.nodeName);
+      }
     }
   }
 
