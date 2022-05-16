@@ -142,6 +142,9 @@ DEFINE_test_flag(bool, exit_unfinished_merging, false,
 DEFINE_bool(disable_universe_gc, false,
             "Whether to run the GC on universes or not.");
 TAG_FLAG(disable_universe_gc, runtime);
+DEFINE_test_flag(double, crash_during_sys_catalog_restoration, 0.0,
+                 "Probability of crash during the RESTORE_SYS_CATALOG phase.");
+TAG_FLAG(TEST_crash_during_sys_catalog_restoration, runtime);
 
 namespace yb {
 
@@ -966,6 +969,7 @@ Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_p
       case SysRowEntryType::SNAPSHOT:  FALLTHROUGH_INTENDED;
       case SysRowEntryType::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::SNAPSHOT_RESTORATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -1962,22 +1966,43 @@ Status CatalogManager::RestoreSysCatalog(
     RETURN_NOT_OK(status);
   }
 
+  // Crash for tests.
+  MAYBE_FAULT(FLAGS_TEST_crash_during_sys_catalog_restoration);
+
   // Restore the other tables.
   RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch, master_->clock()->Now()));
 
-  // Apply write batch to RocksDB.
-  state.WriteToRocksDB(&write_batch, restoration->write_time, restoration->op_id, tablet);
+  // Updates the restoration state to indicate that sys catalog phase has completed.
+  // Also, initializes the master side perceived list of tables/tablets/namespaces
+  // that need to be restored for verification post sys catalog load.
+  // Also, re-initializes the tablet list since it could have been changed from the
+  // time of snapshot creation.
+  // Also, generates the restoration state entry.
+  // This is to persist the restoration so that on restarts the RESTORE_ON_TABLET
+  // rpcs can be retried.
+  auto restore_kv = VERIFY_RESULT(
+      snapshot_coordinator_.UpdateRestorationAndGetWritePair(restoration));
 
-  // TODO(pitr) Handle master leader failover.
-  RETURN_NOT_OK(ElectedAsLeaderCb());
+  // Apply write batch to RocksDB.
+  state.WriteToRocksDB(
+      &write_batch, restore_kv, restoration->write_time, restoration->op_id, tablet);
+
+  LOG_WITH_PREFIX(INFO) << "PITR: In leader term " << LeaderTerm()
+                        << ", wrote " << write_batch.size() << " entries to rocksdb";
+
+  if (LeaderTerm() >= 0) {
+    RETURN_NOT_OK(ElectedAsLeaderCb());
+  }
 
   return Status::OK();
 }
 
-Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) {
-  auto entries = VERIFY_RESULT(CollectEntriesForSnapshot(
-      restoration.schedules[0].second.tables().tables()));
-  auto objects_to_restore = restoration.non_system_objects_to_restore;
+Status CatalogManager::VerifyRestoredObjects(
+    const std::unordered_map<std::string, SysRowEntryType>& objects,
+    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) {
+  std::unordered_map<std::string, SysRowEntryType> objects_to_restore = objects;
+  auto entries = VERIFY_RESULT(CollectEntriesForSnapshot(tables));
+  // auto objects_to_restore = restoration.non_system_objects_to_restore;
   VLOG_WITH_PREFIX(1) << "Objects to restore: " << AsString(objects_to_restore);
   // There could be duplicate entries collected, for instance in the case of
   // colocated tables.
@@ -2168,11 +2193,11 @@ rpc::Scheduler& CatalogManager::Scheduler() {
 int64_t CatalogManager::LeaderTerm() {
   auto peer = tablet_peer();
   if (!peer) {
-    return false;
+    return -1;
   }
   auto consensus = peer->shared_consensus();
   if (!consensus) {
-    return false;
+    return -1;
   }
   return consensus->GetLeaderState(/* allow_stale= */ true).term;
 }
