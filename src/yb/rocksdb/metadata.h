@@ -33,6 +33,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/byte_buffer.h"
 #include "yb/util/clone_ptr.h"
 #include "yb/util/slice.h"
 #include "yb/util/enums.h"
@@ -195,23 +196,66 @@ inline bool operator==(const UserFrontiers& lhs, const UserFrontiers& rhs) {
 
 typedef uint32_t UserBoundaryTag;
 
-class UserBoundaryValue {
- public:
-  virtual UserBoundaryTag Tag() = 0;
-  virtual yb::Slice Encode() = 0;
-  virtual int CompareTo(const UserBoundaryValue& rhs) = 0;
- protected:
-  ~UserBoundaryValue() {}
+struct UserBoundaryValueRef {
+  UserBoundaryTag tag;
+  Slice value;
+
+  Slice AsSlice() const {
+    return value;
+  }
 };
 
-typedef std::shared_ptr<UserBoundaryValue> UserBoundaryValuePtr;
-typedef boost::container::small_vector_base<UserBoundaryValuePtr> UserBoundaryValues;
+struct UserBoundaryValue {
+  static constexpr size_t kBufferSize = 128;
+  using Value = yb::ByteBuffer<kBufferSize>;
+
+  UserBoundaryTag tag;
+  Value value;
+
+  UserBoundaryValue() = default;
+
+  UserBoundaryValue(UserBoundaryTag tag_, const Slice& value_)
+      : tag(tag_), value(value_) {
+  }
+
+  explicit UserBoundaryValue(const UserBoundaryValueRef& ref)
+      : tag(ref.tag), value(ref.value) {
+  }
+
+  yb::Slice AsSlice() const {
+    return value.AsSlice();
+  }
+
+  int CompareTo(const Slice& rhs) {
+    return AsSlice().compare(rhs);
+  }
+
+  int CompareTo(const UserBoundaryValueRef& rhs) {
+    return CompareTo(rhs.AsSlice());
+  }
+
+  int CompareTo(const UserBoundaryValue& rhs) {
+    return CompareTo(rhs.AsSlice());
+  }
+};
+
+typedef boost::container::small_vector_base<UserBoundaryValue> UserBoundaryValues;
+typedef boost::container::small_vector_base<UserBoundaryValueRef> UserBoundaryValueRefs;
 
 struct FileBoundaryValuesBase {
   SequenceNumber seqno; // Boundary sequence number in file.
   UserFrontierPtr user_frontier;
   // We expect that there will be just a few user values, so use small_vector for it.
-  boost::container::small_vector<UserBoundaryValuePtr, 10> user_values;
+  boost::container::small_vector<UserBoundaryValue, 10> user_values;
+
+  std::string ToString() const;
+};
+
+struct FileBoundaryValueRefs {
+  SequenceNumber seqno; // Boundary sequence number in file.
+  UserFrontierPtr user_frontier;
+  // We expect that there will be just a few user values, so use small_vector for it.
+  boost::container::small_vector<UserBoundaryValueRef, 10> user_values;
 
   std::string ToString() const;
 };
@@ -221,30 +265,30 @@ struct FileBoundaryValues : FileBoundaryValuesBase {
   KeyType key; // Boundary key in the file.
 };
 
-inline UserBoundaryValuePtr UserValueWithTag(const UserBoundaryValues& values,
-                                             UserBoundaryTag tag) {
+inline const UserBoundaryValue* TEST_UserValueWithTag(const UserBoundaryValues& values,
+                                                      UserBoundaryTag tag) {
   for (const auto& value : values) {
-    if (value->Tag() == tag)
-      return value;
+    if (value.tag == tag)
+      return &value;
   }
-  return UserBoundaryValuePtr();
+  return nullptr;
 }
 
-inline void UpdateUserValue(UserBoundaryValues* values,
-                            const UserBoundaryValuePtr& new_value,
-                            UpdateUserValueType type) {
-  int compare_sign = static_cast<int>(type);
-  auto tag = new_value->Tag();
-  for (auto& value : *values) {
-    if (value->Tag() == tag) {
-      if (value->CompareTo(*new_value) * compare_sign > 0) {
-        value = new_value;
-      }
-      return;
-    }
-  }
-  values->push_back(new_value);
-}
+void UpdateUserValue(
+    UserBoundaryValues* values, UserBoundaryTag tag, const Slice& new_value,
+    UpdateUserValueType type);
+
+void UpdateUserValue(
+    UserBoundaryValues* values, const UserBoundaryValueRef& new_value, UpdateUserValueType type);
+
+void UpdateUserValue(
+    UserBoundaryValues* values, const UserBoundaryValue& new_value, UpdateUserValueType type);
+
+void UpdateUserValues(
+    const UserBoundaryValueRefs& source, UpdateUserValueType type, UserBoundaryValues* values);
+
+void UpdateUserValues(
+    const UserBoundaryValues& source, UpdateUserValueType type, UserBoundaryValues* values);
 
 // The metadata that describes a SST fileset.
 struct SstFileMetaData {

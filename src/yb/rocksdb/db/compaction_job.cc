@@ -145,17 +145,13 @@ struct CompactionJob::SubcompactionState : public CompactionFeed {
     // Open output file if necessary
     if (builder == nullptr) {
       RETURN_NOT_OK(open_compaction_output_file());
+      current_output()->meta.UpdateKey(key, UpdateBoundariesType::kSmallest);
     }
     DCHECK_ONLY_NOTNULL(builder);
     DCHECK_ONLY_NOTNULL(current_output());
 
     builder->Add(key, value);
-    auto boundaries = MakeFileBoundaryValues(boundary_extractor, key, value);
-    if (!boundaries) {
-      return std::move(boundaries.status());
-    }
-    auto& boundary_values = *boundaries;
-    current_output()->meta.UpdateBoundaries(std::move(boundary_values.key), boundary_values);
+    current_output()->meta.UpdateBoundarySeqNo(GetInternalKeySeqno(key));
     num_output_records++;
     return Status::OK();
   }
@@ -634,6 +630,7 @@ void CompactionJob::ProcessKeyValueCompaction(
   if (db_options_.compaction_context_factory) {
     auto context = CompactionContextOptions {
       .level0_inputs = *compact_->compaction->inputs(0),
+      .boundary_extractor = sub_compact->boundary_extractor,
     };
     sub_compact->context = (*db_options_.compaction_context_factory)(sub_compact, context);
     sub_compact->feed = sub_compact->context->Feed();
@@ -807,6 +804,11 @@ Status CompactionJob::FinishCompactionOutputFile(
   assert((sub_compact->data_outfile != nullptr) == is_split_sst);
   assert(sub_compact->builder != nullptr);
   assert(sub_compact->current_output() != nullptr);
+
+  if (sub_compact->builder) {
+    sub_compact->current_output()->meta.UpdateKey(
+        sub_compact->builder->LastKey(), UpdateBoundariesType::kLargest);
+  }
 
   uint64_t output_number = sub_compact->current_output()->meta.fd.GetNumber();
   assert(output_number != 0);

@@ -129,7 +129,7 @@ extern bool ParseInternalKey(const Slice& internal_key,
 // Returns the user key portion of an internal key.
 inline Slice ExtractUserKey(const Slice& internal_key) {
   assert(internal_key.size() >= kLastInternalComponentSize);
-  return Slice(internal_key.data(), internal_key.size() - kLastInternalComponentSize);
+  return internal_key.WithoutSuffix(kLastInternalComponentSize);
 }
 
 inline ValueType ExtractValueType(const Slice& internal_key) {
@@ -225,23 +225,17 @@ class InternalKey {
   static std::string DebugString(const std::string& rep, bool hex = false);
  private:
   explicit InternalKey(const Slice& slice)
-      : rep_(slice.ToBuffer()) {
+      : rep_(slice.cdata(), slice.size()) {
   }
 };
 
 class BoundaryValuesExtractor {
  public:
-  virtual Status Decode(UserBoundaryTag tag, Slice data, UserBoundaryValuePtr* value) = 0;
-  virtual Status Extract(Slice user_key, Slice value, UserBoundaryValues* values) = 0;
+  virtual Status Extract(Slice user_key, UserBoundaryValueRefs* values) = 0;
   virtual UserFrontierPtr CreateFrontier() = 0;
  protected:
   ~BoundaryValuesExtractor() {}
 };
-
-yb::Result<FileBoundaryValues<InternalKey>> MakeFileBoundaryValues(
-    BoundaryValuesExtractor* extractor,
-    const Slice& key,
-    const Slice& value);
 
 // Create FileBoundaryValues from specified user_key, seqno, value_type.
 inline FileBoundaryValues<InternalKey> MakeFileBoundaryValues(

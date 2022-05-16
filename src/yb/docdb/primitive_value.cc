@@ -664,6 +664,20 @@ Status KeyEntryValue::DecodeFromKey(Slice* slice) {
   return DecodeKey(slice, this);
 }
 
+Result<KeyEntryValue> KeyEntryValue::FullyDecodeFromKey(const Slice& slice) {
+  auto slice_copy = slice;
+  KeyEntryValue result;
+  RETURN_NOT_OK(result.DecodeFromKey(&slice_copy));
+  if (!slice_copy.empty()) {
+    return STATUS_FORMAT(
+        Corruption,
+        "Extra data after decoding key entry value: $0 - $1",
+        slice.WithoutSuffix(slice_copy.size()).ToDebugHexString(),
+        slice_copy.ToDebugHexString());
+  }
+  return result;
+}
+
 Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
   // A copy for error reporting.
   const auto input_slice = *slice;
