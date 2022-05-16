@@ -332,8 +332,8 @@ Status DocDBRocksDBUtil::AddExternalIntents(
       kv_pair.set_value(value_.ToStringBuffer());
       ExternalTxnApplyState external_txn_apply_state;
       AddExternalPairToWriteBatch(
-          kv_pair, hybrid_time_, /* write_id= */ 0, &external_txn_apply_state,
-          /* regular_write_batch= */ nullptr, batch);
+          kv_pair, hybrid_time_, &external_txn_apply_state,
+          /* regular_write_batch= */ nullptr, batch, nullptr);
     }
 
     boost::optional<std::pair<Slice, Slice>> Next() override {

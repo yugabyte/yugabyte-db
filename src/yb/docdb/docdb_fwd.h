@@ -31,6 +31,7 @@ class DocOperation;
 class DocPath;
 class DocRowwiseIterator;
 class DocWriteBatch;
+class ExternalTxnIntentsState;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
 class KeyBytes;
