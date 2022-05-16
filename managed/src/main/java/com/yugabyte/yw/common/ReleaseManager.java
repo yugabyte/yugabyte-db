@@ -17,8 +17,10 @@ import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -78,16 +80,25 @@ public class ReleaseManager {
 
   public Map<String, String> getLocalReleases(String localReleasePath) {
     Map<String, String> releaseMap = new HashMap<>();
-
+    Set<String> duplicateKeys = new HashSet<>();
     try {
-      // Return a map of version# and software package
-      releaseMap =
-          Files.walk(Paths.get(localReleasePath))
-              .filter(packagesFilter)
-              .collect(
-                  Collectors.toMap(
-                      p -> p.getName(p.getNameCount() - 2).toString(),
-                      p -> p.toAbsolutePath().toString()));
+      Files.walk(Paths.get(localReleasePath))
+          .filter(packagesFilter)
+          .forEach(
+              p -> {
+                String key = p.getName(p.getNameCount() - 2).toString();
+                String value = p.toAbsolutePath().toString();
+                if (!releaseMap.containsKey(key)) {
+                  releaseMap.put(key, value);
+                } else if (!duplicateKeys.contains(key)) {
+                  LOG.warn(
+                      String.format(
+                          "Skipping %s - it contains multiple releases of same architecture type",
+                          key));
+                  duplicateKeys.add(key);
+                }
+              });
+      duplicateKeys.forEach(k -> releaseMap.remove(k));
     } catch (IOException e) {
       LOG.error(e.getMessage());
     }
