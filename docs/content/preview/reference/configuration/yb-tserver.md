@@ -394,7 +394,7 @@ Default: `""`
 
 ##### --force_global_transactions
 
-If true, forces all transactions through this instance to always be global transactions that use the `system.transactions` transaction status table. This is equivalent to always setting the session variable `force_global_transaction = TRUE` (see [Row-Level Geo-Partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/#step-5-running-transactions)).
+If true, forces all transactions through this instance to always be global transactions that use the `system.transactions` transaction status table. This is equivalent to always setting the session variable `force_global_transaction = TRUE`.
 
 {{< note title="Global transaction latency" >}}
 
@@ -403,6 +403,18 @@ Avoid setting this flag when possible. All distributed transactions _can_ run wi
 {{< /note >}}
 
 Default: `false`
+
+#### --auto-create-local-transaction-tables
+
+If true, transaction status tables will be created under each YSQL tablespace that has a placement set and contains at least one other table.
+
+Default: `true`
+
+#### --auto-promote-nonlocal-transactions-to-global
+
+If true, local transactions using transaction status tables other than `system.transactions` will be automatically promoted to global transactions using the `system.transactions` transaction status table upon accessing data outside of the local region.
+
+Default: `true`
 
 ---
 
