@@ -31,11 +31,15 @@ import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.db.ebean.EbeanDynamicEvolutions;
+import play.libs.Json;
 
 /** Factory to create RuntimeConfig for various scopes */
 @Singleton
 public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   private static final Logger LOG = LoggerFactory.getLogger(SettableRuntimeConfigFactory.class);
+
+  @VisibleForTesting
+  static final String RUNTIME_CONFIG_INCLUDED_OBJECTS = "runtime_config.included_objects";
 
   private final Config appConfig;
 
@@ -101,6 +105,10 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   @VisibleForTesting
   Config getConfigForScope(UUID scope, String description) {
     Map<String, String> values = RuntimeConfigEntry.getAsMapForScope(scope);
+    return toConfig(description, values);
+  }
+
+  private Config toConfig(String description, Map<String, String> values) {
     String confStr = toConfigString(values);
     Config config =
         ConfigFactory.parseString(
@@ -113,7 +121,17 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
     return values
         .entrySet()
         .stream()
-        .map(entry -> entry.getKey() + "=" + entry.getValue())
+        .map(entry -> entry.getKey() + "=" + maybeQuote(entry))
         .collect(Collectors.joining("\n"));
+  }
+
+  private String maybeQuote(Map.Entry<String, String> entry) {
+    final boolean isObject =
+        appConfig.getStringList(RUNTIME_CONFIG_INCLUDED_OBJECTS).contains(entry.getKey());
+    if (isObject || entry.getValue().startsWith("\"")) {
+      // No need to escape
+      return entry.getValue();
+    }
+    return Json.stringify(Json.toJson(entry.getValue()));
   }
 }
