@@ -187,6 +187,10 @@ void SysCatalogTable::StartShutdown() {
   if (peer) {
     CHECK(peer->StartShutdown());
   }
+
+  if (multi_raft_manager_) {
+    multi_raft_manager_->StartShutdown();
+  }
 }
 
 void SysCatalogTable::CompleteShutdown() {
@@ -197,6 +201,9 @@ void SysCatalogTable::CompleteShutdown() {
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();
   tablet_prepare_pool_->Shutdown();
+  if (multi_raft_manager_) {
+    multi_raft_manager_->CompleteShutdown();
+  }
 }
 
 Status SysCatalogTable::ConvertConfigToMasterAddresses(
