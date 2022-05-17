@@ -14,7 +14,8 @@ const initialStateFeatureInTest = {
   enablePathStyleAccess: false,
   backupv2: false,
   enableOIDC: false,
-  supportBundle: false
+  supportBundle: false,
+  enableThirdpartyUpgrade: false
 };
 
 const initialStateFeatureReleased = {
@@ -31,7 +32,8 @@ const initialStateFeatureReleased = {
   enablePathStyleAccess: false,
   backupv2: false,
   enableOIDC: false,
-  supportBundle: true
+  supportBundle: true,
+  enableThirdpartyUpgrade: false
 };
 
 export const FeatureFlag = (

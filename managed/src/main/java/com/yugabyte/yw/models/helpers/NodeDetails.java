@@ -75,6 +75,8 @@ public class NodeDetails {
     // Set when a new node is provisioned and configured but before it is added into
     // the existing cluster.
     ToJoinCluster(REMOVE),
+    // Set when reprovision node.
+    Reprovisioning(),
     // Set after the node (without any configuration) is created using the IaaS provider at the
     // end of the provision step before it is set up and configured.
     Provisioned(DELETE),
