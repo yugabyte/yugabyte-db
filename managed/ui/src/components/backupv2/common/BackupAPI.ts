@@ -56,8 +56,8 @@ export function getBackupsList(
     payload.filter['dateRangeEnd'] = timeRange.endTime.toISOString();
   }
 
-  if(Array.isArray(moreFilters) && moreFilters?.length > 0){
-    payload.filter[moreFilters[0].value] = true
+  if (Array.isArray(moreFilters) && moreFilters?.length > 0) {
+    payload.filter[moreFilters[0].value] = true;
   }
 
   return axios.post(`${ROOT_URL}/customers/${cUUID}/backups/page`, payload);
