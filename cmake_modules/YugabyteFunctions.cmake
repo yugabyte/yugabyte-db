@@ -713,15 +713,6 @@ macro(enable_lto_if_needed)
   if("${YB_LINKING_TYPE}" MATCHES "^(thin|full)-lto$")
     message("Enabling ${CMAKE_MATCH_1} LTO based on linking type: ${YB_LINKING_TYPE}")
     ADD_CXX_FLAGS("-flto=${CMAKE_MATCH_1} -fuse-ld=lld")
-  elseif("${YB_BUILD_TYPE}" STREQUAL "release" AND
-         "${YB_COMPILER_TYPE}" STREQUAL "clang12" AND
-         USING_LINUXBREW AND
-         NOT APPLE)
-    # We keep this special logic here until we incorporate the knowledge of linking type into our
-    # CI/CD pipeline.
-    message("Enabling full LTO and lld linker based on build type ${YB_BUILD_TYPE}, "
-            "compiler type ${YB_COMPILER_TYPE} and use of Linuxbrew")
-    ADD_CXX_FLAGS("-flto=full -fuse-ld=lld")
   else()
     message("Not enabling LTO: "
             "YB_BUILD_TYPE=${YB_BUILD_TYPE}, "
