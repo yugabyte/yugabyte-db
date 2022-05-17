@@ -40,13 +40,13 @@ To create a VPC network in AWS, you need to complete the following tasks:
 
 | Task | Notes |
 | :--- | :--- |
-| 1. [Create the VPC](#create-a-vpc) | Reserves a range of IP addresses for the network.<br>The status of the VPC is _Active_ when done. |
-| 2. [Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc) | This can be done at any time - you don't need to wait until the VPC is peered. |
-| 3. [Create a peering connection](#create-a-peering-connection) | Connects your VPC and the application VPC on the cloud provider network.<br>The status of the peering connection is _Pending_ when done. |
-| 4. [Accept the peering request in AWS](#accept-the-peering-request-in-aws) | Confirms the connection between your VPC and the application VPC.<br>The status of the peering connection is _Active_ when done. |
-| 5. [Add the application VPC to the IP allow list](#add-the-application-vpc-to-the-cluster-ip-allow-list) | Allows the peered application VPC to connect to the cluster.<br>Add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster. |
+| **[Create the VPC](#create-a-vpc)** | Reserves a range of IP addresses for the network.<br>The status of the VPC is _Active_ when done. |
+| **[Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc)** | This can be done at any time - you don't need to wait until the VPC is peered. |
+| **[Create a peering connection](#create-a-peering-connection)** | Connects your VPC and the application VPC on the cloud provider network.<br>The status of the peering connection is _Pending_ when done. |
+| **[Accept the peering request in AWS](#accept-the-peering-request-in-aws)** | Confirms the connection between your VPC and the application VPC.<br>The status of the peering connection is _Active_ when done. |
+| **[Add the application VPC to the IP allow list](#add-the-application-vpc-to-the-cluster-ip-allow-list)** | Allows the peered application VPC to connect to the cluster.<br>Add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster. |
 
-With the exception of 4, these tasks are performed in YugabyteDB Managed.
+With the exception of accepting the peering request in AWS, these tasks are performed in YugabyteDB Managed.
 
 For information on VPC network peering in AWS, refer to [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html) in the AWS documentation.
 
@@ -54,9 +54,9 @@ For information on VPC network peering in AWS, refer to [VPC Peering](https://do
 
 To avoid cross-region data transfer costs, deploy your VPC in the same region as the application VPC you are peering with.
 
-> You need the CIDR range for the application VPC with which you want to peer, as _the addresses can't overlap_.
+> **What you need**<br>The CIDR range for the application VPC with which you want to peer, as _the addresses can't overlap_.
 >
-> To view the application VPC CIDR address, navigate to the AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region hosting the VPC you want to peer.
+> **Where to find it**<br>Navigate to the AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region hosting the VPC you want to peer.
 
 To create a VPC, do the following:
 
@@ -93,14 +93,14 @@ For more information on creating clusters, refer to [Create a cluster](../../cre
 
 After creating a VPC in YugabyteDB Managed that uses AWS, you can peer it with an AWS application VPC.
 
-> You need the following details for the AWS application VPC you are peering with:
+> **What you need**<br>The following details for the AWS application VPC you are peering with:
 >
 > - Account ID
 > - VPC ID
 > - VPC region
 > - VPC CIDR address
 >
-> To obtain these details, navigate to your AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region hosting the VPC you want to peer.
+> **Where to find it**<br>Navigate to your AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region hosting the VPC you want to peer.
 
 To create a peering connection, in YugabyteDB Managed do the following:
 
@@ -118,9 +118,9 @@ The peering connection is created with a status of _Pending_.
 
 To complete a _Pending_ AWS peering connection, you need to sign in to AWS, accept the peering request, and add a routing table entry.
 
-> You need the CIDR address of the YugabyteDB Managed VPC you are peering with.
+> **What you need**<br>The CIDR address of the YugabyteDB Managed VPC you are peering with.
 >
-> You can view and copy this in the **VPC Details** sheet on the [VPCs page](../cloud-add-vpc/) or the **Peering Details** sheet on the [Peering Connections page](../cloud-add-peering/).
+> **Where to find it**<br>The **VPC Details** sheet on the [VPCs page](../cloud-add-vpc/) or the **Peering Details** sheet on the [Peering Connections page](../cloud-add-peering/).
 
 Sign in to your AWS account and navigate to the region hosting the VPC you want to peer.
 
@@ -160,9 +160,11 @@ When finished, the status of the peering connection in YugabyteDB Managed change
 
 ## Add the application VPC to the cluster IP allow list
 
-> You need the CIDR address for the AWS application VPC you are peering with.
+To enable the application VPC to connect to the cluster, you need to add the VPC to the cluster IP allow list.
+
+> **What you need**<br>The CIDR address for the AWS application VPC you are peering with.
 >
-> To view the application VPC CIDR address, navigate to the AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region hosting the VPC you want to peer.
+> **Where to find it**<br>Navigate to the AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region hosting the VPC you want to peer.
 
 To add the application VPC to the cluster IP allow list:
 

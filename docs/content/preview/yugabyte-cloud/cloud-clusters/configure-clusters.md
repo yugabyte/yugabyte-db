@@ -1,7 +1,7 @@
 ---
 title: Scale and configure clusters
 linkTitle: Scale and configure clusters
-description: Scale YugabyteDB Managed clusters and configure IP allow lists for the cluster.
+description: Scale YugabyteDB Managed clusters.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
