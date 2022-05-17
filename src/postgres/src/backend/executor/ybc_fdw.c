@@ -706,6 +706,17 @@ ybcEndForeignScan(ForeignScanState *node)
 	ybcFreeStatementObject(ybc_state);
 }
 
+/*
+ * ybcExplainForeignScan
+ *		Produce extra output for EXPLAIN of a ForeignScan on a foreign table
+ */
+static void
+ybcExplainForeignScan(ForeignScanState *node, ExplainState *es)
+{
+	if (node->yb_fdw_aggs != NIL)
+		ExplainPropertyBool("Partial Aggregate", true, es);
+}
+
 /* ------------------------------------------------------------------------- */
 /*  FDW declaration */
 
@@ -725,9 +736,9 @@ ybc_fdw_handler()
 	fdwroutine->IterateForeignScan = ybcIterateForeignScan;
 	fdwroutine->ReScanForeignScan  = ybcReScanForeignScan;
 	fdwroutine->EndForeignScan     = ybcEndForeignScan;
+	fdwroutine->ExplainForeignScan = ybcExplainForeignScan;
 
 	/* TODO: These are optional but we should support them eventually. */
-	/* fdwroutine->ExplainForeignScan = ybcExplainForeignScan; */
 	/* fdwroutine->AnalyzeForeignTable = ybcAnalyzeForeignTable; */
 	/* fdwroutine->IsForeignScanParallelSafe = ybcIsForeignScanParallelSafe; */
 

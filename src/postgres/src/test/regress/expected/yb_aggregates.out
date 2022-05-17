@@ -285,3 +285,36 @@ SELECT SUM(r) = 6 from (SELECT random() as r from t4) as res;
 ----------
  f
 (1 row)
+
+-- Test EXPLAIN with aggregate pushdown
+EXPLAIN (COSTS OFF) SELECT COUNT(*), SUM(int_4) FROM ybaggtest;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+-- Negative tests - pushdown not supported
+EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY int_2;
+         QUERY PLAN
+-----------------------------
+ HashAggregate
+   Group Key: int_2
+   ->  Seq Scan on ybaggtest
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT DISTINCT int_4 FROM ybaggtest;
+         QUERY PLAN
+-----------------------------
+ HashAggregate
+   Group Key: int_4
+   ->  Seq Scan on ybaggtest
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT COUNT(distinct int_4), SUM(int_4) FROM ybaggtest;
+         QUERY PLAN
+-----------------------------
+ Aggregate
+   ->  Seq Scan on ybaggtest
+(2 rows)
