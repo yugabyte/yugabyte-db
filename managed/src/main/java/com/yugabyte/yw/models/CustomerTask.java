@@ -233,7 +233,10 @@ public class CustomerTask extends Model {
     CreateSupportBundle,
 
     @EnumValue("CreateTableSpaces")
-    CreateTableSpaces;
+    CreateTableSpaces,
+
+    @EnumValue("ThirdpartySoftwareUpgrade")
+    ThirdpartySoftwareUpgrade;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -330,6 +333,10 @@ public class CustomerTask extends Model {
           return completed ? "Task aborted " : "Aborting task ";
         case CreateSupportBundle:
           return completed ? "Created Support Bundle in " : "Creating Support Bundle in ";
+        case ThirdpartySoftwareUpgrade:
+          return completed
+              ? "Upgraded third-party software for "
+              : "Upgrading third-party software for ";
         case CreateTableSpaces:
           return completed ? "Created tablespaces in " : "Creating tablespaces in ";
         default:

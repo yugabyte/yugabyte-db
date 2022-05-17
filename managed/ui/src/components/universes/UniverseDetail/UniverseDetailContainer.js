@@ -102,6 +102,10 @@ const mapDispatchToProps = (dispatch) => {
     showToggleBackupModal: () => {
       dispatch(openDialog('toggleBackupModalForm'));
     },
+    showThirdpartyUpgradeModal: () => {
+      dispatch(openDialog('thirdpartyUpgradeModal'));
+    },
+
     updateBackupState: (universeUUID, flag) => {
       dispatch(updateBackupState(universeUUID, flag)).then((response) => {
         if (response.error) {
