@@ -1691,7 +1691,6 @@ public class NodeManager extends DevopsBase {
           }
           AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params) nodeTaskParam;
           commandArgs.addAll(getConfigureSubCommand(taskParam));
-
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
             commandArgs.add("--tags");

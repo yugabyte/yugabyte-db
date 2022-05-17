@@ -7,7 +7,6 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -15,15 +14,12 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 
 @Slf4j
 public class ResizeNode extends UpgradeTaskBase {
@@ -55,16 +51,14 @@ public class ResizeNode extends UpgradeTaskBase {
           Universe universe = getUniverse();
           // Verify the request params and fail if invalid.
           taskParams().verifyParams(universe);
-
-          Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodesForCluster();
-
+          LinkedHashSet<NodeDetails> nodes = fetchNodesForCluster();
           // Create task sequence to resize nodes.
           for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
-
-            Pair<List<NodeDetails>, List<NodeDetails>> clusterNodes =
-                new ImmutablePair<>(
-                    filterForCluster(nodes.getLeft(), cluster.uuid),
-                    filterForCluster(nodes.getRight(), cluster.uuid));
+            LinkedHashSet<NodeDetails> clusterNodes =
+                nodes
+                    .stream()
+                    .filter(n -> cluster.uuid.equals(n.placementUuid))
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
 
             final UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
 
@@ -77,9 +71,7 @@ public class ResizeNode extends UpgradeTaskBase {
                     || taskParams().isForceResizeNode();
 
             if (instanceTypeIsChanging) {
-              Set<NodeDetails> nodez = new HashSet<>(clusterNodes.getLeft());
-              nodez.addAll(clusterNodes.getRight());
-              createPreResizeNodeTasks(nodez, currentIntent.instanceType, currentIntent.deviceInfo);
+              createPreResizeNodeTasks(nodes, currentIntent.instanceType, currentIntent.deviceInfo);
             }
 
             createRollingNodesUpgradeTaskFlow(
@@ -164,7 +156,7 @@ public class ResizeNode extends UpgradeTaskBase {
 
         // Persist the new instance type in the node details.
         node.cloudInfo.instance_type = newInstanceType;
-        createNodeDetailsUpdateTask(node)
+        createNodeDetailsUpdateTask(node, false)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
       }
     }
@@ -183,23 +175,6 @@ public class ResizeNode extends UpgradeTaskBase {
     ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
     changeInstanceTypeTask.initialize(params);
     subTaskGroup.addSubTask(changeInstanceTypeTask);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  private SubTaskGroup createNodeDetailsUpdateTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("UpdateNodeDetails", executor);
-    UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
-    updateNodeDetailsParams.universeUUID = taskParams().universeUUID;
-    updateNodeDetailsParams.azUuid = node.azUuid;
-    updateNodeDetailsParams.nodeName = node.nodeName;
-    updateNodeDetailsParams.details = node;
-    updateNodeDetailsParams.updateCustomImageUsage = false;
-
-    UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
-    updateNodeTask.initialize(updateNodeDetailsParams);
-    updateNodeTask.setUserTaskUUID(userTaskUUID);
-    subTaskGroup.addSubTask(updateNodeTask);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

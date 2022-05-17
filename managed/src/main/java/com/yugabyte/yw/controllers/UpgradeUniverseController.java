@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -205,6 +206,34 @@ public class UpgradeUniverseController extends AuthenticatedController {
         upgradeUniverseHandler::resizeNode,
         ResizeNodeParams.class,
         Audit.ActionType.ResizeNode,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
+   * API that upgrades third-party software on nodes in the universe. Supports only rolling upgrade.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @ApiOperation(
+      value = "Upgrade third-party software",
+      notes = "Queues a task to perform upgrade third-party software in a universe.",
+      nickname = "upgradeThirdpartySoftware",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "thirdparty_software_upgrade_params",
+          value = "Thirdparty Software Upgrade Params",
+          dataType = "com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams",
+          required = true,
+          paramType = "body"))
+  public Result upgradeThirdpartySoftware(UUID customerUuid, UUID universeUuid) {
+    return requestHandler(
+        upgradeUniverseHandler::thirdpartySoftwareUpgrade,
+        ThirdpartySoftwareUpgradeParams.class,
+        Audit.ActionType.ThirdpartySoftwareUpgrade,
         customerUuid,
         universeUuid);
   }

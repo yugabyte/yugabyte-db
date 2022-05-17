@@ -52,7 +52,7 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public VmUpgradeTaskType vmUpgradeTaskType = VmUpgradeTaskType.None;
 
     // In case a node doesn't have custom AMI, ignore the value of USE_CUSTOM_IMAGE config.
-    public boolean ignoreUseCustomImageConfig;
+    public boolean ignoreUseCustomImageConfig = false;
   }
 
   @Override

@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner;
 
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -166,16 +167,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
    * Used for full node upgrades (for example resize) where all processes are stopped.
    *
    * @param lambda - for performing upgrade actions
-   * @param mastersAndTServers - pair of masters and servers, sorted in appropriate order.
+   * @param nodeSet - set of nodes sorted in appropriate order.
    */
   public void createRollingNodesUpgradeTaskFlow(
-      IUpgradeSubTask lambda,
-      Pair<List<NodeDetails>, List<NodeDetails>> mastersAndTServers,
-      UpgradeContext context) {
-    Set<NodeDetails> nodeSet = new LinkedHashSet<>();
-    nodeSet.addAll(mastersAndTServers.getLeft());
-    nodeSet.addAll(mastersAndTServers.getRight());
-
+      IUpgradeSubTask lambda, LinkedHashSet<NodeDetails> nodeSet, UpgradeContext context) {
     createRollingUpgradeTaskFlow(
         lambda,
         nodeSet,
@@ -430,6 +425,26 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
+  protected TaskExecutor.SubTaskGroup createNodeDetailsUpdateTask(
+      NodeDetails node, boolean updateCustomImageUsage) {
+    TaskExecutor.SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UpdateNodeDetails", executor);
+    UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
+    updateNodeDetailsParams.universeUUID = taskParams().universeUUID;
+    updateNodeDetailsParams.azUuid = node.azUuid;
+    updateNodeDetailsParams.nodeName = node.nodeName;
+    updateNodeDetailsParams.details = node;
+    updateNodeDetailsParams.updateCustomImageUsage = updateCustomImageUsage;
+
+    UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
+    updateNodeTask.initialize(updateNodeDetailsParams);
+    updateNodeTask.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(updateNodeTask);
+
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   protected ServerType getSingle(Set<ServerType> processTypes) {
     if (processTypes.size() != 1) {
       throw new IllegalArgumentException("Expected to have single element, got " + processTypes);
@@ -446,17 +461,19 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         .collect(Collectors.toList());
   }
 
-  protected List<NodeDetails> filterForCluster(List<NodeDetails> nodes, UUID clusterUUID) {
-    return nodes
-        .stream()
-        .filter(n -> clusterUUID.equals(n.placementUuid))
-        .collect(Collectors.toList());
+  public LinkedHashSet<NodeDetails> fetchNodesForCluster() {
+    return toOrderedSet(
+        new ImmutablePair<>(
+            filterForClusters(fetchMasterNodes(taskParams().upgradeOption)),
+            filterForClusters(fetchTServerNodes(taskParams().upgradeOption))));
   }
 
-  public ImmutablePair<List<NodeDetails>, List<NodeDetails>> fetchNodesForCluster() {
-    return new ImmutablePair<>(
-        filterForClusters(fetchMasterNodes(taskParams().upgradeOption)),
-        filterForClusters(fetchTServerNodes(taskParams().upgradeOption)));
+  protected LinkedHashSet<NodeDetails> toOrderedSet(
+      Pair<List<NodeDetails>, List<NodeDetails>> nodes) {
+    LinkedHashSet<NodeDetails> nodeSet = new LinkedHashSet<>();
+    nodeSet.addAll(nodes.getLeft());
+    nodeSet.addAll(nodes.getRight());
+    return nodeSet;
   }
 
   public ImmutablePair<List<NodeDetails>, List<NodeDetails>> fetchNodes(
