@@ -134,4 +134,19 @@ public class ShellProcessHandlerTest extends TestCase {
     assertNotEquals(0, response.code);
     assertThat(response.message.trim(), allOf(notNullValue(), equalTo("error")));
   }
+
+  @Test
+  public void testGetPythonErrMsg() {
+    String errMsg =
+        "<yb-python-error>{\"type\": \"YBOpsRuntimeError\","
+            + "\"message\": \"Runtime error: Instance: i does not exist\","
+            + "\"file\": \"/Users/test/code/yugabyte-db/managed/devops/venv/bin/ybcloud.py\","
+            + "\"method\": \"<module>\", \"line\": 4}</yb-python-error>";
+    String out = ShellProcessHandler.getPythonErrMsg(0, errMsg);
+    assertNull(out);
+    out = ShellProcessHandler.getPythonErrMsg(2, errMsg);
+    assertEquals("YBOpsRuntimeError: Runtime error: Instance: i does not exist", out);
+    out = ShellProcessHandler.getPythonErrMsg(2, "{}");
+    assertNull(out);
+  }
 }
