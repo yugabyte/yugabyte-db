@@ -220,11 +220,13 @@ class TabletPeerTest : public YBTabletTest {
   }
 
   void TearDown() override {
+    multi_raft_manager_->StartShutdown();
     messenger_->Shutdown();
     WARN_NOT_OK(
         tablet_peer_->Shutdown(
             ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse),
         "Tablet peer shutdown failed");
+    multi_raft_manager_->CompleteShutdown();
     YBTabletTest::TearDown();
   }
 

@@ -45,12 +45,14 @@ void RemoteBootstrapSessionTest::SetUp() {
 }
 
 void RemoteBootstrapSessionTest::TearDown() {
+  multi_raft_manager_->StartShutdown();
   messenger_->Shutdown();
   session_.reset();
   WARN_NOT_OK(
     tablet_peer_->Shutdown(
         tablet::ShouldAbortActiveTransactions::kTrue, tablet::DisableFlushOnShutdown::kFalse),
     "Tablet peer shutdown failed");
+  multi_raft_manager_->CompleteShutdown();
   YBTabletTest::TearDown();
 }
 
