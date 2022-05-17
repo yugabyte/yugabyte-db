@@ -460,10 +460,6 @@ set(CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS_DEBUG "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
 
-if (NOT "${YB_USE_LTO}" STREQUAL "")
-  set(CXX_FLAGS_RELEASE "${CXX_FLAGS_RELEASE} flto -fno-use-linker-plugin")
-endif()
-
 set(CXX_FLAGS_PROFILE_GEN "${CXX_FLAGS_RELEASE} -fprofile-generate")
 set(CXX_FLAGS_PROFILE_BUILD "${CXX_FLAGS_RELEASE} -fprofile-use")
 

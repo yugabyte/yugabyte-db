@@ -335,6 +335,23 @@ normalize_build_type() {
   fi
 }
 
+decide_whether_to_use_linuxbrew() {
+  expect_vars_to_be_set YB_COMPILER_TYPE build_type
+  if [[ -z ${YB_USE_LINUXBREW:-} ]]; then
+    if [[ -n ${predefined_build_root:-} ]]; then
+      if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
+        YB_USE_LINUXBREW=1
+      fi
+    elif [[ -n ${YB_LINUXBREW_DIR:-} ||
+            ( ${YB_COMPILER_TYPE} == "clang12" &&
+              $build_type == "release" &&
+              "$( uname -m )" == "x86_64" ) ]]; then
+      YB_USE_LINUXBREW=1
+    fi
+    export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
+  fi
+}
+
 # Sets the build directory based on the given build type (the build_type variable) and the value of
 # the YB_COMPILER_TYPE environment variable.
 set_build_root() {
@@ -358,27 +375,7 @@ set_build_root() {
 
   BUILD_ROOT=$YB_BUILD_PARENT_DIR/$build_type-$YB_COMPILER_TYPE
 
-  if [[ -z ${YB_USE_LINUXBREW:-} ]]; then
-    if [[ -n ${predefined_build_root:-} ]]; then
-      if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
-        YB_USE_LINUXBREW=1
-      else
-        YB_USE_LINUXBREW=0
-      fi
-    elif [[ -n ${YB_LINUXBREW_DIR:-} || ${YB_COMPILER_TYPE} =~ ^gcc5?$ ]]; then
-      YB_USE_LINUXBREW=1
-    elif [[ ${YB_COMPILER_TYPE} == "clang12" ]]; then
-      # For Clang 12 in particular, we have prebuilt third-party archives with and without
-      # Linuxbrew. Use Linuxbrew by default for the release build.
-      if [[ $build_type == "release" && "$( uname -m )" == "x86_64" ]]; then
-        YB_USE_LINUXBREW=1
-      else
-        YB_USE_LINUXBREW=0
-      fi
-    fi
-    export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
-  fi
-  # Now we've finalized our decision about whether we are using Linuxbrew.
+  decide_whether_to_use_linuxbrew
 
   if using_linuxbrew; then
     BUILD_ROOT+="-linuxbrew"
@@ -2581,10 +2578,6 @@ is_apple_silicon() {
   fi
 
   return 1
-}
-
-should_use_lto() {
-  using_linuxbrew && [[ "${YB_COMPILER_TYPE}" =~ clang1[234] && "${build_type}" == "release" ]]
 }
 
 # -------------------------------------------------------------------------------------------------
