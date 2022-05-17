@@ -34,7 +34,7 @@ static bool check_histogram_max(int *newval, void **extra, GucSource source);
 void
 init_guc(void)
 {
-	int i = 0;
+	int i = 0, j;
 
 	conf[i] = (GucVariable) {
 		.guc_name = "pg_stat_monitor.pgsm_max",
@@ -191,7 +191,7 @@ init_guc(void)
 		.guc_unit = 0,
 		.guc_value = &PGSM_TRACK
 	};
-	for (int j = 0; j < conf[i].n_options; ++j) {
+	for (j = 0; j < conf[i].n_options; ++j) {
 		strlcpy(conf[i].guc_options[j], track_options[j].name, sizeof(conf[i].guc_options[j]));
 	}
 	DefineEnumGUC(&conf[i++], track_options);
