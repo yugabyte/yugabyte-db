@@ -158,6 +158,10 @@ void SetColumnIdentifiers(const vector<ColumnId>& column_ids,
 
 } // namespace
 
+bool PartitionSchema::IsHashPartitioning(const PartitionSchemaPB& pb) {
+  return pb.has_hash_schema();
+}
+
 Status PartitionSchema::FromPB(const PartitionSchemaPB& pb,
                                const Schema& schema,
                                PartitionSchema* partition_schema) {

@@ -245,7 +245,15 @@ class Rpcs {
   void Register(RpcCommandPtr call, Handle* handle);
   bool RegisterAndStart(RpcCommandPtr call, Handle* handle);
   RpcCommandPtr Unregister(Handle* handle);
-  void Abort(std::initializer_list<Handle*> list);
+
+  template<class Iter>
+  void Abort(Iter start, Iter end);
+
+  void Abort(std::initializer_list<Handle *> list) {
+    Abort(list.begin(), list.end());
+  }
+
+
   // Request all active calls to abort.
   void RequestAbortAll();
   Rpcs::Handle Prepare();
@@ -267,6 +275,36 @@ class Rpcs {
   Calls calls_;
   bool shutdown_ = false;
 };
+
+template<class Iter>
+void Rpcs::Abort(Iter start, Iter end) {
+  std::vector<RpcCommandPtr> to_abort;
+  {
+    std::lock_guard<std::mutex> lock(*mutex_);
+    for (auto it = start; it != end; ++it) {
+      auto& handle = *it;
+      if (*handle != calls_.end()) {
+        to_abort.push_back(**handle);
+      }
+    }
+  }
+  if (to_abort.empty()) {
+    return;
+  }
+  for (auto& rpc : to_abort) {
+    rpc->Abort();
+  }
+  {
+    std::unique_lock<std::mutex> lock(*mutex_);
+    for (auto it = start; it != end; ++it) {
+      auto& handle = *it;
+      while (*handle != calls_.end()) {
+        cond_.wait(lock);
+      }
+    }
+  }
+}
+
 
 template <class Value>
 class RpcFutureCallback {

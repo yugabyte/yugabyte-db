@@ -103,6 +103,8 @@ class BlockBasedTableBuilder : public TableBuilder {
   // Get table properties
   TableProperties GetTableProperties() const override;
 
+  const std::string& LastKey() const override;
+
   void TEST_skip_writing_key_value_encoding_format();
 
  private:

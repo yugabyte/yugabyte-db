@@ -53,7 +53,8 @@ class RestoreSysCatalogState {
       const Schema& schema, docdb::DocWriteBatch* write_batch, const HybridTime& now_ht);
 
   void WriteToRocksDB(
-      docdb::DocWriteBatch* pg_catalog_write_batch, const yb::HybridTime& write_time,
+      docdb::DocWriteBatch* write_batch,
+      const docdb::KeyValuePairPB& restore_kv, const yb::HybridTime& write_time,
       const yb::OpId& op_id, tablet::Tablet* tablet);
 
   CHECKED_STATUS ProcessPgCatalogRestores(

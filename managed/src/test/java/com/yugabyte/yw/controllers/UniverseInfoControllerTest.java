@@ -26,7 +26,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -49,6 +48,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.queries.QueryHelper;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -201,6 +201,22 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
 
     result =
         assertPlatformException(() -> doRequestWithCustomHeaders("GET", url, fakeRequestHeaders));
+  }
+
+  @Test
+  public void testSlowQueryLimit() {
+    when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
+        .thenReturn("total_time");
+    when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
+    QueryHelper queryHelper = new QueryHelper(null);
+    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig);
+    assertEquals(
+        "SELECT a.rolname, t.datname, t.queryid, t.query, t.calls, t.total_time, t.rows,"
+            + " t.min_time, t.max_time, t.mean_time, t.stddev_time, t.local_blks_hit,"
+            + " t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM pg_stat_statements s"
+            + " JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid ORDER BY"
+            + " t.total_time DESC LIMIT 200",
+        actualSql);
   }
 
   @Test

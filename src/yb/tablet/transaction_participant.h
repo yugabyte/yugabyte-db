@@ -120,7 +120,7 @@ class TransactionParticipant : public TransactionStatusManager {
   // Returns true if transaction was added, false if transaction already present.
   Result<bool> Add(const TransactionMetadata& metadata);
 
-  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& id) override;
+  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) override;
 
   // Prepares batch data for specified transaction id.
   // I.e. adds specified batch idx to set of replicated batches and fills encoded_replicated_batches
@@ -203,6 +203,10 @@ class TransactionParticipant : public TransactionStatusManager {
       HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id = nullptr);
 
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
+
+  // Update transaction metadata to change the status tablet for the given transaction.
+  Result<TransactionMetadata> UpdateTransactionStatusLocation(
+      const TransactionId& transaction_id, const TabletId& new_status_tablet);
 
   std::string DumpTransactions() const;
 

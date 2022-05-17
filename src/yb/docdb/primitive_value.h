@@ -350,6 +350,7 @@ class KeyEntryValue {
   static CHECKED_STATUS DecodeKey(Slice* slice, KeyEntryValue* out);
 
   CHECKED_STATUS DecodeFromKey(Slice* slice);
+  static Result<KeyEntryValue> FullyDecodeFromKey(const Slice& slice);
 
   void ToQLValuePB(const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_val) const;
 
@@ -387,7 +388,9 @@ class KeyEntryValue {
   static KeyEntryValue NullValue(SortingType sorting_type);
 
   static KeyEntryValue FromQLValuePB(const QLValuePB& value, SortingType sorting_type);
+  static KeyEntryValue FromQLValuePBForKey(const QLValuePB& value, SortingType sorting_type);
   static KeyEntryValue FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type);
+  static KeyEntryValue FromQLValuePBForKey(const LWQLValuePB& value, SortingType sorting_type);
 
   static KeyEntryValue Double(double d, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue Float(float f, SortOrder sort_order = SortOrder::kAscending);

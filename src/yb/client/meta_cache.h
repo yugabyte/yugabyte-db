@@ -305,6 +305,9 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
     return result;
   }
 
+  // Returns whether the tablet is located solely in the local region.
+  bool IsLocalRegion();
+
   // Return true if the tablet currently has a known LEADER replica
   // (i.e the next call to LeaderTServer() is likely to return non-NULL)
   bool HasLeader() const;

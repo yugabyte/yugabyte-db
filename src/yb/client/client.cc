@@ -1685,7 +1685,8 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
   return table_alterer->replication_info(replication_info)->Alter();
 }
 
-Status YBClient::CreateTransactionsStatusTable(const string& table_name) {
+Status YBClient::CreateTransactionsStatusTable(
+    const string& table_name, const master::ReplicationInfoPB* replication_info) {
   if (table_name.rfind(kTransactionTablePrefix, 0) != 0) {
     return STATUS_FORMAT(
         InvalidArgument, "Name '$0' for transaction table does not start with '$1'", table_name,
@@ -1694,6 +1695,9 @@ Status YBClient::CreateTransactionsStatusTable(const string& table_name) {
   master::CreateTransactionStatusTableRequestPB req;
   master::CreateTransactionStatusTableResponsePB resp;
   req.set_table_name(table_name);
+  if (replication_info) {
+    *req.mutable_replication_info() = *replication_info;
+  }
   CALL_SYNC_LEADER_MASTER_RPC_EX(Admin, req, resp, CreateTransactionStatusTable);
   return Status::OK();
 }

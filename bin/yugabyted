@@ -1480,6 +1480,23 @@ class ControlScript(object):
                         "Old log directory already exists at {}. New logs will go to {}".format(
                             config_log_dir, args.log_dir))
 
+            if args.listen is not None:
+                if args.advertise_address is not None and args.listen != args.advertise_address:
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": --listen and --advertise_address flags " +
+                        "are same. --listen is depricated. Can't have different values for them.")
+                    has_errors = True
+                self.configs.saved_data["advertise_address"] = args.listen
+
+            if args.daemon is not None:
+                if args.background is not None and \
+                        self.parse_bool(args.daemon) != self.parse_bool(args.background):
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": --daemon and --background flags " +
+                        "are same. --daemon is depricated. Can't have different values for them.")
+                    has_errors = True
+                args.background = args.daemon
+
             args.ui = self.parse_bool(args.ui)
             args.background = self.parse_bool(args.background)
             if args.callhome is not None:
@@ -1635,12 +1652,16 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--webserver_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
+                "--listen", help=argparse.SUPPRESS)
+            cur_parser.add_argument(
                 "--advertise_address",
                 help="IP address or local hostname on which {} will listen.".format(SCRIPT_NAME),
                 metavar="")
             cur_parser.add_argument(
                 "--join", help="IP address to which this process will join".format(SCRIPT_NAME),
                 metavar="")
+            cur_parser.add_argument(
+                "--daemon", choices=BOOL_CHOICES, default="true", help=argparse.SUPPRESS)
             cur_parser.add_argument(
                 "--background", choices=BOOL_CHOICES, default="true", metavar="",
                 help="Runs {} in the background as a daemon. Does not persist on restart. "

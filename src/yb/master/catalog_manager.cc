@@ -312,6 +312,11 @@ DEFINE_test_flag(bool, name_transaction_tables_with_tablespace_id, false,
                  "tables with their tablespaces easier, and causes transaction tables created "
                  "automatically for tablespaces to include the tablespace oid in their names.");
 
+DEFINE_test_flag(bool, consider_all_local_transaction_tables_local, false,
+                 "This is only used in tests, and forces the catalog manager to return all tablets "
+                 "of all transaction tables with placements as placement local, regardless of "
+                 "their placement.");
+
 DEFINE_bool(master_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
 
 DEFINE_int32(metrics_snapshots_table_num_tablets, 0,
@@ -2558,14 +2563,13 @@ CHECKED_STATUS CatalogManager::TEST_SplitTablet(
     const TabletId& tablet_id, const std::string& split_encoded_key,
     const std::string& split_partition_key) {
   auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
-  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key,
-      true /* is_manual_split */);
+  return DoSplitTablet(
+      source_tablet_info, split_encoded_key, split_partition_key, ManualSplit::kTrue);
 }
 
 Status CatalogManager::TEST_SplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
-  return DoSplitTablet(source_tablet_info, split_hash_code,
-      true /* is_manual_split */);
+  return DoSplitTablet(source_tablet_info, split_hash_code, ManualSplit::kTrue);
 }
 
 Status CatalogManager::TEST_IncrementTablePartitionListVersion(const TableId& table_id) {
@@ -2652,7 +2656,7 @@ bool CatalogManager::ShouldSplitValidCandidate(
 
 Status CatalogManager::DoSplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
-    std::string split_partition_key, bool is_manual_split) {
+    std::string split_partition_key, const ManualSplit is_manual_split) {
   auto source_table_lock = source_tablet_info->table()->LockForWrite();
   auto source_tablet_lock = source_tablet_info->LockForWrite();
 
@@ -2663,10 +2667,7 @@ Status CatalogManager::DoSplitTablet(
   //
   // If this is a manual split, then we should select all potential tablets for the split
   // (i.e. ignore the disabled tablets list and ignore TTL validation).
-  RETURN_NOT_OK(tablet_split_manager_.ValidateSplitCandidateTable(
-      *source_tablet_info->table(), is_manual_split /* ignore_disabled_list */));
-  RETURN_NOT_OK(tablet_split_manager_.ValidateSplitCandidateTablet(
-      *source_tablet_info, is_manual_split /* ignore_ttl_validation */));
+  RETURN_NOT_OK(ValidateSplitCandidate(source_tablet_info, is_manual_split));
 
   auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
   if (!is_manual_split &&
@@ -2735,8 +2736,8 @@ Status CatalogManager::DoSplitTablet(
 }
 
 Status CatalogManager::DoSplitTablet(
-    const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code,
-    bool is_manual_split) {
+    const scoped_refptr<TabletInfo>& source_tablet_info, const docdb::DocKeyHash split_hash_code,
+    const ManualSplit is_manual_split) {
   docdb::KeyBytes split_encoded_key;
   docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
       .Hash(split_hash_code, std::vector<docdb::KeyEntryValue>());
@@ -2759,7 +2760,7 @@ Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& 
 
 void CatalogManager::SplitTabletWithKey(
     const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
-    const std::string& split_partition_key, const bool is_manual_split) {
+    const std::string& split_partition_key, const ManualSplit is_manual_split) {
   // Note that DoSplitTablet() will trigger an async SplitTablet task, and will only return not OK()
   // if it failed to submit that task. In other words, any failures here are not retriable, and
   // success indicates that an async and automatically retrying task was submitted.
@@ -2769,11 +2770,15 @@ void CatalogManager::SplitTabletWithKey(
                         tablet->tablet_id()));
 }
 
-Status CatalogManager::SplitTablet(const TabletId& tablet_id, bool is_manual_split) {
-  LOG(INFO) << "Got tablet to split: " << tablet_id;
+Status CatalogManager::SplitTablet(const TabletId& tablet_id, const ManualSplit is_manual_split) {
+  LOG(INFO) << "Got tablet to split: " << tablet_id << ", is manual split: " << is_manual_split;
 
   const auto tablet = VERIFY_RESULT(GetTabletInfo(tablet_id));
+  return SplitTablet(tablet, is_manual_split);
+}
 
+Status CatalogManager::SplitTablet(
+    const scoped_refptr<TabletInfo>& tablet, const ManualSplit is_manual_split) {
   VLOG(2) << "Scheduling GetSplitKey request to leader tserver for source tablet ID: "
           << tablet->tablet_id();
   auto call = std::make_shared<AsyncGetTabletSplitKey>(
@@ -2802,8 +2807,22 @@ Status CatalogManager::SplitTablet(const TabletId& tablet_id, bool is_manual_spl
 
 Status CatalogManager::SplitTablet(
     const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc) {
-  const auto source_tablet_id = req->tablet_id();
-  return SplitTablet(source_tablet_id, true /* is_manual_split */);
+  const auto is_manual_split = ManualSplit::kTrue;
+  const auto tablet = VERIFY_RESULT(GetTabletInfo(req->tablet_id()));
+
+  RETURN_NOT_OK(ValidateSplitCandidate(tablet, is_manual_split));
+  return SplitTablet(tablet, is_manual_split);
+}
+
+Status CatalogManager::ValidateSplitCandidate(
+    const scoped_refptr<TabletInfo>& tablet, const ManualSplit is_manual_split) {
+  const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
+  RETURN_NOT_OK(tablet_split_manager_.ValidateSplitCandidateTable(
+      *tablet->table(), ignore_disabled_list));
+
+  const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };
+  return tablet_split_manager_.ValidateSplitCandidateTablet(
+      *tablet, ignore_ttl_validation, ignore_disabled_list);
 }
 
 Status CatalogManager::DeleteNotServingTablet(
@@ -4052,7 +4071,9 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTable(
     const CreateTransactionStatusTableRequestPB* req, CreateTransactionStatusTableResponsePB* resp,
     rpc::RpcContext *rpc) {
   const string& table_name = req->table_name();
-  Status s = CreateTransactionStatusTableInternal(rpc, table_name, nullptr /* tablespace_id */);
+  Status s = CreateTransactionStatusTableInternal(
+      rpc, table_name, nullptr /* tablespace_id */,
+      req->has_replication_info() ? &req->replication_info() : nullptr);
   if (s.IsAlreadyPresent()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
   }
@@ -4063,7 +4084,8 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTable(
 }
 
 CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(
-    rpc::RpcContext *rpc, const string& table_name, const TablespaceId* tablespace_id) {
+    rpc::RpcContext *rpc, const string& table_name, const TablespaceId* tablespace_id,
+    const ReplicationInfoPB* replication_info) {
   if (VERIFY_RESULT(TableExists(kSystemNamespaceName, table_name))) {
     return STATUS_SUBSTITUTE(AlreadyPresent, "Table already exists: $0", table_name);
   }
@@ -4077,6 +4099,9 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(
   req.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
   if (tablespace_id) {
     req.set_tablespace_id(*tablespace_id);
+  }
+  if (replication_info) {
+    *req.mutable_replication_info() = *replication_info;
   }
 
   // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
@@ -4141,12 +4166,14 @@ CHECKED_STATUS CatalogManager::CreateLocalTransactionStatusTableIfNeeded(
     table_name = kTransactionTablePrefix + uuid;
   }
 
-  return CreateTransactionStatusTableInternal(rpc, table_name, &tablespace_id);
+  return CreateTransactionStatusTableInternal(rpc, table_name, &tablespace_id,
+                                              nullptr /* replication_info */);
 }
 
 CHECKED_STATUS CatalogManager::CreateGlobalTransactionStatusTableIfNeeded(rpc::RpcContext *rpc) {
   Status s = CreateTransactionStatusTableInternal(
-      rpc, kGlobalTransactionsTableName, nullptr /* tablespace_id */);
+      rpc, kGlobalTransactionsTableName, nullptr /* tablespace_id */,
+      nullptr /* replication_info */);
   if (s.IsAlreadyPresent()) {
     VLOG(1) << "Transaction status table already exists, not creating.";
     return Status::OK();
@@ -4210,7 +4237,9 @@ Result<std::vector<TableInfoPtr>> CatalogManager::GetPlacementLocalTransactionSt
     if (CatalogManagerUtil::DoesPlacementInfoSpanMultipleRegions(txn_table_replicas)) {
       continue;
     }
-    if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(txn_table_replicas, placement)) {
+    if ((FLAGS_TEST_consider_all_local_transaction_tables_local &&
+         !txn_table_replicas.placement_blocks().empty()) ||
+        CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(txn_table_replicas, placement)) {
       same_placement_transaction_tables.push_back(table_info);
     }
   }
@@ -4514,6 +4543,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::SYS_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::SNAPSHOT_RESTORATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;

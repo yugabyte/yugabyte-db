@@ -18,6 +18,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/docdb/docdb.pb.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_fwd.h"
@@ -105,6 +106,9 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   CHECKED_STATUS FillHeartbeatResponse(TSHeartbeatResponsePB* resp);
 
   void SysCatalogLoaded(int64_t term);
+
+  Result<docdb::KeyValuePairPB> UpdateRestorationAndGetWritePair(
+      SnapshotScheduleRestoration* restoration);
 
   // For each returns map from schedule id to sorted vectors of tablets id in this schedule.
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(

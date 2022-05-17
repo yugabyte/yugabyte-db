@@ -126,9 +126,13 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         u -> {
           NodeDetails node = u.getNode(nodeName);
           node.state = NodeState.Decommissioned;
-          NodeInstance nodeInstance = NodeInstance.getOrBadRequest(node.getNodeUuid());
-          nodeInstance.setInUse(false);
-          nodeInstance.save();
+          NodeInstance.maybeGetByName(nodeName)
+              .ifPresent(
+                  nodeInstance -> {
+                    nodeInstance.setInUse(false);
+                    nodeInstance.setNodeName("");
+                    nodeInstance.save();
+                  });
         });
   }
 
@@ -372,8 +376,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         taskInfo.getErrorMessage(),
         containsString("failed preflight check. Error: {\"test\": false}"));
 
-    NodeInstance instance = NodeInstance.getByName(DEFAULT_NODE_NAME);
-    assertFalse(instance.isInUse());
+    // Node must not be reserved on failure.
+    assertFalse(NodeInstance.maybeGetByName(DEFAULT_NODE_NAME).isPresent());
   }
 
   @Test

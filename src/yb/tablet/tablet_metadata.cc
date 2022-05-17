@@ -852,7 +852,7 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
   }
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
-  auto [iter, inserted] = tables.emplace(table_id, new_table_info);
+  auto[iter, inserted] = tables.emplace(table_id, new_table_info);
   if (!inserted) {
     const auto& existing_table = *iter->second;
     VLOG_WITH_PREFIX(1) << "Updating to Schema version " << schema_version
@@ -1138,7 +1138,7 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::CotablePacking(
   auto res = GetTableInfo(cotable_id.ToHexString());
   if (!res.ok()) {
     return STATUS_FORMAT(
-        Corruption, "Cannot find table info for: $0, raft group id: $1",
+        NotFound, "Cannot find table info for: $0, raft group id: $1",
         cotable_id, raft_group_id_);
   }
   return TableInfo::Packing(*res, schema_version, history_cutoff);
@@ -1149,7 +1149,7 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::ColocationPacking(
   auto it = kv_store_.colocation_to_table.find(colocation_id);
   if (it == kv_store_.colocation_to_table.end()) {
     return STATUS_FORMAT(
-        Corruption, "Cannot find table info for colocation: $0, raft group id: $1",
+        NotFound, "Cannot find table info for colocation: $0, raft group id: $1",
         colocation_id, raft_group_id_);
   }
   return TableInfo::Packing(it->second, schema_version, history_cutoff);
@@ -1311,6 +1311,10 @@ const std::string& RaftGroupMetadata::indexed_table_id(const TableId& table_id) 
       primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
   const auto* index_info = table_info->index_info.get();
   return index_info ? index_info->indexed_table_id() : kEmptyString;
+}
+
+bool RaftGroupMetadata::is_index(const TableId& table_id) const {
+  return !indexed_table_id(table_id).empty();
 }
 
 bool RaftGroupMetadata::is_local_index(const TableId& table_id) const {

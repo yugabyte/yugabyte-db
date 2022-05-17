@@ -114,6 +114,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const OperationKind operation_kind,
     const RowMarkType row_mark_type,
     bool transactional_table,
+    bool write_transaction_metadata,
     CoarseTimePoint deadline,
     PartialRangeKeyIntents partial_range_key_intents,
     SharedLockManager *lock_manager);
