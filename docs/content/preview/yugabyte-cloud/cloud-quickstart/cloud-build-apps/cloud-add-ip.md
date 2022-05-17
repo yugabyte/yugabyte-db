@@ -18,6 +18,8 @@ In addition to having a [cluster deployed in YugabyteDB Managed](../../qs-add/),
 - **The cluster CA certificate**. YugabyteDB Managed uses TLS 1.2 for communicating with clusters, and digital certificates to verify the identity of clusters. The cluster CA certificate is used to verify the identity of the cluster when you connect to it from an application or client.
 - **Your computer added to the cluster IP allow list**. Access to YugabyteDB Managed clusters is limited to IP addresses that you explicitly allow using IP allow lists. To enable applications to connect to your cluster, you need to add your computer's IP address to the cluster IP allow list.
 
+![Download certificate and add IP](/images/yb-cloud/cloud-add-ip.gif)
+
 ## Download your cluster certificate
 
 To download the certificate to the computer that will be connecting to the cluster, do the following:
@@ -31,8 +33,9 @@ To download the certificate to the computer that will be connecting to the clust
 To add your computer to the cluster IP allow list:
 
 1. In YugabyteDB Managed, select your cluster.
-1. Click **More Links** and choose **Edit IP Allow List**.
+1. Click **Add IP Allow List**.
 1. Click **Create New List and Add to Cluster**.
+1. Enter a name for the allow list.
 1. Click **Detect and add my IP to this list** to add your own IP address.
 1. Click **Save**.
 

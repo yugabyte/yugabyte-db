@@ -25,8 +25,7 @@ The following tutorial shows a small [C application](https://github.com/yugabyte
 ### YugabyteDB Managed
 
 - You have a cluster deployed in YugabyteDB Managed. To get started, use the [Quick start](../../).
-- You downloaded the cluster CA certificate. Refer to [Download your cluster certificate](../../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
-- You have added your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../../cloud-secure-clusters/add-connections/).
+- You downloaded the cluster CA certificate and added your computer to the cluster IP allow list. Refer to [Before you begin](../cloud-add-ip/).
 
 ## Clone the application from GitHub
 
