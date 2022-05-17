@@ -1125,4 +1125,46 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
                    String.format("SELECT COUNT(*) FROM %s", tableName), batchSize);
     }
   }
+
+  @Test
+  public void testBatchedCopyDisableFKCheck() throws Exception {
+    String absFilePath = getAbsFilePath("disable-fk-check.txt");
+    String tableName = "maintable_disable_fk";
+    String refTableName = "reftable_disable_fk";
+
+    int totalLines = 100;
+    String referenceKey = "a_fkey";
+
+    createFileInTmpDir(absFilePath, totalLines);
+
+    String INVALID_FOREIGN_KEY_CHECK_ERROR_MSG =
+        String.format("insert or update on table \"%s\" violates foreign key constraint \"%s_%s\"",
+                      tableName, tableName, referenceKey);
+
+    try (Statement statement = connection.createStatement()) {
+      // Create reference table without any data.
+      statement.execute(String.format("CREATE TABLE %s (a INT PRIMARY KEY)", refTableName));
+
+      statement.execute(
+          String.format("CREATE TABLE %s (a INT REFERENCES %s, b INT, c INT, d INT)",
+                        tableName, refTableName));
+
+      // The execution will fail since the none of the key is present in the reference table.
+      runInvalidQuery(statement,
+          String.format("COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)",
+                        tableName, absFilePath),
+          INVALID_FOREIGN_KEY_CHECK_ERROR_MSG);
+
+      // No rows should be copied.
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, 0);
+
+      // Executing the copy with DISABLE_FK_CHECK should succeed.
+      statement.execute(
+          String.format("COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, DISABLE_FK_CHECK)",
+          tableName, absFilePath));
+
+      // All the rows will be copied.
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, totalLines);
+    }
+  }
 }
