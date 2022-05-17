@@ -18,7 +18,7 @@ Two datacenter deployments in YugabyteDB leverage change data capture at the cor
 
 ## Setting up CDC
 
-To set up CDC we use the CDC Streams, the commands for which can be found under [yb-admin](../../docs/content/latest/admin/yb-admin.md#change-data-capture-cdc-commands).
+To set up CDC we use the CDC Streams, the commands for which can be found under [yb-admin](../../docs/content/preview/admin/yb-admin.md#change-data-capture-cdc-commands).
 
 ### Debezium
 
@@ -56,7 +56,7 @@ We need to provide the configuration values in the json format, the important on
 }
 ```
 
-For a list of complete parameters that can be configured see [Debezium Connector for YugabyteDB](../../docs/content/latest/integrations/cdc/debezium-for-cdc.md).
+For a list of complete parameters that can be configured see [Debezium Connector for YugabyteDB](../../docs/content/preview/integrations/cdc/debezium-for-cdc.md).
 
 ## Design
 
