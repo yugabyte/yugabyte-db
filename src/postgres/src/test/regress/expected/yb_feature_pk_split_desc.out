@@ -158,9 +158,10 @@ SELECT * FROM feature_pk_split_desc WHERE col_text >= 'partition 3' AND col_doub
 EXPLAIN SELECT COUNT(*) FROM feature_pk_split_desc;
                                    QUERY PLAN
 --------------------------------------------------------------------------------
- Aggregate  (cost=102.50..102.51 rows=1 width=8)
+ Finalize Aggregate  (cost=102.50..102.51 rows=1 width=8)
    ->  Seq Scan on feature_pk_split_desc  (cost=0.00..100.00 rows=1000 width=0)
-(2 rows)
+         Partial Aggregate: true
+(3 rows)
 
 SELECT COUNT(*) FROM feature_pk_split_desc;
  count
