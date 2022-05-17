@@ -482,6 +482,21 @@ select * from copy_options order by a;
  5 | 5
 (3 rows)
 
+-- DISABLE_FK_CHECK
+create table ref_table(a int primary key);
+insert into ref_table(a) values (1), (2), (3);
+create table main_table(a int references ref_table, b int);
+copy main_table from stdin with (format csv, disable_fk_check);
+select * from main_table order by a;
+ a | b
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+ 4 | 4
+ 5 | 5
+(5 rows)
+
 -- clean up
 DROP TABLE forcetest;
 DROP TABLE x;
@@ -498,3 +513,5 @@ DROP TABLE p;
 DROP TABLE u;
 DROP TABLE v;
 DROP TABLE copy_options;
+DROP TABLE main_table;
+DROP TABLE ref_table;
