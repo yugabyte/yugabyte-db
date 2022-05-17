@@ -14,6 +14,8 @@ import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_EXECUTION_CANCELLE
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_GENERIC_ERROR;
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -34,10 +36,12 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.text.StringSubstitutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
+import play.libs.Json;
 
 @Singleton
 public class ShellProcessHandler {
@@ -56,6 +60,8 @@ public class ShellProcessHandler {
               + "Playbook run.* )with args.* (failed with.*? [0-9]+)");
   static final Pattern ANSIBLE_FAILED_TASK_PAT =
       Pattern.compile("TASK.*?fatal.*?FAILED.*", Pattern.DOTALL);
+  static final Pattern PYTHON_ERROR_PAT =
+      Pattern.compile("(<yb-python-error>)(.*?)(</yb-python-error>)", Pattern.DOTALL);
   static final String ANSIBLE_IGNORING = "ignoring";
   static final String COMMAND_OUTPUT_LOGS_DELETE = "yb.logs.cmdOutputDelete";
   static final String YB_LOGS_MAX_MSG_SIZE = "yb.logs.max_msg_size";
@@ -179,9 +185,12 @@ public class ShellProcessHandler {
               itse);
         }
         response.message = (response.code == ERROR_CODE_SUCCESS) ? processOutput : processError;
-        String ansibleErrMsg = getAnsibleErrMsg(response.code, processOutput, processError);
-        if (ansibleErrMsg != null) {
-          response.message = ansibleErrMsg;
+        String specificErrMsg = getAnsibleErrMsg(response.code, processOutput, processError);
+        if (specificErrMsg == null) {
+          specificErrMsg = getPythonErrMsg(response.code, processOutput);
+        }
+        if (specificErrMsg != null) {
+          response.message = specificErrMsg;
         }
       }
     } catch (IOException | InterruptedException e) {
@@ -384,5 +393,26 @@ public class ShellProcessHandler {
       }
     }
     return result;
+  }
+
+  @VisibleForTesting
+  static String getPythonErrMsg(int code, String stdout) {
+    if (stdout == null || code == ERROR_CODE_SUCCESS) return null;
+
+    try {
+      Matcher matcher = PYTHON_ERROR_PAT.matcher(stdout);
+      if (matcher.find()) {
+        Map<String, String> values =
+            Json.mapper()
+                .readValue(matcher.group(2).trim(), new TypeReference<Map<String, String>>() {});
+        StringSubstitutor substitutor =
+            new StringSubstitutor(values).setEnableUndefinedVariableException(true);
+        // Flexible template to add more fields or change format.
+        return substitutor.replace("${type}: ${message}");
+      }
+    } catch (Exception e) {
+      LOG.error("Error occurred in processing command output", e);
+    }
+    return null;
   }
 }
