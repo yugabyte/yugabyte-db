@@ -565,6 +565,7 @@ class PostgresBuilder(YbBuildToolBase):
                     ':(glob,exclude)src/postgres/**/output/*.source',
                     ':(glob,exclude)src/postgres/**/specs/*.spec',
                     ':(glob,exclude)src/postgres/**/sql/*.sql',
+                    ':(glob,exclude)src/postgres/.clang-format',
                 ])
             # Get the most recent commit that touched postgres files.
             git_hash = subprocess.check_output(

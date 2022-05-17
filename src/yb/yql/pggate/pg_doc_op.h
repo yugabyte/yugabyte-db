@@ -16,11 +16,13 @@
 #define YB_YQL_PGGATE_PG_DOC_OP_H_
 
 #include <list>
+#include <memory>
+#include <variant>
 
-#include <boost/optional.hpp>
+#include "yb/client/yb_op.h"
 
 #include "yb/util/locks.h"
-#include "yb/client/yb_op.h"
+#include "yb/util/lw_function.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_op.h"
@@ -205,6 +207,29 @@ class PgDocResult {
 // different partitions and interact with different tablet servers.
 //--------------------------------------------------------------------------------------------------
 
+// Helper class to wrap PerformFuture and custom response provider.
+// No memory allocations is required in case of using PerformFuture.
+class PgDocResponse {
+ public:
+  class Provider {
+   public:
+    virtual ~Provider() = default;
+    virtual Result<rpc::CallResponsePtr> Get() = 0;
+  };
+
+  using ProviderPtr = std::unique_ptr<Provider>;
+
+  PgDocResponse() = default;
+  explicit PgDocResponse(PerformFuture future);
+  explicit PgDocResponse(ProviderPtr provider);
+
+  bool Valid() const;
+  Result<rpc::CallResponsePtr> Get();
+
+ private:
+  std::variant<PerformFuture, ProviderPtr> holder_;
+};
+
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
  public:
   // Public types.
@@ -214,8 +239,13 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   typedef std::unique_ptr<PgDocOp> UniPtr;
   typedef std::unique_ptr<const PgDocOp> UniPtrConst;
 
+  using Sender = std::function<Result<PgDocResponse>(
+      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t*, bool)>;
+
   // Constructors & Destructors.
-  PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table);
+  PgDocOp(
+      const PgSession::ScopedRefPtr& pg_session, PgTable* table,
+      const Sender& = Sender(&PgDocOp::DefaultSender));
   virtual ~PgDocOp();
 
   // Initialize doc operator.
@@ -243,7 +273,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   //   SELECT ... FROM <table> WHERE ybctid IN (SELECT base_ybctids from INDEX)
   // After ybctids are queried from INDEX, PgGate will call "PopulateDmlByYbctidOps" to create
   // operators to fetch rows whose rowids equal queried ybctids.
-  CHECKED_STATUS PopulateDmlByYbctidOps(const std::vector<Slice>& ybctids);
+  using YbctidGenerator = LWFunction<Slice()>;
+  Status PopulateDmlByYbctidOps(const YbctidGenerator& generator);
 
   bool has_out_param_backfill_spec() {
     return !out_param_backfill_spec_.empty();
@@ -261,13 +292,15 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   CHECKED_STATUS CreateRequests();
 
+  const PgTable& table() const { return table_; }
+
  protected:
   uint64_t& GetReadTime();
 
-  // Populate Protobuf requests using the collected informtion for this DocDB operator.
+  // Populate Protobuf requests using the collected information for this DocDB operator.
   virtual Result<bool> DoCreateRequests() = 0;
 
-  virtual CHECKED_STATUS DoPopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) = 0;
+  virtual Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) = 0;
 
   // Create operators.
   // - Each operator is used for one request.
@@ -298,9 +331,9 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   void SetReadTime();
 
  private:
-  CHECKED_STATUS SendRequest(bool force_non_bufferable);
+  Status SendRequest(bool force_non_bufferable);
 
-  virtual CHECKED_STATUS SendRequestImpl(bool force_non_bufferable);
+  Status SendRequestImpl(bool force_non_bufferable);
 
   Result<std::list<PgDocResult>> ProcessResponse(
       const Result<rpc::CallResponsePtr>& response);
@@ -309,6 +342,10 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
       const rpc::CallResponsePtr& response) = 0;
 
   CHECKED_STATUS CompleteRequests();
+
+  static Result<PgDocResponse> DefaultSender(
+      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
+      uint64_t* read_time, bool force_non_bufferable);
 
   //----------------------------------- Data Members -----------------------------------------------
  protected:
@@ -346,11 +383,11 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   //   should only be done when "wait_for_batch_completion_ == false"
   bool wait_for_batch_completion_ = true;
 
-  // Future object to fetch a response from DocDB after sending a request.
-  // Object's valid() method returns false in case no request is sent
+  // Object to fetch a response from DocDB after sending a request.
+  // Object's Valid() method returns false in case no request is sent
   // or sent request was buffered by the session.
   // Only one RunAsync() can be called to sent to DocDB at a time.
-  PerformFuture response_;
+  PgDocResponse response_;
 
   // Executed row count.
   int32_t rows_affected_count_ = 0;
@@ -406,6 +443,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Result set either from selected or returned targets is cached in a list of strings.
   // Querying state variables.
   Status exec_status_ = Status::OK();
+
+  Sender sender_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -420,9 +459,10 @@ class PgDocReadOp : public PgDocOp {
   typedef std::unique_ptr<const PgDocReadOp> UniPtrConst;
 
   // Constructors & Destructors.
+  PgDocReadOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op);
   PgDocReadOp(
       const PgSession::ScopedRefPtr& pg_session, PgTable* table,
-      PgsqlReadOpPtr read_op);
+      PgsqlReadOpPtr read_op, const Sender& sender);
 
   CHECKED_STATUS ExecuteInit(const PgExecParameters *exec_params) override;
 
@@ -433,7 +473,7 @@ class PgDocReadOp : public PgDocOp {
     return false;
   }
 
-  CHECKED_STATUS DoPopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) override;
+  Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) override;
 
  private:
   // Create protobuf requests using template_op_.
@@ -565,7 +605,7 @@ class PgDocWriteOp : public PgDocOp {
   // For write ops, we are not yet batching ybctid from index query.
   // TODO(neil) This function will be implemented when we push down sub-query inside WRITE ops to
   // the proxy layer. There's many scenarios where this optimization can be done.
-  CHECKED_STATUS DoPopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) override {
+  Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) override {
     LOG(FATAL) << "Not yet implemented";
     return Status::OK();
   }

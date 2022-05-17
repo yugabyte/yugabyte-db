@@ -16,11 +16,11 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include <boost/optional.hpp>
-#include <boost/unordered_set.hpp>
 
 #include "yb/client/client_fwd.h"
 
@@ -55,18 +55,56 @@ YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
 class PgTxnManager;
 class PgSession;
 
+struct LightweightTableYbctid {
+  LightweightTableYbctid(PgOid table_id_, const std::string_view& ybctid_)
+      : table_id(table_id_), ybctid(ybctid_) {}
+  LightweightTableYbctid(PgOid table_id_, const Slice& ybctid_)
+      : LightweightTableYbctid(table_id_, static_cast<std::string_view>(ybctid_)) {}
+
+  PgOid table_id;
+  std::string_view ybctid;
+};
+
 struct TableYbctid {
   TableYbctid(PgOid table_id_, std::string ybctid_)
       : table_id(table_id_), ybctid(std::move(ybctid_)) {}
+
+  explicit operator LightweightTableYbctid() const {
+    return LightweightTableYbctid(table_id, static_cast<std::string_view>(ybctid));
+  }
 
   PgOid table_id;
   std::string ybctid;
 };
 
-struct PgForeignKeyReference {
-  PgForeignKeyReference(PgOid table_id, std::string ybctid);
-  PgOid table_id;
-  std::string ybctid;
+struct TableYbctidComparator {
+  using is_transparent = void;
+
+  bool operator()(const LightweightTableYbctid& l, const LightweightTableYbctid& r) const {
+    return l.table_id == r.table_id && l.ybctid == r.ybctid;
+  }
+
+  template<class T1, class T2>
+  bool operator()(const T1& l, const T2& r) const {
+    return (*this)(AsLightweightTableYbctid(l), AsLightweightTableYbctid(r));
+  }
+
+ private:
+  static const LightweightTableYbctid& AsLightweightTableYbctid(
+      const LightweightTableYbctid& value) {
+    return value;
+  }
+
+  static LightweightTableYbctid AsLightweightTableYbctid(const TableYbctid& value) {
+    return LightweightTableYbctid(value);
+  }
+};
+
+struct TableYbctidHasher {
+  using is_transparent = void;
+
+  size_t operator()(const LightweightTableYbctid& value) const;
+  size_t operator()(const TableYbctid& value) const;
 };
 
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
@@ -249,12 +287,12 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   using YbctidReader =
       LWFunction<Status(std::vector<TableYbctid>*, const std::unordered_set<PgOid>&)>;
   Result<bool> ForeignKeyReferenceExists(
-      PgOid table_id, const Slice& ybctid, const YbctidReader& reader);
-  void AddForeignKeyReferenceIntent(PgOid table_id, bool is_region_local, const Slice& ybctid);
-  void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
+      const LightweightTableYbctid& key, const YbctidReader& reader);
+  void AddForeignKeyReferenceIntent(const LightweightTableYbctid& key, bool is_region_local);
+  void AddForeignKeyReference(const LightweightTableYbctid& key);
 
   // Deletes the row referenced by ybctid from FK reference cache.
-  void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
+  void DeleteForeignKeyReference(const LightweightTableYbctid& key);
 
   CHECKED_STATUS PatchStatus(const Status& status, const PgObjectIds& relations);
 
@@ -307,8 +345,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CoarseTimePoint invalidate_table_cache_time_;
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
-  boost::unordered_set<PgForeignKeyReference> fk_reference_cache_;
-  boost::unordered_set<PgForeignKeyReference> fk_reference_intent_;
+  using TableYbctidSet = std::unordered_set<TableYbctid, TableYbctidHasher, TableYbctidComparator>;
+  TableYbctidSet fk_reference_cache_;
+  TableYbctidSet fk_reference_intent_;
   std::unordered_set<PgOid> fk_intent_region_local_tables_;
 
   // Should write operations be buffered?
