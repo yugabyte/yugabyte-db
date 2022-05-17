@@ -79,15 +79,24 @@ struct PackedRowData {
   // So we will trigger table change on the first record.
   ByteBuffer<1 + kUuidSize> active_coprefix{"FAKE_PREFIX"s};
 
+  // True if the active coprefix is for a dropped table.
+  bool active_coprefix_dropped = false;
+
   CompactionSchemaInfo new_packing;
   boost::optional<RowPacker> packer;
 
   HybridTime history_cutoff;
 
+  using UsedSchemaVersionsMap =
+      std::unordered_map<Uuid, std::pair<SchemaVersion, SchemaVersion>, UuidHash>;
+
   // Schema version ranges for each found table.
   // That could be a surprise, but when we are talking about range and use pair to represent range
   // first usually means min value of the range, while second means max value of the range.
-  std::unordered_map<Uuid, std::pair<SchemaVersion, SchemaVersion>, UuidHash> used_schema_versions;
+  UsedSchemaVersionsMap used_schema_versions;
+
+  // Iterator into used_schema_versions for the active coprefix.
+  UsedSchemaVersionsMap::iterator used_schema_versions_it = used_schema_versions.end();
 
   PackedRowData(rocksdb::CompactionFeed* next_feed_, SchemaPackingProvider* provider,
                 HybridTime history_cutoff_)
@@ -115,10 +124,9 @@ struct PackedRowData {
   }
 
   // Handle packed row that was forwarded to underlying feed w/o changes.
-  // coprefix_len - length of coprefix in internal_key.
-  Status ProcessForwardedPackedRow(const Slice& internal_key, Slice value, size_t coprefix_len) {
-    auto schema_version = VERIFY_RESULT(ParseValueHeader(&value));
-    return UpdateCoprefix(internal_key.Prefix(coprefix_len), schema_version);
+  Status ProcessForwardedPackedRow(Slice value) {
+    UsedSchemaVersion(VERIFY_RESULT(ParseValueHeader(&value)));
+    return Status::OK();
   }
 
   Status ProcessPackedRow(
@@ -128,7 +136,7 @@ struct PackedRowData {
     VLOG_WITH_FUNC(4) << "Key: " << internal_key.ToDebugHexString() << ", coprefix_len: "
                       << coprefix_len << ", value: " << value.ToDebugHexString() << ", row_doc_ht: "
                       << row_doc_ht;
-    RETURN_NOT_OK(UpdateCoprefix(internal_key.Prefix(coprefix_len), kLatestSchemaVersion));
+    UsedSchemaVersion(kLatestSchemaVersion);
 
     control_fields = row_control_fields;
     key.Assign(internal_key.cdata(), doc_key_size);
@@ -226,19 +234,24 @@ struct PackedRowData {
     return packer->AddValue(column_id, *column_value);
   }
 
-  void UsedSchemaVersion(const Uuid& cotable_id, SchemaVersion version) {
-    auto it = used_schema_versions.find(cotable_id);
-    if (it == used_schema_versions.end()) {
-      used_schema_versions.emplace(cotable_id, std::make_pair(version, version));
+  void UsedSchemaVersion(SchemaVersion version) {
+    if (used_schema_versions_it == used_schema_versions.end()) {
+      used_schema_versions_it =
+          used_schema_versions.emplace(
+              new_packing.cotable_id, std::make_pair(version, version)).first;
     } else {
-      it->second.first = std::min(it->second.first, version);
-      it->second.second = std::max(it->second.second, version);
+      used_schema_versions_it->second.first = std::min(
+          used_schema_versions_it->second.first, version);
+      used_schema_versions_it->second.second = std::max(
+          used_schema_versions_it->second.second, version);
     }
+    old_packing.schema_version = kLatestSchemaVersion;
+    packer.reset();
   }
 
   // Updates current coprefix. Coprefix is located at start of the key and identifies cotable or
   // colocation.
-  Status UpdateCoprefix(Slice coprefix, SchemaVersion schema_version) {
+  Status UpdateCoprefix(const Slice& coprefix) {
     if (!schema_packing_provider) {
       return Status::OK();
     }
@@ -246,30 +259,41 @@ struct PackedRowData {
       return Status::OK();
     }
     RETURN_NOT_OK(Flush());
+
+    auto packing = GetCompactionSchemaInfo(coprefix);
+    if (!packing.ok()) {
+      if (packing.status().IsNotFound()) {
+        active_coprefix = coprefix;
+        active_coprefix_dropped = true;
+        return Status::OK();
+      }
+      return packing.status();
+    }
     active_coprefix = coprefix;
+    active_coprefix_dropped = false;
+    new_packing = *packing;
+    used_schema_versions_it = used_schema_versions.find(new_packing.cotable_id);
+    return Status::OK();
+  }
+
+  Result<CompactionSchemaInfo> GetCompactionSchemaInfo(Slice coprefix) {
     if (coprefix.empty()) {
-      new_packing = VERIFY_RESULT(schema_packing_provider->CotablePacking(
-          Uuid::Nil(), kLatestSchemaVersion, history_cutoff));
+      return schema_packing_provider->CotablePacking(
+          Uuid::Nil(), kLatestSchemaVersion, history_cutoff);
     } else if (coprefix.TryConsumeByte(KeyEntryTypeAsChar::kColocationId)) {
       if (coprefix.size() != sizeof(ColocationId)) {
         return STATUS_FORMAT(Corruption, "Wrong colocation size: $0", coprefix.ToDebugHexString());
       }
       uint32_t colocation_id = BigEndian::Load32(coprefix.data());
-      new_packing = VERIFY_RESULT(schema_packing_provider->ColocationPacking(
-          colocation_id, kLatestSchemaVersion, history_cutoff));
+      return schema_packing_provider->ColocationPacking(
+          colocation_id, kLatestSchemaVersion, history_cutoff);
     } else if (coprefix.TryConsumeByte(KeyEntryTypeAsChar::kTableId)) {
       auto cotable_id = VERIFY_RESULT(Uuid::FromComparable(coprefix));
-      new_packing = VERIFY_RESULT(schema_packing_provider->CotablePacking(
-          cotable_id, kLatestSchemaVersion, history_cutoff));
+      return schema_packing_provider->CotablePacking(
+          cotable_id, kLatestSchemaVersion, history_cutoff);
     } else {
       return STATUS_FORMAT(Corruption, "Wrong coprefix: $0", coprefix.ToDebugHexString());
     }
-    UsedSchemaVersion(
-        new_packing.cotable_id,
-        schema_version == kLatestSchemaVersion ? new_packing.schema_version : schema_version);
-    old_packing.schema_version = kLatestSchemaVersion;
-    packer.reset();
-    return Status::OK();
   }
 };
 
@@ -428,7 +452,12 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   sub_key_ends_.resize(num_shared_components);
 
   RETURN_NOT_OK(SubDocKey::DecodeDocKeyAndSubKeyEnds(key, &sub_key_ends_));
-  RETURN_NOT_OK(packed_row_.UpdateCoprefix(key.Prefix(sub_key_ends_[0]), kLatestSchemaVersion));
+  RETURN_NOT_OK(packed_row_.UpdateCoprefix(key.Prefix(sub_key_ends_[0])));
+
+  if (packed_row_.active_coprefix_dropped) {
+    return Status::OK();
+  }
+
   const size_t new_stack_size = sub_key_ends_.size();
 
   // Remove overwrite hybrid_times for components that are no longer relevant for the current
@@ -515,8 +544,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
     if (DecodeValueEntryType(value_slice) == ValueEntryType::kPackedRow) {
       // Check packed row version for rows left untouched.
-      RETURN_NOT_OK(packed_row_.ProcessForwardedPackedRow(
-          internal_key, value_slice, sub_key_ends_[0]));
+      RETURN_NOT_OK(packed_row_.ProcessForwardedPackedRow(value_slice));
     }
     return PassToNextFeed(internal_key, value);
   }
