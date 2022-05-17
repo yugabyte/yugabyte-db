@@ -725,6 +725,12 @@ if ((IS_GCC) AND
   ADD_CXX_FLAGS("-faligned-new")
 endif()
 
+# -Wsign-compare is enabled for C++ only for GCC with just -Wall, and enabled for both C and C++
+# for GCC and Clang with -Wextra. Remove when -Wextra is enabled for all source code (#9279).
+if (IS_CLANG)
+  ADD_CXX_FLAGS("-Wsign-compare")
+endif()
+
 string (REPLACE "-Werror=non-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Werror=reorder" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Wnon-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})

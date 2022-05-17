@@ -188,7 +188,7 @@ set(ROCKSDB_SRCS
 
 set(CMAKE_CXX_FLAGS
   "${CMAKE_CXX_FLAGS} \
-   -Wextra -Wsign-compare -Wshadow -Woverloaded-virtual \
+   -Wextra -Wshadow -Woverloaded-virtual \
    -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-variable")
 
 if (NOT APPLE)
