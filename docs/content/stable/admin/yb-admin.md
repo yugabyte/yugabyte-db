@@ -41,7 +41,7 @@ yb-admin \
 To display the online help, run `yb-admin --help` from the YugabyteDB home directory.
 
 ```sh
-bin/yb-admin --help
+./bin/yb-admin --help
 ```
 
 ## Commands
@@ -165,7 +165,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_tablets ydb test_tb 0
 ```
@@ -207,7 +207,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses node7:7100,node8:7100,node9:7100 \
     list_all_masters
 ```
@@ -340,7 +340,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     ysql_catalog_version
 ```
@@ -398,7 +398,7 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_tables
 ```
@@ -447,7 +447,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     compact_table ycql.kong test
 ```
@@ -492,7 +492,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     modify_table_placement_info  testdatabase testtable \
     aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
@@ -528,7 +528,7 @@ The transaction status table will be created as `system.<table_name>`.
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     create_transaction_table \
     transactions_us_east
@@ -539,7 +539,7 @@ Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:700
 Next, set the placement on the newly created transactions table:
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     modify_table_placement_info system transactions_us_east \
     aws.us-east.us-east-1a,aws.us-east.us-east-1b,aws.us-east.us-east-1c 3
@@ -585,7 +585,7 @@ When this command runs, a `snapshot_id` is generated and printed.
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_database_snapshot
 ```
@@ -612,7 +612,7 @@ When this command runs, a `snapshot_id` is generated and printed.
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_keyspace_snapshot
 ```
@@ -676,7 +676,7 @@ When `show_details` is included, the `list_snapshot` command prints the followin
 In this example, the optional `show_details` flag is added to generate the snapshot details.
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_snapshots show_details
 ```
@@ -730,7 +730,7 @@ When this command runs, a `snapshot_id` is generated and printed.
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_snapshot ydb test_tb
 ```
@@ -764,7 +764,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin restore_snapshot 72ad2eb1-65a2-4e88-a448-7ef4418bc469
+./bin/yb-admin restore_snapshot 72ad2eb1-65a2-4e88-a448-7ef4418bc469
 ```
 
 When the restore starts, the `snapshot_id` and the generated `restoration_id` are displayed.
@@ -777,7 +777,7 @@ Restoration id: 5a9bc559-2155-4c38-ac8b-b6d0f7aa1af6
 To see if the snapshot was successfully restored, you can run the [`yb-admin list_snapshots`](#list-snapshots) command.
 
 ```sh
-bin/yb-admin list_snapshots
+./bin/yb-admin list_snapshots
 ```
 
 For the example above, the restore failed, so the following displays:
@@ -806,7 +806,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     export_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 \
     test_tb.snapshot
@@ -844,7 +844,7 @@ The *keyspace* and the *table* can be different from the exported one.
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     import_snapshot test_tb.snapshot ydb test_tb
 ```
@@ -942,7 +942,7 @@ Where _snapshot-id_ is the snapshot's unique identifier. The ID is optional; omi
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
@@ -1007,7 +1007,7 @@ Relative times can be in any of the following formats (again, note that you can 
 Restore from an absolute timestamp:
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
     1617670679185100
 ```
@@ -1015,7 +1015,7 @@ bin/yb-admin \
 Restore from a relative time:
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
     minus 60s
 ```
@@ -1056,7 +1056,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     modify_placement_info  \
     aws.us-west.us-west-2a:2,aws.us-west.us-west-2b:2,aws.us-west.us-west-2c 5
@@ -1233,7 +1233,7 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3 \
     127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
@@ -1429,6 +1429,8 @@ The [`all_masters_have_universe_key_in_memory`](#all-masters-have-universe-key-i
 
 {{< /note >}}
 
+**Syntax**
+
 ```sh
 yb-admin \
     -master_addresses <master-addresses> rotate_universe_key_in_memory <key_id>
@@ -1528,7 +1530,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     list_cdc_streams
 ```
@@ -1572,7 +1574,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     bootstrap_cdc_producer 000030ad000030008000000000004000
 ```
@@ -1606,7 +1608,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_leader_blacklist_completion
 ```
@@ -1633,7 +1635,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     change_blacklist \
       ADD node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
@@ -1711,7 +1713,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     set_load_balancer_enabled 0
 ```
@@ -1763,7 +1765,7 @@ For an example of performing a data move and the use of this command, refer to [
 In the following example, the data move is `66.6` percent done.
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_load_move_completion
 ```
@@ -1791,7 +1793,7 @@ yb-admin \
 **Example**
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_is_load_balancer_idle
 ```
@@ -1814,7 +1816,7 @@ yb-admin upgrade_ysql
 **Example**
 
 ```sh
-bin/yb-admin upgrade_ysql
+./bin/yb-admin upgrade_ysql
 ```
 
 A successful upgrade returns the following message:
@@ -1826,7 +1828,7 @@ YSQL successfully upgraded to the latest version
 In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
 
 ```sh
-bin/yb-admin \
+./bin/yb-admin \
       -timeout_ms 180000 \
       upgrade_ysql
 ```

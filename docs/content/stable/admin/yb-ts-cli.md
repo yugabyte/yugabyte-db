@@ -31,7 +31,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] <command> <flags>
 To display the available online help, run `yb-ts-cli` without any commands or flags at the YugabyteDB home directory.
 
 ```sh
-bin/yb-ts-cli
+./bin/yb-ts-cli
 ```
 
 ## Commands
@@ -256,7 +256,7 @@ Default: `60000` (1000 ms = 1 sec)
 ### Return the status of a tablet server
 
 ```sh
-bin/yb-ts-cli -server_address=127.0.0.1 status
+./bin/yb-ts-cli -server_address=127.0.0.1 status
 ```
 
 ```output
@@ -288,7 +288,7 @@ version_info {
 ### Display the current hybrid time
 
 ```sh
-bin/yb-ts-cli  [ --server_address=yb-tserver-1:9100 ] current_hybrid_time
+./bin/yb-ts-cli  [ --server_address=yb-tserver-1:9100 ] current_hybrid_time
 ```
 
 ```output
