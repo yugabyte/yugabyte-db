@@ -1138,7 +1138,7 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::CotablePacking(
   auto res = GetTableInfo(cotable_id.ToHexString());
   if (!res.ok()) {
     return STATUS_FORMAT(
-        Corruption, "Cannot find table info for: $0, raft group id: $1",
+        NotFound, "Cannot find table info for: $0, raft group id: $1",
         cotable_id, raft_group_id_);
   }
   return TableInfo::Packing(*res, schema_version, history_cutoff);
@@ -1149,7 +1149,7 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::ColocationPacking(
   auto it = kv_store_.colocation_to_table.find(colocation_id);
   if (it == kv_store_.colocation_to_table.end()) {
     return STATUS_FORMAT(
-        Corruption, "Cannot find table info for colocation: $0, raft group id: $1",
+        NotFound, "Cannot find table info for colocation: $0, raft group id: $1",
         colocation_id, raft_group_id_);
   }
   return TableInfo::Packing(it->second, schema_version, history_cutoff);
