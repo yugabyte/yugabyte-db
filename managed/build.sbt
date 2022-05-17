@@ -179,7 +179,8 @@ libraryDependencies ++= Seq(
   "com.github.dikhan" % "pagerduty-client" % "3.1.2",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
-  "io.fabric8" % "kubernetes-client" % "5.10.2"
+  "io.fabric8" % "kubernetes-client" % "5.10.2",
+  "org.apache.commons" % "commons-text" % "1.9"
 )
 // Clear default resolvers.
 appResolvers := None
