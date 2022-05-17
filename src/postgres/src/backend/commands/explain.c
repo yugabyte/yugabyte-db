@@ -1194,7 +1194,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 					partialmode = "Partial";
 					pname = psprintf("%s %s", partialmode, pname);
 				}
-				else if (DO_AGGSPLIT_COMBINE(agg->aggsplit))
+				else if (DO_AGGSPLIT_COMBINE(agg->aggsplit) ||
+						 ((AggState*) planstate)->yb_pushdown_supported)
 				{
 					partialmode = "Finalize";
 					pname = psprintf("%s %s", partialmode, pname);
