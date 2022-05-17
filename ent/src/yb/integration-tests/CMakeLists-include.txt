@@ -46,5 +46,4 @@ set(INTEGRATION_TESTS_EXTENSIONS_TESTS
   cdcsdk_ysql-test
   twodc_ysql-test
   twodc-test
-  cdcsdk_split-test
   PARENT_SCOPE)

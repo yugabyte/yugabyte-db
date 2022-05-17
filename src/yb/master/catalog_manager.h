@@ -1400,11 +1400,6 @@ class CatalogManager :
     return false;
   }
 
-  virtual bool IsCdcSdkEnabled(const TableInfo& table_info) override {
-    // Default value.
-    return false;
-  }
-
   virtual Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntryType type) {
     return SnapshotSchedulesToObjectIdsMap();
