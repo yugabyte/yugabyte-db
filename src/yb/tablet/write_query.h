@@ -168,6 +168,11 @@ class WriteQuery {
 
   void CompleteQLWriteBatch(const Status& status);
 
+  void SchemaVersionMismatch(int num_mismatches, int batch_size);
+
+  bool CqlCheckSchemaVersion();
+  bool PgsqlCheckSchemaVersion();
+
   Tablet& tablet() const;
 
   std::unique_ptr<WriteOperation> operation_;
