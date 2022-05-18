@@ -29,7 +29,7 @@ The following table describes the **Slow Queries** column values.
 | Database        | The YSQL database used by the query.                         |
 | User            | The name of role used to access YSQL database.               |
 | Count           | The total number of times this type of query has executed.   |
-| Total time      | The total duration (in milliseconds) of all iterations of this query has taken. |
+| Total time      | The total duration (in milliseconds) this query has taken.   |
 | Rows            | The total number of database table rows returned across all iterations of this query |
 | Avg Exec Time   | Average or mean execution time (in milliseconds) for this query. |
 | Min Exec Time   | Minimum execution time (in milliseconds) for this query.     |
