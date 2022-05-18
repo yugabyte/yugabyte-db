@@ -33,12 +33,6 @@ For details on using Hasura Cloud, refer to the [Hasura Cloud documentation](htt
 
 You apply database migrations to the Hasura project using Hasura CLI v.2.0 Beta 2. To install Hasura CLI, refer to [Installing the Hasura CLI](https://hasura.io/docs/latest/graphql/core/hasura-cli/install-hasura-cli.html#install-hasura-cli).
 
-Once installed, update to the v.2 Beta.
-
-```sh
-$ hasura update-cli --version v2.0.0-beta.2
-```
-
 ## Download the Realtime Poll application
 
 The Realtime Poll application is available from the Yugabyte GraphQL Apps repo.
@@ -52,10 +46,10 @@ $ cd yugabyte-graphql-apps/realtime-poll
 
 You need to configure the Realtime Poll application to use the Hasura Cloud project domain and Admin Secret:
 
-1. On your local computer, navigate to the `hasura` directory in the sample application directory.
+1. On your local computer, navigate to the `hasura` directory in the realtime-poll directory.
 
     ```sh
-    $ cd realtime-poll/hasura
+    $ cd hasura
     ```
 
 1. Edit the `config.yaml` file by changing the following parameters:

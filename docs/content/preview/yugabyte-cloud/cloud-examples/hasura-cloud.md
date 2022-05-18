@@ -22,7 +22,7 @@ For an example of how to deploy a GraphQL application for a Hasura Cloud project
 
 ## Obtain your Yugabyte cluster connection info
 
-Sign up for YugabyteDB Managed and create a Free Tier cluster by following the steps in the [Quick Start](../../cloud-quickstart/).
+Sign up for YugabyteDB Managed and create a cluster by following the steps in the [Quick Start](../../cloud-quickstart/).
 
 The cluster has a default database called `yugabyte`. You'll use this along with your database credentials (username and password) in your connection with the Hasura project. To connect, you'll also need the connection string with the cluster's host address and port number.
 
@@ -52,7 +52,7 @@ To create a project in Hasura Cloud:
 
 1. From the Hasura Cloud Dashboard, under **Projects**, click **New Project**.
 
-1. Select **Free Tier**, leave the default region, and enter a name for your project.
+1. Select **Free Tier**.
 
     <br/><br/>
 
@@ -60,9 +60,9 @@ To create a project in Hasura Cloud:
 
     <br/><br/>
 
-1. Click **Create project**.
+1. Click **Create Free Project**.
 
-    The project details are displayed. These include the GpaphQL API endpoint URL and Admin Secret, which is used for connecting applications.
+    The project details are displayed. These include the **GpaphQL API** endpoint URL and **Admin Secret**, which is used for connecting applications.
 
 1. Note the **Hasura Cloud IP**. You will need to add this to your cluster IP allow list in YugabyteDB Managed.
 
@@ -70,7 +70,7 @@ To create a project in Hasura Cloud:
 
 YugabyteDB Managed restricts access to clusters to IP addresses whitelisted in IP allow lists. To connect the Hasura project, you must add the project's IP address to your clusters IP allow list.
 
-1. In YugabyteDB Managed, on the **Settings** tab for your cluster, under **IP Allow lists**, click **Add List**.
+1. In YugabyteDB Managed, select your cluster and click **Add IP Allow List**.
 
 1. Click **Create New List and Add to Cluster**.
 
