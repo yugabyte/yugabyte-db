@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.INodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.params.NodeAccessTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -55,6 +56,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -131,7 +133,10 @@ public class NodeManager extends DevopsBase {
     Create_Root_Volumes,
     Replace_Root_Volume,
     Delete_Root_Volumes,
-    Transfer_XCluster_Certs
+    Transfer_XCluster_Certs,
+    Verify_Node_SSH_Access,
+    Add_Authorized_Key,
+    Remove_Authorized_Key
   }
 
   public enum CertRotateAction {
@@ -1953,6 +1958,52 @@ public class NodeManager extends DevopsBase {
           addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
           break;
         }
+      case Verify_Node_SSH_Access:
+        {
+          if (!(nodeTaskParam instanceof NodeAccessTaskParams)) {
+            throw new RuntimeException("NodeTaskParams is not NodeAccessTaskParams");
+          }
+          log.info("Verifying access to node {}", nodeTaskParam.nodeName);
+          NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
+          commandArgs.addAll(getNodeSSHCommand(taskParams));
+          String newPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
+          sensitiveData.put("--new_private_key_file", newPrivateKeyFilePath);
+          break;
+        }
+      case Add_Authorized_Key:
+        {
+          if (!(nodeTaskParam instanceof NodeAccessTaskParams)) {
+            throw new RuntimeException("NodeTaskParams is not NodeAccessTaskParams");
+          }
+          log.info("Adding a new key to authorized keys of node {}", nodeTaskParam.nodeName);
+          NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
+          commandArgs.addAll(getNodeSSHCommand(taskParams));
+          String pubKeyContent = taskParams.taskAccessKey.getPublicKeyContent();
+          if (pubKeyContent.equals("")) {
+            throw new RuntimeException("Public key content is empty!");
+          }
+          sensitiveData.put("--public_key_content", pubKeyContent);
+          String newPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
+          sensitiveData.put("--new_private_key_file", newPrivateKeyFilePath);
+          break;
+        }
+      case Remove_Authorized_Key:
+        {
+          if (!(nodeTaskParam instanceof NodeAccessTaskParams)) {
+            throw new RuntimeException("NodeTaskParams is not NodeAccessTaskParams");
+          }
+          log.info("Removing a key from authorized keys of node {}", nodeTaskParam.nodeName);
+          NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
+          commandArgs.addAll(getNodeSSHCommand(taskParams));
+          String pubKeyContent = taskParams.taskAccessKey.getPublicKeyContent();
+          if (pubKeyContent.equals("")) {
+            throw new RuntimeException("Public key content is empty!");
+          }
+          sensitiveData.put("--public_key_content", pubKeyContent);
+          String oldPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
+          sensitiveData.put("--old_private_key_file", oldPrivateKeyFilePath);
+          break;
+        }
     }
     commandArgs.add(nodeTaskParam.nodeName);
     try {
@@ -2099,5 +2150,31 @@ public class NodeManager extends DevopsBase {
       }
     }
     return data;
+  }
+
+  public List<String> getNodeSSHCommand(NodeAccessTaskParams params) {
+    KeyInfo keyInfo = params.accessKey.getKeyInfo();
+    Provider provider = Provider.getOrBadRequest(params.customerUUID, params.providerUUID);
+    Integer sshPort = keyInfo.sshPort == null ? provider.sshPort : keyInfo.sshPort;
+    String sshUser = params.sshUser;
+    String vaultPasswordFile = keyInfo.vaultPasswordFile;
+    String vaultFile = keyInfo.vaultFile;
+    List<String> commandArgs = new ArrayList<>();
+    commandArgs.add("--ssh_user");
+    commandArgs.add(sshUser);
+    commandArgs.add("--custom_ssh_port");
+    commandArgs.add(sshPort.toString());
+    commandArgs.add("--vault_password_file");
+    commandArgs.add(vaultPasswordFile);
+    commandArgs.add("--vars_file");
+    commandArgs.add(vaultFile);
+    String privateKeyFilePath = keyInfo.privateKey;
+    if (privateKeyFilePath != null) {
+      commandArgs.add("--private_key_file");
+      commandArgs.add(privateKeyFilePath);
+    } else {
+      throw new RuntimeException("No key found at the private key file path!");
+    }
+    return commandArgs;
   }
 }

@@ -236,7 +236,10 @@ public class CustomerTask extends Model {
     CreateTableSpaces,
 
     @EnumValue("ThirdpartySoftwareUpgrade")
-    ThirdpartySoftwareUpgrade;
+    ThirdpartySoftwareUpgrade,
+
+    @EnumValue("RotateAccessKey")
+    RotateAccessKey;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -339,6 +342,8 @@ public class CustomerTask extends Model {
               : "Upgrading third-party software for ";
         case CreateTableSpaces:
           return completed ? "Created tablespaces in " : "Creating tablespaces in ";
+        case RotateAccessKey:
+          return completed ? "Rotated Access Key" : "Rotating Access Key";
         default:
           return null;
       }

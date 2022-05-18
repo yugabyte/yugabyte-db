@@ -5,6 +5,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseAccessKey;
+
 /** These are the various types of user tasks and internal tasks. */
 public enum TaskType {
 
@@ -103,6 +105,8 @@ public enum TaskType {
 
   ReleaseInstanceFromUniverse("ReleaseInstanceFromUniverse"),
 
+  RotateAccessKey("RotateAccessKey"),
+
   SetUniverseKey("SetUniverseKey"),
 
   @Deprecated
@@ -129,6 +133,8 @@ public enum TaskType {
   CreateSupportBundle("CreateSupportBundle"),
 
   // Tasks belonging to subtasks classpath
+  AddAuthorizedKey("subtasks.AddAuthorizedKey"),
+
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
   AnsibleConfigureServers("subtasks.AnsibleConfigureServers"),
@@ -193,6 +199,8 @@ public enum TaskType {
 
   UpdateSoftwareVersion("subtasks.UpdateSoftwareVersion"),
 
+  VerifyNodeSSHAccess("subtasks.VerifyNodeSSHAccess"),
+
   WaitForDataMove("subtasks.WaitForDataMove"),
 
   WaitForLeaderBlacklistCompletion("subtasks.WaitForLeaderBlacklistCompletion"),
@@ -214,6 +222,10 @@ public enum TaskType {
   WaitForServerReady("subtasks.WaitForServerReady"),
 
   RunExternalScript("subtasks.RunExternalScript"),
+
+  RemoveAuthorizedKey("subtasks.RemoveAuthorizedKey"),
+
+  UpdateUniverseAccessKey("subtasks.UpdateUniverseAccessKey"),
 
   // Tasks belonging to subtasks.xcluster classpath
   XClusterConfigSetup("subtasks.xcluster.XClusterConfigSetup"),

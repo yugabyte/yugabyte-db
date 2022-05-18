@@ -10,28 +10,36 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.RotateAccessKeyFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.IOException;
-import java.util.Objects;
-import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -42,6 +50,7 @@ import play.mvc.Result;
 public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
+  @Inject private AccessManager accessManager;
 
   @ApiOperation(
       value = "List cloud providers",
@@ -169,6 +178,19 @@ public class CloudProviderApiController extends AuthenticatedController {
               null);
       return new YBPTask(null, providerEbean.uuid).asResult();
     }
+  }
+
+  @ApiOperation(
+      nickname = "rotate_access_key",
+      value = "Rotate access key for a provider - Not scheduled",
+      response = YBPSuccess.class)
+  public Result rotateAccessKeysManual(UUID customerUUID, UUID providerUUID) {
+    Form<RotateAccessKeyFormData> formData =
+        formFactory.getFormDataOrBadRequest(RotateAccessKeyFormData.class);
+    List<UUID> universeUUIDs = formData.get().universeUUIDs;
+    String newKeyCode = formData.get().newKeyCode;
+    accessManager.rotateAccessKey(customerUUID, providerUUID, universeUUIDs, newKeyCode);
+    return withMessage("Created rotate key task for the listed universes");
   }
 
   private static String getFirstRegionCode(Provider provider) {
