@@ -1,8 +1,8 @@
 ---
-title: Back up and restore data
-headerTitle: Back up and restore
-linkTitle: Back up and restore
-description: Back up and restore YugabyteDB.
+title: Backup and restore data
+headerTitle: Backup and restore
+linkTitle: Backup and restore
+description: Backup and restore YugabyteDB.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Create backups and restore your data.
 aliases:
@@ -41,7 +41,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
         <div class="title">Distributed snapshot and restore data</div>
       </div>
       <div class="body">
-        Back up and restore data using distributed snapshots.
+        Backup and restore data using distributed snapshots.
       </div>
     </a>
   </div>
