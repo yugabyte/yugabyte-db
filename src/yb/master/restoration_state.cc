@@ -121,8 +121,10 @@ CHECKED_STATUS RestorationState::ToPB(RestorationInfoPB* out) {
 }
 
 void RestorationState::PrepareOperations(
-    TabletRestoreOperations* operations, const std::unordered_set<TabletId>& snapshot_tablets) {
-  DoPrepareOperations([this, &operations, &snapshot_tablets](const TabletData& data) -> bool {
+    TabletRestoreOperations* operations, const std::unordered_set<TabletId>& snapshot_tablets,
+    std::optional<int64_t> db_oid) {
+  DoPrepareOperations(
+      [this, &operations, &snapshot_tablets, &db_oid](const TabletData& data) -> bool {
     if (Throttler().Throttle()) {
       return false;
     }
@@ -133,6 +135,7 @@ void RestorationState::PrepareOperations(
       .restore_at = restore_at_,
       .sys_catalog_restore_needed = !schedule_id_.IsNil(),
       .is_tablet_part_of_snapshot = snapshot_tablets.count(data.id) != 0,
+      .db_oid = db_oid,
     });
     return true;
   });

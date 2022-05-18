@@ -116,6 +116,7 @@ struct RestorationData {
   TxnSnapshotId snapshot_id;
   TxnSnapshotRestorationId restoration_id;
   HybridTime restore_at;
+  std::optional<int64_t> db_oid;
 };
 
 struct NoOp {
@@ -622,11 +623,41 @@ class MasterSnapshotCoordinator::Impl {
                 << restoration.restoration_id;
       auto status = DoRestore(restoration.snapshot_id, restoration.restore_at,
                               restoration.restoration_id,
-                              RestorePhase::kPostSysCatalogLoad, term);
+                              RestorePhase::kPostSysCatalogLoad, term,
+                              restoration.db_oid);
       LOG_IF(DFATAL, !status.ok())
           << "Failed to restore tablets for restoration "
           << restoration.restoration_id << ": " << status;
     }
+  }
+
+  std::optional<int64_t> ComputeDbOid(RestorationState* restoration) REQUIRES(mutex_) {
+    std::optional<int64_t> db_oid;
+    bool contains_sequences_data = false;
+    for (const auto& id_and_type : restoration->MasterMetadata()) {
+      if (id_and_type.second == SysRowEntryType::NAMESPACE &&
+          id_and_type.first == kPgSequencesDataNamespaceId) {
+        contains_sequences_data = true;
+      }
+    }
+    if (contains_sequences_data) {
+      for (const auto& id_and_type : restoration->MasterMetadata()) {
+        if (id_and_type.second == SysRowEntryType::NAMESPACE &&
+            id_and_type.first != kPgSequencesDataNamespaceId) {
+          auto db_oid_res = GetPgsqlDatabaseOid(id_and_type.first);
+          LOG_IF(DFATAL, !db_oid_res.ok())
+              << "Unable to obtain db_oid for namespace id "
+              << id_and_type.first << ": " << db_oid_res.status();
+          db_oid = static_cast<int64_t>(*db_oid_res);
+          LOG(INFO) << "DB OID of restoring database " << *db_oid;
+          // TODO(Sanket): In future can enhance to pass a list of db_oids.
+          break;
+        }
+      }
+      LOG_IF(DFATAL, !db_oid)
+          << "Unable to fetch db oid for the restoring database";
+    }
+    return db_oid;
   }
 
   void SysCatalogLoaded(int64_t term) {
@@ -647,10 +678,12 @@ class MasterSnapshotCoordinator::Impl {
         // If it is PITR restore, then verify restoration and add to the queue for rpcs.
         if (!restoration->schedule_id().IsNil()) {
           VerifyRestoration(restoration.get());
+          auto db_oid = ComputeDbOid(restoration.get());
           postponed_restores.push_back(RestorationData {
             .snapshot_id = restoration->snapshot_id(),
             .restoration_id = restoration->restoration_id(),
             .restore_at = restoration->restore_at(),
+            .db_oid = db_oid,
           });
         }
         // Set the throttling limits.
@@ -919,6 +952,11 @@ class MasterSnapshotCoordinator::Impl {
     if (operation.sys_catalog_restore_needed) {
       task->SetMetadata(tablet_info->table()->LockForRead()->pb);
     }
+    // For sequences_data_table, we should set partial restore and db_oid.
+    if (tablet_info->table()->id() == kPgSequencesDataTableId) {
+      LOG_IF(DFATAL, !operation.db_oid) << "DB OID not found for restoring database";
+      task->SetDbOid(*operation.db_oid);
+    }
     context_.ScheduleTabletSnapshotOp(task);
   }
 
@@ -966,7 +1004,11 @@ class MasterSnapshotCoordinator::Impl {
                         FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
         auto tablets = (*snapshot).tablet_ids();
         std::unordered_set<TabletId> tablets_snapshot(tablets.begin(), tablets.end());
-        r->PrepareOperations(&restore_operations, tablets_snapshot);
+        std::optional<int64_t> db_oid = std::nullopt;
+        if (!snapshot->schedule_id().IsNil()) {
+          db_oid = ComputeDbOid(r.get());
+        }
+        r->PrepareOperations(&restore_operations, tablets_snapshot, db_oid);
       }
     }
     for (const auto& id : cleanup_snapshots) {
@@ -1441,7 +1483,8 @@ class MasterSnapshotCoordinator::Impl {
 
   CHECKED_STATUS DoRestore(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at,
-      const TxnSnapshotRestorationId& restoration_id, RestorePhase phase, int64_t leader_term) {
+      const TxnSnapshotRestorationId& restoration_id, RestorePhase phase, int64_t leader_term,
+      std::optional<int64_t> db_oid = std::nullopt) {
     TabletRestoreOperations operations;
     bool restore_sys_catalog;
     std::unordered_set<TabletId> snapshot_tablets;
@@ -1487,7 +1530,7 @@ class MasterSnapshotCoordinator::Impl {
         tablet_list_empty = restoration_ptr->Empty();
         auto tablet_ids = snapshot.tablet_ids();
         snapshot_tablets.insert(tablet_ids.begin(), tablet_ids.end());
-        restoration_ptr->PrepareOperations(&operations, snapshot_tablets);
+        restoration_ptr->PrepareOperations(&operations, snapshot_tablets, db_oid);
       }
     }
 

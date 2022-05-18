@@ -441,6 +441,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void SysCatalogLoaded(int64_t term) override;
 
+  Result<SysRowEntries> CollectEntriesForSequencesDataTable();
+
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;
   SnapshotInfoMap non_txn_snapshot_ids_map_;

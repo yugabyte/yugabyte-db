@@ -26,10 +26,13 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/tablet/restore_util.h"
 #include "yb/tablet/tablet_fwd.h"
 
 namespace yb {
 namespace master {
+
+struct PgCatalogTableData;
 
 // Utility class to restore sys catalog.
 // Initially we load tables and tablets into it, then match schedule filter.
@@ -70,6 +73,10 @@ class RestoreSysCatalogState {
     restoring_objects_.namespaces.emplace(id, value);
   }
 
+  bool IsYsqlRestoration();
+
+  Status PatchSequencesDataObjects();
+
  private:
   struct Objects;
   using RetainedExistingTables = std::unordered_map<TableId, std::vector<SnapshotScheduleId>>;
@@ -83,7 +90,17 @@ class RestoreSysCatalogState {
   template <class PB>
   CHECKED_STATUS IterateSysCatalog(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
-      HybridTime read_time, std::unordered_map<std::string, PB>* map);
+      HybridTime read_time, std::unordered_map<std::string, PB>* map,
+      std::unordered_map<std::string, PB>* seq_map);
+
+  bool AreSequencesDataObjectsValid(Objects* existing_objects, Objects* restoring_objects);
+
+  bool AreAllSequencesDataObjectsEmpty(Objects* existing_objects, Objects* restoring_objects);
+
+  Status AddSequencesDataEntries(
+      std::unordered_map<NamespaceId, SysNamespaceEntryPB>* seq_namespace,
+      std::unordered_map<TableId, SysTablesEntryPB>* seq_table,
+      std::unordered_map<TabletId, SysTabletsEntryPB>* seq_tablets);
 
   template <class PB>
   CHECKED_STATUS AddRestoringEntry(
@@ -120,10 +137,16 @@ class RestoreSysCatalogState {
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
       docdb::DocWriteBatch* write_batch);
 
+  Status PatchSequencesDataObjects(Objects* existing_objects, Objects* restoring_objects);
+
   struct Objects {
     std::unordered_map<NamespaceId, SysNamespaceEntryPB> namespaces;
     std::unordered_map<TableId, SysTablesEntryPB> tables;
     std::unordered_map<TabletId, SysTabletsEntryPB> tablets;
+    // Entries corresponding to sequences_data table.
+    std::unordered_map<NamespaceId, SysNamespaceEntryPB> sequences_namespace;
+    std::unordered_map<TableId, SysTablesEntryPB> sequences_table;
+    std::unordered_map<TabletId, SysTabletsEntryPB> sequences_tablets;
 
     std::string SizesToString() const;
 
@@ -139,6 +162,26 @@ class RestoreSysCatalogState {
   Objects restoring_objects_;
   Objects existing_objects_;
   RetainedExistingTables retained_existing_tables_;
+};
+
+class PgCatalogRestorePatch : public RestorePatch {
+ public:
+  PgCatalogRestorePatch(
+      FetchState* existing_state, FetchState* restoring_state,
+      docdb::DocWriteBatch* doc_batch, const PgCatalogTableData& table,
+      const yb::tablet::TableInfo& pg_yb_catalog_meta)
+      : RestorePatch(existing_state, restoring_state, doc_batch),
+        table_(table), pg_yb_catalog_meta_(pg_yb_catalog_meta) {}
+
+ private:
+  Status ProcessEqualEntries(
+      const Slice& existing_key, const Slice& existing_value,
+      const Slice& restoring_key, const Slice& restoring_value) override;
+
+  Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override;
+
+  const PgCatalogTableData& table_;
+  const yb::tablet::TableInfo& pg_yb_catalog_meta_;
 };
 
 }  // namespace master
