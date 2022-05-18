@@ -351,5 +351,8 @@ You can create a support bundle as follows:
 
   The **Support Bundles** dialog allows you to either download the bundle or delete it if it is no longer needed. By default, bundles expire after ten days to free up space.
 
+## Configure storage class volume binding
 
+On Kubernetes, if you select the initial capacity as small and then try to add large pods to your newly-created universe, you might experience problems. This is caused by a pod having persistent volume claim binding issues because the claim was created with storage class whose binding mode was set to `Immediate`. Such configuration would result in a "*Volume node affinity conflict*" error. To resolve the issue, it is recommended to use the storage class with its `volumeBindingMode` set to `WaitForFirstConsumer`. This will delay the binding of the persistent volume until a pod using the persistent volume claim has been created. 
 
+For more information, see [Volume Binding Mode](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode).
