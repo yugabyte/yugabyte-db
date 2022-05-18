@@ -387,6 +387,17 @@ public class Universe extends Model {
   }
 
   /**
+   * Checks if all nodes in universe have the node state 'Live'
+   *
+   * @return true if all nodes are in LIVE state
+   */
+  public boolean allNodesLive() {
+    return getNodes()
+        .stream()
+        .allMatch(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live));
+  }
+
+  /**
    * Checks if there is any node in a transit state across the universe.
    *
    * @return true if there is any such node.

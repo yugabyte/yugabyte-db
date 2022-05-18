@@ -62,6 +62,8 @@ public class Util {
   public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
   public static final String SYSTEM_PLATFORM_DB = "system_platform";
   public static final int YB_SCHEDULER_INTERVAL = 2;
+  public static final String DEFAULT_YB_SSH_USER = "yugabyte";
+  public static final String DEFAULT_SUDO_SSH_USER = "centos";
 
   public static final String AZ = "AZ";
   public static final String GCS = "GCS";

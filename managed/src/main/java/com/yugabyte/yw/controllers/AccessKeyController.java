@@ -6,6 +6,7 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TemplateManager;
@@ -152,6 +153,8 @@ public class AccessKeyController extends AuthenticatedController {
           accessManager.addKey(
               regionUUID,
               keyCode,
+              null,
+              sshUser,
               sshPort,
               airGapInstall,
               skipProvisioning,
