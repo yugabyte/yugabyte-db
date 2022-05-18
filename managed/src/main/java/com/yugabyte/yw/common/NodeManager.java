@@ -322,6 +322,22 @@ public class NodeManager extends DevopsBase {
           }
         }
       }
+
+      // Legacy providers should not be allowed to have no NTP set up. See PLAT 4015
+      if (!keyInfo.showSetUpChrony
+          && !keyInfo.airGapInstall
+          && !((AnsibleSetupServer.Params) params).useTimeSync
+          && (providerType.equals(Common.CloudType.aws)
+              || providerType.equals(Common.CloudType.gcp)
+              || providerType.equals(Common.CloudType.azu))) {
+        subCommand.add("--use_chrony");
+        List<String> publicServerList =
+            Arrays.asList("0.pool.ntp.org", "1.pool.ntp.org", "2.pool.ntp.org", "3.pool.ntp.org");
+        for (String server : publicServerList) {
+          subCommand.add("--ntp_server");
+          subCommand.add(server);
+        }
+      }
     }
     return subCommand;
   }
