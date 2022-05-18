@@ -1588,7 +1588,6 @@ void SetBackfillSpecForYsqlBackfill(
   out_spec.set_limit(limit);
   out_spec.set_count(in_spec.count() + row_count);
   response->set_is_backfill_batch_done(!response->has_paging_state());
-  VLOG(2) << " limit is " << limit << " set_count to " << out_spec.count();
   if (limit >= 0 && out_spec.count() >= limit) {
     // Hint postgres to stop scanning now. And set up the
     // next_row_key based on the paging state.
@@ -2026,9 +2025,11 @@ string GenerateSerializedBackfillSpec(size_t batch_size, const string& next_row_
   backfill_spec.set_limit(batch_size);
   backfill_spec.set_next_row_key(next_row_to_backfill);
   backfill_spec.SerializeToString(&serialized_backfill_spec);
-  VLOG(2) << "Generating backfill_spec " << yb::ToString(backfill_spec) << " encoded as "
-          << b2a_hex(serialized_backfill_spec) << " a string of length "
-          << serialized_backfill_spec.length();
+  VLOG(2) << "Generating backfill_spec " << yb::ToString(backfill_spec)
+          << (VLOG_IS_ON(3) ? Format(" encoded as $0 a string of length $1",
+                                     b2a_hex(serialized_backfill_spec),
+                                     serialized_backfill_spec.length())
+                            : "");
   return serialized_backfill_spec;
 }
 
@@ -2202,7 +2203,8 @@ Status Tablet::BackfillIndexesForYsql(
     *backfilled_until = spec.next_row_key();
 
     VLOG(2) << "Backfilled " << *number_of_rows_processed << " rows. "
-            << "Setting backfilled_until to " << b2a_hex(*backfilled_until) << " of length "
+            << "Setting backfilled_until to "
+            << (backfilled_until->empty() ? "(empty)" : b2a_hex(*backfilled_until)) << " of length "
             << backfilled_until->length();
 
     MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
