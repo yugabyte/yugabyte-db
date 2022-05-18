@@ -22,10 +22,10 @@ import time
 from pprint import pprint
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
-  generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
-  YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
-  DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT, \
-  DEFAULT_SSH_USER
+    generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
+    YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
+    DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT, \
+    DEFAULT_SSH_USER
 from ansible_vault import Vault
 from ybops.utils import generate_rsa_keypair, scp_to_tmp
 
@@ -274,6 +274,174 @@ class AbstractInstancesMethod(AbstractMethod):
         return ssh_port_updated
 
 
+class VerifySSHConnection(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(VerifySSHConnection, self).__init__(base_command, "verify_node_ssh_access", True)
+
+    def add_extra_args(self):
+        super(VerifySSHConnection, self).add_extra_args()
+        self.parser.add_argument("--new_private_key_file",
+                                 required=True,
+                                 help="Private key file path of newly added \
+                                 key for verifying connection")
+
+    def callback(self, args):
+        if args.new_private_key_file == args.private_key_file:
+            print("Given old and new access keys " +
+                  "are the same, skipping.")
+            return
+        host_info = self.cloud.get_host_info(args)
+        ssh_details = get_ssh_host_port(host_info, args.custom_ssh_port, default_port=False)
+        ssh_retries = 3
+        oldKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
+                                      args.custom_ssh_port,
+                                      args.ssh_user,
+                                      args.private_key_file,
+                                      ssh_retries)
+        if oldKeyConnects:
+            print("SSH connection verification successful")
+            return
+        elif args.new_private_key_file is None:
+            raise YBOpsRuntimeError("SSH connection verification failed! \
+                Could not connect with given SSH key for instance: '{0}' \
+                    and no alternate new key provided".format(
+                args.search_pattern))
+        else:
+            # make SSH key rotation idempotent - it will move ahead if new key connects
+            newKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
+                                          args.custom_ssh_port,
+                                          args.ssh_user,
+                                          args.new_private_key_file,
+                                          ssh_retries)
+            if newKeyConnects:
+                print("New key already connects " +
+                      "whereas old key does not")
+                return
+            else:
+                raise YBOpsRuntimeError("SSH connection verification failed! " +
+                                        "Could not connect with old or new " +
+                                        "SSH key for instance: '{0}'".format(
+                                            args.search_pattern))
+
+
+class AddAuthorizedKey(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(AddAuthorizedKey, self).__init__(base_command, "add_authorized_key", True)
+
+    def add_extra_args(self):
+        super(AddAuthorizedKey, self).add_extra_args()
+        self.parser.add_argument("--public_key_content",
+                                 required=True,
+                                 help="Public key content to be added to authorized_keys of node")
+        self.parser.add_argument("--new_private_key_file",
+                                 required=True,
+                                 help="Private key file path of newly added \
+                                 key for verifying connection")
+
+    def callback(self, args):
+        if args.private_key_file == args.new_private_key_file:
+            print("Given old and new access keys" +
+                  " are the same, skipping.")
+            return
+        host_info = self.cloud.get_host_info(args)
+        ssh_details = get_ssh_host_port(host_info, args.custom_ssh_port, default_port=False)
+        ssh_retries = 3
+        # check connection before adding public key to make task idempotent
+        newKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
+                                      args.custom_ssh_port,
+                                      args.ssh_user,
+                                      args.new_private_key_file,
+                                      ssh_retries)
+        if newKeyConnects:
+            print("Given SSH key already exists " +
+                  "for user {} in instance: {}".format(
+                      args.ssh_user, args.search_pattern))
+            return
+
+        # add public new key
+        updated_vars = {
+            "command": "add-authorized-key",
+            "public_key_content": args.public_key_content
+        }
+        self.update_ansible_vars_with_args(args)
+        self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
+        updated_vars.update(self.extra_vars)
+        self.cloud.setup_ansible(args).run("edit_authorized_keys.yml", updated_vars)
+
+        # confirm connection with new key
+        newKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
+                                      args.custom_ssh_port,
+                                      args.ssh_user,
+                                      args.new_private_key_file,
+                                      ssh_retries)
+        if newKeyConnects:
+            print("Add access key successful")
+        else:
+            raise YBOpsRuntimeError("Add authorized key failed! " +
+                                    "Could not connect with given " +
+                                    "SSH key for instance: '{0}'".format(
+                                        args.search_pattern))
+
+
+class RemoveAuthorizedKey(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(RemoveAuthorizedKey, self).__init__(base_command, "remove_authorized_key", True)
+
+    def add_extra_args(self):
+        super(RemoveAuthorizedKey, self).add_extra_args()
+        self.parser.add_argument("--public_key_content",
+                                 required=True,
+                                 help="Public key content to be removed from \
+                                     authorized_keys of node")
+        self.parser.add_argument("--old_private_key_file",
+                                 required=True,
+                                 help="Private key file path of key to be removed \
+                                 for verifying connection")
+
+    def callback(self, args):
+        if args.private_key_file == args.old_private_key_file:
+            print("Given old and new access keys " +
+                  "are the same, skipping.")
+            return
+        host_info = self.cloud.get_host_info(args)
+        ssh_details = get_ssh_host_port(host_info, args.custom_ssh_port, default_port=False)
+        ssh_retries = 3
+        # check connection before removing public key to make task idempotent
+        oldKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
+                                      args.custom_ssh_port,
+                                      args.ssh_user,
+                                      args.old_private_key_file,
+                                      ssh_retries)
+
+        if not oldKeyConnects:
+            print("SSH key already removed/does not " +
+                  "exist for instance: {}".format(
+                      args.search_pattern))
+            return
+
+        # remove public key
+        updated_vars = {
+            "command": "remove-authorized-key",
+            "public_key_content": args.public_key_content
+        }
+        self.update_ansible_vars_with_args(args)
+        self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
+        updated_vars.update(self.extra_vars)
+        self.cloud.setup_ansible(args).run("edit_authorized_keys.yml", updated_vars)
+
+        # confirm connection with old key does not work
+        oldKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
+                                      args.custom_ssh_port,
+                                      args.ssh_user,
+                                      args.old_private_key_file,
+                                      ssh_retries)
+        if not oldKeyConnects:
+            print("Remove access key successful")
+        else:
+            raise YBOpsRuntimeError("Could not remove SSH key for instance: '{0}'".format(
+                args.search_pattern))
+
+
 class ReplaceRootVolumeMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(ReplaceRootVolumeMethod, self).__init__(base_command, "replace_root_volume")
@@ -388,7 +556,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         if args.boot_script:
             host_info = self.cloud.get_host_info(args)
             self.extra_vars.update(
-                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=True))
+                get_ssh_host_port(host_info, args.custom_ssh_port, default_port=True))
             ssh_port_updated = self.update_open_ssh_port(args,)
             use_default_port = not ssh_port_updated
             logging.info(
@@ -549,6 +717,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 class CreateRootVolumesMethod(AbstractInstancesMethod):
     """Superclass for create root volumes.
     """
+
     def __init__(self, base_command):
         super(CreateRootVolumesMethod, self).__init__(base_command, "create_root_volumes")
         self.create_method = CreateInstancesMethod(self.base_command)
@@ -583,6 +752,7 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
 class DeleteRootVolumesMethod(AbstractInstancesMethod):
     """Superclass for deleting root volumes.
     """
+
     def __init__(self, base_command):
         super(DeleteRootVolumesMethod, self).__init__(base_command, "delete_root_volumes")
 
@@ -680,7 +850,8 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         super(ChangeInstanceTypeMethod, self).add_extra_args()
         self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
                                  help="Max memory for postgress process.")
-        self.parser.add_argument("--air_gap", action="store_true", default=False, help="Run airgapped install.")
+        self.parser.add_argument("--air_gap", action="store_true",
+                                 default=False, help="Run airgapped install.")
 
     def prepare(self):
         super(ChangeInstanceTypeMethod, self).prepare()
@@ -696,9 +867,9 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         self._resize_instance(args, self._host_info(args, host_info))
 
     def update_ansible_vars_with_args(self, args):
-      super(ChangeInstanceTypeMethod, self).update_ansible_vars_with_args(args)
-      self.extra_vars["pg_max_mem_mb"] = args.pg_max_mem_mb
-      self.extra_vars["air_gap"] = args.air_gap
+        super(ChangeInstanceTypeMethod, self).update_ansible_vars_with_args(args)
+        self.extra_vars["pg_max_mem_mb"] = args.pg_max_mem_mb
+        self.extra_vars["air_gap"] = args.air_gap
 
     def _validate_args(self, args):
         # Make sure "instance_type" exists in args
