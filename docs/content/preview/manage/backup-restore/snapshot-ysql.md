@@ -1,6 +1,6 @@
 ---
 title: Distributed Snapshots for YSQL
-headerTitle: Distributed Snapshots
+headerTitle: Distributed Snapshots for YSQL
 linkTitle: Distributed Snapshots
 description: Distributed Snapshots for YSQL.
 image: /images/section_icons/manage/enterprise.png
@@ -57,15 +57,15 @@ When the command is executed, it generates a unique ID for the snapshot, and pri
 Started snapshot creation: 0d4b4935-2c95-4523-95ab-9ead1e95e794
 ```
 
-You can then use this ID to check the status of the snapshot, delete it, or use it to restore the database.
+You can then use this ID to check the status of the snapshot, [delete it](#deleting-a-snapshot), or use it to [restore the database](#restoring-a-snapshot).
 
-The `create_database_snapshot` command exits immidiately, so its completion does not necessarily means that the snapshot is successfully created. Before using the snapshot, you should verify its status by running the [`list_snapshots`](../../../admin/yb-admin/#list_snapshots) command:
+The `create_database_snapshot` command exits immidiately, so its completion does not necessarily means that the snapshot is successfully created. Before using the snapshot, you should verify its status by running the [`list_snapshots`](../../../admin/yb-admin/#list-snapshots) command:
 
 ```sh
 yb-admin list_snapshots
 ```
 
-This command will print out all the snapshots that exist in the cluster with their statuses:
+This command will print out all the snapshots that exist in the cluster with their statuses. Locate the ID of the new snapshot and make sure its status is `COMPLETE`:
 
 ```output
 Snapshot UUID                     State
@@ -74,7 +74,7 @@ Snapshot UUID                     State
 
 ## Deleting a Snapshot
 
-Snapshots created using the [`create_database_snapshot`](../../../admin/yb-admin/#create-database-snapshot) never expire and are retained as long as the cluster exist. If a snapshot is no longer needed, you can delete it by running the [`delete_snapshot`](../../../admin/yb-admin/#delete-snapshot) command and providing the ID of the snapshot:
+Snapshots created using the `create_database_snapshot` never expire and are retained as long as the cluster exists. If a snapshot is no longer needed, you can delete it by running the [`delete_snapshot`](../../../admin/yb-admin/#delete-snapshot) command and providing the ID of the snapshot:
 
 ```sh
 yb-admin delete_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794
@@ -94,7 +94,7 @@ The above command will rollback the database to the state which it had when the 
 
 Storing snapshots in-cluster is extermely efficient, but also comes with downsides. First of all, it increases the cost of the cluster - increasing number of snapshot can inflate the space consumption on the storage volumes. Second of all, in-cluster snapshots do not protect you from disaster scenarios like filesystem corruption or hardware failures.
 
-to mitigate the above, you might want to store backups outside of the cluster, in a cheaper storage that is also geografically separated from the cluster. This way, you can reduce the cost, and also restore you databases into a different cluster, potentially in a different location.
+To mitigate the above, you might want to store backups outside of the cluster, in a cheaper storage that is also geografically separated from the cluster. This way, you can reduce the cost, and also restore you databases into a different cluster, potentially in a different location.
 
 To move a snapshot to an external storage, you need to gather all the relevant files from all the nodes, and copy then along with additional metadata that will be required when you decide to restore the snapshot on a different cluster. Below is the detailed step-by-step explanation of the process.
 
@@ -108,7 +108,7 @@ To move a snapshot to an external storage, you need to gather all the relevant f
     Version:1
     ```
 
-2. Create an in-cluster snapshot as described [here](#creating-a-snapshot).
+2. [Create an in-cluster snapshot](#creating-a-snapshot).
 
 3. Create a backup of the YSQL metadata using the [`ysql_dump`](../../../admin/ysql-dump) command:
 
@@ -124,7 +124,7 @@ To move a snapshot to an external storage, you need to gather all the relevant f
     yb-admin export_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794 my_database.snapshot
     ```
 
-6. Copy the YSQL metadata file (`my_database_schema.sql`) and the snapshot metadata file (`my_database.snapshot`) to the external storage.
+6. Copy the newly created YSQL metadata file (`my_database_schema.sql`) and the snapshot metadata file (`my_database.snapshot`) to the external storage.
 
 7. Copy the tablet snapshot data into the external storage directory. Do this for all tablets of all tables in the database.
 
@@ -149,16 +149,16 @@ To move a snapshot to an external storage, you need to gather all the relevant f
 
     {{< note title="Tip" >}}
 
-    To get a snapshot of a multi-node cluster, you need to go into each node and copy
-    the folders of ONLY the leader tablets on that node. Because each tablet-replica has a copy of the same data, you do not need to keep a copy for each replica.
+To get a snapshot of a multi-node cluster, you need to go into each node and copy
+the folders of ONLY the leader tablets on that node. Because each tablet-replica has a copy of the same data, you do not need to keep a copy for each replica.
 
     {{< /note >}}
 
-8. If the in-cluster snapshot is no longer needed, it's now safe to [delete it](#deleting-a-snapshot).
+8. If you don't want to keep the in-cluster snapshot, it's now safe to [delete it](#deleting-a-snapshot).
 
 ## Restoring a Snapshot from an External Storage
 
-To restore a snapshot that had been [moved to an external storage](moving-a-snapshot-to-an-external-storage), go through the steps below.
+To restore a snapshot that had been [moved to an external storage](#moving-a-snapshot-to-an-external-storage), go through the steps below.
 
 1. Fetch the YSQL metadata file from the external storage and apply it using the [`ysqlsh`](../../../admin/ycqlsh/) CLI tool:
 
@@ -169,7 +169,7 @@ To restore a snapshot that had been [moved to an external storage](moving-a-snap
 2. Fetch the snapshot metadata file from the external storage and apply it by running the [`import_snapshot`](../../../admin/yb-admin/#import-snapshot) command:
 
     ```sh
-    ./bin/yb-admin import_snapshot my_database.snapshot my_database
+    yb-admin import_snapshot my_database.snapshot my_database
     ```
 
     The output will contain the mapping between the old tablet IDs and the new tablet IDs:
@@ -214,11 +214,11 @@ To restore a snapshot that had been [moved to an external storage](moving-a-snap
 
     {{< note title="Note" >}}
 
-    For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster.
+For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster.
 
     {{< /note >}}
 
-4. Restore the snapshot as described [here](restoring-a-snapshot).
+4. [Restore the snapshot](restoring-a-snapshot).
 
 -----
 

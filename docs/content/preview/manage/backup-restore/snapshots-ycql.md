@@ -1,8 +1,8 @@
 ---
-title: Snapshot and restore data for YCQL
-headerTitle: Snapshot and restore data for YCQL
-linkTitle: Snapshot and restore data
-description: Snapshot and restore data in YugabyteDB for YCQL.
+title: Distributed Snapshots for YCQL
+headerTitle: Distributed Snapshots for YCQL
+linkTitle: Distributed Snapshots
+description: Distributed Snapshots for YCQL.
 image: /images/section_icons/manage/enterprise.png
 menu:
   preview:
