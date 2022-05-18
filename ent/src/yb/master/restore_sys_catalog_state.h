@@ -103,8 +103,7 @@ class RestoreSysCatalogState {
       std::unordered_map<TabletId, SysTabletsEntryPB>* seq_tablets);
 
   template <class PB>
-  Status AddRestoringEntry(
-      const std::string& id, PB* pb, faststring* buffer);
+  Status AddRestoringEntry(const std::string& id, PB* pb, faststring* buffer);
 
   Result<bool> PatchRestoringEntry(const std::string& id, SysNamespaceEntryPB* pb);
   Result<bool> PatchRestoringEntry(const std::string& id, SysTablesEntryPB* pb);
