@@ -82,7 +82,7 @@ public class TestIndexBackfill extends BasePgSQLTest {
           Statement stmt = conn.createStatement()) {
         backfillThreadStarted.countDown();
         insertDone.await(AWAIT_TIMEOUT_SEC, TimeUnit.SECONDS);
-        // This will wait for pg_index.indisready=true
+        // This will wait for pg_index.indisvalid=true
         stmt.executeUpdate("CREATE INDEX " + indexName + " ON " + tableName + "(v ASC)");
       } catch (Exception ex) {
         LOG.error("CREATE INDEX thread failed", ex);
