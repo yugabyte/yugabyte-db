@@ -33,6 +33,8 @@ using ZoneToDescMap = std::unordered_map<string, TSDescriptorVector>;
 struct Comparator;
 class SetPreferredZonesRequestPB;
 
+static google::protobuf::RepeatedPtrField<TableIdentifierPB> sequences_data_table_filter_;
+
 class CatalogManagerUtil {
  public:
   // For the given set of descriptors, checks if the load is considered balanced across AZs in
@@ -134,6 +136,13 @@ class CatalogManagerUtil {
         state->per_ts_load_[loc.first]++;
       }
     }
+  }
+
+  static const google::protobuf::RepeatedPtrField<TableIdentifierPB>& SequenceDataFilter() {
+    if (sequences_data_table_filter_.empty()) {
+      *sequences_data_table_filter_.Add()->mutable_table_id() = kPgSequencesDataTableId;
+    }
+    return sequences_data_table_filter_;
   }
 
  private:

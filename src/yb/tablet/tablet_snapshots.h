@@ -17,6 +17,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/tablet/restore_util.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_component.h"
 
@@ -107,7 +108,23 @@ class TabletSnapshots : public TabletComponent {
   CHECKED_STATUS CleanupSnapshotDir(const std::string& dir);
   Env& env();
 
+  Status RestorePartialRows(SnapshotOperation* operation);
+
   std::string TEST_last_rocksdb_checkpoint_dir_;
+};
+
+class TabletRestorePatch : public RestorePatch {
+ public:
+  TabletRestorePatch(
+      FetchState* existing_state, FetchState* restoring_state,
+      docdb::DocWriteBatch* doc_batch, int64_t db_oid)
+      : RestorePatch(existing_state, restoring_state, doc_batch),
+        db_oid_(db_oid) {}
+
+ private:
+  Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override;
+
+  int64_t db_oid_;
 };
 
 } // namespace tablet

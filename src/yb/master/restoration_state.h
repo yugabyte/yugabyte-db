@@ -41,6 +41,7 @@ struct TabletRestoreOperation {
   HybridTime restore_at;
   bool sys_catalog_restore_needed;
   bool is_tablet_part_of_snapshot;
+  std::optional<int64_t> db_oid;
 };
 
 using TabletRestoreOperations = std::vector<TabletRestoreOperation>;
@@ -127,7 +128,8 @@ class RestorationState : public StateWithTablets {
   CHECKED_STATUS ToPB(RestorationInfoPB* out);
 
   void PrepareOperations(
-      TabletRestoreOperations* operations, const std::unordered_set<TabletId>& snapshot_tablets);
+      TabletRestoreOperations* operations, const std::unordered_set<TabletId>& snapshot_tablets,
+      std::optional<int64_t> db_oid);
 
   CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch);
 
