@@ -117,6 +117,10 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     }
   }
 
+  if (env().FileExists(file_path)) {
+    LOG(INFO) << file_path << " already exists and will be replaced";
+    RETURN_NOT_OK(env().DeleteFile(file_path));
+  }
   WritableFileOptions opts;
   opts.sync_on_close = true;
   std::unique_ptr<WritableFile> file;
