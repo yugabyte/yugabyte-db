@@ -529,6 +529,7 @@ public class PlacementInfoUtil {
       // Besides restrictions, resize is only available if no nodes are added/removed.
       taskParams.nodesResizeAvailable =
           isSamePlacement(oldCluster.placementInfo, cluster.placementInfo)
+              && oldCluster.userIntent.numNodes == cluster.userIntent.numNodes
               && checkResizePossible == null;
 
       // If only disk size was changed (used by nodes resize) - no need to proceed
