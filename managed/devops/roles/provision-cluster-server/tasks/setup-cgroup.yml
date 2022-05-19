@@ -18,7 +18,7 @@
     until: result is succeeded
     retries: "{{ install_retry_count }}"
 
-  - name: Add ysql crgroup info to cgconfig.conf
+  - name: Add ysql cgroup info to cgconfig.conf
     template:
       src: cgconfig.conf.j2
       dest: "/etc/cgconfig.conf"
