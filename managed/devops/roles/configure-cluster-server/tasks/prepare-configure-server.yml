@@ -75,6 +75,12 @@
 
 - block:
   # Cronjob approach for logs and cores
+  - name: Update mailto variable
+    cronvar:
+      name: MAILTO
+      value: "\"\""
+      user: "{{ user_name }}"
+
   - name: Setup cron to cleanup core files.
     cron:
       name: "cleanup core files hourly"
@@ -108,7 +114,9 @@
       - cloud_type != "onprem"
 
   when: not systemd_option
-  tags: yb-prebuilt-ami
+  tags:
+    - yb-prebuilt-ami
+    - install-software
 
 - block:
   # Remove old cron jobs that clean cores, purge logs and collect metrics

@@ -135,10 +135,10 @@ class Peer : public std::enable_shared_from_this<Peer> {
        ThreadPoolToken* raft_pool_token, Consensus* consensus, rpc::Messenger* messenger);
 
   // Initializes a peer and get its status.
-  CHECKED_STATUS Init();
+  Status Init();
 
   // Signals that this peer has a new request to replicate/store.
-  CHECKED_STATUS SignalRequest(RequestTriggerMode trigger_mode);
+  Status SignalRequest(RequestTriggerMode trigger_mode);
 
   const RaftPeerPB& peer_pb() const { return peer_pb_; }
 
@@ -198,7 +198,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
   //
   // Returns a bad Status if remote bootstrap is disabled, or if the request cannot be generated for
   // some reason.
-  CHECKED_STATUS SendRemoteBootstrapRequest();
+  Status SendRemoteBootstrapRequest();
 
   // Handle RPC callback from initiating remote bootstrap.
   void ProcessRemoteBootstrapResponse();

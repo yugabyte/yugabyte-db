@@ -79,6 +79,33 @@ void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, WritePB* 
   }
 }
 
+template <class Code, class Resp>
+bool CheckSchemaVersion(
+    TableInfo* table_info, int schema_version, bool compatible_with_previous_version, Code code,
+    int index, Resp* resp_batch) {
+  if (IsSchemaVersionCompatible(
+          table_info->schema_version, schema_version, compatible_with_previous_version)) {
+    return true;
+  }
+
+  DVLOG(1) << " On " << table_info->table_name
+           << " Setting status for write as YQL_STATUS_SCHEMA_VERSION_MISMATCH tserver's: "
+           << table_info->schema_version << " vs req's : " << schema_version
+           << " is req compatible with prev version: "
+           << compatible_with_previous_version;
+  while (index >= resp_batch->size()) {
+    resp_batch->Add();
+  }
+  auto resp = resp_batch->Mutable(index);
+  resp->Clear();
+  resp->set_status(code);
+  resp->set_error_message(Format(
+      "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
+      table_info->table_id, table_info->schema_version, schema_version,
+      compatible_with_previous_version));
+  return false;
+}
+
 } // namespace
 
 enum class WriteQuery::ExecuteMode {
@@ -100,7 +127,8 @@ WriteQuery::WriteQuery(
       context_(context),
       response_(response),
       kind_(kind),
-      start_time_(CoarseMonoClock::Now()) {
+      start_time_(CoarseMonoClock::Now()),
+      execute_mode_(ExecuteMode::kSimple) {
 }
 
 WritePB& WriteQuery::request() {
@@ -229,6 +257,7 @@ Result<bool> WriteQuery::PrepareExecute() {
     }
 
     if (client_request_->has_write_batch() && client_request_->has_external_hybrid_time()) {
+      StartSynchronization(std::move(self_), Status::OK());
       return false;
     }
   } else {
@@ -250,7 +279,7 @@ Result<bool> WriteQuery::PrepareExecute() {
   return STATUS(InvalidArgument, "Empty write");
 }
 
-CHECKED_STATUS WriteQuery::InitExecute(ExecuteMode mode) {
+Status WriteQuery::InitExecute(ExecuteMode mode) {
   scoped_read_operation_ = tablet().CreateNonAbortableScopedRWOperation();
   if (!scoped_read_operation_.ok()) {
     return MoveStatus(scoped_read_operation_);
@@ -284,6 +313,10 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
   auto& metadata = *tablet().metadata();
   DVLOG(2) << "Schema version for  " << metadata.table_name() << ": " << metadata.schema_version();
 
+  if (!CqlCheckSchemaVersion()) {
+    return false;
+  }
+
   docdb::AddTableSchemaVersion(
       Uuid::Nil(), metadata.schema_version(), request().mutable_write_batch());
 
@@ -298,37 +331,14 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
   auto table_info = metadata.primary_table_info();
   for (const auto& req : ql_write_batch) {
     QLResponsePB* resp = response_->add_ql_response_batch();
-    if (!IsSchemaVersionCompatible(
-            table_info->schema_version, req.schema_version(),
-            req.is_compatible_with_previous_version())) {
-      DVLOG(1) << " On " << table_info->table_name
-               << " Setting status for write as YQL_STATUS_SCHEMA_VERSION_MISMATCH tserver's: "
-               << table_info->schema_version << " vs req's : " << req.schema_version()
-               << " is req compatible with prev version: "
-               << req.is_compatible_with_previous_version() << " for " << AsString(req);
-      resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
-      resp->set_error_message(Format(
-          "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
-          table_info->table_id,
-          table_info->schema_version, req.schema_version(),
-          req.is_compatible_with_previous_version()));
-    } else {
-      DVLOG(3) << "Version matches : " << table_info->schema_version << " for "
-               << AsString(req);
-      auto write_op = std::make_unique<docdb::QLWriteOperation>(
-          req,
-          rpc::SharedField(table_info, table_info->doc_read_context.get()),
-          *table_info->index_map,
-          tablet().unique_index_key_schema(),
-          txn_op_ctx);
-      RETURN_NOT_OK(write_op->Init(resp));
-      doc_ops_.emplace_back(std::move(write_op));
-    }
-  }
-
-  // All operations has wrong schema version
-  if (doc_ops_.empty()) {
-    return false;
+    auto write_op = std::make_unique<docdb::QLWriteOperation>(
+        req,
+        rpc::SharedField(table_info, table_info->doc_read_context.get()),
+        *table_info->index_map,
+        tablet().unique_index_key_schema(),
+        txn_op_ctx);
+    RETURN_NOT_OK(write_op->Init(resp));
+    doc_ops_.emplace_back(std::move(write_op));
   }
 
   return true;
@@ -336,6 +346,10 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
 
 Result<bool> WriteQuery::PgsqlPrepareExecute() {
   RETURN_NOT_OK(InitExecute(ExecuteMode::kPgsql));
+
+  if (!PgsqlCheckSchemaVersion()) {
+    return false;
+  }
 
   const auto& pgsql_write_batch = client_request_->pgsql_write_batch();
 
@@ -354,63 +368,49 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
       resp->set_skipped(true);
       continue;
     }
-    const std::shared_ptr<tablet::TableInfo> table_info =
-        VERIFY_RESULT(metadata.GetTableInfo(req.table_id()));
-    if (table_info->schema_version != req.schema_version()) {
-      resp->set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
-      resp->set_error_message(
-          Format("schema version mismatch for table $0: expected $1, got $2",
-                 table_info->table_id,
-                 table_info->schema_version,
-                 req.schema_version()));
-    } else {
-      docdb::AddTableSchemaVersion(
-          table_info->cotable_id, table_info->schema_version, request().mutable_write_batch());
-      if (doc_ops_.empty()) {
-        // Use the value of is_ysql_catalog_table from the first operation in the batch.
-        txn_op_ctx = VERIFY_RESULT(tablet().CreateTransactionOperationContext(
-            request().write_batch().transaction(),
-            table_info->schema().table_properties().is_ysql_catalog_table(),
-            &request().write_batch().subtransaction()));
-      }
-      auto write_op = std::make_unique<docdb::PgsqlWriteOperation>(
-          req,
-          *table_info->doc_read_context,
-          txn_op_ctx);
-      RETURN_NOT_OK(write_op->Init(resp));
-      doc_ops_.emplace_back(std::move(write_op));
+    const TableInfoPtr table_info = VERIFY_RESULT(metadata.GetTableInfo(req.table_id()));
+    docdb::AddTableSchemaVersion(
+        table_info->cotable_id, table_info->schema_version, request().mutable_write_batch());
+    if (doc_ops_.empty()) {
+      // Use the value of is_ysql_catalog_table from the first operation in the batch.
+      txn_op_ctx = VERIFY_RESULT(tablet().CreateTransactionOperationContext(
+          request().write_batch().transaction(),
+          table_info->schema().table_properties().is_ysql_catalog_table(),
+          &request().write_batch().subtransaction()));
     }
-  }
-
-  // All operations have wrong schema version.
-  if (doc_ops_.empty()) {
-    return false;
+    auto write_op = std::make_unique<docdb::PgsqlWriteOperation>(
+        req,
+        *table_info->doc_read_context,
+        txn_op_ctx);
+    RETURN_NOT_OK(write_op->Init(resp));
+    doc_ops_.emplace_back(std::move(write_op));
   }
 
   return true;
 }
 
 void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
-  auto prepare_result = query->PrepareExecute();
+  auto* query_ptr = query.get();
+  query_ptr->self_ = std::move(query);
+
+  auto prepare_result = query_ptr->PrepareExecute();
+
   if (!prepare_result.ok()) {
-    StartSynchronization(std::move(query), prepare_result.status());
+    query_ptr->ExecuteDone(prepare_result.status());
     return;
   }
 
   if (!prepare_result.get()) {
-    StartSynchronization(std::move(query), Status::OK());
     return;
   }
 
-  auto* query_ptr = query.get();
-  query_ptr->self_ = std::move(query);
   auto status = query_ptr->DoExecute();
   if (!status.ok()) {
     query_ptr->ExecuteDone(status);
   }
 }
 
-CHECKED_STATUS WriteQuery::DoExecute() {
+Status WriteQuery::DoExecute() {
   auto& write_batch = *request().mutable_write_batch();
   isolation_level_ = VERIFY_RESULT(tablet().GetIsolationLevelFromPB(write_batch));
   const RowMarkType row_mark_type = GetRowMarkTypeFromPB(write_batch);
@@ -514,7 +514,7 @@ void WriteQuery::TransactionalConflictsResolved() {
   }
 }
 
-CHECKED_STATUS WriteQuery::DoTransactionalConflictsResolved() {
+Status WriteQuery::DoTransactionalConflictsResolved() {
   if (!read_time_) {
     auto safe_time = VERIFY_RESULT(tablet().SafeTime(RequireLease::kTrue));
     read_time_ = ReadHybridTime::FromHybridTimeRange(
@@ -535,7 +535,7 @@ void WriteQuery::CompleteExecute() {
   ExecuteDone(DoCompleteExecute());
 }
 
-CHECKED_STATUS WriteQuery::DoCompleteExecute() {
+Status WriteQuery::DoCompleteExecute() {
   auto read_op = prepare_result_.need_read_snapshot
       ? VERIFY_RESULT(ScopedReadOperation::Create(&tablet(), RequireLease::kTrue, read_time_))
       : ScopedReadOperation();
@@ -620,7 +620,36 @@ void WriteQuery::RedisExecuteDone(const Status& status) {
   StartSynchronization(std::move(self_), Status::OK());
 }
 
+bool WriteQuery::CqlCheckSchemaVersion() {
+  auto& metadata = *tablet().metadata();
+  const auto& ql_write_batch = client_request_->ql_write_batch();
+
+  auto table_info = metadata.primary_table_info();
+  int index = 0;
+  int num_mismatches = 0;
+  for (const auto& req : ql_write_batch) {
+    if (!CheckSchemaVersion(
+            table_info.get(), req.schema_version(), req.is_compatible_with_previous_version(),
+            QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH, index,
+            response_->mutable_ql_response_batch())) {
+      ++num_mismatches;
+    }
+    ++index;
+  }
+
+  if (num_mismatches != 0) {
+    SchemaVersionMismatch(num_mismatches, ql_write_batch.size());
+    return false;
+  }
+
+  return true;
+}
+
 void WriteQuery::CqlExecuteDone(const Status& status) {
+  if (!CqlCheckSchemaVersion()) {
+    return;
+  }
+
   if (restart_read_ht().is_valid()) {
     StartSynchronization(std::move(self_), Status::OK());
     return;
@@ -631,6 +660,14 @@ void WriteQuery::CqlExecuteDone(const Status& status) {
   } else {
     CompleteQLWriteBatch(status);
   }
+}
+
+void WriteQuery::SchemaVersionMismatch(int num_mismatches, int batch_size) {
+  LOG_IF(DFATAL, num_mismatches != batch_size)
+      << "Wrong number or mismatches: " << num_mismatches << " vs " << batch_size;
+  auto self = std::move(self_);
+  submit_token_.Reset();
+  Cancel(Status::OK());
 }
 
 void WriteQuery::CompleteQLWriteBatch(const Status& status) {
@@ -794,7 +831,40 @@ void WriteQuery::UpdateQLIndexesFlushed(
   CompleteQLWriteBatch(Status::OK());
 }
 
+bool WriteQuery::PgsqlCheckSchemaVersion() {
+  auto& metadata = *tablet().metadata();
+  const auto& pgsql_write_batch = client_request_->pgsql_write_batch();
+
+  int index = 0;
+  int num_mismatches = 0;
+  for (const auto& req : pgsql_write_batch) {
+    auto table_info = metadata.GetTableInfo(req.table_id());
+    if (!table_info.ok()) {
+      StartSynchronization(std::move(self_), table_info.status());
+      return false;
+    }
+    if (!CheckSchemaVersion(
+            table_info->get(), req.schema_version(), /* compatible_with_previous_version= */ false,
+            PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH, index,
+            response_->mutable_pgsql_response_batch())) {
+      ++num_mismatches;
+    }
+    ++index;
+  }
+
+  if (num_mismatches != 0) {
+    SchemaVersionMismatch(num_mismatches, pgsql_write_batch.size());
+    return false;
+  }
+
+  return true;
+}
+
 void WriteQuery::PgsqlExecuteDone(const Status& status) {
+  if (!PgsqlCheckSchemaVersion()) {
+    return;
+  }
+
   if (!status.ok() || restart_read_ht_.is_valid()) {
     StartSynchronization(std::move(self_), status);
     return;

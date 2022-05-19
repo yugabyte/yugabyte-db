@@ -59,21 +59,21 @@ class TableRange;
 // Utility class for manually filling QL operations.
 class TableHandle {
  public:
-  CHECKED_STATUS Create(const YBTableName& table_name,
+  Status Create(const YBTableName& table_name,
                         int num_tablets,
                         YBClient* client,
                         YBSchemaBuilder* builder,
                         IndexInfoPB* index_info = nullptr);
 
-  CHECKED_STATUS Create(const YBTableName& table_name,
+  Status Create(const YBTableName& table_name,
                         int num_tablets,
                         const YBSchema& schema,
                         YBClient* client,
                         IndexInfoPB* index_info = nullptr);
 
-  CHECKED_STATUS Open(const YBTableName& table_name, YBClient* client);
+  Status Open(const YBTableName& table_name, YBClient* client);
 
-  CHECKED_STATUS Reopen();
+  Status Reopen();
 
   std::shared_ptr<YBqlWriteOp> NewWriteOp(QLWriteRequestPB::QLStmtType type) const;
 

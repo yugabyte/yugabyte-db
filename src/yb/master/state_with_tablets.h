@@ -58,7 +58,7 @@ class StateWithTablets {
   // Otherwise all tablets should be in the same state, which is returned.
   Result<SysSnapshotEntryPB::State> AggregatedState() const;
 
-  CHECKED_STATUS AnyFailure() const;
+  Status AnyFailure() const;
   Result<bool> Complete() const;
   bool AllTabletsDone() const;
   bool PassedSinceCompletion(const MonoDelta& duration) const;
@@ -145,7 +145,7 @@ class StateWithTablets {
 
   virtual bool IsTerminalFailure(const Status& status) = 0;
 
-  virtual CHECKED_STATUS CheckDoneStatus(const Status& status) {
+  virtual Status CheckDoneStatus(const Status& status) {
     return status;
   }
 

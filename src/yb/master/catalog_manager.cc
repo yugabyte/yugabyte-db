@@ -602,7 +602,7 @@ class IndexInfoBuilder {
     DVLOG(3) << " After " << __PRETTY_FUNCTION__ << " index_info_ is " << yb::ToString(index_info_);
   }
 
-  CHECKED_STATUS ApplyColumnMapping(const Schema& indexed_schema, const Schema& index_schema) {
+  Status ApplyColumnMapping(const Schema& indexed_schema, const Schema& index_schema) {
     for (size_t i = 0; i < index_schema.num_columns(); i++) {
       const auto& col_name = index_schema.column(i).name();
       const auto indexed_col_idx = indexed_schema.find_column(col_name);
@@ -1020,7 +1020,7 @@ void CatalogManager::LoadSysCatalogDataTask() {
   GetYqlPartitionsVtable().ResetAndRegenerateCache();
 }
 
-CHECKED_STATUS CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) const {
+Status CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) const {
   if (!async_task_pool_->WaitFor(timeout)) {
     return STATUS(TimedOut, "Worker Pool hasn't finished processing tasks");
   }
@@ -2559,7 +2559,7 @@ Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
 
 }  // namespace
 
-CHECKED_STATUS CatalogManager::TEST_SplitTablet(
+Status CatalogManager::TEST_SplitTablet(
     const TabletId& tablet_id, const std::string& split_encoded_key,
     const std::string& split_partition_key) {
   auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
@@ -2861,7 +2861,7 @@ Status CatalogManager::DdlLog(
 
 namespace {
 
-CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableResponsePB* resp) {
+Status ValidateCreateTableSchema(const Schema& schema, CreateTableResponsePB* resp) {
   if (schema.num_key_columns() <= 0) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA,
                       STATUS(InvalidArgument, "Must specify at least one key column"));
@@ -4067,7 +4067,7 @@ Result<bool> CatalogManager::TableExists(
   return DoesTableExist(FindTable(table_id_pb));
 }
 
-CHECKED_STATUS CatalogManager::CreateTransactionStatusTable(
+Status CatalogManager::CreateTransactionStatusTable(
     const CreateTransactionStatusTableRequestPB* req, CreateTransactionStatusTableResponsePB* resp,
     rpc::RpcContext *rpc) {
   const string& table_name = req->table_name();
@@ -4083,7 +4083,7 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTable(
   return Status::OK();
 }
 
-CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(
+Status CatalogManager::CreateTransactionStatusTableInternal(
     rpc::RpcContext *rpc, const string& table_name, const TablespaceId* tablespace_id,
     const ReplicationInfoPB* replication_info) {
   if (VERIFY_RESULT(TableExists(kSystemNamespaceName, table_name))) {
@@ -4147,7 +4147,7 @@ bool CatalogManager::DoesTransactionTableExistForTablespace(const TablespaceId& 
   return false;
 }
 
-CHECKED_STATUS CatalogManager::CreateLocalTransactionStatusTableIfNeeded(
+Status CatalogManager::CreateLocalTransactionStatusTableIfNeeded(
     rpc::RpcContext *rpc, const TablespaceId& tablespace_id) {
   std::lock_guard<std::mutex> lock(tablespace_transaction_table_creation_mutex_);
 
@@ -4170,7 +4170,7 @@ CHECKED_STATUS CatalogManager::CreateLocalTransactionStatusTableIfNeeded(
                                               nullptr /* replication_info */);
 }
 
-CHECKED_STATUS CatalogManager::CreateGlobalTransactionStatusTableIfNeeded(rpc::RpcContext *rpc) {
+Status CatalogManager::CreateGlobalTransactionStatusTableIfNeeded(rpc::RpcContext *rpc) {
   Status s = CreateTransactionStatusTableInternal(
       rpc, kGlobalTransactionsTableName, nullptr /* tablespace_id */,
       nullptr /* replication_info */);
@@ -4188,7 +4188,7 @@ Result<TableInfoPtr> CatalogManager::GetGlobalTransactionStatusTable() {
   return FindTable(global_txn_table_identifier);
 }
 
-CHECKED_STATUS CatalogManager::GetGlobalTransactionStatusTablets(
+Status CatalogManager::GetGlobalTransactionStatusTablets(
     GetTransactionStatusTabletsResponsePB* resp) {
   auto global_txn_table = VERIFY_RESULT(GetGlobalTransactionStatusTable());
 
@@ -4247,7 +4247,7 @@ Result<std::vector<TableInfoPtr>> CatalogManager::GetPlacementLocalTransactionSt
   return same_placement_transaction_tables;
 }
 
-CHECKED_STATUS CatalogManager::GetPlacementLocalTransactionStatusTablets(
+Status CatalogManager::GetPlacementLocalTransactionStatusTablets(
     const std::vector<TableInfoPtr>& placement_local_tables,
     GetTransactionStatusTabletsResponsePB* resp) {
   if (placement_local_tables.empty()) {
@@ -4267,7 +4267,7 @@ CHECKED_STATUS CatalogManager::GetPlacementLocalTransactionStatusTablets(
   return Status::OK();
 }
 
-CHECKED_STATUS CatalogManager::GetTransactionStatusTablets(
+Status CatalogManager::GetTransactionStatusTablets(
     const GetTransactionStatusTabletsRequestPB* req,
     GetTransactionStatusTabletsResponsePB* resp,
     rpc::RpcContext *rpc) {
@@ -5590,7 +5590,7 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
 
 namespace {
 
-CHECKED_STATUS ApplyAlterSteps(server::Clock* clock,
+Status ApplyAlterSteps(server::Clock* clock,
                                const TableId& table_id,
                                const SysTablesEntryPB& current_pb,
                                const AlterTableRequestPB* req,
@@ -8587,7 +8587,7 @@ Status CatalogManager::InitDbFinished(Status initdb_status, int64_t term) {
   return Status::OK();
 }
 
-CHECKED_STATUS CatalogManager::IsInitDbDone(
+Status CatalogManager::IsInitDbDone(
     const IsInitDbDoneRequestPB* req,
     IsInitDbDoneResponsePB* resp) {
   auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForRead();
@@ -9007,7 +9007,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   return Status::OK();
 }
 
-CHECKED_STATUS CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
+Status CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
                                                      const AlterTableRequestPB* req) {
   auto tablets = table->GetTablets();
 

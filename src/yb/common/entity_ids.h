@@ -37,6 +37,7 @@ static const uint32_t kPgSequencesTableOid = 2224;  // Hardcoded for pg_sequence
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
 extern const TableId kPgTablespaceTableId;
+extern const TableId kPgSequencesDataTableId;
 extern const std::string kPgSequencesDataNamespaceId;
 
 // Get YB namespace id for a Postgres database.

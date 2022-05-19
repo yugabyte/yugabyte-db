@@ -256,7 +256,7 @@ class OneWayBitmap {
   static Result<OneWayBitmap> Decode(Slice* slice);
 
   // Removes encoded bitmap from slice prefix, w/o decoding slice.
-  static CHECKED_STATUS Skip(Slice* slice);
+  static Status Skip(Slice* slice);
 
  private:
   typedef uint8_t ElementType;

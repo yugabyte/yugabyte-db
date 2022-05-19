@@ -25,7 +25,7 @@ namespace yb {
 namespace tools {
 
 // Runs backup command against specified cluster.
-CHECKED_STATUS RunBackupCommand(
+Status RunBackupCommand(
     const HostPort& pg_hp, const std::string& master_addresses,
     const std::string& tserver_http_addresses, const std::string& tmp_dir,
     const std::vector<std::string>& extra_args);

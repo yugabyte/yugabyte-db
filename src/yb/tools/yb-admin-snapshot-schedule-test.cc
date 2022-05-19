@@ -129,13 +129,13 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return restoration_id;
   }
 
-  CHECKED_STATUS RestoreSnapshotSchedule(const std::string& schedule_id, Timestamp restore_at) {
+  Status RestoreSnapshotSchedule(const std::string& schedule_id, Timestamp restore_at) {
     return WaitRestorationDone(
         VERIFY_RESULT(
             StartRestoreSnapshotSchedule(schedule_id, restore_at)), 40s * kTimeMultiplier);
   }
 
-  CHECKED_STATUS WaitRestorationDone(const std::string& restoration_id, MonoDelta timeout) {
+  Status WaitRestorationDone(const std::string& restoration_id, MonoDelta timeout) {
     return WaitFor([this, restoration_id]() -> Result<bool> {
       auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_restorations", restoration_id));
       LOG(INFO) << "Restorations: " << common::PrettyWriteRapidJsonToString(out);
@@ -170,7 +170,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return res;
   }
 
-  CHECKED_STATUS PrepareCommon() {
+  Status PrepareCommon() {
     LOG(INFO) << "Create cluster";
     CreateCluster(kClusterName, ExtraTSFlags(), ExtraMasterFlags());
 
@@ -264,7 +264,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return schedule_id;
   }
 
-  CHECKED_STATUS DeleteSnapshotSchedule(const std::string& schedule_id) {
+  Status DeleteSnapshotSchedule(const std::string& schedule_id) {
     auto out = VERIFY_RESULT(CallJsonAdmin("delete_snapshot_schedule", schedule_id));
 
     SCHECK_EQ(VERIFY_RESULT(Get(out, "schedule_id")).get().GetString(), schedule_id, IllegalState,
@@ -272,7 +272,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return Status::OK();
   }
 
-  CHECKED_STATUS WaitTabletsCleaned(CoarseTimePoint deadline) {
+  Status WaitTabletsCleaned(CoarseTimePoint deadline) {
     return Wait([this, deadline]() -> Result<bool> {
       size_t alive_tablets = 0;
       for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
@@ -1247,7 +1247,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropCheckCon
   ASSERT_EQ(result_status.ok(), false);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceDelete),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceUndoDeletedData),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1285,7 +1285,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceDele
   ASSERT_EQ(res, 16);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceInsert),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceUndoInsertedData),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1331,9 +1331,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceInse
   ASSERT_EQ(res, 21);
 }
 
-// If sequences were created since the restore start time,
-// then restore isn't supported. The test validates that.
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceCreateDropWithRestore),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceUndoCreateSequence),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1347,22 +1345,129 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceCrea
   LOG(INFO) << "Create Sequence 'value_data'";
   ASSERT_OK(conn.Execute("CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
 
-  auto restore_status = RestoreSnapshotSchedule(schedule_id, time_before_create);
-  ASSERT_NOK(restore_status);
-  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore as Pg sequences were updated");
-  LOG(INFO) << "Restoring to a time before sequence creation failed : " << restore_status;
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, nextval('value_data'))"));
 
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time_before_create));
+  ASSERT_NOK(conn.Execute("INSERT INTO test_table VALUES (1, nextval('value_data'))"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 45)"));
+
+  // Ensure that you are able to create sequences post restore.
+  LOG(INFO) << "Create Sequence 'value_data'";
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, nextval('value_data'))"));
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceUndoDropSequence),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key SERIAL, value TEXT)"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_table (value) values ('before')"));
+
   Timestamp time_before_drop(ASSERT_RESULT(WallClock()->Now()).time_point);
-  LOG(INFO) << "Time to restore back before sequence drop : " << time_before_drop;
+  LOG(INFO) << "Time to restore back before table drop : " << time_before_drop;
 
-  ASSERT_OK(conn.Execute("DROP SEQUENCE value_data"));
+  LOG(INFO) << "Drop table 'test_table'";
+  ASSERT_OK(conn.Execute("DROP TABLE test_table"));
 
-  restore_status = RestoreSnapshotSchedule(schedule_id, time_before_drop);
-  ASSERT_NOK(restore_status);
-  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore as Pg sequences were updated");
-  LOG(INFO) << "Restoring to a time before sequence drop failed :" << restore_status;
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 2)"));
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time_before_drop));
+  auto res = ASSERT_RESULT(
+      conn.FetchValue<std::string>("SELECT value FROM test_table where key=1"));
+  ASSERT_EQ(res, "before");
+  ASSERT_OK(conn.Execute("INSERT INTO test_table (value) values ('after')"));
+
+  // Verify that we are able to create more sequences post restore.
+  LOG(INFO) << "Create table 'test_table_new'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table_new (key SERIAL, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table_new (value) values ('before')"));
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceVerifyPartialRestore),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  // Connection to yugabyte database.
+  auto conn_yugabyte = ASSERT_RESULT(PgConnect());
+
+  LOG(INFO) << "Create table 'demo.test_table'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key SERIAL, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table (value) values ('before')"));
+
+  LOG(INFO) << "Create table 'yugabyte.test_table'";
+  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE test_table (key SERIAL, value TEXT)"));
+  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table (value) values ('before')"));
+
+  LOG(INFO) << "Create table 'demo.test_table2'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table2 (key SERIAL, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table2 (value) values ('before')"));
+
+  LOG(INFO) << "Create table 'yugabyte.test_table2'";
+  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE test_table2 (key SERIAL, value TEXT)"));
+  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table2 (value) values ('before')"));
+
+  Timestamp time_before_drop(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time to restore back before table drop : " << time_before_drop;
+
+  LOG(INFO) << "Create table 'demo.test_table3'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table3 (key SERIAL, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table3 (value) values ('before')"));
+
+  LOG(INFO) << "Create table 'yugabyte.test_table3'";
+  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE test_table3 (key SERIAL, value TEXT)"));
+  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table3 (value) values ('before')"));
+
+  LOG(INFO) << "Drop table 'demo.test_table'";
+  ASSERT_OK(conn.Execute("DROP TABLE test_table"));
+  LOG(INFO) << "Drop table 'yugabyte.test_table'";
+  ASSERT_OK(conn_yugabyte.Execute("DROP TABLE test_table"));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time_before_drop));
+  // demo.test_table should be recreated.
+  LOG(INFO) << "Select from demo.test_table";
+  auto res = ASSERT_RESULT(
+      conn.FetchValue<std::string>("SELECT value FROM test_table where key=1"));
+  ASSERT_EQ(res, "before");
+  ASSERT_OK(conn.Execute("INSERT INTO test_table (value) values ('after')"));
+
+  // demo.test_table2 should remain as it was.
+  LOG(INFO) << "Select from demo.test_table2s";
+  res = ASSERT_RESULT(
+      conn.FetchValue<std::string>("SELECT value FROM test_table2 where key=1"));
+  ASSERT_EQ(res, "before");
+  ASSERT_OK(conn.Execute("INSERT INTO test_table2 (value) values ('after')"));
+
+  // demo.test_table3 should be dropped.
+  LOG(INFO) << "Select from demo.test_table3";
+  auto r = conn.FetchValue<std::string>("SELECT value FROM test_table3 where key=1");
+  ASSERT_EQ(r.ok(), false);
+
+  // yugabyte.test_table shouldn't be recreated.
+  LOG(INFO) << "Select from yugabyte.test_table";
+  r = conn_yugabyte.FetchValue<std::string>("SELECT value FROM test_table where key=1");
+  ASSERT_EQ(r.ok(), false);
+
+  // yugabyte.test_table2 should remain as it was.
+  LOG(INFO) << "Select from yugabyte.test_table2";
+  res = ASSERT_RESULT(
+      conn_yugabyte.FetchValue<std::string>("SELECT value FROM test_table2 where key=1"));
+  ASSERT_EQ(res, "before");
+  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table2 (value) values ('after')"));
+
+  // yugabyte.test_table3 should remain as it was.
+  LOG(INFO) << "Select from yugabyte.test_table3";
+  res = ASSERT_RESULT(
+      conn_yugabyte.FetchValue<std::string>("SELECT value FROM test_table3 where key=1"));
+  ASSERT_EQ(res, "before");
+  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table3 (value) values ('after')"));
+
+  // Verify that we are able to create more sequences post restore.
+  LOG(INFO) << "Create table 'test_table_new'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table_new (key SERIAL, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table_new (value) values ('before')"));
 }
 
 TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlTestTruncateDisallowedWithPitr),
@@ -1621,7 +1726,7 @@ class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest 
   }
 };
 
-CHECKED_STATUS WaitWrites(int num, std::atomic<int>* current) {
+Status WaitWrites(int num, std::atomic<int>* current) {
   auto stop = current->load() + num;
   return WaitFor([current, stop] { return current->load() >= stop; },
                  20s, Format("Wait $0 ($1) writes", stop, num));

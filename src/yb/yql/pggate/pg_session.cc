@@ -198,7 +198,7 @@ class PgSession::RunHelper {
       : pg_session_(*pg_session), session_type_(session_type) {
   }
 
-  CHECKED_STATUS Apply(const PgTableDesc& table,
+  Status Apply(const PgTableDesc& table,
                        const PgsqlOpPtr& op,
                        uint64_t* read_time,
                        bool force_non_bufferable) {

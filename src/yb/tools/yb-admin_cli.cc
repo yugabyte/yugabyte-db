@@ -83,13 +83,13 @@ constexpr auto kBlacklistAdd = "ADD";
 constexpr auto kBlacklistRemove = "REMOVE";
 constexpr int32 kDefaultRpcPort = 9100;
 
-CHECKED_STATUS GetUniverseConfig(ClusterAdminClientClass* client,
+Status GetUniverseConfig(ClusterAdminClientClass* client,
                                  const ClusterAdminCli::CLIArguments&) {
   RETURN_NOT_OK_PREPEND(client->GetUniverseConfig(), "Unable to get universe config");
   return Status::OK();
 }
 
-CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
+Status ChangeBlacklist(ClusterAdminClientClass* client,
                                const ClusterAdminCli::CLIArguments& args, bool blacklist_leader,
                                const std::string& errStr) {
   if (args.size() < 2) {
@@ -109,7 +109,7 @@ CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
   return Status::OK();
 }
 
-CHECKED_STATUS MasterLeaderStepDown(
+Status MasterLeaderStepDown(
     ClusterAdminClientClass* client,
     const ClusterAdminCli::CLIArguments& args) {
   const auto leader_uuid = VERIFY_RESULT(client->GetMasterLeaderUuid());
@@ -117,7 +117,7 @@ CHECKED_STATUS MasterLeaderStepDown(
       leader_uuid, args.size() > 0 ? args[0] : std::string());
 }
 
-CHECKED_STATUS LeaderStepDown(
+Status LeaderStepDown(
     ClusterAdminClientClass* client,
     const ClusterAdminCli::CLIArguments& args) {
   if (args.size() < 1) {

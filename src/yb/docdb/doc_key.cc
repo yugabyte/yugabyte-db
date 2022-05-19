@@ -703,7 +703,7 @@ class DecodeSubDocKeyCallback {
  public:
   explicit DecodeSubDocKeyCallback(boost::container::small_vector_base<Slice>* out) : out_(out) {}
 
-  CHECKED_STATUS DecodeDocKey(Slice* slice) const {
+  Status DecodeDocKey(Slice* slice) const {
     return DocKey::PartiallyDecode(slice, out_);
   }
 
@@ -736,7 +736,7 @@ class SubDocKey::DecodeCallback {
  public:
   explicit DecodeCallback(SubDocKey* key) : key_(key) {}
 
-  CHECKED_STATUS DecodeDocKey(Slice* slice) const {
+  Status DecodeDocKey(Slice* slice) const {
     return key_->doc_key_.DecodeFrom(slice);
   }
 

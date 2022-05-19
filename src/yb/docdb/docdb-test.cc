@@ -3377,7 +3377,7 @@ SubDocKey(DocKey([], ["k1"]), ["s3", "s5"; HT{ physical: 10000 w: 1 }]) -> "v1";
       )#");
 }
 
-CHECKED_STATUS InsertToWriteBatchWithTTL(DocWriteBatch* dwb, const MonoDelta ttl) {
+Status InsertToWriteBatchWithTTL(DocWriteBatch* dwb, const MonoDelta ttl) {
   const DocKey doc_key(KeyEntryValues("k1"));
   KeyBytes encoded_doc_key(doc_key.Encode());
   QLValuePB subdoc;

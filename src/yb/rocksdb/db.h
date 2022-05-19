@@ -821,7 +821,7 @@ class DB {
 
   virtual UserFrontierPtr GetFlushedFrontier() { return nullptr; }
 
-  virtual CHECKED_STATUS ModifyFlushedFrontier(
+  virtual Status ModifyFlushedFrontier(
       UserFrontierPtr values,
       FrontierModificationMode mode) {
     return Status::OK();
@@ -909,7 +909,7 @@ class DB {
   // Needed for StackableDB
   virtual DB* GetRootDB() { return this; }
 
-  virtual CHECKED_STATUS Import(const std::string& source_dir) {
+  virtual Status Import(const std::string& source_dir) {
     return STATUS(NotSupported, "");
   }
 

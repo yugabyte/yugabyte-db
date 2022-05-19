@@ -157,9 +157,9 @@ class Heartbeater::Thread {
   Status ConnectToMaster();
   int GetMinimumHeartbeatMillis() const;
   int GetMillisUntilNextHeartbeat() const;
-  CHECKED_STATUS DoHeartbeat();
-  CHECKED_STATUS TryHeartbeat();
-  CHECKED_STATUS SetupRegistration(master::TSRegistrationPB* reg);
+  Status DoHeartbeat();
+  Status TryHeartbeat();
+  Status SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
   bool IsCurrentThread() const;
 

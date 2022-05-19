@@ -323,11 +323,11 @@ class DocDbRowAssembler {
   DocDbRowAssembler(DocDbRowAssembler* parent_assembler, Slice key):
       root_(&parent_assembler->root_, key) {}
 
-  CHECKED_STATUS SetEmptyCollection();
+  Status SetEmptyCollection();
 
-  CHECKED_STATUS SetTombstone();
+  Status SetTombstone();
 
-  CHECKED_STATUS SetPrimitiveValue(DocDbRowData* row);
+  Status SetPrimitiveValue(DocDbRowData* row);
 
   Result<bool> HasStoredValue();
 
@@ -391,7 +391,7 @@ class ScopedDocDbCollectionContext {
  public:
   explicit ScopedDocDbCollectionContext(ScopedDocDbRowContext* parent);
 
-  CHECKED_STATUS SetFirstChild(std::unique_ptr<DocDbRowData> first_row);
+  Status SetFirstChild(std::unique_ptr<DocDbRowData> first_row);
 
   Result<ScopedDocDbRowContextWithData*> GetNextChild();
 
@@ -431,7 +431,7 @@ class ScopedDocDbRowContext {
 
   ScopedDocDbCollectionContext* collection();
 
-  CHECKED_STATUS CheckDeadline();
+  Status CheckDeadline();
 
  protected:
   IntentAwareIterator* const iter_;
@@ -593,7 +593,7 @@ void ScopedDocDbCollectionContext::SetNextChild(std::unique_ptr<DocDbRowData> ch
       parent_->obsolescence_tracker_);
 }
 
-CHECKED_STATUS ProcessSubDocument(ScopedDocDbRowContextWithData* scope);
+Status ProcessSubDocument(ScopedDocDbRowContextWithData* scope);
 
 Result<uint32_t> ProcessChildren(ScopedDocDbCollectionContext* collection) {
   uint32_t num_children = 0;

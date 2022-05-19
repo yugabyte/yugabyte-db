@@ -1595,7 +1595,7 @@ void PrepareSetCheckpointRequest(
   set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_index(0);
 }
 
-CHECKED_STATUS SetInitialCheckpoint(const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
+Status SetInitialCheckpoint(const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
     YBClient* client,
     const CDCStreamId& stream_id,
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {

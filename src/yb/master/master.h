@@ -71,16 +71,16 @@ class Master : public tserver::DbServerBase {
   explicit Master(const MasterOptions& opts);
   virtual ~Master();
 
-  CHECKED_STATUS Init();
-  CHECKED_STATUS Start();
+  Status Init();
+  Status Start();
 
-  CHECKED_STATUS StartAsync();
-  CHECKED_STATUS WaitForCatalogManagerInit();
+  Status StartAsync();
+  Status WaitForCatalogManagerInit();
 
   // Wait until this Master's catalog manager instance is the leader and is ready.
   // This method is intended for use by unit tests.
   // If 'timeout' time is exceeded, returns Status::TimedOut.
-  CHECKED_STATUS WaitUntilCatalogManagerIsLeaderAndReadyForTests(
+  Status WaitUntilCatalogManagerIsLeaderAndReadyForTests(
     const MonoDelta& timeout = MonoDelta::FromSeconds(15))
       WARN_UNUSED_RESULT;
 
@@ -109,7 +109,7 @@ class Master : public tserver::DbServerBase {
   const MasterOptions& opts() { return opts_; }
 
   // Get the RPC and HTTP addresses for this master instance.
-  CHECKED_STATUS GetMasterRegistration(ServerRegistrationPB* registration) const;
+  Status GetMasterRegistration(ServerRegistrationPB* registration) const;
 
   // Get node instance, Raft role, RPC and HTTP addresses for all
   // masters from the in-memory options used at master startup.
@@ -117,13 +117,13 @@ class Master : public tserver::DbServerBase {
   // client; cache this information with a TTL (possibly in another
   // SysTable), so that we don't have to perform an RPC call on every
   // request.
-  CHECKED_STATUS ListMasters(std::vector<ServerEntryPB>* masters) const;
+  Status ListMasters(std::vector<ServerEntryPB>* masters) const;
 
   // Get node instance, Raft role, RPC and HTTP addresses for all
   // masters from the Raft config
-  CHECKED_STATUS ListRaftConfigMasters(std::vector<consensus::RaftPeerPB>* masters) const;
+  Status ListRaftConfigMasters(std::vector<consensus::RaftPeerPB>* masters) const;
 
-  CHECKED_STATUS InformRemovedMaster(const HostPortPB& hp_pb);
+  Status InformRemovedMaster(const HostPortPB& hp_pb);
 
   bool IsShutdown() const {
     return state_ == kStopped;
@@ -134,7 +134,7 @@ class Master : public tserver::DbServerBase {
   }
 
   // Recreates the master list based on the new config peers
-  CHECKED_STATUS ResetMemoryState(const consensus::RaftConfigPB& new_config);
+  Status ResetMemoryState(const consensus::RaftConfigPB& new_config);
 
   void DumpMasterOptionsInfo(std::ostream* out);
 
@@ -144,7 +144,7 @@ class Master : public tserver::DbServerBase {
 
   // Not a full shutdown, but makes this master go into a dormant mode (state_ is still kRunning).
   // Called currently by cluster master leader which is removing this master from the quorum.
-  CHECKED_STATUS GoIntoShellMode();
+  Status GoIntoShellMode();
 
   SysCatalogTable& sys_catalog() const;
 
@@ -173,7 +173,7 @@ class Master : public tserver::DbServerBase {
   }
 
  protected:
-  virtual CHECKED_STATUS RegisterServices();
+  virtual Status RegisterServices();
 
   void DisplayGeneralInfoIcons(std::stringstream* output) override;
 
@@ -181,11 +181,11 @@ class Master : public tserver::DbServerBase {
   friend class MasterTest;
 
   void InitCatalogManagerTask();
-  CHECKED_STATUS InitCatalogManager();
+  Status InitCatalogManager();
 
   // Initialize registration_.
   // Requires that the web server and RPC server have been started.
-  CHECKED_STATUS InitMasterRegistration();
+  Status InitMasterRegistration();
 
   const std::shared_future<client::YBClient*>& client_future() const override;
 

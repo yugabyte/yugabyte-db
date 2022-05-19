@@ -80,15 +80,15 @@ unique_ptr<YBTableAlterer> QLEnv::NewTableAlterer(const YBTableName& table_name)
   return client_->NewTableAlterer(table_name);
 }
 
-CHECKED_STATUS QLEnv::TruncateTable(const string& table_id) {
+Status QLEnv::TruncateTable(const string& table_id) {
   return client_->TruncateTable(table_id);
 }
 
-CHECKED_STATUS QLEnv::DeleteTable(const YBTableName& name) {
+Status QLEnv::DeleteTable(const YBTableName& name) {
   return client_->DeleteTable(name);
 }
 
-CHECKED_STATUS QLEnv::DeleteIndexTable(const YBTableName& name, YBTableName* indexed_table_name) {
+Status QLEnv::DeleteIndexTable(const YBTableName& name, YBTableName* indexed_table_name) {
   return client_->DeleteIndexTable(name, indexed_table_name);
 }
 
@@ -145,7 +145,7 @@ shared_ptr<YBTable> QLEnv::GetTableDesc(const TableId& table_id, bool* cache_use
   return yb_table;
 }
 
-CHECKED_STATUS QLEnv::GetUpToDateTableSchemaVersion(const YBTableName& table_name,
+Status QLEnv::GetUpToDateTableSchemaVersion(const YBTableName& table_name,
                                                     uint32_t* ver) {
   shared_ptr<YBTable> yb_table;
   RETURN_NOT_OK(client_->OpenTable(table_name, &yb_table));
