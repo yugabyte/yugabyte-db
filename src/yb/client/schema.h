@@ -212,7 +212,7 @@ class YBColumnSpec {
   friend class YBSchemaBuilder;
   friend class YBTableAlterer;
 
-  CHECKED_STATUS ToColumnSchema(YBColumnSchema* col) const;
+  Status ToColumnSchema(YBColumnSchema* col) const;
 
   YBColumnSpec* JsonOp(JsonOperatorPB op, const QLValuePB& value);
 
@@ -262,7 +262,7 @@ class YBSchemaBuilder {
   //
   // If the Schema is invalid for any reason (eg missing types, duplicate column names, etc)
   // a bad Status will be returned.
-  CHECKED_STATUS Build(YBSchema* schema);
+  Status Build(YBSchema* schema);
 
  private:
   class Data;
@@ -286,7 +286,7 @@ class YBSchema {
   void MoveFrom(YBSchema&& other);
 
   // DEPRECATED: will be removed soon.
-  CHECKED_STATUS Reset(const std::vector<YBColumnSchema>& columns, size_t key_columns,
+  Status Reset(const std::vector<YBColumnSchema>& columns, size_t key_columns,
                        const TableProperties& table_properties) WARN_UNUSED_RESULT;
 
   void Reset(std::unique_ptr<Schema> schema);

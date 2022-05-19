@@ -68,7 +68,7 @@ class Uuid {
   static Result<Uuid> Decode(Slice* slice, const char* name = nullptr);
 
   // Fills in strval with the string representation of the UUID.
-  CHECKED_STATUS ToString(std::string* strval) const;
+  Status ToString(std::string* strval) const;
 
   // Returns string representation the UUID. This method doesn't return a
   // Status for usecases in the code where we don't support returning a status.
@@ -107,21 +107,21 @@ class Uuid {
   // For time UUIDs only.
   // This function takes a time UUID and generates a SHA hash for the MAC address bits.
   // This is done because it is not secure to generate UUIDs directly from the MAC address.
-  CHECKED_STATUS HashMACAddress();
+  Status HashMACAddress();
 
   // Builds the smallest TimeUUID that willl compare as larger than any TimeUUID with the given
   // timestamp.
-  CHECKED_STATUS MaxFromUnixTimestamp(int64_t timestamp_ms);
+  Status MaxFromUnixTimestamp(int64_t timestamp_ms);
 
   // Builds the largest TimeUUID that willl compare as smaller than any TimeUUID with the given
   // timestamp.
-  CHECKED_STATUS MinFromUnixTimestamp(int64_t timestamp_ms);
+  Status MinFromUnixTimestamp(int64_t timestamp_ms);
 
   // This function takes a 64 bit integer that represents the timestamp, that is basically the
   // number of milliseconds since epoch.
-  CHECKED_STATUS ToUnixTimestamp(int64_t *timestamp_ms) const;
+  Status ToUnixTimestamp(int64_t *timestamp_ms) const;
 
-  CHECKED_STATUS IsTimeUuid() const;
+  Status IsTimeUuid() const;
 
   bool IsNil() const {
     return boost_uuid_.is_nil();

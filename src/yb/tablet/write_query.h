@@ -132,22 +132,22 @@ class WriteQuery {
 
   void Complete(const Status& status);
 
-  CHECKED_STATUS InitExecute(ExecuteMode mode);
+  Status InitExecute(ExecuteMode mode);
 
   void ExecuteDone(const Status& status);
 
   Result<bool> PrepareExecute();
-  CHECKED_STATUS DoExecute();
+  Status DoExecute();
 
   void NonTransactionalConflictsResolved(HybridTime now, HybridTime result);
 
   void TransactionalConflictsResolved();
 
-  CHECKED_STATUS DoTransactionalConflictsResolved();
+  Status DoTransactionalConflictsResolved();
 
   void CompleteExecute();
 
-  CHECKED_STATUS DoCompleteExecute();
+  Status DoCompleteExecute();
 
   Result<bool> SimplePrepareExecute();
   Result<bool> RedisPrepareExecute();

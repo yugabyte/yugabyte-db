@@ -48,9 +48,9 @@ void DumpTableLocations(
 
 void DumpWorkloadStats(const TestWorkload& workload);
 
-CHECKED_STATUS SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet);
+Status SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet);
 
-CHECKED_STATUS DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet);
+Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet);
 
 template <class MiniClusterType>
 class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType> {
@@ -93,7 +93,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
     return WriteRows(&this->table_, num_rows, start_key);
   }
 
-  CHECKED_STATUS FlushTestTable();
+  Status FlushTestTable();
 
   Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> WriteRowsAndFlush(
       uint32_t num_rows = kDefaultNumRows, int32_t start_key = 1);
@@ -108,7 +108,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
     this->CreateTable();
   }
 
-  CHECKED_STATUS CheckRowsCount(size_t expected_num_rows) {
+  Status CheckRowsCount(size_t expected_num_rows) {
     auto rows_count = VERIFY_RESULT(SelectRowsCount(this->NewSession(), this->table_));
     SCHECK_EQ(rows_count, expected_num_rows, InternalError, "Got unexpected rows count");
     return Status::OK();
@@ -152,7 +152,7 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   // By default we wait until all split tablets are cleanup. expected_split_tablets could be
   // overridden if needed to test behaviour of split tablet when its deletion is disabled.
   // If num_replicas_online is 0, uses replication factor.
-  CHECKED_STATUS WaitForTabletSplitCompletion(
+  Status WaitForTabletSplitCompletion(
       const size_t expected_non_split_tablets, const size_t expected_split_tablets = 0,
       size_t num_replicas_online = 0, const client::YBTableName& table = client::kTableName,
       bool core_dump_on_failure = true);
@@ -166,7 +166,7 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   // Checks source tablet behaviour after split:
   // - It should reject reads and writes.
-  CHECKED_STATUS CheckSourceTabletAfterSplit(const TabletId& source_tablet_id);
+  Status CheckSourceTabletAfterSplit(const TabletId& source_tablet_id);
 
   // Tests appropriate client requests structure update at YBClient side.
   // split_depth specifies how deep should we split original tablet until trying to write again.
@@ -183,7 +183,7 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   Result<std::vector<tablet::TabletPeerPtr>> ListPostSplitChildrenTabletPeers();
 
   // Wait for all peers to complete post-split compaction.
-  CHECKED_STATUS WaitForTestTablePostSplitTabletsFullyCompacted(MonoDelta timeout);
+  Status WaitForTestTablePostSplitTabletsFullyCompacted(MonoDelta timeout);
 
   Result<int> NumPostSplitTabletPeersFullyCompacted();
 
@@ -193,7 +193,7 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   // Checks active tablet replicas (all expect ones that have been split) to have all rows from 1 to
   // `num_rows` and nothing else.
   // If num_replicas_online is 0, uses replication factor.
-  CHECKED_STATUS CheckPostSplitTabletReplicasData(
+  Status CheckPostSplitTabletReplicasData(
       size_t num_rows, size_t num_replicas_online = 0, size_t num_active_tablets = 2);
 
  protected:
@@ -205,9 +205,9 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
  public:
   void SetFlags() override;
 
-  CHECKED_STATUS SplitTablet(const std::string& tablet_id);
+  Status SplitTablet(const std::string& tablet_id);
 
-  CHECKED_STATUS FlushTabletsOnSingleTServer(
+  Status FlushTabletsOnSingleTServer(
       size_t tserver_idx, const std::vector<yb::TabletId> tablet_ids, bool is_compaction);
 
   Result<std::set<TabletId>> GetTestTableTabletIds(size_t tserver_idx);
@@ -218,14 +218,14 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 
   Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets();
 
-  CHECKED_STATUS WaitForTabletsExcept(
+  Status WaitForTabletsExcept(
       size_t num_tablets, size_t tserver_idx, const TabletId& exclude_tablet);
 
-  CHECKED_STATUS WaitForTablets(size_t num_tablets, size_t tserver_idx);
+  Status WaitForTablets(size_t num_tablets, size_t tserver_idx);
 
-  CHECKED_STATUS WaitForTablets(size_t num_tablets);
+  Status WaitForTablets(size_t num_tablets);
 
-  CHECKED_STATUS SplitTabletCrashMaster(bool change_split_boundary, string* split_partition_key);
+  Status SplitTabletCrashMaster(bool change_split_boundary, string* split_partition_key);
 
   Result<TabletId> GetOnlyTestTabletId(size_t tserver_idx);
 

@@ -42,7 +42,7 @@ class CompressedStreamTest : public client::KeyValueTableTest<MiniCluster> {
     KeyValueTableTest::SetUp();
   }
 
-  CHECKED_STATUS CreateClient() override {
+  Status CreateClient() override {
     auto host = "127.0.0.52";
     client_ = VERIFY_RESULT(DoCreateClient(host, host));
     return Status::OK();

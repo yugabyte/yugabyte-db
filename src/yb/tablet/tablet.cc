@@ -1027,7 +1027,7 @@ void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) 
   }
 }
 
-CHECKED_STATUS ResetRocksDB(
+Status ResetRocksDB(
     bool destroy, const rocksdb::Options& options, std::unique_ptr<rocksdb::DB>* db) {
   if (!*db) {
     return Status::OK();
@@ -1408,7 +1408,7 @@ Status Tablet::HandleQLReadRequest(
       deadline, read_time, ql_read_request, *txn_op_ctx, result);
 }
 
-CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+Status Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                                 const size_t row_count,
                                                 QLResponsePB* response) const {
 
@@ -1607,7 +1607,7 @@ void SetBackfillSpecForYsqlBackfill(
 
 }  // namespace
 
-CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
+Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
                                                 const size_t row_count,
                                                 PgsqlResponsePB* response) const {
   // If there is no hash column in the read request, this is a full-table query. And if there is no
@@ -1754,7 +1754,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
 }
 
 template <class Ids>
-CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids) {
+Status Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids) {
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -1794,7 +1794,7 @@ Status Tablet::RemoveIntents(const RemoveIntentsData& data, const TransactionIdS
 }
 
 // We batch this as some tx could be very large and may not fit in one batch
-CHECKED_STATUS Tablet::GetIntents(
+Status Tablet::GetIntents(
     const TransactionId& id,
     std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
     docdb::ApplyTransactionState* stream_state) {

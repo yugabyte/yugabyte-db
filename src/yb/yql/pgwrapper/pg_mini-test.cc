@@ -94,11 +94,11 @@ namespace {
 template<IsolationLevel level>
 class TxnHelper {
  public:
-  static CHECKED_STATUS StartTxn(PGConn* connection) {
+  static Status StartTxn(PGConn* connection) {
     return connection->StartTransaction(level);
   }
 
-  static CHECKED_STATUS ExecuteInTxn(PGConn* connection, const std::string& query) {
+  static Status ExecuteInTxn(PGConn* connection, const std::string& query) {
     const auto guard = CreateTxnGuard(connection);
     return connection->Execute(query);
   }
@@ -1254,11 +1254,11 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     return connection;
   }
 
-  static CHECKED_STATUS StartTxn(PGConn* connection) {
+  static Status StartTxn(PGConn* connection) {
     return TxnHelper<level>::StartTxn(connection);
   }
 
-  static CHECKED_STATUS ExecuteInTxn(PGConn* connection, const std::string& query) {
+  static Status ExecuteInTxn(PGConn* connection, const std::string& query) {
     return TxnHelper<level>::ExecuteInTxn(connection, query);
   }
 

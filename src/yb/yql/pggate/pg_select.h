@@ -32,10 +32,10 @@ class PgSelect : public PgDmlRead {
   virtual ~PgSelect();
 
   // Prepare query before execution.
-  CHECKED_STATUS Prepare() override;
+  Status Prepare() override;
 
   // Prepare secondary index if that index is used by this query.
-  CHECKED_STATUS PrepareSecondaryIndex();
+  Status PrepareSecondaryIndex();
 
   virtual Result<PgTableDescPtr> LoadTable();
 

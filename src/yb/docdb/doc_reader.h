@@ -78,7 +78,7 @@ class DocDBTableReader {
 
   // Updates expiration/overwrite data based on table tombstone time. If the table is not a
   // colocated table as indicated by the provided root_doc_key, this method is a no-op.
-  CHECKED_STATUS UpdateTableTombstoneTime(const Slice& root_doc_key);
+  Status UpdateTableTombstoneTime(const Slice& root_doc_key);
 
   // Determine based on the provided schema if there is a table-level TTL and use the computed value
   // in any subsequently read SubDocuments. This call also turns on row-level TTL tracking for
@@ -98,7 +98,7 @@ class DocDBTableReader {
  private:
   // Initializes the reader to read a row at sub_doc_key by seeking to and reading obsolescence info
   // at that row.
-  CHECKED_STATUS InitForKey(const Slice& sub_doc_key);
+  Status InitForKey(const Slice& sub_doc_key);
 
   // Helper which seeks to the provided subdoc_key, respecting the semantics of this instances
   // seek_fwd_suffices_ flag.

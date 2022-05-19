@@ -491,7 +491,7 @@ std::string ObfuscateOperation(const TreeNode& tnode, const std::string& operati
 }
 
 // Follows Cassandra's view format for prettified binary log.
-CHECKED_STATUS AddLogEntry(const LogEntry& e) {
+Status AddLogEntry(const LogEntry& e) {
   std::string str;
   str.reserve(512); // Some reasonable default that's expected to fit most of the audit records.
   str.append("AUDIT: ");

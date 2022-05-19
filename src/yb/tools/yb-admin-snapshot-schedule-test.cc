@@ -129,13 +129,13 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return restoration_id;
   }
 
-  CHECKED_STATUS RestoreSnapshotSchedule(const std::string& schedule_id, Timestamp restore_at) {
+  Status RestoreSnapshotSchedule(const std::string& schedule_id, Timestamp restore_at) {
     return WaitRestorationDone(
         VERIFY_RESULT(
             StartRestoreSnapshotSchedule(schedule_id, restore_at)), 40s * kTimeMultiplier);
   }
 
-  CHECKED_STATUS WaitRestorationDone(const std::string& restoration_id, MonoDelta timeout) {
+  Status WaitRestorationDone(const std::string& restoration_id, MonoDelta timeout) {
     return WaitFor([this, restoration_id]() -> Result<bool> {
       auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_restorations", restoration_id));
       LOG(INFO) << "Restorations: " << common::PrettyWriteRapidJsonToString(out);
@@ -170,7 +170,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return res;
   }
 
-  CHECKED_STATUS PrepareCommon() {
+  Status PrepareCommon() {
     LOG(INFO) << "Create cluster";
     CreateCluster(kClusterName, ExtraTSFlags(), ExtraMasterFlags());
 
@@ -264,7 +264,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return schedule_id;
   }
 
-  CHECKED_STATUS DeleteSnapshotSchedule(const std::string& schedule_id) {
+  Status DeleteSnapshotSchedule(const std::string& schedule_id) {
     auto out = VERIFY_RESULT(CallJsonAdmin("delete_snapshot_schedule", schedule_id));
 
     SCHECK_EQ(VERIFY_RESULT(Get(out, "schedule_id")).get().GetString(), schedule_id, IllegalState,
@@ -272,7 +272,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return Status::OK();
   }
 
-  CHECKED_STATUS WaitTabletsCleaned(CoarseTimePoint deadline) {
+  Status WaitTabletsCleaned(CoarseTimePoint deadline) {
     return Wait([this, deadline]() -> Result<bool> {
       size_t alive_tablets = 0;
       for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
@@ -1726,7 +1726,7 @@ class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest 
   }
 };
 
-CHECKED_STATUS WaitWrites(int num, std::atomic<int>* current) {
+Status WaitWrites(int num, std::atomic<int>* current) {
   auto stop = current->load() + num;
   return WaitFor([current, stop] { return current->load() >= stop; },
                  20s, Format("Wait $0 ($1) writes", stop, num));

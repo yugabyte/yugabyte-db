@@ -58,12 +58,12 @@ class FetchState {
     return key_;
   }
 
-  CHECKED_STATUS NextEntry() {
+  Status NextEntry() {
     iterator_->SeekPastSubKey(key_.key);
     return Update();
   }
 
-  CHECKED_STATUS Next() {
+  Status Next() {
     RETURN_NOT_OK(NextEntry());
     return NextNonDeletedEntry();
   }
@@ -77,7 +77,7 @@ class FetchState {
 
  private:
   Status Update();
-  CHECKED_STATUS NextNonDeletedEntry();
+  Status NextNonDeletedEntry();
 
   std::unique_ptr<docdb::IntentAwareIterator> iterator_;
   Slice prefix_;

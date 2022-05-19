@@ -231,7 +231,7 @@ class LogEntryBatch {
   friend class MultiThreadedLogTest;
 
   // Serializes contents of the entry to an internal buffer.
-  CHECKED_STATUS Serialize();
+  Status Serialize();
 
   // Sets the callback that will be invoked after the entry is
   // appended and synced to disk
@@ -341,7 +341,7 @@ class Log::Appender {
   // Initializes the objects and starts the task.
   Status Init();
 
-  CHECKED_STATUS Submit(LogEntryBatch* item) {
+  Status Submit(LogEntryBatch* item) {
     ScopedRWOperation operation(&task_stream_counter_);
     RETURN_NOT_OK(operation);
     if (!task_stream_) {
@@ -350,7 +350,7 @@ class Log::Appender {
     return task_stream_->Submit(item);
   }
 
-  CHECKED_STATUS TEST_SubmitFunc(const std::function<void()>& func) {
+  Status TEST_SubmitFunc(const std::function<void()>& func) {
     return task_stream_->TEST_SubmitFunc(func);
   }
 

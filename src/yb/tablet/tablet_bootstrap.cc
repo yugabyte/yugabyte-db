@@ -500,7 +500,7 @@ class TabletBootstrap {
 
   ~TabletBootstrap() {}
 
-  CHECKED_STATUS Bootstrap(
+  Status Bootstrap(
       TabletPtr* rebuilt_tablet,
       scoped_refptr<log::Log>* rebuilt_log,
       consensus::ConsensusBootstrapInfo* consensus_info) {
@@ -601,7 +601,7 @@ class TabletBootstrap {
 
  private:
   // Finishes bootstrap, setting 'rebuilt_log' and 'rebuilt_tablet'.
-  CHECKED_STATUS FinishBootstrap(
+  Status FinishBootstrap(
       const std::string& message,
       scoped_refptr<log::Log>* rebuilt_log,
       TabletPtr* rebuilt_tablet) {
@@ -754,7 +754,7 @@ class TabletBootstrap {
 
   // Removes the recovery directory and all files contained therein.  Intended to be invoked after
   // log replay successfully completes.
-  CHECKED_STATUS RemoveRecoveryDir() {
+  Status RemoveRecoveryDir() {
     const string recovery_path = FsManager::GetTabletWalRecoveryDir(tablet_->metadata()->wal_dir());
     if (!GetEnv()->FileExists(recovery_path)) {
       VLOG(1) << "Tablet WAL recovery dir " << recovery_path << " does not exist.";
@@ -787,7 +787,7 @@ class TabletBootstrap {
   }
 
   // Opens a new log in the tablet's log directory.  The directory is expected to be clean.
-  CHECKED_STATUS OpenNewLog(log::CreateNewSegment create_new_segment) {
+  Status OpenNewLog(log::CreateNewSegment create_new_segment) {
     auto log_options = LogOptions();
     const auto& metadata = *tablet_->metadata();
     log_options.retention_secs = metadata.wal_retention_secs();
@@ -819,7 +819,7 @@ class TabletBootstrap {
 
   // Handle the given log entry. Validates entry.type() (it can only be REPLICATE), optionally
   // injects latency in tests, and delegates to HandleReplicateMessage.
-  CHECKED_STATUS HandleEntry(
+  Status HandleEntry(
       yb::log::LogEntryMetadata entry_metadata, std::unique_ptr<log::LogEntryPB>* entry_ptr) {
     auto& entry = **entry_ptr;
     VLOG_WITH_PREFIX(2) << "Handling entry: " << entry.ShortDebugString();
@@ -843,7 +843,7 @@ class TabletBootstrap {
   //   - Updates committed OpId based on the committed OpId from the entry and calls
   //     ApplyCommittedPendingReplicates.
   //   - Updates the "monotonic counter" used for assigning internal keys in YCQL arrays.
-  CHECKED_STATUS HandleReplicateMessage(
+  Status HandleReplicateMessage(
       LogEntryMetadata entry_metadata, std::unique_ptr<log::LogEntryPB>* replicate_entry_ptr) {
     auto& replicate_entry = **replicate_entry_ptr;
     stats_.ops_read++;
@@ -912,7 +912,7 @@ class TabletBootstrap {
   }
 
   // Replays the given committed operation.
-  CHECKED_STATUS PlayAnyRequest(
+  Status PlayAnyRequest(
       ReplicateMsg* replicate, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
     const auto op_type = replicate->op_type();
     if (test_hooks_) {
@@ -956,7 +956,7 @@ class TabletBootstrap {
     return STATUS_FORMAT(Corruption, "Invalid operation type: $0", op_type);
   }
 
-  CHECKED_STATUS PlayTabletSnapshotRequest(ReplicateMsg* replicate_msg) {
+  Status PlayTabletSnapshotRequest(ReplicateMsg* replicate_msg) {
     TabletSnapshotOpRequestPB* const snapshot = replicate_msg->mutable_snapshot_request();
 
     SnapshotOperation operation(tablet_.get(), snapshot);
@@ -966,14 +966,14 @@ class TabletBootstrap {
     return operation.Replicated(/* leader_term= */ yb::OpId::kUnknownTerm);
   }
 
-  CHECKED_STATUS PlayHistoryCutoffRequest(ReplicateMsg* replicate_msg) {
+  Status PlayHistoryCutoffRequest(ReplicateMsg* replicate_msg) {
     HistoryCutoffOperation operation(
         tablet_.get(), replicate_msg->mutable_history_cutoff());
 
     return operation.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
   }
 
-  CHECKED_STATUS PlaySplitOpRequest(ReplicateMsg* replicate_msg) {
+  Status PlaySplitOpRequest(ReplicateMsg* replicate_msg) {
     SplitTabletRequestPB* const split_request = replicate_msg->mutable_split_request();
     // We might be asked to replay SPLIT_OP even if it was applied and flushed when
     // FLAGS_force_recover_flushed_frontier is set.
@@ -1021,7 +1021,7 @@ class TabletBootstrap {
 
   // Performs various checks based on the OpId, and decides whether to replay the given operation.
   // If so, calls PlayAnyRequest, or sometimes calls PlayUpdateTransactionRequest directly.
-  CHECKED_STATUS MaybeReplayCommittedEntry(
+  Status MaybeReplayCommittedEntry(
       LogEntryPB* replicate_entry, RestartSafeCoarseTimePoint entry_time) {
     ReplicateMsg* const replicate = replicate_entry->mutable_replicate();
     const auto op_type = replicate->op_type();
@@ -1226,7 +1226,7 @@ class TabletBootstrap {
   //
   // The resulting log can be continued later on when then tablet is rebuilt and starts accepting
   // writes from clients.
-  CHECKED_STATUS PlaySegments(ConsensusBootstrapInfo* consensus_info) {
+  Status PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     const auto flushed_op_ids = VERIFY_RESULT(GetFlushedOpIds());
 
     if (tablet_->snapshot_coordinator()) {
@@ -1387,7 +1387,7 @@ class TabletBootstrap {
     return Status::OK();
   }
 
-  CHECKED_STATUS PlayWriteRequest(
+  Status PlayWriteRequest(
       ReplicateMsg* replicate_msg, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
     SCHECK(replicate_msg->has_hybrid_time(), IllegalState,
            "A write operation with no hybrid time");
@@ -1424,7 +1424,7 @@ class TabletBootstrap {
     return Status::OK();
   }
 
-  CHECKED_STATUS PlayChangeMetadataRequest(ReplicateMsg* replicate_msg) {
+  Status PlayChangeMetadataRequest(ReplicateMsg* replicate_msg) {
     ChangeMetadataRequestPB* request = replicate_msg->mutable_change_metadata_request();
 
     // Decode schema
@@ -1464,7 +1464,7 @@ class TabletBootstrap {
     return Status::OK();
   }
 
-  CHECKED_STATUS PlayChangeConfigRequest(ReplicateMsg* replicate_msg) {
+  Status PlayChangeConfigRequest(ReplicateMsg* replicate_msg) {
     ChangeConfigRecordPB* change_config = replicate_msg->mutable_change_config_record();
     RaftConfigPB config = change_config->new_config();
 
@@ -1492,7 +1492,7 @@ class TabletBootstrap {
     return Status::OK();
   }
 
-  CHECKED_STATUS PlayTruncateRequest(ReplicateMsg* replicate_msg) {
+  Status PlayTruncateRequest(ReplicateMsg* replicate_msg) {
     auto* req = replicate_msg->mutable_truncate();
 
     TruncateOperation operation(tablet_.get(), req);
@@ -1504,7 +1504,7 @@ class TabletBootstrap {
     return Status::OK();
   }
 
-  CHECKED_STATUS PlayUpdateTransactionRequest(
+  Status PlayUpdateTransactionRequest(
       ReplicateMsg* replicate_msg, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
     SCHECK(replicate_msg->has_hybrid_time(),
            Corruption, "A transaction update request must have a hybrid time");
@@ -1609,7 +1609,7 @@ class TabletBootstrap {
 
   // Goes through the contiguous prefix of pending_replicates and applies those that are committed
   // by calling MaybeReplayCommittedEntry.
-  CHECKED_STATUS ApplyCommittedPendingReplicates() {
+  Status ApplyCommittedPendingReplicates() {
     auto& pending_replicates = replay_state_->pending_replicates;
     auto iter = pending_replicates.begin();
     while (iter != pending_replicates.end() && replay_state_->CanApply(iter->second.entry.get())) {
@@ -1680,7 +1680,7 @@ string TabletBootstrap::Stats::ToString() const {
                 ops_read, ops_overwritten);
 }
 
-CHECKED_STATUS BootstrapTabletImpl(
+Status BootstrapTabletImpl(
     const BootstrapTabletData& data,
     TabletPtr* rebuilt_tablet,
     scoped_refptr<log::Log>* rebuilt_log,

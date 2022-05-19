@@ -762,7 +762,7 @@ void QLValue::set_timeuuid_value(const Uuid& val) {
 }
 
 template<typename num_type, typename data_type>
-CHECKED_STATUS QLValue::CQLDeserializeNum(
+Status QLValue::CQLDeserializeNum(
     size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(num_type),
     Slice* data) {
   num_type value = 0;
@@ -772,7 +772,7 @@ CHECKED_STATUS QLValue::CQLDeserializeNum(
 }
 
 template<typename float_type, typename data_type>
-CHECKED_STATUS QLValue::CQLDeserializeFloat(
+Status QLValue::CQLDeserializeFloat(
     size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(float_type),
     Slice* data) {
   float_type value = 0.0;

@@ -61,7 +61,7 @@ class RedisServiceData {
       const std::string& channel, const std::string& message, const IntFunctor& f) = 0;
 
   // Used for Auth.
-  virtual CHECKED_STATUS GetRedisPasswords(std::vector<std::string>* passwords) = 0;
+  virtual Status GetRedisPasswords(std::vector<std::string>* passwords) = 0;
 
   // Used for Select.
   virtual yb::Result<std::shared_ptr<client::YBTable>> GetYBTableForDB(

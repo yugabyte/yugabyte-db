@@ -81,7 +81,7 @@ class TabletServerTestBase : public YBTest {
 
   virtual void StartTabletServer();
 
-  CHECKED_STATUS WaitForTabletRunning(const char *tablet_id);
+  Status WaitForTabletRunning(const char *tablet_id);
 
   void UpdateTestRowRemote(int tid,
                            int32_t row_idx,
@@ -116,7 +116,7 @@ class TabletServerTestBase : public YBTest {
 
   void ShutdownTablet();
 
-  CHECKED_STATUS ShutdownAndRebuildTablet();
+  Status ShutdownAndRebuildTablet();
 
   // Verifies that a set of expected rows (key, value) is present in the tablet.
   void VerifyRows(const Schema& schema, const std::vector<KeyValue>& expected);
