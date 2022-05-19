@@ -136,7 +136,7 @@ class SchemaPackingStorage {
 
   void AddSchema(SchemaVersion version, const Schema& schema);
 
-  CHECKED_STATUS LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
+  Status LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
 
   // Copy all schema packings except schema_version_to_skip to out.
   void ToPB(

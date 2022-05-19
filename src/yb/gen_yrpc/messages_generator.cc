@@ -107,7 +107,7 @@ class Message {
         "  CopyFrom(rhs);\n"
         "}\n"
         "\n"
-        "CHECKED_STATUS ParseFromCodedStream("
+        "Status ParseFromCodedStream("
             "google::protobuf::io::CodedInputStream* cis) override;\n"
         "size_t SerializedSize() const override;\n"
         "uint8_t* SerializeToArray(uint8_t* out) const override;\n"

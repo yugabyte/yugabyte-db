@@ -135,7 +135,7 @@ bool RunningTransaction::WasAborted() const {
   return last_known_status_ == TransactionStatus::ABORTED;
 }
 
-CHECKED_STATUS RunningTransaction::CheckAborted() const {
+Status RunningTransaction::CheckAborted() const {
   if (WasAborted()) {
     return MakeAbortedStatus(id());
   }

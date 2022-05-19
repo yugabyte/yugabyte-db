@@ -30,7 +30,7 @@ YB_STRONGLY_TYPED_BOOL(SkipEmptyMessages);
 // Listener of BinaryCallParser, invoked when call is parsed.
 class BinaryCallParserListener {
  public:
-  virtual CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) = 0;
+  virtual Status HandleCall(const ConnectionPtr& connection, CallData* call_data) = 0;
  protected:
   ~BinaryCallParserListener() {}
 };

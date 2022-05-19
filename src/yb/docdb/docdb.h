@@ -125,7 +125,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 // Input: doc_write_ops, read snapshot hybrid_time if requested in PrepareDocWriteOperation().
 // Context: rocksdb
 // Outputs: keys_locked, write_batch
-CHECKED_STATUS AssembleDocWriteBatch(
+Status AssembleDocWriteBatch(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
@@ -194,11 +194,11 @@ YB_STRONGLY_TYPED_BOOL(FullDocKey);
 typedef boost::function<
     Status(IntentStrength, FullDocKey, Slice, KeyBytes*, LastKey)> EnumerateIntentsCallback;
 
-CHECKED_STATUS EnumerateIntents(
+Status EnumerateIntents(
     const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,
     const EnumerateIntentsCallback& functor, PartialRangeKeyIntents partial_range_key_intents);
 
-CHECKED_STATUS EnumerateIntents(
+Status EnumerateIntents(
     Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key = LastKey::kFalse);

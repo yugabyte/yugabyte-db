@@ -288,7 +288,7 @@ class PerTableLoadState {
   }
 
   // Update the per-tablet information for this tablet.
-  CHECKED_STATUS UpdateTablet(TabletInfo* tablet);
+  Status UpdateTablet(TabletInfo* tablet);
 
   virtual void UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc);
 
@@ -309,15 +309,15 @@ class PerTableLoadState {
     const TabletId& tablet_id, const PlacementInfoPB& placement_info, TabletServerId* out_from_ts,
     TabletServerId* out_to_ts);
 
-  CHECKED_STATUS AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts);
+  Status AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts);
 
-  CHECKED_STATUS RemoveReplica(const TabletId& tablet_id, const TabletServerId& from_ts);
+  Status RemoveReplica(const TabletId& tablet_id, const TabletServerId& from_ts);
 
   void SortLoad();
 
   void SortDriveLoad();
 
-  CHECKED_STATUS MoveLeader(const TabletId& tablet_id,
+  Status MoveLeader(const TabletId& tablet_id,
                             const TabletServerId& from_ts,
                             const TabletServerId& to_ts = "",
                             const TabletServerId& to_ts_path = "");
@@ -332,21 +332,21 @@ class PerTableLoadState {
 
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations(TabletInfo* tablet);
 
-  CHECKED_STATUS AddRunningTablet(const TabletId& tablet_id,
+  Status AddRunningTablet(const TabletId& tablet_id,
                                   const TabletServerId& ts_uuid,
                                   const std::string& path);
 
-  CHECKED_STATUS RemoveRunningTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
+  Status RemoveRunningTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
-  CHECKED_STATUS AddStartingTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
+  Status AddStartingTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
-  CHECKED_STATUS AddLeaderTablet(const TabletId& tablet_id,
+  Status AddLeaderTablet(const TabletId& tablet_id,
                                  const TabletServerId& ts_uuid,
                                  const TabletServerId& ts_path);
 
-  CHECKED_STATUS RemoveLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
+  Status RemoveLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
-  CHECKED_STATUS AddDisabledByTSTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
+  Status AddDisabledByTSTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   // PerTableLoadState member fields
 

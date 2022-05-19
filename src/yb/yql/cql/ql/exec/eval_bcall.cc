@@ -26,7 +26,7 @@ namespace ql {
 using yb::bfql::BFOpcode;
 using yb::bfql::BFOPCODE_NOOP;
 
-CHECKED_STATUS Executor::PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
+Status Executor::PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
   if (!bcall_pt->is_server_operator()) {
     // Regular builtin function call.
     return BFCallToPB(bcall_pt, expr_pb);
@@ -36,7 +36,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *exp
   }
 }
 
-CHECKED_STATUS Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
+Status Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
   if (bcall_pt->result_cast_op() != BFOPCODE_NOOP) {
       QLBCallPB *cast_pb = expr_pb->mutable_bfcall();
       cast_pb->set_opcode(static_cast<int32_t>(bcall_pt->result_cast_op()));
@@ -78,7 +78,7 @@ CHECKED_STATUS Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *exp
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::TSCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
+Status Executor::TSCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
   if (bcall_pt->result_cast_op() != BFOPCODE_NOOP) {
       QLBCallPB *cast_pb = expr_pb->mutable_bfcall();
       cast_pb->set_opcode(static_cast<int32_t>(bcall_pt->result_cast_op()));
@@ -114,7 +114,7 @@ CHECKED_STATUS Executor::TSCallToPB(const PTBcall *bcall_pt, QLExpressionPB *exp
 }
 
 // Forming constructor call for collection and user-defined types.
-CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *expr, QLExpressionPB *expr_pb) {
+Status Executor::PTExprToPB(const PTCollectionExpr *expr, QLExpressionPB *expr_pb) {
   bool is_frozen = false;
   DataType data_type = expr->ql_type()->main();
   if (data_type == FROZEN) {

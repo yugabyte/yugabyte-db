@@ -400,7 +400,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
 }
 
 template <class TablesMap>
-CHECKED_STATUS MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
+Status MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
                                  const TablesMap& tables) {
   std::string table_name = "<unknown_table_name>";
   if (!table_id.empty()) {
@@ -1203,7 +1203,7 @@ namespace {
 // Each MigrateSuperblockForDXXXX could be removed after all YugabyteDB installations are
 // upgraded to have revision DXXXX.
 
-CHECKED_STATUS MigrateSuperblockForD5900(RaftGroupReplicaSuperBlockPB* superblock) {
+Status MigrateSuperblockForD5900(RaftGroupReplicaSuperBlockPB* superblock) {
   // In previous version of superblock format we stored primary table metadata in superblock's
   // top-level fields (deprecated table_* and other). TableInfo objects were stored inside
   // RaftGroupReplicaSuperBlockPB.tables.

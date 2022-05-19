@@ -158,7 +158,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     cluster_->Shutdown();
   }
 
-  CHECKED_STATUS StartProcessAndGetStreams(string exe_path, vector<string> argv, FILE** out,
+  Status StartProcessAndGetStreams(string exe_path, vector<string> argv, FILE** out,
                                            FILE** in, std::unique_ptr<Subprocess>* process) {
     process->reset(new Subprocess(exe_path, argv));
     (*process)->PipeParentStdout();
@@ -181,7 +181,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_EQ(0, WEXITSTATUS(wait_status));
   }
 
-  CHECKED_STATUS CreateQLReadRequest(const string& row, QLReadRequestPB* req) {
+  Status CreateQLReadRequest(const string& row, QLReadRequestPB* req) {
     req->set_client(YQL_CLIENT_CQL);
     string tablet_id;
     string partition_key;

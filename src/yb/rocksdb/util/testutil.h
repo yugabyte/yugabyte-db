@@ -257,7 +257,7 @@ class StringSource: public RandomAccessFile {
 
   yb::Result<uint64_t> Size() const override { return contents_.size(); }
 
-  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
+  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
     total_reads_++;
     if (offset > contents_.size()) {
       return STATUS(InvalidArgument, "invalid Read offset");

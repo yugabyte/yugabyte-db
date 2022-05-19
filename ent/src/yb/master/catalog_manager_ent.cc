@@ -158,7 +158,7 @@ namespace enterprise {
 
 namespace {
 
-CHECKED_STATUS CheckStatus(const Status& status, const char* action) {
+Status CheckStatus(const Status& status, const char* action) {
   if (status.ok()) {
     return status;
   }
@@ -168,12 +168,12 @@ CHECKED_STATUS CheckStatus(const Status& status, const char* action) {
   return s;
 }
 
-CHECKED_STATUS CheckLeaderStatus(const Status& status, const char* action) {
+Status CheckLeaderStatus(const Status& status, const char* action) {
   return CheckIfNoLongerLeader(CheckStatus(status, action));
 }
 
 template<class RespClass>
-CHECKED_STATUS CheckLeaderStatusAndSetupError(
+Status CheckLeaderStatusAndSetupError(
     const Status& status, const char* action, RespClass* resp) {
   return CheckIfNoLongerLeaderAndSetupError(CheckStatus(status, action), resp);
 }
@@ -188,7 +188,7 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
  public:
   explicit SnapshotLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  CHECKED_STATUS Visit(const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) override {
+  Status Visit(const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) override {
     if (TryFullyDecodeTxnSnapshotId(snapshot_id)) {
       // Transaction aware snapshots should be already loaded.
       return Status::OK();
@@ -196,7 +196,7 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
     return VisitNonTransactionAwareSnapshot(snapshot_id, metadata);
   }
 
-  CHECKED_STATUS VisitNonTransactionAwareSnapshot(
+  Status VisitNonTransactionAwareSnapshot(
       const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) {
 
     // Setup the snapshot info.

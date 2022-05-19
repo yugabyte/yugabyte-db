@@ -145,19 +145,19 @@ class LinkedListTester {
   }
 
   // Create the table.
-  CHECKED_STATUS CreateLinkedListTable();
+  Status CreateLinkedListTable();
 
   // Load the table with the linked list test pattern.
   //
   // Runs for the amount of time designated by 'run_for'.
   // Sets *written_count to the number of rows inserted.
-  CHECKED_STATUS LoadLinkedList(
+  Status LoadLinkedList(
       const MonoDelta& run_for,
       int num_samples,
       int64_t* written_count);
 
   // Variant of VerifyLinkedListRemote that verifies at the specified snapshot hybrid_time.
-  CHECKED_STATUS VerifyLinkedListAtSnapshotRemote(
+  Status VerifyLinkedListAtSnapshotRemote(
       HybridTime snapshot_hybrid_time, const int64_t expected, const bool log_errors,
       const bool latest_at_leader, const std::function<Status(const std::string&)>& cb,
       int64_t* verified_count) {
@@ -175,7 +175,7 @@ class LinkedListTester {
   }
 
   // Variant of VerifyLinkedListRemote that verifies without specifying a snapshot hybrid_time.
-  CHECKED_STATUS VerifyLinkedListNoSnapshotRemote(const int64_t expected,
+  Status VerifyLinkedListNoSnapshotRemote(const int64_t expected,
                                                   const bool log_errors,
                                                   const bool latest_at_leader,
                                                   int64_t* verified_count) {
@@ -189,14 +189,14 @@ class LinkedListTester {
 
   // Run the verify step on a table with RPCs. Calls the provided callback 'cb' once during
   // verification to test scanner fault tolerance.
-  CHECKED_STATUS VerifyLinkedListRemote(
+  Status VerifyLinkedListRemote(
       HybridTime snapshot_hybrid_time, const int64_t expected, const bool log_errors,
       bool latest_at_leader, const std::function<Status(const std::string&)>& cb,
       int64_t* verified_count);
 
   // A variant of VerifyLinkedListRemote that is more robust towards ongoing
   // bootstrapping and replication.
-  CHECKED_STATUS WaitAndVerify(const int seconds_to_run,
+  Status WaitAndVerify(const int seconds_to_run,
                                const int64_t expected,
                                const bool latest_at_leader) {
     LOG(INFO) << __func__ << ": seconds_to_run=" << seconds_to_run
@@ -207,7 +207,7 @@ class LinkedListTester {
   }
 
   // A variant of WaitAndVerify that also takes a callback to be run once during verification.
-  CHECKED_STATUS WaitAndVerify(
+  Status WaitAndVerify(
       int seconds_to_run, int64_t expected, bool latest_at_leader,
       const std::function<Status(const std::string&)>& cb);
 
@@ -229,7 +229,7 @@ class LinkedListTester {
   SnapsAndCounts sampled_hybrid_times_and_counts_;
 
  private:
-  CHECKED_STATUS ReturnOk(const std::string& str) { return Status::OK(); }
+  Status ReturnOk(const std::string& str) { return Status::OK(); }
 };
 
 } // namespace
@@ -321,7 +321,7 @@ class LinkedListChainGenerator {
     return (implicit_cast<uint64_t>(rand_.Next()) << 32) | rand_.Next();
   }
 
-  CHECKED_STATUS GenerateNextInsert(const client::TableHandle& table, client::YBSession* session) {
+  Status GenerateNextInsert(const client::TableHandle& table, client::YBSession* session) {
     // Encode the chain index in the lowest 8 bits so that different chains never
     // intersect.
     int64_t this_key = (Rand64() << 8) | chain_idx_;
@@ -500,7 +500,7 @@ class LinkedListVerifier {
   void RegisterResult(int64_t key, int64_t link, bool updated);
 
   // Run the common verify step once the scanned data is stored.
-  CHECKED_STATUS VerifyData(int64_t* verified_count, bool log_errors);
+  Status VerifyData(int64_t* verified_count, bool log_errors);
 
  private:
   // Print a summary of the broken links to the log.

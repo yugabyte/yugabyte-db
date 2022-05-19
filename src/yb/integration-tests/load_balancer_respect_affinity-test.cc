@@ -55,7 +55,7 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
     return client_->IsLoadBalanced(narrow_cast<uint32_t>(num_tablet_servers()));
   }
 
-  CHECKED_STATUS WaitLoadBalanced(MonoDelta timeout) {
+  Status WaitLoadBalanced(MonoDelta timeout) {
     return WaitFor([&]() -> Result<bool> {
       return IsLoadBalanced();
     }, timeout, "IsLoadBalanced");

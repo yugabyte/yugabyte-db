@@ -452,7 +452,7 @@ class CDCServiceImpl::Impl {
     return false;
   }
 
-  CHECKED_STATUS CheckTabletValidForStream(
+  Status CheckTabletValidForStream(
       const ProducerTabletInfo& info,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
     bool found = false;
@@ -654,7 +654,7 @@ CoarseTimePoint GetDeadline(const RpcContext& context, client::YBClient* client)
   return deadline;
 }
 
-CHECKED_STATUS VerifyArg(const SetCDCCheckpointRequestPB& req) {
+Status VerifyArg(const SetCDCCheckpointRequestPB& req) {
   if (!req.has_checkpoint() && !req.has_bootstrap()) {
     return STATUS(InvalidArgument, "OpId is required to set checkpoint");
   }

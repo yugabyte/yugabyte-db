@@ -54,7 +54,7 @@ class PTInsertValuesClause : public PTCollection {
   void Prepend(const PTExprListNode::SharedPtr& tnode);
 
   // Node semantics analysis.
-  CHECKED_STATUS Analyze(SemContext* sem_context) override;
+  Status Analyze(SemContext* sem_context) override;
   void PrintSemanticAnalysisResult(SemContext* sem_context);
 
   // Access function for tuples_.

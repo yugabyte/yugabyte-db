@@ -79,7 +79,7 @@ class CallHome {
 
   void BuildJsonAndSend();
 
-  CHECKED_STATUS GetAddr();
+  Status GetAddr();
   master::Master* master();
   tserver::TabletServer* tserver();
 

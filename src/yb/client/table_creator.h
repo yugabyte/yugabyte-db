@@ -161,7 +161,7 @@ class YBTableCreator {
   // The return value may indicate an error in the create table operation,
   // or a misuse of the builder; in the latter case, only the last error is
   // returned.
-  CHECKED_STATUS Create();
+  Status Create();
 
   Result<int> NumTabletsForUserTable();
 

@@ -666,7 +666,7 @@ void AssertCacheSizes(Cache *cache, size_t single_touch_count, size_t multi_touc
   ASSERT_EQ(usages[0].second, multi_touch_count);
 }
 
-CHECKED_STATUS InsertIntoCache(const std::shared_ptr<Cache>& cache, int key, int value,
+Status InsertIntoCache(const std::shared_ptr<Cache>& cache, int key, int value,
                                int query_id = CacheTest::kTestQueryId, int charge = 1,
                                Cache::Handle **handle = nullptr) {
   return cache->Insert(ToString(key), query_id, new Value(value), charge, &deleter, handle);

@@ -160,7 +160,7 @@ Result<ProcessCallsResult> YBInboundConnectionContext::ProcessCalls(
 
 namespace {
 
-CHECKED_STATUS ThrottleRpcStatus(const MemTrackerPtr& throttle_tracker, const YBInboundCall& call) {
+Status ThrottleRpcStatus(const MemTrackerPtr& throttle_tracker, const YBInboundCall& call) {
   if (ShouldThrottleRpc(throttle_tracker, call.request_data().size(), "Rejecting RPC call: ")) {
     return STATUS_FORMAT(ServiceUnavailable, "Call rejected due to memory pressure: $0", call);
   } else {

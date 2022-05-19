@@ -81,7 +81,7 @@ bool EmulateRedisResponse(const RedisDataType& data_type) {
 static const string wrong_type_message =
     "WRONGTYPE Operation against a key holding the wrong kind of value";
 
-CHECKED_STATUS QLValueFromSubKey(const RedisKeyValueSubKeyPB &subkey_pb, QLValuePB *out) {
+Status QLValueFromSubKey(const RedisKeyValueSubKeyPB &subkey_pb, QLValuePB *out) {
   switch (subkey_pb.subkey_case()) {
     case RedisKeyValueSubKeyPB::kStringSubkey:
       out->set_string_value(subkey_pb.string_subkey());
@@ -101,7 +101,7 @@ CHECKED_STATUS QLValueFromSubKey(const RedisKeyValueSubKeyPB &subkey_pb, QLValue
   return Status::OK();
 }
 
-CHECKED_STATUS KeyEntryValueFromSubKey(
+Status KeyEntryValueFromSubKey(
     const RedisKeyValueSubKeyPB &subkey_pb, KeyEntryValue *out) {
   QLValuePB value;
   RETURN_NOT_OK(QLValueFromSubKey(subkey_pb, &value));
@@ -113,7 +113,7 @@ CHECKED_STATUS KeyEntryValueFromSubKey(
 }
 
 // Stricter version of the above when we know the exact datatype to expect.
-CHECKED_STATUS QLValueFromSubKeyStrict(const RedisKeyValueSubKeyPB& subkey_pb,
+Status QLValueFromSubKeyStrict(const RedisKeyValueSubKeyPB& subkey_pb,
                                        RedisDataType data_type,
                                        QLValuePB* out) {
   switch (data_type) {
@@ -319,7 +319,7 @@ bool VerifyTypeAndSetCode(
   return true;
 }
 
-CHECKED_STATUS AddPrimitiveValueToResponseArray(const PrimitiveValue& value,
+Status AddPrimitiveValueToResponseArray(const PrimitiveValue& value,
                                                 RedisArrayPB* redis_array) {
   switch (value.value_type()) {
     case ValueEntryType::kString:
@@ -337,7 +337,7 @@ CHECKED_STATUS AddPrimitiveValueToResponseArray(const PrimitiveValue& value,
   }
 }
 
-CHECKED_STATUS AddPrimitiveValueToResponseArray(const KeyEntryValue& value,
+Status AddPrimitiveValueToResponseArray(const KeyEntryValue& value,
                                                 RedisArrayPB* redis_array) {
   switch (value.type()) {
     case KeyEntryType::kString: FALLTHROUGH_INTENDED;
@@ -359,7 +359,7 @@ CHECKED_STATUS AddPrimitiveValueToResponseArray(const KeyEntryValue& value,
 
 struct AddResponseValuesGeneric {
   template <class Val1, class Val2>
-  CHECKED_STATUS operator()(const Val1& first,
+  Status operator()(const Val1& first,
                             const Val2& second,
                             RedisResponsePB* response,
                             bool add_keys,
@@ -378,7 +378,7 @@ struct AddResponseValuesGeneric {
 // Populate the response array for sorted sets range queries.
 // first refers to the score for the given values.
 // second refers to a subdocument where each key is a value with the given score.
-CHECKED_STATUS AddResponseValuesSortedSets(const KeyEntryValue& first,
+Status AddResponseValuesSortedSets(const KeyEntryValue& first,
                                            const SubDocument& second,
                                            RedisResponsePB* response,
                                            bool add_keys,
@@ -402,7 +402,7 @@ CHECKED_STATUS AddResponseValuesSortedSets(const KeyEntryValue& first,
 }
 
 template <typename T, typename AddResponseRow>
-CHECKED_STATUS PopulateRedisResponseFromInternal(T iter,
+Status PopulateRedisResponseFromInternal(T iter,
                                                  AddResponseRow add_response_row,
                                                  const T& iter_end,
                                                  RedisResponsePB *response,
@@ -418,7 +418,7 @@ CHECKED_STATUS PopulateRedisResponseFromInternal(T iter,
 }
 
 template <typename AddResponseRow>
-CHECKED_STATUS PopulateResponseFrom(const SubDocument::ObjectContainer &key_values,
+Status PopulateResponseFrom(const SubDocument::ObjectContainer &key_values,
                                     AddResponseRow add_response_row,
                                     RedisResponsePB *response,
                                     bool add_keys,
@@ -465,7 +465,7 @@ Result<int64_t> GetCardinality(IntentAwareIterator* iterator, const RedisKeyValu
 }
 
 template <typename AddResponseValues>
-CHECKED_STATUS GetAndPopulateResponseValues(
+Status GetAndPopulateResponseValues(
     IntentAwareIterator* iterator,
     AddResponseValues add_response_values,
     const GetRedisSubDocumentData& data,

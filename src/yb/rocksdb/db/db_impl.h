@@ -221,7 +221,7 @@ class DBImpl : public DB {
 
   UserFrontierPtr GetFlushedFrontier() override;
 
-  CHECKED_STATUS ModifyFlushedFrontier(
+  Status ModifyFlushedFrontier(
       UserFrontierPtr frontier,
       FrontierModificationMode mode) override;
 
@@ -479,7 +479,7 @@ class DBImpl : public DB {
   // Checks that source database has appropriate seqno.
   // I.e. seqno ranges of imported database does not overlap with seqno ranges of destination db.
   // And max seqno of imported database is less that active seqno of destination db.
-  CHECKED_STATUS Import(const std::string& source_dir) override;
+  Status Import(const std::string& source_dir) override;
 
   bool AreWritesStopped();
   bool NeedsDelay() override;
@@ -669,7 +669,7 @@ class DBImpl : public DB {
 
   const Snapshot* GetSnapshotImpl(bool is_write_conflict_boundary);
 
-  CHECKED_STATUS ApplyVersionEdit(VersionEdit* edit);
+  Status ApplyVersionEdit(VersionEdit* edit);
 
   void SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task);
 

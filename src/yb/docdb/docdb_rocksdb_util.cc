@@ -719,7 +719,7 @@ class RocksDBPatcherHelper {
     return *add_edit_;
   }
 
-  CHECKED_STATUS Apply(
+  Status Apply(
       const rocksdb::Options& options, const rocksdb::ImmutableCFOptions& imm_cf_options) {
     if (!delete_edit_.modified() && !add_edit_.modified()) {
       return Status::OK();
@@ -750,7 +750,7 @@ class RocksDBPatcherHelper {
   }
 
   template <class F>
-  CHECKED_STATUS IterateFilesHelper(const F& f, Status*) {
+  Status IterateFilesHelper(const F& f, Status*) {
     for (int level = 0; level < Levels(); ++level) {
       for (const auto* file : LevelFiles(level)) {
         RETURN_NOT_OK(f(level, *file));
@@ -806,13 +806,13 @@ class RocksDBPatcher::Impl {
     cf_options_.comparator = comparator_.user_comparator();
   }
 
-  CHECKED_STATUS Load() {
+  Status Load() {
     std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
     column_families.emplace_back("default", cf_options_);
     return version_set_.Recover(column_families);
   }
 
-  CHECKED_STATUS SetHybridTimeFilter(HybridTime value) {
+  Status SetHybridTimeFilter(HybridTime value) {
     RocksDBPatcherHelper helper(&version_set_);
 
     helper.IterateFiles([&helper, value](int level, const rocksdb::FileMetaData& file) {
@@ -832,7 +832,7 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
-  CHECKED_STATUS ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
+  Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
     RocksDBPatcherHelper helper(&version_set_);
 
     docdb::ConsensusFrontier final_frontier = frontier;
@@ -875,7 +875,7 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
-  CHECKED_STATUS UpdateFileSizes() {
+  Status UpdateFileSizes() {
     RocksDBPatcherHelper helper(&version_set_);
 
     RETURN_NOT_OK(helper.IterateFiles(

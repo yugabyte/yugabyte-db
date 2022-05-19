@@ -59,7 +59,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
       : PgDocOp(pg_session, &dummy_table), data_(move(data)) {
   }
 
-  CHECKED_STATUS GetResult(std::list<PgDocResult> *rowsets) override {
+  Status GetResult(std::list<PgDocResult> *rowsets) override {
     if (data_) {
       for (const auto& d : *data_) {
         rowsets->emplace_back(d);
@@ -69,7 +69,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
     return Status::OK();
   }
 
-  CHECKED_STATUS ExecuteInit(const PgExecParameters* exec_params) override {
+  Status ExecuteInit(const PgExecParameters* exec_params) override {
     return Status::OK();
   }
 

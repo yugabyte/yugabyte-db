@@ -78,7 +78,7 @@ class YBOnceDynamic {
   //
   // T: the type of the member passed in.
   template<typename T>
-  CHECKED_STATUS Init(Status (T::*member_func)(), T* instance) {
+  Status Init(Status (T::*member_func)(), T* instance) {
     internal::MemberFunc<T> mf = { this, instance, member_func };
 
     // Clang UBSAN doesn't like it when GoogleOnceDynamic handles the cast

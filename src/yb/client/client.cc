@@ -1423,7 +1423,7 @@ void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback call
   data_->DeleteCDCStream(this, stream_id, deadline, callback);
 }
 
-CHECKED_STATUS YBClient::GetCDCDBStreamInfo(
+Status YBClient::GetCDCDBStreamInfo(
   const std::string &db_stream_id,
   std::vector<pair<std::string, std::string>>* db_stream_info) {
   // Setting up request.

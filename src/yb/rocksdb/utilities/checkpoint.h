@@ -38,7 +38,7 @@ namespace checkpoint {
   // (2) a copied manifest files and other files
   // The directory should not already exist and will be created by this API.
   // The directory will be an absolute path
-  CHECKED_STATUS CreateCheckpoint(DB* db, const std::string& checkpoint_dir);
+  Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir);
 
 }  // namespace checkpoint
 }  // namespace rocksdb

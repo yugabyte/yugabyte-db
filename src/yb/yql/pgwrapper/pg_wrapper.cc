@@ -162,7 +162,7 @@ void MergeSharedPreloadLibraries(const string& src, vector<string>* defaults) {
   defaults->insert(defaults->end(), new_items.begin(), new_items.end());
 }
 
-CHECKED_STATUS ReadCSVValues(const string& csv, vector<string>* lines) {
+Status ReadCSVValues(const string& csv, vector<string>* lines) {
   // Function reads CSV string in the following format:
   // - fields are divided with comma (,)
   // - fields with comma (,) or double-quote (") are quoted with double-quote (")
@@ -648,7 +648,7 @@ Status PgSupervisor::Start() {
   return Status::OK();
 }
 
-CHECKED_STATUS PgSupervisor::CleanupOldServerUnlocked() {
+Status PgSupervisor::CleanupOldServerUnlocked() {
   std::string postmaster_pid_filename = JoinPathSegments(conf_.data_dir, "postmaster.pid");
   if (Env::Default()->FileExists(postmaster_pid_filename)) {
     std::ifstream postmaster_pid_file;
@@ -698,7 +698,7 @@ PgProcessState PgSupervisor::GetState() {
   return state_;
 }
 
-CHECKED_STATUS PgSupervisor::ExpectStateUnlocked(PgProcessState expected_state) {
+Status PgSupervisor::ExpectStateUnlocked(PgProcessState expected_state) {
   if (state_ != expected_state) {
     return STATUS_FORMAT(
         IllegalState, "Expected PostgreSQL server state to be $0, got $1", expected_state, state_);
@@ -706,7 +706,7 @@ CHECKED_STATUS PgSupervisor::ExpectStateUnlocked(PgProcessState expected_state) 
   return Status::OK();
 }
 
-CHECKED_STATUS PgSupervisor::StartServerUnlocked() {
+Status PgSupervisor::StartServerUnlocked() {
   if (pg_wrapper_) {
     return STATUS(IllegalState, "Expecting pg_wrapper_ to not be set");
   }

@@ -281,7 +281,7 @@ Result<TxnStatusMap> BuildTxnStatusMap(const ReplicateMsgs& messages,
   return txn_map;
 }
 
-CHECKED_STATUS SetRecordTime(const TransactionId& txn_id,
+Status SetRecordTime(const TransactionId& txn_id,
                              const TxnStatusMap& txn_map,
                              CDCRecordPB* record) {
   auto txn_status = txn_map.find(txn_id);
@@ -293,7 +293,7 @@ CHECKED_STATUS SetRecordTime(const TransactionId& txn_id,
 }
 
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
-CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
+Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
                                    const TxnStatusMap& txn_map,
                                    const StreamMetadata& metadata,
                                    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
@@ -381,7 +381,7 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
 }
 
 // Populate CDC record corresponding to WAL UPDATE_TRANSACTION_OP entry.
-CHECKED_STATUS PopulateTransactionRecord(const ReplicateMsgPtr& msg,
+Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
                                          const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                                          ReplicateIntents replicate_intents,
                                          CDCRecordPB* record) {
@@ -400,7 +400,7 @@ CHECKED_STATUS PopulateTransactionRecord(const ReplicateMsgPtr& msg,
   return Status::OK();
 }
 
-CHECKED_STATUS PopulateSplitOpRecord(const ReplicateMsgPtr& msg, CDCRecordPB* record) {
+Status PopulateSplitOpRecord(const ReplicateMsgPtr& msg, CDCRecordPB* record) {
   SCHECK(msg->has_split_request(), InvalidArgument,
          Format("Split op message requires split_request: $0", msg->ShortDebugString()));
   record->set_operation(CDCRecordPB::SPLIT_OP);

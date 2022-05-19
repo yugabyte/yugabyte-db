@@ -62,11 +62,11 @@ class PgExpr {
   };
 
   // Prepare expression when constructing a statement.
-  virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb);
+  virtual Status PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb);
 
   // Convert this expression structure to PB format.
-  CHECKED_STATUS EvalTo(LWPgsqlExpressionPB *expr_pb);
-  CHECKED_STATUS EvalTo(LWQLValuePB *value);
+  Status EvalTo(LWPgsqlExpressionPB *expr_pb);
+  Status EvalTo(LWQLValuePB *value);
 
   virtual Result<LWQLValuePB*> Eval();
 
@@ -93,7 +93,7 @@ class PgExpr {
 
   // Read the result from input buffer (yb_cursor) that was computed by and sent from DocDB.
   // Write the result to output buffer (pg_cursor) in Postgres format.
-  CHECKED_STATUS ResultToPg(Slice *yb_cursor, Slice *pg_cursor);
+  Status ResultToPg(Slice *yb_cursor, Slice *pg_cursor);
 
   // Function translate_data_() reads the received data from DocDB and writes it to Postgres buffer
   // using to_datum().
@@ -114,7 +114,7 @@ class PgExpr {
   int get_pg_collid() const;
 
   // Find opcode.
-  static CHECKED_STATUS CheckOperatorName(const char *name);
+  static Status CheckOperatorName(const char *name);
   static Opcode NameToOpcode(const char *name);
   static bfpg::TSOpcode PGOpcodeToTSOpcode(const PgExpr::Opcode opcode);
   static bfpg::TSOpcode OperandTypeToSumTSOpcode(InternalType type);
@@ -182,7 +182,7 @@ class PgColumnRef : public PgExpr {
               bool collate_is_valid_non_c,
               const PgTypeAttrs *type_attrs);
   // Setup ColumnRef expression when constructing statement.
-  CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) override;
+  Status PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) override;
 
   int attr_num() const {
     return attr_num_;
@@ -205,7 +205,7 @@ class PgOperator : public PgExpr {
   void AppendArg(PgExpr *arg);
 
   // Setup operator expression when constructing statement.
-  virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb);
+  virtual Status PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb);
 
  private:
   Slice opname_;
