@@ -193,7 +193,7 @@ For each tablet, you need to copy the snapshots folder on all tablet peers and i
 
     {{< /note >}}
 
-4. [Restore the snapshot](restoring-a-snapshot).
+4. [Restore the snapshot](#restoring-a-snapshot).
 
 -----
 
