@@ -24,7 +24,7 @@ showAsideToc: true
 
 #### Fixes
 
-Cloud Shell is now available for clusters in a VPC.
+- Cloud Shell is now available for clusters in a VPC.
 
 ### March 31, 2022
 
