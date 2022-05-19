@@ -210,7 +210,7 @@ public class Schedule extends Model {
     this.cronExpression = cronExpression;
   }
 
-  public void setCronExperssionandTaskParams(String cronExpression, ITaskParams params) {
+  public void setCronExpressionAndTaskParams(String cronExpression, ITaskParams params) {
     this.cronExpression = cronExpression;
     this.taskParams = Json.toJson(params);
     save();
@@ -459,7 +459,7 @@ public class Schedule extends Model {
             .frequencyTimeUnit(schedule.frequencyTimeUnit)
             .taskType(schedule.taskType)
             .status(schedule.status)
-            .cronExperssion(schedule.cronExpression)
+            .cronExpression(schedule.cronExpression)
             .runningState(schedule.runningState)
             .failureCount(schedule.failureCount);
 
