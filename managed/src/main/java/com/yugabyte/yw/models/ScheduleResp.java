@@ -20,7 +20,7 @@ public class ScheduleResp {
   int failureCount;
   TaskType taskType;
   State status;
-  String cronExperssion;
+  String cronExpression;
   String scheduleName;
   Date prevCompletedTask;
   Date nextExpectedTask;
