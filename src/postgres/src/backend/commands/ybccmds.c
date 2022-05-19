@@ -690,7 +690,8 @@ YBCDropTable(Oid relationId)
 }
 
 void
-YBCTruncateTable(Relation rel) {
+YBCTruncateTable(Relation rel)
+{
 	YBCPgStatement handle;
 	Oid			relationId = RelationGetRelid(rel);
 	Oid			databaseId = YBCGetDatabaseOid(rel);
@@ -725,7 +726,6 @@ YBCTruncateTable(Relation rel) {
 	/* Truncate the associated secondary indexes */
 	List	 *indexlist = RelationGetIndexList(rel);
 	ListCell *lc;
-
 	foreach(lc, indexlist)
 	{
 		Oid indexId = lfirst_oid(lc);
@@ -734,29 +734,13 @@ YBCTruncateTable(Relation rel) {
 		if (indexId == rel->rd_pkindex)
 			continue;
 
-		/* Whether the index is colocated (via DB or tablegroup) */
-		colocated = YbIsUserTableColocated(databaseId, relationId);
-
-		if (colocated)
-		{
-			/* Create table-level tombstone for colocated/tablegroup indexes */
-			HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
-													 indexId,
-													 false,
-													 isRegionLocal,
-													 &handle));
-			HandleYBStatus(YBCPgDmlBindTable(handle));
-			int rows_affected_count = 0;
-			HandleYBStatus(YBCPgDmlExecWriteOp(handle, &rows_affected_count));
-		}
-		else
-		{
-			/* Send truncate table RPC to master for non-colocated indexes */
-			HandleYBStatus(YBCPgNewTruncateTable(databaseId,
-												 indexId,
-												 &handle));
-			HandleYBStatus(YBCPgExecTruncateTable(handle));
-		}
+		/*
+		 * Lock level doesn't fully work in YB.  Since YB TRUNCATE is already
+		 * considered to not be transaction-safe, it doesn't really matter.
+		 */
+		Relation indexRel = index_open(indexId, AccessExclusiveLock);
+		YBCTruncateTable(indexRel);
+		index_close(indexRel, AccessExclusiveLock);
 	}
 
 	list_free(indexlist);
