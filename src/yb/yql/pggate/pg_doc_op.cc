@@ -406,9 +406,9 @@ Status PgDocReadOp::CreateRequests() {
     return Status::OK();
   }
 
-  // All information from the SQL request has been collected and setup. This code populate
+  // All information from the SQL request has been collected and setup. This code populates
   // Protobuf requests before sending them to DocDB. For performance reasons, requests are
-  // constructed differently for different statement.
+  // constructed differently for different statements.
   if (template_op_->request().has_sampling_state()) {
     VLOG(1) << __PRETTY_FUNCTION__ << ": Preparing sampling requests ";
     return PopulateSamplingOps();

@@ -614,9 +614,9 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 void
 YBCDropTable(Oid relationId)
 {
-	YBCPgStatement  handle     = NULL;
-	Oid             databaseId = YBCGetDatabaseOidByRelid(relationId);
-	bool            colocated  = false;
+	YBCPgStatement handle = NULL;
+	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
+	bool		colocated = false;
 
 	/* Determine if table is colocated */
 	if (MyDatabaseColocated)
@@ -628,7 +628,7 @@ YBCDropTable(Oid relationId)
 									 &not_found);
 	}
 
-	/* Create table-level tombstone for colocated tables / tables in a tablegroup */
+	/* Create table-level tombstone for colocated/tablegroup tables */
 	Oid tablegroupId = InvalidOid;
 	if (TablegroupCatalogExists)
 		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
@@ -640,7 +640,8 @@ YBCDropTable(Oid relationId)
 															   false,
 															   &handle),
 									 &not_found);
-		/* Since the creation of the handle could return a 'NotFound' error,
+		/*
+		 * Since the creation of the handle could return a 'NotFound' error,
 		 * execute the statement only if the handle is valid.
 		 */
 		const bool valid_handle = !not_found;
@@ -675,10 +676,10 @@ YBCDropTable(Oid relationId)
 
 void
 YBCTruncateTable(Relation rel) {
-	YBCPgStatement  handle;
-	Oid             relationId = RelationGetRelid(rel);
-	Oid             databaseId = YBCGetDatabaseOid(rel);
-	bool            colocated  = false;
+	YBCPgStatement handle;
+	Oid			relationId = RelationGetRelid(rel);
+	Oid			databaseId = YBCGetDatabaseOid(rel);
+	bool		colocated = false;
 
 	/* Determine if table is colocated */
 	if (MyDatabaseColocated)
@@ -690,7 +691,7 @@ YBCTruncateTable(Relation rel) {
 		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
 	if (colocated || tablegroupId != InvalidOid)
 	{
-		/* Create table-level tombstone for colocated tables / tables in tablegroups */
+		/* Create table-level tombstone for colocated/tablegroup tables */
 		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 												 relationId,
 												 false,
@@ -719,21 +720,22 @@ YBCTruncateTable(Relation rel) {
 	{
 		Oid indexId = lfirst_oid(lc);
 
+		/* PK index is not secondary index, skip */
 		if (indexId == rel->rd_pkindex)
 			continue;
 
 		/* Determine if index is colocated */
 		if (MyDatabaseColocated)
 			HandleYBStatus(YBCPgIsTableColocated(databaseId,
-												indexId,
-												&colocated));
+												 indexId,
+												 &colocated));
 
 		tablegroupId = InvalidOid;
 		if (TablegroupCatalogExists)
 			tablegroupId = get_tablegroup_oid_by_table_oid(indexId);
 		if (colocated || tablegroupId != InvalidOid)
 		{
-			/* Create index-level tombstone for colocated indexes / indexes in tablegroups */
+			/* Create table-level tombstone for colocated/tablegroup indexes */
 			HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 													 indexId,
 													 false,
@@ -744,7 +746,7 @@ YBCTruncateTable(Relation rel) {
 		}
 		else
 		{
-			/* Send truncate table RPC to master for non-colocated tables */
+			/* Send truncate table RPC to master for non-colocated indexes */
 			HandleYBStatus(YBCPgNewTruncateTable(databaseId,
 												 indexId,
 												 &handle));
@@ -1188,9 +1190,9 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 void
 YBCDropIndex(Oid relationId)
 {
-	YBCPgStatement	handle;
-	bool			colocated  = false;
-	Oid				databaseId = YBCGetDatabaseOidByRelid(relationId);
+	YBCPgStatement handle;
+	bool		colocated = false;
+	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
 
 	/* Determine if table is colocated */
 	if (MyDatabaseColocated)
@@ -1202,7 +1204,7 @@ YBCDropIndex(Oid relationId)
 									 &not_found);
 	}
 
-	/* Create table-level tombstone for colocated indexes / indexes in a tablegroup */
+	/* Create table-level tombstone for colocated/tablegroup indexes */
 	Oid tablegroupId = InvalidOid;
 	if (TablegroupCatalogExists)
 		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
@@ -1215,7 +1217,8 @@ YBCDropIndex(Oid relationId)
 															   &handle),
 									 &not_found);
 		const bool valid_handle = !not_found;
-		if (valid_handle) {
+		if (valid_handle)
+		{
 			HandleYBStatusIgnoreNotFound(YBCPgDmlBindTable(handle), &not_found);
 			int rows_affected_count = 0;
 			HandleYBStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
@@ -1232,7 +1235,8 @@ YBCDropIndex(Oid relationId)
 													   &handle),
 									 &not_found);
 		const bool valid_handle = !not_found;
-		if (valid_handle) {
+		if (valid_handle)
+		{
 			/*
 			 * We cannot abort drop in DocDB so postpone the execution until
 			 * the rest of the statement/txn is finished executing.
