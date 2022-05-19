@@ -22,6 +22,10 @@ showAsideToc: true
 - [Preview release](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.13.1. New free clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 - Stable release updated to version 2.12.3 for standard clusters. New standard clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
+#### Fixes
+
+Cloud Shell is now available for clusters in a VPC.
+
 ### March 31, 2022
 
 #### New features
@@ -180,6 +184,5 @@ The following **AWS regions** are available:
 ### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
 
 - If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
-- Cloud Shell is unavailable for clusters in a VPC.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
 - If a Cloud Shell session is inactive for more than five minutes, it may be disconnected.
