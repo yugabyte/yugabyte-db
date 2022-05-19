@@ -31,7 +31,7 @@ showAsideToc: true
 
 </ul>
 
-The most efficient way to backup the data stored in YugabyteDB is to create a distributed snapshot. A snapshot is a consistent cut of a database taken across all the nodes in the cluster.
+The most efficient way to backup the data stored in YugabyteDB is to create a distributed snapshot. A snapshot is a consistent cut of a data taken across all the nodes in the cluster. For YSQL, snapshots are created on per-database level. Backing up individual tables is currently not supported.
 
 When YugabyteDB creates a snapshot, it doesn't physically copy the data, but instead creates hard links to all the relavant files. These links reside on the same storage volumes where the data itself is stored, which makes both backup and restore operations nearly instantanious.
 
@@ -68,8 +68,8 @@ yb-admin list_snapshots
 This command will print out all the snapshots that exist in the cluster with their statuses. Locate the ID of the new snapshot and make sure its status is `COMPLETE`:
 
 ```output
-Snapshot UUID                     State
-0d4b49352c95452395ab9ead1e95e794  COMPLETE
+Snapshot UUID                         State
+0d4b4935-2c95-4523-95ab-9ead1e95e794  COMPLETE
 ```
 
 ## Deleting a Snapshot
@@ -94,7 +94,7 @@ The above command will rollback the database to the state which it had when the 
 
 Storing snapshots in-cluster is extermely efficient, but also comes with downsides. First of all, it increases the cost of the cluster - increasing number of snapshot can inflate the space consumption on the storage volumes. Second of all, in-cluster snapshots do not protect you from disaster scenarios like filesystem corruption or hardware failures.
 
-To mitigate the above, you might want to store backups outside of the cluster, in a cheaper storage that is also geografically separated from the cluster. This way, you can reduce the cost, and also restore you databases into a different cluster, potentially in a different location.
+To mitigate the above, you might want to store backups outside of the cluster, in a cheaper storage that is also geografically separated from the cluster. This way, you can reduce the cost, and also restore your databases into a different cluster, potentially in a different location.
 
 To move a snapshot to an external storage, you need to gather all the relevant files from all the nodes, and copy then along with additional metadata that will be required when you decide to restore the snapshot on a different cluster. Below is the detailed step-by-step explanation of the process.
 
@@ -218,7 +218,7 @@ For each tablet, you need to copy the snapshots folder on all tablet peers and i
 
     {{< /note >}}
 
-4. [Restore the snapshot](restoring-a-snapshot).
+4. [Restore the snapshot](#restoring-a-snapshot).
 
 -----
 

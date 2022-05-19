@@ -31,119 +31,88 @@ showAsideToc: true
 
 </ul>
 
-You can create a transactional backup for a YCQL table (including associated secondary indexes) using snapshots.
+The most efficient way to backup the data stored in YugabyteDB is to create a distributed snapshot. A snapshot is a consistent cut of a data taken across all the nodes in the cluster. For YCQL, you can create a snapshot for either a whole keyspace, or for a single table including secondary indexes associated with this table.
 
-**Implementation notes**:
+When YugabyteDB creates a snapshot, it doesn't physically copy the data, but instead creates hard links to all the relavant files. These links reside on the same storage volumes where the data itself is stored, which makes both backup and restore operations nearly instantanious.
 
-* Massively parallel, efficient for very large data sets.
-* Once the snapshot command is issued, the database will “buffer” newly incoming writes to that tablet without writing them immediately.
-* The existing data will be flushed to disk and hard links to the files will be created in a `.snapshots` directory on each tablet.
-* The flush to disk and creation of hard links happen quickly. In most cases, the buffered incoming operations won't time out.
-* The snapshot operation is done. Because YugabyteDB is an LSM database, these files will never get modified.
-* If the snapshot takes an unusually long time, some operations may time out. In practice, users should expect such slowness occasionally when using network storage (such as AWS EBS, Persistent Disk in GCP, or SAN storage).
+{{< note title="Note on space consumption" >}}
 
-## Try it out
+There are no technical limitations on how many snapshots you can create. However, it's important to keep in mind that by increasing the number of snapshots stored, you also increase the amount of space required for the database. The actual overhead depends on the workload, so we recommend to estimate it by running tests based on your applications.
 
-To demonstrate YugabyteDB's snapshot functionality, the following example steps through creating a local cluster, adding a table, creating a snapshot, and then restoring that snapshot onto a fresh cluster.
+{{< /note >}}
 
-{{< tip title="Automation" >}}
+## Creating a Snapshot
 
-This guide explains how to snapshot and restore data on YugabyteDB. YugabyteDB Anywhere and YugabyteDB Managed automate all of these manual steps.
+The distributed snapshots feature allows you to backup a keyspace or a table, and then restore it in case of a software or operational error, with minimal RTO and overhead.
 
-{{< /tip >}}
+To backup a keyspace with all its tables and indexes, create a snapshot using the [`create_keyspace_snapshot`](../../../admin/yb-admin/#create-keyspace-snapshot) command:
 
-### Create a snapshot
+```sh
+yb-admin create_keyspace_snapshot my_keyspace
+```
 
-1. Create a new cluster.
+If you want to backup a single table with its indexes, use the [`create_snapshot`](../../../admin/yb-admin/#create-snapshot) command instead:
 
-    For more information on creating a local cluster, refer to [Create a local cluster](../../../quick-start/create-local-cluster). For details on flags, refer to the [yb-ctl reference](../../../admin/yb-ctl/).
+```sh
+yb-admin create_snapshot my_keyspace my_table
+```
 
-    ```sh
-    $ ./bin/yb-ctl create
-    ```
+When either of the above commands is invoked, YugabyteDB generates the unique ID for the newly created snapshot and prints it out:
 
-    ```output
-    Creating cluster.
-    Waiting for cluster to be ready.
-    ----------------------------------------------------------------------------------------------------
-    | Node Count: 1 | Replication Factor: 1                                                            |
-    ----------------------------------------------------------------------------------------------------
-    | JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
-    | YSQL Shell          : bin/ysqlsh                                                                 |
-    | YCQL Shell          : bin/ycqlsh                                                                  |
-    | YEDIS Shell         : bin/redis-cli                                                              |
-    | Web UI              : http://127.0.0.1:7000/                                                     |
-    | Cluster Data        : /home/guru/yugabyte-data                                                   |
-    ----------------------------------------------------------------------------------------------------
+```output
+Started snapshot creation: a9442525-c7a2-42c8-8d2e-658060028f0e
+```
 
-    For more info, please use: yb-ctl status
-    ```
+You can then use this ID to check the status of the snapshot, [delete it](#deleting-a-snapshot), or use it to [restore the data](#restoring-a-snapshot).
 
-1. Open `ycqlsh`, the YCQL shell.
+Both `create_keyspace_snapshot` and `create_snapshot` commands exit immidiately, so the completion does not necessarily means that the snapshot is successfully created. Before using the snapshot, you should verify its status by running the [`list_snapshots`](../../../admin/yb-admin/#list-snapshots) command:
 
-    ```sh
-    $ ./bin/ycqlsh
-    ```
+```sh
+yb-admin list_snapshots
+```
 
-1. Create a keyspace, table, index, and insert some test data.
+This command will print out all the snapshots that exist in the cluster with their statuses. Locate the ID of the new snapshot and make sure its status is `COMPLETE`:
 
-    ```sql
-    ycqlsh> CREATE KEYSPACE ydb;
-    ycqlsh> CREATE TABLE IF NOT EXISTS ydb.test_tb(user_id INT PRIMARY KEY, name TEXT) WITH transactions = {'enabled': true};
-    ycqlsh> CREATE INDEX test_tb_name ON ydb.test_tb(name);
-    ycqlsh> INSERT INTO ydb.test_tb(user_id,name) VALUES (5,'John Doe');
-    ```
+```output
+Snapshot UUID                         State
+a9442525-c7a2-42c8-8d2e-658060028f0e  COMPLETE
+```
 
-1. Run the following `SELECT` statement to verify that you have data in the database:
+## Deleting a Snapshot
 
-    ```sql
-    ycqlsh> SELECT * FROM ydb.test_tb;
-    ```
+Snapshots never expire and are retained as long as the cluster exists. If a snapshot is no longer needed, you can delete it by running the [`delete_snapshot`](../../../admin/yb-admin/#delete-snapshot) command and providing the ID of the snapshot:
 
-    ```output
-    user_id | name
-    ---------+----------
-          5 | John Doe
+```sh
+yb-admin delete_snapshot a9442525-c7a2-42c8-8d2e-658060028f0e
+```
 
-    (1 rows)
-    ```
+## Restoring a Snapshot
 
-1. Create a snapshot using the [`yb-admin create_snapshot`](../../../admin/yb-admin/#create-snapshot) command:
+To restore the data backed up in one of the previously created snapshots, run the [`restore_snapshot`](../../../admin/yb-admin/#restore-snapshot) command and provide the ID of the snapshot:
+
+```sh
+yb-admin restore_snapshot a9442525-c7a2-42c8-8d2e-658060028f0e
+```
+
+The above command will rollback the keyspace or the table to the state which it had when the snapshot was created. The restore happens in-place, i.e. it changes the state of the existing keyspace within the same cluster.
+
+## Moving a Snapshot to an External Storage
+
+Storing snapshots in-cluster is extermely efficient, but also comes with downsides. First of all, it increases the cost of the cluster - increasing number of snapshot can inflate the space consumption on the storage volumes. Second of all, in-cluster snapshots do not protect you from disaster scenarios like filesystem corruption or hardware failures.
+
+To mitigate the above, you might want to store backups outside of the cluster, in a cheaper storage that is also geografically separated from the cluster. This way, you can reduce the cost, and also restore your data into a different cluster, potentially in a different location.
+
+To move a snapshot to an external storage, you need to gather all the relevant files from all the nodes, and copy then along with additional metadata that will be required when you decide to restore the snapshot on a different cluster. Below is the detailed step-by-step explanation of the process.
+
+1. [Create an in-cluster snapshot](#creating-a-snapshot).
+
+2. Create the snapshot metadata file by running the [`export_snapshot`](../../../admin/yb-admin/#export-snapshot) command and providing the ID of the snapshot:
 
     ```sh
-    $ ./bin/yb-admin create_snapshot ydb test_tb
+    yb-admin export_snapshot a9442525-c7a2-42c8-8d2e-658060028f0e my_keyspace.snapshot
     ```
 
-    ```output
-    Started snapshot creation: a9442525-c7a2-42c8-8d2e-658060028f0e
-    ```
-
-1. To see when your snapshot is ready, run the [`yb-admin list_snapshots`](../../../admin/yb-admin/#list-snapshots) command.
-
-    ```sh
-    ./bin/yb-admin list_snapshots
-    ```
-
-    ```output
-    Snapshot UUID                         State
-    a9442525-c7a2-42c8-8d2e-658060028f0e  COMPLETE
-    No snapshot restorations
-    ```
-
-### Export the snapshot
-
-1. Before you export the snapshot, export a metadata file that describes the snapshot.
-
-    ```sh
-    $ ./bin/yb-admin export_snapshot a9442525-c7a2-42c8-8d2e-658060028f0e test_tb.snapshot
-    ```
-
-    ```output
-    Exporting snapshot a9442525-c7a2-42c8-8d2e-658060028f0e (COMPLETE) to file test_tb.snapshot
-    Snapshot meta data was saved into file: test_tb.snapshot
-    ```
-
-1. Copy the actual data from the table and tablets. In this case, you have to use a script that copies all data. The file path structure is:
+3. Copy the newly created snapshot metadata file (`my_keyspace.snapshot`) to the external storage. The file path structure is:
 
     ```sh
     <yb_data_dir>/node-<node_number>/disk-<disk_number>/yb-data/tserver/data/rocksdb/table-<table_id>/[tablet-<tablet_id>.snapshots]/<snapshot_id>
@@ -160,136 +129,63 @@ This guide explains how to snapshot and restore data on YugabyteDB. YugabyteDB A
     In practice, for each server, you will use the `--fs_data_dirs` flag, which is a comma-separated list of paths where to put the data (normally different paths should be on different disks).
     In this `yb-ctl` example, these are the full paths up to the `disk-x`.
 
-### Copy snapshot data
+    {{< note >}}
 
-{{< tip title="Tip" >}}
+To get a snapshot of a multi-node cluster, you need to go into each node and copy the folders of ONLY the leader tablets on that node. There is no need to keep a copy for each replica, since each tablet-replica has a copy of the same data.
 
-To get a snapshot of a multi-node cluster, you need to go into each node and copy
-the folders of ONLY the leader tablets on that node. There is no need to keep a copy for each replica, since each tablet-replica has
-a copy of the same data.
+  {{< /note >}}
 
-{{< /tip >}}
+4. If you don't want to keep the in-cluster snapshot, it's now safe to [delete it](#deleting-a-snapshot).
 
-1. Get the `table_id` UUID that you want to snapshot. You can find the UUID in the Admin UI (`http://127.0.0.1:7000/tables`) under **User Tables**.
+## Restoring a Snapshot from an External Storage
 
-1. For each table, there are multiple tablets where the data is stored. Get a list of tablets and the leader for each of them.
+To restore a snapshot that had been [moved to an external storage](#moving-a-snapshot-to-an-external-storage), go through the steps below.
 
-    ```sh
-    $ ./bin/yb-admin list_tablets ydb test_tb 0
-    ```
-
-    ```output
-    Tablet-UUID                       Range                                                  Leader-IP       Leader-UUID
-    6a2bf658a3ea47f0ba2515ce484096ad  partition_key_start: "" partition_key_end: "\177\377"  127.0.0.1:9100  8230396013f04c81bf86e684360cc87c
-    5a8eb39732904f769c57033e1301c84c  partition_key_start: "\177\377" partition_key_end: ""  127.0.0.1:9100  8230396013f04c81bf86e684360cc87c
-    ```
-
-    The third argument is for limiting the number of returned results. Setting it to `0` returns all tablets.
-
-1. Get the same list for the index `test_tb_name` that is linked to the table:
+1. Fetch the snapshot metadata file from the external storage and apply it by running the [`import_snapshot`](../../../admin/yb-admin/#import-snapshot) command:
 
     ```sh
-    $ ./bin/yb-admin list_tablets ydb test_tb_name 0
+    yb-admin import_snapshot my_keyspace.snapshot my_keyspace
     ```
+
+    The output will contain the mapping between the old tablet IDs and the new tablet IDs:
 
     ```output
-    Tablet-UUID                       Range                                                  Leader-IP       Leader-UUID
-    fa9feea93b0b410388e9bf383f938039  partition_key_start: "" partition_key_end: "\177\377"  127.0.0.1:9100  8230396013f04c81bf86e684360cc87c
-    1ac1047fb3354590968a6780fac89a67  partition_key_start: "\177\377" partition_key_end: ""  127.0.0.1:9100  8230396013f04c81bf86e684360cc87c
-    ```
-
-1. Using this information, you can construct the full path of all directories where snapshots are stored for each (`table`, `tablet`, `snapshot_id`).
-
-    You can create a small script to manually copy, or move, the folders to a backup directory or external storage.
-
-    {{< tip title="Tip" >}}
-
-When doing RF1 as the source, the output of `yb-admin`, like listing the tablets, only shows LEADERS because there's only one copy, which is the leader.
-
-    {{< /tip >}}
-
-### Destroy and re-create the cluster
-
-1. Destroy the cluster.
-
-    ```sh
-    $ ./bin/yb-ctl destroy
-    ```
-
-    ```output
-    Destroying cluster.
-    ```
-
-1. Spin up a new cluster with three nodes in the replicated setup.
-
-    ```sh
-    ./bin/yb-ctl --rf 3 create
-    ```
-
-    ```output
-    Creating cluster.
-    Waiting for cluster to be ready.
-    ----------------------------------------------------------------------------------------------------
-    | Node Count: 3 | Replication Factor: 3                                                            |
-    ----------------------------------------------------------------------------------------------------
-    | JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
-    | YSQL Shell          : bin/ysqlsh                                                                 |
-    | YCQL Shell          : bin/ycqlsh                                                                  |
-    | YEDIS Shell         : bin/redis-cli                                                              |
-    | Web UI              : http://127.0.0.1:7000/                                                     |
-    | Cluster Data        : /home/guru/yugabyte-data                                                   |
-    ----------------------------------------------------------------------------------------------------
-
-    For more info, please use: yb-ctl status
-    ```
-
-{{< tip title="Tip" >}}
-
-Make sure to get the master IP address from [`yb-ctl status`](../../../admin/yb-ctl/#status) since you have multiple nodes on different IP addresses.
-
-{{< /tip >}}
-
-### Trigger snapshot import
-
-{{< tip title="Tip" >}}
-
-The `keyspace` and `table` can be different from the exported one.
-
-{{< /tip >}}
-
-1. Import the snapshot file into YugabyteDB.
-
-    ```sh
-    $ ./bin/yb-admin import_snapshot test_tb.snapshot
-    ```
-
-    ```output
-    Read snapshot meta file test_tb.snapshot
+    Read snapshot meta file my_keyspace.snapshot
     Importing snapshot a9442525-c7a2-42c8-8d2e-658060028f0e (COMPLETE)
     Table type: table
-    Table being imported: ydb.test_tb
-    Table type: index (attaching to the old table id cb612f9693fb40b6beeaa159078effd0)
-    Table being imported: ydb.test_tb_name
+    Target imported table name: test.t1
+    Table being imported: test.t1
+    Table type: table
+    Target imported table name: test.t2
+    Table being imported: test.t2
     Successfully applied snapshot.
-    Object            Old ID                            New ID
-    Keyspace          485a915f8f794308a6f39398040fada8  6e407151f7ba41cf991f68dfdd5248b9
-    Table             cb612f9693fb40b6beeaa159078effd0  5550206e25d140698be031154a805823
-    Tablet 0          6a2bf658a3ea47f0ba2515ce484096ad  4da0ca52f96e4ed88f071196890550fd
-    Tablet 1          5a8eb39732904f769c57033e1301c84c  83b734a4e8d042a989a79a4340bc14e7
-    Keyspace          485a915f8f794308a6f39398040fada8  6e407151f7ba41cf991f68dfdd5248b9
-    Table             6b538842e9f24f99b4b9ba2a995805fc  2c59396c7e214a188dbdbcb3206b04d6
-    Tablet 0          fa9feea93b0b410388e9bf383f938039  456bf3575e6d41d2ba640386c1d9df26
-    Tablet 1          1ac1047fb3354590968a6780fac89a67  30fb27da04df46749129a42e9cf3289a
-    Waiting for table 2c59396c7e214a188dbdbcb3206b04d6...
-    Snapshot          a9442525-c7a2-42c8-8d2e-658060028f0e  27c331c0-4b5c-4027-85f9-75b7545641a7
+    Object           Old ID                                 New ID
+    Keyspace         00004000000030008000000000000000       00004000000030008000000000000000
+    Table            00004000000030008000000000004003       00004000000030008000000000004001
+    Tablet 0         b0de9bc6a4cb46d4aaacf4a03bcaf6be       50046f422aa6450ca82538e919581048
+    Tablet 1         27ce76cade8e4894a4f7ffa154b33c3b       111ab9d046d449d995ee9759bf32e028
+    Snapshot         a9442525-c7a2-42c8-8d2e-658060028f0e   a9442525-c7a2-42c8-8d2e-658060028f0e
     ```
 
-1. After importing the metadata file, note the following changes:
+3. Copy the tablet snapshots.
 
-    * `Old ID` and `New ID` for table, tablets, and snapshot.
-    * `table_id`, `tablet_id` and `snapshot_id` have changed, therefore the paths are different.
+    Use the tablet mappings to copy the tablet snapshot files from the external location to appropriate location.
 
-    When restoring, you have to use the new IDs to get the right paths to move data. Using these IDs, you can restore the previous `.snapshot` folders to the new paths.
+    ```sh
+    yb-data/tserver/data/rocksdb/table-<tableid>/tablet-<tabletid>.snapshots
+    ```
+
+    In our example, it'll be:
+
+    ```sh
+    cp -r snapshot/tablet-b0de9bc6a4cb46d4aaacf4a03bcaf6be.snapshots/0d4b4935-2c95-4523-95ab-9ead1e95e794 \
+        ~/yugabyte-data-restore/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/tablet-50046f422aa6450ca82538e919581048.snapshots/6beb9c0e-52ea-4f61-89bd-c160ec02c729
+    ```
+
+    ```sh
+    cp -r snapshot/tablet-27ce76cade8e4894a4f7ffa154b33c3b.snapshots/0d4b4935-2c95-4523-95ab-9ead1e95e794 \
+        ~/yugabyte-data-restore/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/tablet-111ab9d046d449d995ee9759bf32e028.snapshots/6beb9c0e-52ea-4f61-89bd-c160ec02c729
+    ```
 
     {{< note title="Note" >}}
 
@@ -297,55 +193,12 @@ For each tablet, you need to copy the snapshots folder on all tablet peers and i
 
     {{< /note >}}
 
-1. Start restoring the snapshot using the [`yb-admin restore_snapshot`](../../../admin/yb-admin/#restore-snapshot) command:
+4. [Restore the snapshot](restoring-a-snapshot).
 
-    ```sh
-    $ ./bin/yb-admin restore_snapshot 27c331c0-4b5c-4027-85f9-75b7545641a7
-    ```
+-----
 
-    ```output
-    Started restoring snapshot: 27c331c0-4b5c-4027-85f9-75b7545641a7
-    Restoration id: e982fe91-3b34-462a-971b-11d9e2ac1712
-    ```
+{{< note title="YugabyteDB Anywhere Automated Backups" >}}
 
-1. Use the `Restoration id` from the previous step to check the status of the restore. It may take some time for the restore to be completed.
+YugabyteDB Anywhere provides the API and UI for [Backup and Restore](../../../yugabyte-platform/back-up-restore-universes/), which automates most of the steps described above. Consider using it for better usability, especially if you have many databases and snapshots to manage.
 
-    ```sh
-    $ ./bin/yb-admin list_snapshots
-    ```
-
-    ```output
-    Snapshot UUID                         State
-    27c331c0-4b5c-4027-85f9-75b7545641a7  COMPLETE
-    Restoration UUID                      State
-    e982fe91-3b34-462a-971b-11d9e2ac1712  RESTORED
-    ```
-
-### Verify the restored data
-
-1. Verify that the import succeeded:
-
-    ```sh
-    $ ./bin/ycqlsh
-    ```
-
-    ```sql
-    ycqlsh> select * from ydb.test_tb;
-    ```
-
-    ```output
-     user_id | name
-    ---------+----------
-           5 | John Doe
-    (1 rows)
-    ```
-
-1. If no longer needed, delete the snapshot and reclaim the disk space it was using.
-
-    ```sh
-    $ ./bin/yb-admin delete_snapshot 27c331c0-4b5c-4027-85f9-75b7545641a7
-    ```
-
-    ```output
-    Deleted snapshot: 27c331c0-4b5c-4027-85f9-75b7545641a7
-    ```
+{{< /note >}}
