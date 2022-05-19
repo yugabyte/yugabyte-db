@@ -338,9 +338,9 @@ class TestRedisService : public RedisTableTestBase {
 
   int server_port() { return redis_server_port_; }
 
-  CHECKED_STATUS Send(const std::string& cmd);
+  Status Send(const std::string& cmd);
 
-  CHECKED_STATUS SendCommandAndGetResponse(
+  Status SendCommandAndGetResponse(
       const string& cmd, size_t expected_resp_length, int timeout_in_millis = kDefaultTimeoutMs);
 
   size_t CountSessions(const GaugePrototype<uint64_t>& proto) {

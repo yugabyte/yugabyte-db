@@ -228,7 +228,7 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     LOG(INFO) << "Swapped to the consumer cluster.";
   }
 
-  CHECKED_STATUS CheckForNumRowsOnConsumer(size_t expected_num_rows) {
+  Status CheckForNumRowsOnConsumer(size_t expected_num_rows) {
     const auto timeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
     client::YBClient* consumer_client(consumer_cluster_ ? consumer_client_.get() : client_.get());
     client::TableHandle* consumer_table(consumer_cluster_ ? &consumer_table_ : &table_);
@@ -251,7 +251,7 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     return s;
   }
 
-  CHECKED_STATUS SplitAllTablets(
+  Status SplitAllTablets(
       int cur_num_tablets, bool parent_tablet_protected_from_deletion = true) {
     // Splits all tablets for cluster_.
     auto* catalog_mgr = VERIFY_RESULT(catalog_manager());
@@ -546,7 +546,7 @@ class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
     return bootstrap_id;
   }
 
-  CHECKED_STATUS SetupReplication(const string& bootstrap_id = "") {
+  Status SetupReplication(const string& bootstrap_id = "") {
     VERIFY_RESULT(tools::RunAdminToolCommand(
         consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
         cluster_->GetMasterAddresses(), table_->id(), bootstrap_id));

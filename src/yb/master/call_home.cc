@@ -255,7 +255,7 @@ class RpcsCollector : public CollectorBase {
   virtual ServerType collector_type() { return ServerType::ALL; }
 
  private:
-  CHECKED_STATUS UpdateAddr() {
+  Status UpdateAddr() {
     if (addr_) {
       return Status::OK();
     }

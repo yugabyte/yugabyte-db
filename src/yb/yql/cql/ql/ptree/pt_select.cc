@@ -405,7 +405,7 @@ Status PTSelectStmt::LookupIndex(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
+Status PTSelectStmt::Analyze(SemContext *sem_context) {
   // If use_cassandra_authentication is set, permissions are checked in PTDmlStmt::Analyze.
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
@@ -488,7 +488,7 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTSelectStmt::AnalyzeFromClause(SemContext *sem_context) {
+Status PTSelectStmt::AnalyzeFromClause(SemContext *sem_context) {
   // Table / index reference.
   if (index_id_.empty()) {
     // Get the table descriptor.
@@ -507,7 +507,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeFromClause(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTSelectStmt::AnalyzeSelectList(SemContext *sem_context) {
+Status PTSelectStmt::AnalyzeSelectList(SemContext *sem_context) {
   // Create state variable to compile references.
   SemState sem_state(sem_context);
 
@@ -617,7 +617,7 @@ ExplainPlanPB PTSelectStmt::AnalysisResultToPB() {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PTSelectStmt::AnalyzeReferences(SemContext *sem_context) {
+Status PTSelectStmt::AnalyzeReferences(SemContext *sem_context) {
   // Create state variable to compile references.
   SemState clause_state(sem_context);
   clause_state.SetScanState(select_scan_info_);
@@ -684,7 +684,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeReferences(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *scan_spec) {
+Status PTSelectStmt::AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *scan_spec) {
   VLOG(3) << "AnalyzeIndexes: " << sem_context->stmt();
 
   SemState index_state(sem_context);
@@ -930,7 +930,7 @@ bool PTSelectStmt::CoversFully(const IndexInfo& index_info,
 
 // -------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PTSelectStmt::AnalyzeDistinctClause(SemContext *sem_context) {
+Status PTSelectStmt::AnalyzeDistinctClause(SemContext *sem_context) {
   // Only partition and static columns are allowed to be used with distinct clause.
   size_t key_count = 0;
   for (const auto& pair : column_map_) {
@@ -985,7 +985,7 @@ PTOrderBy::Direction directionFromSortingType(SortingType sorting_type) {
 
 } // namespace
 
-CHECKED_STATUS PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context,
+Status PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context,
                                                   const TableId& index_id,
                                                   bool *is_forward_scan) {
   if (order_by_clause_ == nullptr) {
@@ -1056,7 +1056,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context,
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
+Status PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
   if (limit_clause_ == nullptr) {
     return Status::OK();
   }
@@ -1070,7 +1070,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTSelectStmt::AnalyzeOffsetClause(SemContext *sem_context) {
+Status PTSelectStmt::AnalyzeOffsetClause(SemContext *sem_context) {
   if (offset_clause_ == nullptr) {
     return Status::OK();
   }
@@ -1086,7 +1086,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeOffsetClause(SemContext *sem_context) {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PTSelectStmt::ConstructSelectedSchema() {
+Status PTSelectStmt::ConstructSelectedSchema() {
   const MCList<PTExpr::SharedPtr>& exprs = selected_exprs();
   selected_schemas_ = make_shared<vector<ColumnSchema>>();
   selected_schemas_->reserve(exprs.size());
@@ -1164,7 +1164,7 @@ PTTableRef::PTTableRef(MemoryContext *memctx,
 PTTableRef::~PTTableRef() {
 }
 
-CHECKED_STATUS PTTableRef::Analyze(SemContext *sem_context) {
+Status PTTableRef::Analyze(SemContext *sem_context) {
   if (alias_ != nullptr) {
     return sem_context->Error(this, "Alias is not allowed", ErrorCode::CQL_STATEMENT_INVALID);
   }

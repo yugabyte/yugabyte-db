@@ -230,7 +230,7 @@ class NODISCARD_CLASS Result {
     return Traits::GetPtr(&value_);
   }
 
-  CHECKED_STATUS MoveTo(typename Traits::Pointer value) {
+  Status MoveTo(typename Traits::Pointer value) {
     if (!ok()) {
       return status();
     }
@@ -295,7 +295,7 @@ class ResultToStatusAdaptor {
   explicit ResultToStatusAdaptor(const Functor& functor) : functor_(functor) {}
 
   template <class Output, class... Args>
-  CHECKED_STATUS operator()(Output* output, Args&&... args) {
+  Status operator()(Output* output, Args&&... args) {
     auto result = functor_(std::forward<Args>(args)...);
     RETURN_NOT_OK(result);
     *output = std::move(*result);
@@ -311,7 +311,7 @@ ResultToStatusAdaptor<Functor> ResultToStatus(const Functor& functor) {
 }
 
 template<class TValue>
-CHECKED_STATUS ResultToStatus(const Result<TValue>& result) {
+Status ResultToStatus(const Result<TValue>& result) {
   return result.ok() ? Status::OK() : result.status();
 }
 

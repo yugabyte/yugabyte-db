@@ -58,7 +58,7 @@ namespace tools {
 namespace helpers {
 YB_DEFINE_ENUM(TableOp, (kKeepTable)(kDropTable)(kDropDB));
 
-CHECKED_STATUS RedisGet(std::shared_ptr<client::YBSession> session,
+Status RedisGet(std::shared_ptr<client::YBSession> session,
                         const std::shared_ptr<client::YBTable> table,
                         const string& key,
                         const string& value) {
@@ -78,7 +78,7 @@ CHECKED_STATUS RedisGet(std::shared_ptr<client::YBSession> session,
   return Status::OK();
 }
 
-CHECKED_STATUS RedisSet(std::shared_ptr<client::YBSession> session,
+Status RedisSet(std::shared_ptr<client::YBSession> session,
                         const std::shared_ptr<client::YBTable> table,
                         const string& key,
                         const string& value) {

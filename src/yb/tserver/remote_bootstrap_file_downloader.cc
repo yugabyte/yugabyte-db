@@ -62,7 +62,7 @@ namespace tserver {
 namespace {
 
 // Decode the remote error into a human-readable Status object.
-CHECKED_STATUS ExtractRemoteError(
+Status ExtractRemoteError(
     const rpc::ErrorStatusPB& remote_error, const Status& original_status) {
   if (!remote_error.HasExtension(RemoteBootstrapErrorPB::remote_bootstrap_error_ext)) {
     return original_status;

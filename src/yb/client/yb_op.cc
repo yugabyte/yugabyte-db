@@ -104,7 +104,7 @@ void SetKey(const Slice& value, PgsqlPartitionBound* bound) {
 }
 
 template<class Req>
-CHECKED_STATUS InitHashPartitionKey(
+Status InitHashPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema, Req* request) {
   // Read partition key from read request.
   const auto &ybctid = request->ybctid_column_value().value();
@@ -213,7 +213,7 @@ CHECKED_STATUS InitHashPartitionKey(
 }
 
 template <class Req>
-CHECKED_STATUS SetRangePartitionBounds(const Schema& schema,
+Status SetRangePartitionBounds(const Schema& schema,
                                        const std::string& last_partition,
                                        Req* request,
                                        std::string* key_upper_bound) {
@@ -245,7 +245,7 @@ CHECKED_STATUS SetRangePartitionBounds(const Schema& schema,
 }
 
 template<class Req>
-CHECKED_STATUS InitRangePartitionKey(
+Status InitRangePartitionKey(
     const Schema& schema, const std::string& last_partition, Req* request) {
   // Set the range partition key.
   const auto &ybctid = request->ybctid_column_value().value();
@@ -331,7 +331,7 @@ Result<std::string> GetRangePartitionKey(
 }
 
 template<class Req>
-CHECKED_STATUS InitReadPartitionKey(
+Status InitReadPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema,
     const std::string& last_partition, Req* request) {
   if (schema.num_hash_key_columns() > 0) {
@@ -342,7 +342,7 @@ CHECKED_STATUS InitReadPartitionKey(
 }
 
 template<class Req>
-CHECKED_STATUS InitWritePartitionKey(
+Status InitWritePartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema, Req* request) {
   const auto& ybctid = request->ybctid_column_value().value();
   if (schema.num_hash_key_columns() > 0) {
@@ -906,7 +906,7 @@ void YBPgsqlWriteOp::SetHashCode(const uint16_t hash_code) {
   request_->set_hash_code(hash_code);
 }
 
-CHECKED_STATUS YBPgsqlWriteOp::GetPartitionKey(std::string* partition_key) const {
+Status YBPgsqlWriteOp::GetPartitionKey(std::string* partition_key) const {
   if (!request_holder_) {
     return YBPgsqlOp::GetPartitionKey(partition_key);
   }
@@ -984,7 +984,7 @@ void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time) {
   used_read_time_ = used_time;
 }
 
-CHECKED_STATUS YBPgsqlReadOp::GetPartitionKey(std::string* partition_key) const {
+Status YBPgsqlReadOp::GetPartitionKey(std::string* partition_key) const {
   if (!request_holder_) {
     return YBPgsqlOp::GetPartitionKey(partition_key);
   }
@@ -1088,13 +1088,13 @@ bool YBPgsqlReadOp::should_add_intents(IsolationLevel isolation_level) {
          IsValidRowMarkType(GetRowMarkTypeFromPB(*request_));
 }
 
-CHECKED_STATUS InitPartitionKey(
+Status InitPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema,
     const std::string& last_partition, LWPgsqlReadRequestPB* request) {
   return InitReadPartitionKey(schema, partition_schema, last_partition, request);
 }
 
-CHECKED_STATUS InitPartitionKey(
+Status InitPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request) {
   return InitWritePartitionKey(schema, partition_schema, request);
 }

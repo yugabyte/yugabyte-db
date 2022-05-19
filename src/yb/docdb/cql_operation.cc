@@ -89,7 +89,7 @@ void AddProjection(const Schema& schema, QLTableRow* table_row) {
 // (for read) and a WHERE / IF condition (for read / write). "schema" is the full table schema
 // and "rowblock_schema" is the selected columns from which we are splitting into static and
 // non-static column portions.
-CHECKED_STATUS CreateProjections(const Schema& schema, const QLReferencedColumnsPB& column_refs,
+Status CreateProjections(const Schema& schema, const QLReferencedColumnsPB& column_refs,
                                  Schema* static_projection, Schema* non_static_projection) {
   // The projection schemas are used to scan docdb.
   unordered_set<ColumnId> static_columns, non_static_columns;
@@ -120,7 +120,7 @@ CHECKED_STATUS CreateProjections(const Schema& schema, const QLReferencedColumns
   return Status::OK();
 }
 
-CHECKED_STATUS PopulateRow(const QLTableRow& table_row, const Schema& schema,
+Status PopulateRow(const QLTableRow& table_row, const Schema& schema,
                            const size_t begin_idx, const size_t col_count,
                            QLRow* row, size_t *col_idx) {
   for (size_t i = begin_idx; i < begin_idx + col_count; i++) {
@@ -129,7 +129,7 @@ CHECKED_STATUS PopulateRow(const QLTableRow& table_row, const Schema& schema,
   return Status::OK();
 }
 
-CHECKED_STATUS PopulateRow(const QLTableRow& table_row, const Schema& projection,
+Status PopulateRow(const QLTableRow& table_row, const Schema& projection,
                            QLRow* row, size_t* col_idx) {
   return PopulateRow(table_row, projection, 0, projection.num_columns(), row, col_idx);
 }
@@ -196,7 +196,7 @@ bool JoinNonStaticRow(
   return join_successful;
 }
 
-CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
+Status FindMemberForIndex(const QLColumnValuePB& column_value,
                                   int index,
                                   rapidjson::Value* document,
                                   rapidjson::Value::MemberIterator* memberit,
@@ -242,7 +242,7 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
   return Status::OK();
 }
 
-CHECKED_STATUS CheckUserTimestampForCollections(const UserTimeMicros user_timestamp) {
+Status CheckUserTimestampForCollections(const UserTimeMicros user_timestamp) {
   if (user_timestamp != ValueControlFields::kInvalidUserTimestamp) {
     return STATUS(InvalidArgument, "User supplied timestamp is only allowed for "
         "replacing the whole collection");

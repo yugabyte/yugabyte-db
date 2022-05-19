@@ -250,7 +250,7 @@ Result<bool> WriteQuery::PrepareExecute() {
   return STATUS(InvalidArgument, "Empty write");
 }
 
-CHECKED_STATUS WriteQuery::InitExecute(ExecuteMode mode) {
+Status WriteQuery::InitExecute(ExecuteMode mode) {
   scoped_read_operation_ = tablet().CreateNonAbortableScopedRWOperation();
   if (!scoped_read_operation_.ok()) {
     return MoveStatus(scoped_read_operation_);
@@ -410,7 +410,7 @@ void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
   }
 }
 
-CHECKED_STATUS WriteQuery::DoExecute() {
+Status WriteQuery::DoExecute() {
   auto& write_batch = *request().mutable_write_batch();
   isolation_level_ = VERIFY_RESULT(tablet().GetIsolationLevelFromPB(write_batch));
   const RowMarkType row_mark_type = GetRowMarkTypeFromPB(write_batch);
@@ -514,7 +514,7 @@ void WriteQuery::TransactionalConflictsResolved() {
   }
 }
 
-CHECKED_STATUS WriteQuery::DoTransactionalConflictsResolved() {
+Status WriteQuery::DoTransactionalConflictsResolved() {
   if (!read_time_) {
     auto safe_time = VERIFY_RESULT(tablet().SafeTime(RequireLease::kTrue));
     read_time_ = ReadHybridTime::FromHybridTimeRange(
@@ -535,7 +535,7 @@ void WriteQuery::CompleteExecute() {
   ExecuteDone(DoCompleteExecute());
 }
 
-CHECKED_STATUS WriteQuery::DoCompleteExecute() {
+Status WriteQuery::DoCompleteExecute() {
   auto read_op = prepare_result_.need_read_snapshot
       ? VERIFY_RESULT(ScopedReadOperation::Create(&tablet(), RequireLease::kTrue, read_time_))
       : ScopedReadOperation();

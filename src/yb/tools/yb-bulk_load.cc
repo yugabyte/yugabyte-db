@@ -111,10 +111,10 @@ class BulkLoadTask : public Runnable {
                const YBTable *table, YBPartitionGenerator *partition_generator);
   void Run();
  private:
-  CHECKED_STATUS PopulateColumnValue(const string &column,
+  Status PopulateColumnValue(const string &column,
                                      const DataType data_type,
                                      QLExpressionPB *column_value);
-  CHECKED_STATUS InsertRow(const string &row,
+  Status InsertRow(const string &row,
                            const Schema &schema,
                            uint32_t schema_version,
                            const IndexMap& index_map,
@@ -139,15 +139,15 @@ class CompactionTask: public Runnable {
 
 class BulkLoad {
  public:
-  CHECKED_STATUS RunBulkLoad();
+  Status RunBulkLoad();
 
  private:
-  CHECKED_STATUS InitYBBulkLoad();
-  CHECKED_STATUS InitDBUtil(const TabletId &tablet_id);
-  CHECKED_STATUS FinishTabletProcessing(const TabletId &tablet_id,
+  Status InitYBBulkLoad();
+  Status InitDBUtil(const TabletId &tablet_id);
+  Status FinishTabletProcessing(const TabletId &tablet_id,
                                         vector<pair<TabletId, string>> rows);
-  CHECKED_STATUS RetryableSubmit(vector<pair<TabletId, string>> rows);
-  CHECKED_STATUS CompactFiles();
+  Status RetryableSubmit(vector<pair<TabletId, string>> rows);
+  Status CompactFiles();
 
   std::unique_ptr<YBClient> client_;
   shared_ptr<YBTable> table_;
@@ -486,7 +486,7 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
 }
 
 
-CHECKED_STATUS BulkLoad::InitDBUtil(const TabletId &tablet_id) {
+Status BulkLoad::InitDBUtil(const TabletId &tablet_id) {
   db_fixture_.reset(new BulkLoadDocDBUtil(tablet_id, FLAGS_base_dir,
                                           FLAGS_memtable_size_bytes,
                                           FLAGS_bulk_load_num_memtables,

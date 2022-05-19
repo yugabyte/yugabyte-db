@@ -64,11 +64,11 @@ class ExternalMiniClusterSecureTest :
     MiniClusterTestWithClient::DoTearDown();
   }
 
-  CHECKED_STATUS CreateClient() override {
+  Status CreateClient() override {
     return cluster_->CreateClient(messenger_.get()).MoveTo(&client_);
   }
 
-  CHECKED_STATUS CallYBAdmin(const std::string& client_node, const std::string& what) {
+  Status CallYBAdmin(const std::string& client_node, const std::string& what) {
     auto command = ToStringVector(
         GetToolPath("yb-admin"), "-master_addresses", cluster_->GetMasterAddresses(),
         "-certs_dir_name", ToolCertDirectory(), "-timeout_ms", "5000",
@@ -77,7 +77,7 @@ class ExternalMiniClusterSecureTest :
     return Subprocess::Call(command);
   }
 
-  CHECKED_STATUS CallYBTSCli(const std::string& client_node, const std::string& what,
+  Status CallYBTSCli(const std::string& client_node, const std::string& what,
                              const HostPort& server) {
     auto command = yb::ToStringVector(
         GetToolPath("yb-ts-cli"), "-server_address", server,
@@ -87,7 +87,7 @@ class ExternalMiniClusterSecureTest :
     return Subprocess::Call(command);
   }
 
-  CHECKED_STATUS CallYBTSCliAllServers(const std::string& client_node, const std::string& what) {
+  Status CallYBTSCliAllServers(const std::string& client_node, const std::string& what) {
     for (size_t i = 0; i < cluster_->num_masters(); ++i) {
       RETURN_NOT_OK(CallYBTSCli(client_node, what, cluster_->master(i)->bound_rpc_addr()));
     }

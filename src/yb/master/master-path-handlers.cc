@@ -931,7 +931,7 @@ void MasterPathHandlers::HandleHealthCheck(
     // TODO: Add these health checks in a subsequent diff
     //
     // 4. is the load balancer busy moving tablets/leaders around
-    /* Use: CHECKED_STATUS IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
+    /* Use: Status IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
                                               IsLoadBalancerIdleResponsePB* resp);
      */
     // 5. do any of the TS have tablets they were not able to start up

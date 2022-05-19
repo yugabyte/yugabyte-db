@@ -115,7 +115,7 @@ RestorationState::RestorationState(
   }
 }
 
-CHECKED_STATUS RestorationState::ToPB(RestorationInfoPB* out) {
+Status RestorationState::ToPB(RestorationInfoPB* out) {
   out->set_id(restoration_id_.data(), restoration_id_.size());
   return ToEntryPB(out->mutable_entry());
 }
@@ -146,7 +146,7 @@ bool RestorationState::IsTerminalFailure(const Status& status) {
          tserver::TabletServerError(status) == tserver::TabletServerErrorPB::INVALID_SNAPSHOT;
 }
 
-CHECKED_STATUS RestorationState::ToEntryPB(SysRestorationEntryPB* out) {
+Status RestorationState::ToEntryPB(SysRestorationEntryPB* out) {
   out->set_state(VERIFY_RESULT(AggregatedState()));
   if (complete_time_) {
     out->set_complete_time_ht(complete_time_.ToUint64());
@@ -167,7 +167,7 @@ CHECKED_STATUS RestorationState::ToEntryPB(SysRestorationEntryPB* out) {
   return Status::OK();
 }
 
-CHECKED_STATUS RestorationState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch) {
+Status RestorationState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch) {
   auto pair = write_batch->add_write_pairs();
   return StoreToKeyValuePair(pair);
 }

@@ -41,18 +41,18 @@ class RestoreSysCatalogState {
   explicit RestoreSysCatalogState(SnapshotScheduleRestoration* restoration);
 
   // Load objects that should be restored from DB snapshot.
-  CHECKED_STATUS LoadRestoringObjects(
+  Status LoadRestoringObjects(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db);
 
   // Load existing objects from DB snapshot.
-  CHECKED_STATUS LoadExistingObjects(
+  Status LoadExistingObjects(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db);
 
   // Process loaded data and prepare entries to restore.
-  CHECKED_STATUS Process();
+  Status Process();
 
   // Prepare write batch with object changes.
-  CHECKED_STATUS PrepareWriteBatch(
+  Status PrepareWriteBatch(
       const Schema& schema, docdb::DocWriteBatch* write_batch, const HybridTime& now_ht);
 
   void WriteToRocksDB(
@@ -60,7 +60,7 @@ class RestoreSysCatalogState {
       const docdb::KeyValuePairPB& restore_kv, const yb::HybridTime& write_time,
       const yb::OpId& op_id, tablet::Tablet* tablet);
 
-  CHECKED_STATUS ProcessPgCatalogRestores(
+  Status ProcessPgCatalogRestores(
       yb::tablet::TableInfo* pg_yb_catalog_meta,
       const docdb::DocDB& restoring_db,
       const docdb::DocDB& existing_db,
@@ -83,12 +83,12 @@ class RestoreSysCatalogState {
 
   // Determine entries that should be restored. I.e. apply filter and serialize.
   template <class ProcessEntry>
-  CHECKED_STATUS DetermineEntries(
+  Status DetermineEntries(
       Objects* objects, RetainedExistingTables* retained_existing_tables,
       const ProcessEntry& process_entry);
 
   template <class PB>
-  CHECKED_STATUS IterateSysCatalog(
+  Status IterateSysCatalog(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
       HybridTime read_time, std::unordered_map<std::string, PB>* map,
       std::unordered_map<std::string, PB>* seq_map);
@@ -103,37 +103,37 @@ class RestoreSysCatalogState {
       std::unordered_map<TabletId, SysTabletsEntryPB>* seq_tablets);
 
   template <class PB>
-  CHECKED_STATUS AddRestoringEntry(
+  Status AddRestoringEntry(
       const std::string& id, PB* pb, faststring* buffer);
 
   Result<bool> PatchRestoringEntry(const std::string& id, SysNamespaceEntryPB* pb);
   Result<bool> PatchRestoringEntry(const std::string& id, SysTablesEntryPB* pb);
   Result<bool> PatchRestoringEntry(const std::string& id, SysTabletsEntryPB* pb);
 
-  CHECKED_STATUS CheckExistingEntry(
+  Status CheckExistingEntry(
       const std::string& id, const SysNamespaceEntryPB& pb);
 
-  CHECKED_STATUS CheckExistingEntry(
+  Status CheckExistingEntry(
       const std::string& id, const SysTablesEntryPB& pb);
 
-  CHECKED_STATUS CheckExistingEntry(
+  Status CheckExistingEntry(
       const std::string& id, const SysTabletsEntryPB& pb);
 
-  CHECKED_STATUS LoadObjects(
+  Status LoadObjects(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
       HybridTime read_time, Objects* objects);
 
   // Prepare write batch to delete obsolete tablet.
-  CHECKED_STATUS PrepareTabletCleanup(
+  Status PrepareTabletCleanup(
       const TabletId& id, SysTabletsEntryPB pb, const Schema& schema,
       docdb::DocWriteBatch* write_batch);
 
   // Prepare write batch to delete obsolete table.
-  CHECKED_STATUS PrepareTableCleanup(
+  Status PrepareTableCleanup(
       const TableId& id, SysTablesEntryPB pb, const Schema& schema,
       docdb::DocWriteBatch* write_batch, const HybridTime& now_ht);
 
-  CHECKED_STATUS IncrementLegacyCatalogVersion(
+  Status IncrementLegacyCatalogVersion(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
       docdb::DocWriteBatch* write_batch);
 

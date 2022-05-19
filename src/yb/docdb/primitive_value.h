@@ -115,7 +115,7 @@ class PrimitiveValue {
 
   // Decodes a primitive value from the given slice representing a RocksDB value in our value
   // encoding format. Expects the entire slice to be consumed and returns an error otherwise.
-  CHECKED_STATUS DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
+  Status DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
 
   static PrimitiveValue Double(double v);
   static PrimitiveValue Float(float v);
@@ -347,9 +347,9 @@ class KeyEntryValue {
 
   // Decodes a primitive value from the given slice representing a RocksDB key in our key encoding
   // format and consumes a prefix of the slice.
-  static CHECKED_STATUS DecodeKey(Slice* slice, KeyEntryValue* out);
+  static Status DecodeKey(Slice* slice, KeyEntryValue* out);
 
-  CHECKED_STATUS DecodeFromKey(Slice* slice);
+  Status DecodeFromKey(Slice* slice);
   static Result<KeyEntryValue> FullyDecodeFromKey(const Slice& slice);
 
   void ToQLValuePB(const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_val) const;

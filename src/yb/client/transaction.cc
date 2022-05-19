@@ -125,7 +125,7 @@ void YBSubTransaction::SetActiveSubTransaction(SubTransactionId id) {
   highest_subtransaction_id_ = std::max(highest_subtransaction_id_, id);
 }
 
-CHECKED_STATUS YBSubTransaction::RollbackSubTransaction(SubTransactionId id) {
+Status YBSubTransaction::RollbackSubTransaction(SubTransactionId id) {
   // We should abort the range [id, sub_txn_.highest_subtransaction_id]. It's possible that we
   // have created and released savepoints, such that there have been writes with a
   // subtransaction_id greater than sub_txn_.subtransaction_id, and those should be aborted as
@@ -222,7 +222,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return std::make_shared<YBTransaction>(manager_);
   }
 
-  CHECKED_STATUS Init(IsolationLevel isolation, const ReadHybridTime& read_time) {
+  Status Init(IsolationLevel isolation, const ReadHybridTime& read_time) {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << __func__ << "(" << IsolationLevel_Name(isolation) << ", "
                         << read_time << ")";
@@ -251,7 +251,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   // This transaction is a restarted transaction, so we set it up with data from original one.
-  CHECKED_STATUS FillRestartedTransaction(Impl* other) EXCLUDES(mutex_) {
+  Status FillRestartedTransaction(Impl* other) EXCLUDES(mutex_) {
     VLOG_WITH_PREFIX(1) << "Setup restart to " << other->ToString();
     auto transaction = transaction_->shared_from_this();
     TRACE_TO(trace_, __func__);
@@ -585,7 +585,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return true;
   }
 
-  CHECKED_STATUS PromoteToGlobal(const CoarseTimePoint& deadline) EXCLUDES(mutex_) {
+  Status PromoteToGlobal(const CoarseTimePoint& deadline) EXCLUDES(mutex_) {
     {
       UNIQUE_LOCK(lock, mutex_);
       RETURN_NOT_OK(StartPromotionToGlobal());
@@ -594,7 +594,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return Status::OK();
   }
 
-  CHECKED_STATUS StartPromotionToGlobal() REQUIRES(mutex_) {
+  Status StartPromotionToGlobal() REQUIRES(mutex_) {
     if (metadata_.locality == TransactionLocality::GLOBAL) {
       return STATUS(IllegalState, "Global transactions cannot be promoted");
     }
@@ -792,7 +792,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtransaction_.SetActiveSubTransaction(id);
   }
 
-  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id) {
+  Status RollbackSubTransaction(SubTransactionId id) {
     SCHECK(
         subtransaction_.active(), InternalError,
         "Attempted to rollback to savepoint before creating any savepoints.");
@@ -838,7 +838,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
-  CHECKED_STATUS CheckRunningUnlocked() REQUIRES(mutex_) {
+  Status CheckRunningUnlocked() REQUIRES(mutex_) {
     if (state_.load(std::memory_order_acquire) != TransactionState::kRunning) {
       auto status = status_;
       if (status.ok()) {
@@ -1732,7 +1732,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     callback(child_txn_data_pb);
   }
 
-  CHECKED_STATUS CheckCouldCommitUnlocked(SealOnly seal_only) REQUIRES(mutex_) {
+  Status CheckCouldCommitUnlocked(SealOnly seal_only) REQUIRES(mutex_) {
     RETURN_NOT_OK(CheckRunningUnlocked());
     if (child_) {
       return STATUS(IllegalState, "Commit of child transaction is not allowed");

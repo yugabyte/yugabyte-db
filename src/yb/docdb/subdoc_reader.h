@@ -102,7 +102,7 @@ class SubDocumentReader {
   // method assumes the provided IntentAwareIterator is pointing to the beginning of the range which
   // represents target_subdocument_key. If no such data is found at the current position, no data
   // will be populated on the provided SubDocument*.
-  CHECKED_STATUS Get(SubDocument* result, const PackedColumnData& packed_column);
+  Status Get(SubDocument* result, const PackedColumnData& packed_column);
 
  private:
   const KeyBytes& target_subdocument_key_;
@@ -123,7 +123,7 @@ class SubDocumentReaderBuilder {
 
   // Updates expiration/overwrite data by scanning all parents of this Builder's
   // target_subdocument_key.
-  CHECKED_STATUS InitObsolescenceInfo(
+  Status InitObsolescenceInfo(
       const ObsolescenceTracker& table_obsolescence_tracker,
       const Slice& root_doc_key, const Slice& target_subdocument_key);
 
@@ -136,7 +136,7 @@ class SubDocumentReaderBuilder {
   PackedColumnData GetPackedColumn(ColumnId column_id);
 
  private:
-  CHECKED_STATUS UpdateWithParentWriteInfo(const Slice& parent_key_without_ht);
+  Status UpdateWithParentWriteInfo(const Slice& parent_key_without_ht);
 
   IntentAwareIterator* iter_;
   DeadlineInfo* deadline_info_;

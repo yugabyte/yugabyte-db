@@ -103,12 +103,12 @@ class QLTransactionTest : public TransactionTestBase<MiniCluster> {
                            bool perform_write,
                            bool written_intents_expected);
 
-  CHECKED_STATUS WaitTransactionsCleaned() {
+  Status WaitTransactionsCleaned() {
     return WaitFor(
       [this] { return !HasTransactions(); }, kTransactionApplyTime, "Transactions cleaned");
   }
 
-  CHECKED_STATUS WaitIntentsCleaned() {
+  Status WaitIntentsCleaned() {
     return WaitFor(
       [this] { return CountIntents(cluster_.get()) == 0; }, kIntentsCleanupTime, "Intents cleaned");
   }

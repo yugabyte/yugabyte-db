@@ -80,7 +80,7 @@ class ConsensusMetadata {
  public:
   // Create a ConsensusMetadata object with provided initial state.
   // Encoded PB is flushed to disk before returning.
-  static CHECKED_STATUS Create(FsManager* fs_manager,
+  static Status Create(FsManager* fs_manager,
                                const std::string& tablet_id,
                                const std::string& peer_uuid,
                                const RaftConfigPB& config,
@@ -90,14 +90,14 @@ class ConsensusMetadata {
   // Load a ConsensusMetadata object from disk.
   // Returns Status::NotFound if the file could not be found. May return other
   // Status codes if unable to read the file.
-  static CHECKED_STATUS Load(FsManager* fs_manager,
+  static Status Load(FsManager* fs_manager,
                              const std::string& tablet_id,
                              const std::string& peer_uuid,
                              std::unique_ptr<ConsensusMetadata>* cmeta);
 
   // Delete the ConsensusMetadata file associated with the given tablet from
   // disk.
-  static CHECKED_STATUS DeleteOnDiskData(FsManager* fs_manager, const std::string& tablet_id);
+  static Status DeleteOnDiskData(FsManager* fs_manager, const std::string& tablet_id);
 
   // Accessors for current term.
   int64_t current_term() const;
@@ -168,7 +168,7 @@ class ConsensusMetadata {
   void MergeCommittedConsensusStatePB(const ConsensusStatePB& committed_cstate);
 
   // Persist current state of the protobuf to disk.
-  CHECKED_STATUS Flush();
+  Status Flush();
 
   // The on-disk size of the consensus metadata, as of the last call to Load() or Flush().
   int64_t on_disk_size() const {

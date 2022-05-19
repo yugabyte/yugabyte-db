@@ -54,7 +54,7 @@ namespace master {
 
 namespace {
 
-CHECKED_STATUS ApplyWriteRequest(
+Status ApplyWriteRequest(
     const Schema& schema, const QLWriteRequestPB& write_request,
     docdb::DocWriteBatch* write_batch) {
   auto doc_read_context = std::make_shared<docdb::DocReadContext>(schema, kSysCatalogSchemaVersion);
@@ -606,7 +606,7 @@ struct PgCatalogTableData {
   const TableName* name;
   uint32_t pg_table_oid;
 
-  CHECKED_STATUS SetTableId(const TableId& table_id) {
+  Status SetTableId(const TableId& table_id) {
     Uuid cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
     prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
     cotable_id.EncodeToComparable(&prefix[1]);
