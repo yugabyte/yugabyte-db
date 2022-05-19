@@ -399,7 +399,7 @@ Result<std::pair<size_t, bool>> DocKey::EncodedSizeAndHashPresent(Slice slice, D
   return std::make_pair(decoder.left_input().cdata() - initial_begin, hash_present);
 }
 
-Result<std::pair<size_t, size_t>> DocKey::EncodedHashPartAndDocKeySizes(
+Result<DocKeySizes> DocKey::EncodedHashPartAndDocKeySizes(
     Slice slice,
     AllowSpecial allow_special) {
   auto initial_begin = slice.data();
@@ -407,8 +407,10 @@ Result<std::pair<size_t, size_t>> DocKey::EncodedHashPartAndDocKeySizes(
   EncodedSizesCallback callback(&decoder);
   RETURN_NOT_OK(DoDecode(
       &decoder, DocKeyPart::kWholeDocKey, allow_special, callback));
-  return std::make_pair(callback.range_group_start() - initial_begin,
-                        decoder.left_input().data() - initial_begin);
+  return DocKeySizes {
+    .hash_part_size = static_cast<size_t>(callback.range_group_start() - initial_begin),
+    .doc_key_size = static_cast<size_t>(decoder.left_input().data() - initial_begin),
+  };
 }
 
 class DocKey::DecodeFromCallback {

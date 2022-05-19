@@ -260,6 +260,14 @@ void SubDocument::SetChild(const KeyEntryValue& key, SubDocument&& value) {
   }
 }
 
+SubDocument& SubDocument::AllocateChild(const KeyEntryValue& key) {
+  EnsureObjectAllocated();
+  return object_container().emplace(
+      std::piecewise_construct,
+      std::tuple(std::cref(key)),
+      std::tuple(ValueEntryType::kInvalid)).first->second;
+}
+
 bool SubDocument::DeleteChild(const KeyEntryValue& key) {
   CHECK_EQ(ValueEntryType::kObject, type_);
   if (!has_valid_object_container())
@@ -491,7 +499,7 @@ void SubDocument::ToQLValuePB(const shared_ptr<QLType>& ql_type, QLValuePB* ql_v
       break;
 
     default: {
-      return static_cast<const PrimitiveValue*>(this)->ToQLValuePB(ql_type, ql_value);
+      return PrimitiveValue::ToQLValuePB(ql_type, ql_value);
     }
   }
   LOG(FATAL) << "Unsupported datatype in SubDocument: " << ql_type->ToString();
