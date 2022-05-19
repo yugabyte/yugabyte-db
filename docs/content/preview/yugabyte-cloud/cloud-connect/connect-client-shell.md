@@ -29,7 +29,7 @@ When connecting via a Yugabyte client shell, ensure you are running the latest v
 
 ## Connect using a client shell
 
-Use the ysqlsh and ycqlsh shells to connect to and interact with YuagbyteDB using the YSQL and YCQL APIs respectively. You can download and install the YugabyteDB client shells and connect to your database by following the steps below for either YSQL or YCQL.
+Use the ysqlsh and ycqlsh shells to connect to and interact with YuagbyteDB using the YSQL and YCQL APIs respectively. You can download and install the YugabyteDB client shells and connect to your database using the following steps for either YSQL or YCQL.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
