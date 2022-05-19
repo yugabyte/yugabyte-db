@@ -17,6 +17,10 @@ showAsideToc: true
 
 ### May 18, 2022
 
+#### Enhancements
+
+- Faster cluster creation. Create most clusters in under five minutes.
+
 #### Database
 
 - [Preview release](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.13.1. New free clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
