@@ -21,6 +21,8 @@
 namespace yb {
 namespace docdb {
 
+// Value could contain extra attributes, such as TTL or user timestamp.
+// They are represented in this struct.
 struct ValueControlFields {
   static const MonoDelta kMaxTtl;
   // kResetTtl is useful for CQL when zero TTL indicates no TTL.

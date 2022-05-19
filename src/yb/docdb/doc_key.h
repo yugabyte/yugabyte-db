@@ -82,6 +82,16 @@ YB_STRONGLY_TYPED_BOOL(HybridTimeRequired)
 // doc key, but could be used during read, for instance kLowest and kHighest.
 YB_STRONGLY_TYPED_BOOL(AllowSpecial)
 
+// Key in DocDB is named - SubDocKey. It consist of DocKey (i.e. row identifier) and
+// subkeys (i.e. column id + possible sub values).
+// DocKey consists of hash part followed by range part.
+// hash_part_size - size of hash part of the key.
+// doc_key_size - size of hash part + range part of the key.
+struct DocKeySizes {
+  size_t hash_part_size;
+  size_t doc_key_size;
+};
+
 class DocKey {
  public:
   // Constructs an empty document key with no hash component.
@@ -205,7 +215,7 @@ class DocKey {
   static Result<std::pair<size_t, bool>> EncodedSizeAndHashPresent(Slice slice, DocKeyPart part);
 
   // Returns size of encoded hash part and whole part of DocKey.
-  static Result<std::pair<size_t, size_t>> EncodedHashPartAndDocKeySizes(
+  static Result<DocKeySizes> EncodedHashPartAndDocKeySizes(
       Slice slice, AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Decode the current document key from the given slice, but expect all bytes to be consumed, and
