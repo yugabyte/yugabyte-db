@@ -55,4 +55,6 @@ yugabyte ALL = (root) NOPASSWD: /bin/chown -R yugabyte?yugabyte /opt/yugabyte, \
 /usr/bin/rm * /opt/yugabyte*, \
 /usr/bin/rm * /prometheus*, \
 /bin/sh -c * test -e /usr/local/*, \
-/usr/bin/cp * /usr/local/*
+/usr/bin/cp * /usr/local/*, \
+/usr/bin/test -w *, \
+/usr/bin/df *
