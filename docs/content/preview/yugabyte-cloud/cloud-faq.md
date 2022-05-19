@@ -45,7 +45,7 @@ YugabyteDB Managed supports all the regions that have robust infrastructure and 
 
 ### What are the differences between free and standard clusters?
 
-Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads or performance testing, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with an [edge release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one free cluster. Free clusters that are inactive for 21 days are [paused](#why-is-my-free-cluster-paused); after 30 days they are deleted.
+Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads or performance testing, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with a [preview release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one free cluster. Free clusters that are inactive for 21 days are [paused](#why-is-my-free-cluster-paused); after 30 days they are deleted.
 
 Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. By default, standard clusters are provisioned using a [stable release](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
@@ -61,7 +61,7 @@ A YugabyteDB Managed account is limited to a single free cluster; you can add as
 | Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
 | [Scaling](../cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
-| [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Edge | Stable |
+| [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Preview | Stable |
 | Support | Slack Community | Enterprise Support |
 
 ### What can I do if I run out of resources on my free cluster?
@@ -91,7 +91,7 @@ To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte
 
 Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email. The email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. You can start the upgrade any time by signing in to YugabyteDB Managed, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**. To delay the maintenance, click **Delay to next available window**. To manage maintenance windows, select the cluster [Maintenance tab](../cloud-clusters/cloud-maintenance/).
 
-The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
+The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either preview or stable). Free clusters are always in the preview track.
 
 Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
 
@@ -99,11 +99,11 @@ Database upgrades of high-availability (multi-node) clusters are done on a rolli
 
 ### What version of YugabyteDB does my cluster run on?
 
-Free clusters are provisioned with an **edge** release, most often from the YugabyteDB [preview release](../../releases/release-notes/preview-release/) series; it may also be a recent stable release.
+Free clusters are provisioned with a **preview** release, most often from the YugabyteDB [preview release](../../releases/release-notes/preview-release/) series; it may also be a recent stable release.
 
-By default, new standard clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/release-notes/stable-release/) series. <!--You can choose the edge track when you create the cluster.-->
+By default, new standard clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/release-notes/stable-release/) series. <!--You can choose the preview track when you create the cluster.-->
 
-Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either edge or stable).
+Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either preview or stable).
 
 To view the database version running on a particular cluster, navigate to the **Clusters** page; the database version is displayed next to the cluster name; hover over the version to see the release track.
 
