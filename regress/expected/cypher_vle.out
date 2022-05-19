@@ -542,6 +542,81 @@ SELECT * FROM cypher('cypher_vle', $$MATCH p=()-[]->()-[*0..0]->() RETURN p $$) 
 (13 rows)
 
 --
+-- Test VLE inside of a BEGIN/COMMIT block
+--
+BEGIN;
+SELECT create_graph('mygraph');
+NOTICE:  graph "mygraph" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+/* should create 1 path with 1 edge */
+SELECT * FROM cypher('mygraph', $$
+    CREATE (a:Node {name: 'a'})-[:Edge]->(c:Node {name: 'c'})
+$$) AS (g1 agtype);
+ g1 
+----
+(0 rows)
+
+/* should return 1 path with 1 edge */
+SELECT * FROM cypher('mygraph', $$
+    MATCH p = ()-[:Edge*]->()
+    RETURN p
+$$) AS (g2 agtype);
+                                                                                                                                               g2                                                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 844424930131969, "label": "Node", "properties": {"name": "a"}}::vertex, {"id": 1125899906842625, "label": "Edge", "end_id": 844424930131970, "start_id": 844424930131969, "properties": {}}::edge, {"id": 844424930131970, "label": "Node", "properties": {"name": "c"}}::vertex]::path
+(1 row)
+
+/* should delete the original path and replace it with a path with 2 edges */
+SELECT * FROM cypher('mygraph', $$
+    MATCH (a:Node {name: 'a'})-[e:Edge]->(c:Node {name: 'c'})
+    DELETE e
+    CREATE (a)-[:Edge]->(:Node {name: 'b'})-[:Edge]->(c)
+$$) AS (g3 agtype);
+ g3 
+----
+(0 rows)
+
+/* should find 2 paths with 1 edge */
+SELECT * FROM cypher('mygraph', $$
+    MATCH p = ()-[:Edge]->()
+    RETURN p
+$$) AS (g4 agtype);
+                                                                                                                                               g4                                                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 844424930131971, "label": "Node", "properties": {"name": "b"}}::vertex, {"id": 1125899906842626, "label": "Edge", "end_id": 844424930131970, "start_id": 844424930131971, "properties": {}}::edge, {"id": 844424930131970, "label": "Node", "properties": {"name": "c"}}::vertex]::path
+ [{"id": 844424930131969, "label": "Node", "properties": {"name": "a"}}::vertex, {"id": 1125899906842627, "label": "Edge", "end_id": 844424930131971, "start_id": 844424930131969, "properties": {}}::edge, {"id": 844424930131971, "label": "Node", "properties": {"name": "b"}}::vertex]::path
+(2 rows)
+
+/* should return 3 paths, 2 with 1 edge, 1 with 2 edges */
+SELECT * FROM cypher('mygraph', $$
+    MATCH p = ()-[:Edge*]->()
+    RETURN p
+$$) AS (g5 agtype);
+                                                                                                                                                                                                                                                    g5                                                                                                                                                                                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 844424930131969, "label": "Node", "properties": {"name": "a"}}::vertex, {"id": 1125899906842627, "label": "Edge", "end_id": 844424930131971, "start_id": 844424930131969, "properties": {}}::edge, {"id": 844424930131971, "label": "Node", "properties": {"name": "b"}}::vertex]::path
+ [{"id": 844424930131969, "label": "Node", "properties": {"name": "a"}}::vertex, {"id": 1125899906842627, "label": "Edge", "end_id": 844424930131971, "start_id": 844424930131969, "properties": {}}::edge, {"id": 844424930131971, "label": "Node", "properties": {"name": "b"}}::vertex, {"id": 1125899906842626, "label": "Edge", "end_id": 844424930131970, "start_id": 844424930131971, "properties": {}}::edge, {"id": 844424930131970, "label": "Node", "properties": {"name": "c"}}::vertex]::path
+ [{"id": 844424930131971, "label": "Node", "properties": {"name": "b"}}::vertex, {"id": 1125899906842626, "label": "Edge", "end_id": 844424930131970, "start_id": 844424930131971, "properties": {}}::edge, {"id": 844424930131970, "label": "Node", "properties": {"name": "c"}}::vertex]::path
+(3 rows)
+
+SELECT drop_graph('mygraph', true);
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to table mygraph._ag_label_vertex
+drop cascades to table mygraph._ag_label_edge
+drop cascades to table mygraph."Node"
+drop cascades to table mygraph."Edge"
+NOTICE:  graph "mygraph" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+COMMIT;
+--
 -- Clean up
 --
 DROP TABLE start_and_end_points;

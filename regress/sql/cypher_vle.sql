@@ -173,6 +173,48 @@ SELECT * FROM cypher('cypher_vle', $$MATCH p=(u)-[e*0..0]->(v) RETURN id(u), p, 
 -- Each should return 13 and will be the same
 SELECT * FROM cypher('cypher_vle', $$MATCH p=()-[*0..0]->()-[]->() RETURN p $$) AS (p agtype);
 SELECT * FROM cypher('cypher_vle', $$MATCH p=()-[]->()-[*0..0]->() RETURN p $$) AS (p agtype);
+
+--
+-- Test VLE inside of a BEGIN/COMMIT block
+--
+BEGIN;
+
+SELECT create_graph('mygraph');
+
+/* should create 1 path with 1 edge */
+SELECT * FROM cypher('mygraph', $$
+    CREATE (a:Node {name: 'a'})-[:Edge]->(c:Node {name: 'c'})
+$$) AS (g1 agtype);
+
+/* should return 1 path with 1 edge */
+SELECT * FROM cypher('mygraph', $$
+    MATCH p = ()-[:Edge*]->()
+    RETURN p
+$$) AS (g2 agtype);
+
+/* should delete the original path and replace it with a path with 2 edges */
+SELECT * FROM cypher('mygraph', $$
+    MATCH (a:Node {name: 'a'})-[e:Edge]->(c:Node {name: 'c'})
+    DELETE e
+    CREATE (a)-[:Edge]->(:Node {name: 'b'})-[:Edge]->(c)
+$$) AS (g3 agtype);
+
+/* should find 2 paths with 1 edge */
+SELECT * FROM cypher('mygraph', $$
+    MATCH p = ()-[:Edge]->()
+    RETURN p
+$$) AS (g4 agtype);
+
+/* should return 3 paths, 2 with 1 edge, 1 with 2 edges */
+SELECT * FROM cypher('mygraph', $$
+    MATCH p = ()-[:Edge*]->()
+    RETURN p
+$$) AS (g5 agtype);
+
+SELECT drop_graph('mygraph', true);
+
+COMMIT;
+
 --
 -- Clean up
 --

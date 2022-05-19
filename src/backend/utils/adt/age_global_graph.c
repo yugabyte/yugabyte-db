@@ -75,6 +75,7 @@ typedef struct GRAPH_global_context
     HTAB *edge_hashtable;          /* hashtable to hold edge to vertex map */
     TransactionId xmin;            /* transaction ids for this graph */
     TransactionId xmax;
+    CommandId curcid;              /* currentCommandId graph was created with */
     int64 num_loaded_vertices;     /* number of loaded vertices in this graph */
     int64 num_loaded_edges;        /* number of loaded edges in this graph */
     ListGraphId *vertices;         /* vertices for vertex hashtable cleanup */
@@ -676,7 +677,8 @@ GRAPH_global_context *manage_GRAPH_global_contexts(char *graph_name,
 
         /* if the transaction ids have changed, we have an invalid graph */
         if (curr_ggctx->xmin != GetActiveSnapshot()->xmin ||
-            curr_ggctx->xmax != GetActiveSnapshot()->xmax)
+            curr_ggctx->xmax != GetActiveSnapshot()->xmax ||
+            curr_ggctx->curcid != GetActiveSnapshot()->curcid)
         {
             /*
              * If prev_ggctx is NULL then we are freeing the top of the
@@ -740,6 +742,7 @@ GRAPH_global_context *manage_GRAPH_global_contexts(char *graph_name,
     /* set the transaction ids */
     new_ggctx->xmin = GetActiveSnapshot()->xmin;
     new_ggctx->xmax = GetActiveSnapshot()->xmax;
+    new_ggctx->curcid = GetActiveSnapshot()->curcid;
 
     /* initialize our vertices list */
     new_ggctx->vertices = NULL;
