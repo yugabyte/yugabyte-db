@@ -62,7 +62,7 @@ To create a project in Hasura Cloud:
 
 1. Click **Create Free Project**.
 
-    The project details are displayed. These include the **GpaphQL API** endpoint URL and **Admin Secret**, which is used for connecting applications.
+    The project details are displayed. These include the **GpaphQL API** endpoint URL and **Admin Secret**, which are used for connecting applications.
 
 1. Note the **Hasura Cloud IP**. You will need to add this to your cluster IP allow list in YugabyteDB Managed.
 
