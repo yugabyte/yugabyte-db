@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.Universe;
 import io.ebean.Model;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -37,6 +38,10 @@ import play.libs.Json;
 @Singleton
 public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   private static final Logger LOG = LoggerFactory.getLogger(SettableRuntimeConfigFactory.class);
+
+  // For example, anything just email, or ending with .email, _email or -email matches.
+  private static final Pattern SENSITIVE_CONFIG_NAME_PAT =
+      Pattern.compile("(^|\\.|[_\\-])(email|password|server)$");
 
   @VisibleForTesting
   static final String RUNTIME_CONFIG_INCLUDED_OBJECTS = "runtime_config.included_objects";
@@ -52,35 +57,41 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   /** @return A RuntimeConfig instance for a given scope */
   @Override
   public RuntimeConfig<Customer> forCustomer(Customer customer) {
-    Config config =
-        getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")")
-            .withFallback(globalConfig());
+    RuntimeConfig<Customer> config =
+        new RuntimeConfig<>(
+            customer,
+            getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")")
+                .withFallback(globalConfig()));
     LOG.trace("forCustomer {}: {}", customer.uuid, config);
-    return new RuntimeConfig<>(customer, config);
+    return config;
   }
 
   /** @return A RuntimeConfig instance for a given scope */
   @Override
   public RuntimeConfig<Universe> forUniverse(Universe universe) {
     Customer customer = Customer.get(universe.customerId);
-    Config config =
-        getConfigForScope(universe.universeUUID, "Scoped Config (" + universe + ")")
-            .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
-            .withFallback(globalConfig());
+    RuntimeConfig<Universe> config =
+        new RuntimeConfig<Universe>(
+            universe,
+            getConfigForScope(universe.universeUUID, "Scoped Config (" + universe + ")")
+                .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
+                .withFallback(globalConfig()));
     LOG.trace("forUniverse {}: {}", universe.universeUUID, config);
-    return new RuntimeConfig<>(universe, config);
+    return config;
   }
 
   /** @return A RuntimeConfig instance for a given scope */
   @Override
   public RuntimeConfig<Provider> forProvider(Provider provider) {
     Customer customer = Customer.get(provider.customerUUID);
-    Config config =
-        getConfigForScope(provider.uuid, "Scoped Config (" + provider + ")")
-            .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
-            .withFallback(globalConfig());
+    RuntimeConfig<Provider> config =
+        new RuntimeConfig<>(
+            provider,
+            getConfigForScope(provider.uuid, "Scoped Config (" + provider + ")")
+                .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
+                .withFallback(globalConfig()));
     LOG.trace("forProvider {}: {}", provider.uuid, config);
-    return new RuntimeConfig<>(provider, config);
+    return config;
   }
 
   /** @return A RuntimeConfig instance for a GLOBAL_SCOPE */
@@ -98,7 +109,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
     Config config =
         getConfigForScope(GLOBAL_SCOPE_UUID, "Global Runtime Config (" + GLOBAL_SCOPE_UUID + ")")
             .withFallback(appConfig);
-    LOG.trace("globalConfig : {}", config);
+    LOG.trace("globalConfig : {}", toRedactedString(config));
     return config;
   }
 
@@ -113,7 +124,9 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
     Config config =
         ConfigFactory.parseString(
             confStr, ConfigParseOptions.defaults().setOriginDescription(description));
-    LOG.trace("Read from DB for {}: {}", description, config);
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Read from DB for {}: {}", description, toRedactedString(config));
+    }
     return config;
   }
 
@@ -133,5 +146,20 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
       return entry.getValue();
     }
     return Json.stringify(Json.toJson(entry.getValue()));
+  }
+
+  @VisibleForTesting
+  static String toRedactedString(Config config) {
+    return config
+        .entrySet()
+        .stream()
+        .map(
+            entry -> {
+              if (SENSITIVE_CONFIG_NAME_PAT.matcher(entry.getKey()).find()) {
+                return entry.getKey() + "=REDACTED";
+              }
+              return entry.getKey() + "=" + entry.getValue();
+            })
+        .collect(Collectors.joining(", "));
   }
 }

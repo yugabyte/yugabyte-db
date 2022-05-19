@@ -1081,7 +1081,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to create write/read test table wor write/read metric and alert. */
   public SubTaskGroup createReadWriteTestTableTask(int numPartitions, boolean ifNotExist) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateReadWriteTestTable");
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("CreateReadWriteTestTable", executor);
 
     CreateTable task = createTask(CreateTable.class);
 
@@ -1752,7 +1753,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Collection<NodeDetails> addNodes,
       Collection<NodeDetails> removeNodes,
       boolean isLeaderBlacklist) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ModifyBlackList");
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ModifyBlackList", executor);
     ModifyBlackList.Params params = new ModifyBlackList.Params();
     params.universeUUID = taskParams().universeUUID;
     params.addNodes = addNodes;
