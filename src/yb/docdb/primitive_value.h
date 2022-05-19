@@ -141,6 +141,8 @@ class PrimitiveValue {
   // method can tell whether what's stored here is an actual primitive value.
   bool IsPrimitive() const;
 
+  bool IsTombstone() const;
+
   bool IsTombstoneOrPrimitive() const;
 
   int CompareTo(const PrimitiveValue& other) const;

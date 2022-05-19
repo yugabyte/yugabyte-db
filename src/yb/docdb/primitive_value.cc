@@ -1548,8 +1548,12 @@ bool PrimitiveValue::IsPrimitive() const {
   return IsPrimitiveValueType(type_);
 }
 
+bool PrimitiveValue::IsTombstone() const {
+  return type_ == ValueEntryType::kTombstone;
+}
+
 bool PrimitiveValue::IsTombstoneOrPrimitive() const {
-  return IsPrimitiveValueType(type_) || type_ == ValueEntryType::kTombstone;
+  return IsPrimitive() || IsTombstone();
 }
 
 bool KeyEntryValue::IsInfinity() const {
