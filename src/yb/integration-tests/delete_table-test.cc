@@ -154,7 +154,7 @@ class DeleteTableTest : public ExternalMiniClusterITestBase {
   void WaitForLoadBalanceCompletion(yb::MonoDelta timeout);
 
   // Returns a list of all tablet servers registered with the master leader.
-  CHECKED_STATUS ListAllLiveTabletServersRegisteredWithMaster(const MonoDelta& timeout,
+  Status ListAllLiveTabletServersRegisteredWithMaster(const MonoDelta& timeout,
                                                           vector<string>* ts_list);
 
   Result<bool> VerifyTableCompletelyDeleted(const YBTableName& table, const string& tablet_id);

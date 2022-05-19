@@ -84,16 +84,16 @@ class ScanChoices {
   virtual bool FinishedWithScanChoices() const { return finished_; }
 
   // Go to the next scan target if any.
-  virtual CHECKED_STATUS DoneWithCurrentTarget() = 0;
+  virtual Status DoneWithCurrentTarget() = 0;
 
   // Go (directly) to the new target (or the one after if new_target does not
   // exist in the desired list/range). If the new_target is larger than all scan target options it
   // means we are done.
-  virtual CHECKED_STATUS SkipTargetsUpTo(const Slice& new_target) = 0;
+  virtual Status SkipTargetsUpTo(const Slice& new_target) = 0;
 
   // If the given doc_key isn't already at the desired target, seek appropriately to go to the
   // current target.
-  virtual CHECKED_STATUS SeekToCurrentTarget(IntentAwareIterator* db_iter) = 0;
+  virtual Status SeekToCurrentTarget(IntentAwareIterator* db_iter) = 0;
 
  protected:
   const bool is_forward_scan_;
@@ -149,16 +149,16 @@ class DiscreteScanChoices : public ScanChoices {
     }
   }
 
-  CHECKED_STATUS DoneWithCurrentTarget() override;
-  CHECKED_STATUS SkipTargetsUpTo(const Slice& new_target) override;
-  CHECKED_STATUS SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
+  Status DoneWithCurrentTarget() override;
+  Status SkipTargetsUpTo(const Slice& new_target) override;
+  Status SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
 
  protected:
   // Utility function for (multi)key scans. Updates the target scan key by incrementing the option
   // index for one column. Will handle overflow by setting current column index to 0 and
   // incrementing the previous column instead. If it overflows at first column it means we are done,
   // so it clears the scan target idxs array.
-  CHECKED_STATUS IncrementScanTargetAtColumn(size_t start_col);
+  Status IncrementScanTargetAtColumn(size_t start_col);
 
   // Utility function for (multi)key scans to initialize the range portion of the current scan
   // target, scan target with the first option.
@@ -454,9 +454,9 @@ class HybridScanChoices : public ScanChoices {
                           doc_spec.range_bounds()) {
   }
 
-  CHECKED_STATUS SkipTargetsUpTo(const Slice& new_target) override;
-  CHECKED_STATUS DoneWithCurrentTarget() override;
-  CHECKED_STATUS SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
+  Status SkipTargetsUpTo(const Slice& new_target) override;
+  Status DoneWithCurrentTarget() override;
+  Status SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
 
  protected:
   // Utility function for (multi)key scans. Updates the target scan key by
@@ -465,7 +465,7 @@ class HybridScanChoices : public ScanChoices {
   // index to 0 and incrementing the previous column instead. If it overflows
   // at first column it means we are done, so it clears the scan target idxs
   // array.
-  CHECKED_STATUS IncrementScanTargetAtColumn(int start_col);
+  Status IncrementScanTargetAtColumn(int start_col);
 
  private:
   KeyBytes prev_scan_target_;
@@ -879,9 +879,9 @@ class RangeBasedScanChoices : public ScanChoices {
     }
   }
 
-  CHECKED_STATUS SkipTargetsUpTo(const Slice& new_target) override;
-  CHECKED_STATUS DoneWithCurrentTarget() override;
-  CHECKED_STATUS SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
+  Status SkipTargetsUpTo(const Slice& new_target) override;
+  Status DoneWithCurrentTarget() override;
+  Status SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
 
  private:
   std::vector<KeyEntryValue> lower_, upper_;
@@ -1313,7 +1313,7 @@ string DocRowwiseIterator::ToString() const {
 namespace {
 
 // Set primary key column values (hashed or range columns) in a QL row value map.
-CHECKED_STATUS SetQLPrimaryKeyColumnValues(const Schema& schema,
+Status SetQLPrimaryKeyColumnValues(const Schema& schema,
                                            const size_t begin_index,
                                            const size_t column_count,
                                            const char* column_type,
@@ -1409,7 +1409,7 @@ bool DocRowwiseIterator::LivenessColumnExists() const {
   return subdoc != nullptr && subdoc->value_type() != ValueEntryType::kInvalid;
 }
 
-CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) const {
+Status DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) const {
   if (db_iter_ == nullptr) {
     return STATUS(Corruption, "Iterator not initialized.");
   }

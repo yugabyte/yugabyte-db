@@ -49,7 +49,7 @@ class YsqlTablegroupManager {
                               const TablegroupId& tablegroup_id,
                               const TabletInfoPtr tablet);
 
-  CHECKED_STATUS Remove(const TablegroupId& tablegroup_id);
+  Status Remove(const TablegroupId& tablegroup_id);
 
  private:
   template<typename K, typename V>
@@ -71,9 +71,9 @@ class YsqlTablegroupManager {
     const NamespaceId& database_id() const { return database_id_; }
     const TabletInfoPtr& tablet() const { return tablet_; }
 
-    CHECKED_STATUS AddChildTable(const TableId& table_id, ColocationId colocation_id);
+    Status AddChildTable(const TableId& table_id, ColocationId colocation_id);
 
-    CHECKED_STATUS RemoveChildTable(const TableId& table_id);
+    Status RemoveChildTable(const TableId& table_id);
 
     bool IsEmpty() const;
 

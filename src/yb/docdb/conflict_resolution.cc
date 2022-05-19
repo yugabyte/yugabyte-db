@@ -82,7 +82,7 @@ struct TransactionData {
   }
 };
 
-CHECKED_STATUS MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
+Status MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
                                   const char* reason, Counter* conflicts_metric) {
   conflicts_metric->Increment();
   return (STATUS(TryAgain, Format("$0 Conflicts with $1 transaction: $2", our_id, reason, other_id),
@@ -94,10 +94,10 @@ class ConflictResolver;
 class ConflictResolverContext {
  public:
   // Read all conflicts for operation/transaction.
-  virtual CHECKED_STATUS ReadConflicts(ConflictResolver* resolver) = 0;
+  virtual Status ReadConflicts(ConflictResolver* resolver) = 0;
 
   // Check priority of this one against existing transactions.
-  virtual CHECKED_STATUS CheckPriority(
+  virtual Status CheckPriority(
       ConflictResolver* resolver,
       boost::iterator_range<TransactionData*> transactions) = 0;
 
@@ -182,7 +182,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   }
 
   // Reads conflicts for specified intent from DB.
-  CHECKED_STATUS ReadIntentConflicts(IntentTypeSet type, KeyBytes* intent_key_prefix,
+  Status ReadIntentConflicts(IntentTypeSet type, KeyBytes* intent_key_prefix,
                                      WaitPolicy wait_policy) {
     EnsureIntentIteratorCreated();
 
@@ -607,7 +607,7 @@ class StrongConflictChecker {
         buffer_(*buffer)
   {}
 
-  CHECKED_STATUS Check(const Slice& intent_key, bool strong, WaitPolicy wait_policy) {
+  Status Check(const Slice& intent_key, bool strong, WaitPolicy wait_policy) {
     const auto hash = VERIFY_RESULT(DecodeDocKeyHash(intent_key));
     if (PREDICT_FALSE(!value_iter_.Initialized() || hash != value_iter_hash_)) {
       value_iter_ = CreateRocksDBIterator(
@@ -727,7 +727,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
   }
 
  protected:
-  CHECKED_STATUS CheckPriorityInternal(
+  Status CheckPriorityInternal(
       ConflictResolver* resolver,
       boost::iterator_range<TransactionData*> transactions,
       const TransactionId& our_transaction_id,
@@ -794,7 +794,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   virtual ~TransactionConflictResolverContext() {}
 
  private:
-  CHECKED_STATUS ReadConflicts(ConflictResolver* resolver) override {
+  Status ReadConflicts(ConflictResolver* resolver) override {
     RETURN_NOT_OK(transaction_id_);
 
     VLOG_WITH_PREFIX(3) << "Resolve conflicts";
@@ -888,7 +888,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     return Status::OK();
   }
 
-  CHECKED_STATUS CheckPriority(ConflictResolver* resolver,
+  Status CheckPriority(ConflictResolver* resolver,
                                boost::iterator_range<TransactionData*> transactions) override {
     return CheckPriorityInternal(resolver, transactions, metadata_.transaction_id,
                                  metadata_.priority);
@@ -969,7 +969,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
   virtual ~OperationConflictResolverContext() {}
 
   // Reads stored intents that could conflict with our operations.
-  CHECKED_STATUS ReadConflicts(ConflictResolver* resolver) override {
+  Status ReadConflicts(ConflictResolver* resolver) override {
     boost::container::small_vector<RefCntPrefix, 8> doc_paths;
     boost::container::small_vector<size_t, 32> key_prefix_lengths;
     KeyBytes encoded_key_buffer;
@@ -1005,7 +1005,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
     return Status::OK();
   }
 
-  CHECKED_STATUS CheckPriority(ConflictResolver* resolver,
+  Status CheckPriority(ConflictResolver* resolver,
                                boost::iterator_range<TransactionData*> transactions) override {
     return CheckPriorityInternal(resolver,
                                  transactions,

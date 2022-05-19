@@ -2524,7 +2524,7 @@ class ManifestReader {
     return Status::OK();
   }
 
-  CHECKED_STATUS Next() {
+  Status Next() {
     Slice record;
     if (!reader_->ReadRecord(&record, &scratch_)) {
       return STATUS(EndOfFile, "");
@@ -2543,7 +2543,7 @@ class ManifestReader {
   uint64_t current_manifest_file_size() const { return current_manifest_file_size_; }
   const std::string& manifest_filename() const { return manifest_filename_; }
  private:
-  CHECKED_STATUS ReadManifestFilename() {
+  Status ReadManifestFilename() {
     // Read "CURRENT" file, which contains a pointer to the current manifest file
     Status s = ReadFileToString(env_, CurrentFileName(dbname_), &manifest_filename_);
     if (!s.ok()) {
@@ -3339,7 +3339,7 @@ void VersionSet::MarkFileNumberUsedDuringRecovery(uint64_t number) {
 
 namespace {
 
-CHECKED_STATUS AddEdit(const VersionEdit& edit, const DBOptions* db_options, log::Writer* log) {
+Status AddEdit(const VersionEdit& edit, const DBOptions* db_options, log::Writer* log) {
   std::string record;
   if (!edit.AppendEncodedTo(&record)) {
     return STATUS(Corruption,

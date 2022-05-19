@@ -668,7 +668,7 @@ Status SysCatalogTable::WaitUntilRunning() {
   return Status::OK();
 }
 
-CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
+Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   if (PREDICT_FALSE(FLAGS_TEST_sys_catalog_write_rejection_percentage > 0) &&
       RandomUniformInt(1, 99) <= FLAGS_TEST_sys_catalog_write_rejection_percentage) {
     return STATUS(InternalError, "Injected random failure for testing.");

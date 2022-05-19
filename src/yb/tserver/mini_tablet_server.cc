@@ -208,7 +208,7 @@ void MiniTabletServer::Shutdown() {
 
 namespace {
 
-CHECKED_STATUS ForAllTablets(
+Status ForAllTablets(
     MiniTabletServer* mts,
     std::function<Status(TabletPeer* tablet_peer)> action) {
   if (!mts->server()) {

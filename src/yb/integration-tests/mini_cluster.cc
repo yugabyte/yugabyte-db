@@ -887,7 +887,7 @@ Status WaitUntilTabletHasLeader(
   }, deadline, "Waiting for election in tablet " + tablet_id);
 }
 
-CHECKED_STATUS WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
+Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
   return WaitFor([cluster] {
     for (size_t i = 0; i != cluster->num_masters(); ++i) {
       auto tablet_peer = cluster->mini_master(i)->tablet_peer();
@@ -1168,7 +1168,7 @@ void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, const size_t byte
   }
 }
 
-CHECKED_STATUS WaitAllReplicasSynchronizedWithLeader(
+Status WaitAllReplicasSynchronizedWithLeader(
     MiniCluster* cluster, CoarseTimePoint deadline) {
   auto leaders = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
   std::unordered_map<TabletId, int64_t> last_committed_idx;

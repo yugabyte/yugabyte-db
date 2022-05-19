@@ -125,20 +125,20 @@ class RestorationState : public StateWithTablets {
     return YB_CLASS_TO_STRING(restoration_id, snapshot_id);
   }
 
-  CHECKED_STATUS ToPB(RestorationInfoPB* out);
+  Status ToPB(RestorationInfoPB* out);
 
   void PrepareOperations(
       TabletRestoreOperations* operations, const std::unordered_set<TabletId>& snapshot_tablets,
       std::optional<int64_t> db_oid);
 
-  CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch);
+  Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch);
 
   Status StoreToKeyValuePair(docdb::KeyValuePairPB* pair);
 
  private:
   bool IsTerminalFailure(const Status& status) override;
 
-  CHECKED_STATUS ToEntryPB(SysRestorationEntryPB* out);
+  Status ToEntryPB(SysRestorationEntryPB* out);
 
   const TxnSnapshotRestorationId restoration_id_;
   TxnSnapshotId snapshot_id_ = TxnSnapshotId::Nil();

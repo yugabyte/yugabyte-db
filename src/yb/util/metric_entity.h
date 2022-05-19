@@ -147,11 +147,11 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   const std::string& id() const { return id_; }
 
   // See MetricRegistry::WriteAsJson()
-  CHECKED_STATUS WriteAsJson(JsonWriter* writer,
+  Status WriteAsJson(JsonWriter* writer,
                      const std::vector<std::string>& requested_metrics,
                      const MetricJsonOptions& opts) const;
 
-  CHECKED_STATUS WriteForPrometheus(PrometheusWriter* writer,
+  Status WriteForPrometheus(PrometheusWriter* writer,
                      const std::vector<std::string>& requested_metrics,
                      const MetricPrometheusOptions& opts) const;
 

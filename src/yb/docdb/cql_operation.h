@@ -43,16 +43,16 @@ class QLWriteOperation :
   ~QLWriteOperation();
 
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
-  CHECKED_STATUS Init(QLResponsePB* response);
+  Status Init(QLResponsePB* response);
 
   bool RequireReadSnapshot() const override { return require_read_; }
 
-  CHECKED_STATUS GetDocPaths(
+  Status GetDocPaths(
       GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const override;
 
-  CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
+  Status Apply(const DocOperationApplyData& data) override;
 
-  CHECKED_STATUS ApplyForJsonOperators(
+  Status ApplyForJsonOperators(
     const ColumnSchema& column,
     const ColumnIdRep col_id,
     const std::unordered_map<ColumnIdRep, vector<int>>& col_map,
@@ -62,7 +62,7 @@ class QLWriteOperation :
     QLTableRow* current_row,
     bool is_insert);
 
-  CHECKED_STATUS ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
+  Status ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
                                        const QLTableRow& current_row,
                                        const DocOperationApplyData& data,
                                        const MonoDelta& ttl,
@@ -70,7 +70,7 @@ class QLWriteOperation :
                                        const ColumnSchema& column,
                                        DocPath* sub_path);
 
-  CHECKED_STATUS ApplyForRegularColumns(const QLColumnValuePB& column_value,
+  Status ApplyForRegularColumns(const QLColumnValuePB& column_value,
                                         const QLTableRow& current_row,
                                         const DocOperationApplyData& data,
                                         const DocPath& sub_path, const MonoDelta& ttl,
@@ -99,21 +99,21 @@ class QLWriteOperation :
   }
 
   // Initialize hashed_doc_key_ and/or pk_doc_key_.
-  CHECKED_STATUS InitializeKeys(bool hashed_key, bool primary_key);
+  Status InitializeKeys(bool hashed_key, bool primary_key);
 
-  CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
+  Status ReadColumns(const DocOperationApplyData& data,
                              Schema *static_projection,
                              Schema *non_static_projection,
                              QLTableRow* table_row);
 
-  CHECKED_STATUS PopulateConditionalDmlRow(const DocOperationApplyData& data,
+  Status PopulateConditionalDmlRow(const DocOperationApplyData& data,
                                            bool should_apply,
                                            const QLTableRow& table_row,
                                            Schema static_projection,
                                            Schema non_static_projection,
                                            std::unique_ptr<QLRowBlock>* rowblock);
 
-  CHECKED_STATUS PopulateStatusRow(const DocOperationApplyData& data,
+  Status PopulateStatusRow(const DocOperationApplyData& data,
                                    bool should_apply,
                                    const QLTableRow& table_row,
                                    std::unique_ptr<QLRowBlock>* rowblock);
@@ -127,12 +127,12 @@ class QLWriteOperation :
       IntentAwareIterator* iter, const SubDocKey& sub_doc_key,
       HybridTime min_hybrid_time);
 
-  CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
+  Status DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                            const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   Result<bool> IsRowDeleted(const QLTableRow& current_row, const QLTableRow& new_row) const;
 
-  CHECKED_STATUS UpdateIndexes(const QLTableRow& current_row, const QLTableRow& new_row);
+  Status UpdateIndexes(const QLTableRow& current_row, const QLTableRow& new_row);
 
   docdb::DocReadContextPtr doc_read_context_;
   const IndexMap& index_map_;
@@ -191,7 +191,7 @@ class QLReadOperation : public DocExprExecutor {
       const TransactionOperationContext& txn_op_context)
       : request_(request), txn_op_context_(txn_op_context) {}
 
-  CHECKED_STATUS Execute(const YQLStorageIf& ql_storage,
+  Status Execute(const YQLStorageIf& ql_storage,
                          CoarseTimePoint deadline,
                          const ReadHybridTime& read_time,
                          const DocReadContext& doc_read_context,
@@ -199,14 +199,14 @@ class QLReadOperation : public DocExprExecutor {
                          QLResultSet* result_set,
                          HybridTime* restart_read_ht);
 
-  CHECKED_STATUS PopulateResultSet(const std::unique_ptr<QLScanSpec>& spec,
+  Status PopulateResultSet(const std::unique_ptr<QLScanSpec>& spec,
                                    const QLTableRow& table_row,
                                    QLResultSet *result_set);
 
-  CHECKED_STATUS EvalAggregate(const QLTableRow& table_row);
-  CHECKED_STATUS PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset);
+  Status EvalAggregate(const QLTableRow& table_row);
+  Status PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset);
 
-  CHECKED_STATUS AddRowToResult(const std::unique_ptr<QLScanSpec>& spec,
+  Status AddRowToResult(const std::unique_ptr<QLScanSpec>& spec,
                                 const QLTableRow& row,
                                 const size_t row_count_limit,
                                 const size_t offset,
@@ -214,7 +214,7 @@ class QLReadOperation : public DocExprExecutor {
                                 int* match_count,
                                 size_t* num_rows_skipped);
 
-  CHECKED_STATUS GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
+  Status GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
 
   QLResponsePB& response() { return response_; }
 
@@ -222,7 +222,7 @@ class QLReadOperation : public DocExprExecutor {
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
-  CHECKED_STATUS SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
+  Status SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
                                            const QLResultSet* resultset,
                                            const size_t row_count_limit,
                                            const size_t num_rows_skipped,

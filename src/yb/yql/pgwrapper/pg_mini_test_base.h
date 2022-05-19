@@ -68,7 +68,7 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
     return PGConn::Connect(pg_host_port_, dbname);
   }
 
-  CHECKED_STATUS RestartCluster();
+  Status RestartCluster();
 
   const HostPort& pg_host_port() const {
     return pg_host_port_;

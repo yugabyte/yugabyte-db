@@ -98,7 +98,7 @@ boost::optional<YBPgErrorCode> PsqlErrorCode(const Status& status) {
 // Get a common Postgres error code from the status and all errors, and append it to a previous
 // Status.
 // If any of those have different conflicting error codes, previous result is returned as-is.
-CHECKED_STATUS AppendPsqlErrorCode(const Status& status,
+Status AppendPsqlErrorCode(const Status& status,
                                    const client::CollectedErrors& errors) {
   boost::optional<YBPgErrorCode> common_psql_error =  boost::make_optional(false, YBPgErrorCode());
   for(const auto& error : errors) {
@@ -114,7 +114,7 @@ CHECKED_STATUS AppendPsqlErrorCode(const Status& status,
 }
 
 // Get a common transaction error code for all the errors and append it to the previous Status.
-CHECKED_STATUS AppendTxnErrorCode(const Status& status, const client::CollectedErrors& errors) {
+Status AppendTxnErrorCode(const Status& status, const client::CollectedErrors& errors) {
   TransactionErrorCode common_txn_error = TransactionErrorCode::kNone;
   for (const auto& error : errors) {
     const TransactionErrorCode txn_error = TransactionError(error->status()).value();
@@ -148,7 +148,7 @@ CHECKED_STATUS AppendTxnErrorCode(const Status& status, const client::CollectedE
 
 // Given a set of errors from operations, this function attempts to combine them into one status
 // that is later passed to PostgreSQL and further converted into a more specific error code.
-CHECKED_STATUS CombineErrorsToStatus(const client::CollectedErrors& errors, const Status& status) {
+Status CombineErrorsToStatus(const client::CollectedErrors& errors, const Status& status) {
   if (errors.empty())
     return status;
 
@@ -247,7 +247,7 @@ Status HandleResponse(uint64_t session_id,
   return status;
 }
 
-CHECKED_STATUS GetTable(const TableId& table_id, PgTableCache* cache, client::YBTablePtr* table) {
+Status GetTable(const TableId& table_id, PgTableCache* cache, client::YBTablePtr* table) {
   if (*table && (**table).id() == table_id) {
     return Status::OK();
   }
@@ -315,7 +315,7 @@ struct PerformData {
     context.RespondSuccess();
   }
 
-  CHECKED_STATUS ProcessResponse() {
+  Status ProcessResponse() {
     int idx = 0;
     for (const auto& op : ops) {
       const auto status = HandleResponse(session_id, *op, resp, used_read_time);

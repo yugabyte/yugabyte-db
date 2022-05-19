@@ -992,7 +992,7 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
     return true;
   }
 
-  CHECKED_STATUS WaitForBackfillSafeTime(
+  Status WaitForBackfillSafeTime(
       const client::YBTableName& table_name, const std::string& index_name) {
     LOG(INFO) << "Waiting for pg_index indislive to be true";
     RETURN_NOT_OK(WaitFor(

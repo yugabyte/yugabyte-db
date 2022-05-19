@@ -166,7 +166,7 @@ EncryptionManager::EncryptionState EncryptionManager::GetEncryptionState(
   return state;
 }
 
-CHECKED_STATUS EncryptionManager::FillHeartbeatResponseEncryption(
+Status EncryptionManager::FillHeartbeatResponseEncryption(
     const EncryptionInfoPB& encryption_info, TSHeartbeatResponsePB* resp) {
   Slice decrypted_registry(encryption_info.universe_key_registry_encoded());
   std::string decrypted;

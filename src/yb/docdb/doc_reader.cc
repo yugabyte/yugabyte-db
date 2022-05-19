@@ -120,7 +120,7 @@ Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
   return Status::OK();;
 }
 
-CHECKED_STATUS DocDBTableReader::InitForKey(const Slice& sub_doc_key) {
+Status DocDBTableReader::InitForKey(const Slice& sub_doc_key) {
   auto dockey_size =
       VERIFY_RESULT(DocKey::EncodedSize(sub_doc_key, DocKeyPart::kWholeDocKey));
   const Slice root_doc_key(sub_doc_key.data(), dockey_size);

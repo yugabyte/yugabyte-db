@@ -1302,7 +1302,7 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   return is_stale;
 }
 
-CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSAlive(int ts_idx, MonoDelta deadline) {
+Status ExternalMiniCluster::WaitForMasterToMarkTSAlive(int ts_idx, MonoDelta deadline) {
   RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
     return !VERIFY_RESULT(is_ts_stale(ts_idx));
   }, deadline * kTimeMultiplier, "Is TS Alive", 1s));
@@ -1310,7 +1310,7 @@ CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSAlive(int ts_idx, MonoD
   return Status::OK();
 }
 
-CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSDead(int ts_idx, MonoDelta deadline) {
+Status ExternalMiniCluster::WaitForMasterToMarkTSDead(int ts_idx, MonoDelta deadline) {
   RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
     return is_ts_stale(ts_idx);
   }, deadline * kTimeMultiplier, "Is TS dead", 1s));

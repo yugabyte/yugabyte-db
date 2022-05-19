@@ -56,16 +56,16 @@ class PgDocResult {
   }
 
   // Get the postgres tuple from this batch.
-  CHECKED_STATUS WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple *pg_tuple,
+  Status WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple *pg_tuple,
                               int64_t *row_order);
 
   // Get system columns' values from this batch.
   // Currently, we only have ybctids, but there could be more.
-  CHECKED_STATUS ProcessSystemColumns();
+  Status ProcessSystemColumns();
 
   // Update the reservoir with ybctids from this batch.
   // The update is expected to be sparse, so ybctids come as index/value pairs.
-  CHECKED_STATUS ProcessSparseSystemColumns(std::string *reservoir);
+  Status ProcessSparseSystemColumns(std::string *reservoir);
 
   // Access function to ybctids value in this batch.
   // Sys columns must be processed before this function is called.
@@ -249,7 +249,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   virtual ~PgDocOp();
 
   // Initialize doc operator.
-  virtual CHECKED_STATUS ExecuteInit(const PgExecParameters *exec_params);
+  virtual Status ExecuteInit(const PgExecParameters *exec_params);
 
   const PgExecParameters& ExecParameters() const;
 
@@ -264,7 +264,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   }
 
   // Get the result of the op. No rows will be added to rowsets in case end of data reached.
-  virtual CHECKED_STATUS GetResult(std::list<PgDocResult> *rowsets);
+  virtual Status GetResult(std::list<PgDocResult> *rowsets);
   Result<int32_t> GetRowsAffectedCount() const;
 
   // This operation is requested internally within PgGate, and that request does not go through
@@ -290,7 +290,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   virtual bool IsWrite() const = 0;
 
-  CHECKED_STATUS CreateRequests();
+  Status CreateRequests();
 
   const PgTable& table() const { return table_; }
 
@@ -315,7 +315,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // - When parallelism by arguments is applied, each operator has only one argument.
   //   When tablet server will run the requests in parallel as it assigned one thread per request.
   //       PopulateNextHashPermutationOps()
-  CHECKED_STATUS ClonePgsqlOps(size_t op_count);
+  Status ClonePgsqlOps(size_t op_count);
 
   // Only active operators are kept in the active range [0, active_op_count_)
   // - Not execute operators that are outside of range [0, active_op_count_).
@@ -341,7 +341,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   virtual Result<std::list<PgDocResult>> ProcessResponseImpl(
       const rpc::CallResponsePtr& response) = 0;
 
-  CHECKED_STATUS CompleteRequests();
+  Status CompleteRequests();
 
   static Result<PgDocResponse> DefaultSender(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
@@ -464,10 +464,10 @@ class PgDocReadOp : public PgDocOp {
       const PgSession::ScopedRefPtr& pg_session, PgTable* table,
       PgsqlReadOpPtr read_op, const Sender& sender);
 
-  CHECKED_STATUS ExecuteInit(const PgExecParameters *exec_params) override;
+  Status ExecuteInit(const PgExecParameters *exec_params) override;
 
   // Row sampler collects number of live and dead rows it sees.
-  CHECKED_STATUS GetEstimatedRowCount(double *liverows, double *deadrows);
+  Status GetEstimatedRowCount(double *liverows, double *deadrows);
 
   bool IsWrite() const override {
     return false;
@@ -483,7 +483,7 @@ class PgDocReadOp : public PgDocOp {
   // - Optimization for statement
   //     SELECT xxx FROM <table> WHERE ybctid IN (SELECT ybctid FROM INDEX)
   // - After being queried from inner select, ybctids are used for populate request for outer query.
-  CHECKED_STATUS InitializeYbctidOperators();
+  Status InitializeYbctidOperators();
 
   // Create operators by partition arguments.
   // - Optimization for statement:
@@ -494,7 +494,7 @@ class PgDocReadOp : public PgDocOp {
   // - When an operator completes the execution, it is marked as inactive and available for the
   //   exection of the next hash permutation.
   Result<bool> PopulateNextHashPermutationOps();
-  CHECKED_STATUS InitializeHashPermutationStates();
+  Status InitializeHashPermutationStates();
 
   // Create operators by partitions.
   // - Optimization for aggregating or filtering requests.
@@ -504,17 +504,17 @@ class PgDocReadOp : public PgDocOp {
   Result<bool> PopulateSamplingOps();
 
   // Set partition boundaries to a given partition.
-  CHECKED_STATUS SetScanPartitionBoundary();
+  Status SetScanPartitionBoundary();
 
   // Process response from DocDB.
   Result<std::list<PgDocResult>> ProcessResponseImpl(
       const rpc::CallResponsePtr& response) override;
 
   // Process response read state from DocDB.
-  CHECKED_STATUS ProcessResponseReadStates();
+  Status ProcessResponseReadStates();
 
   // Reset pgsql operators before reusing them with new arguments / inputs from Postgres.
-  CHECKED_STATUS ResetInactivePgsqlOps();
+  Status ResetInactivePgsqlOps();
 
   // Analyze options and pick the appropriate prefetch limit.
   void SetRequestPrefetchLimit();

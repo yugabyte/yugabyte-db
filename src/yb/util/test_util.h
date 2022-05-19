@@ -189,7 +189,7 @@ constexpr int kDefaultMaxWaitDelayMs = 2000;
 } // namespace test_util
 
 // Waits for the given condition to be true or until the provided deadline happens.
-CHECKED_STATUS Wait(
+Status Wait(
     const std::function<Result<bool>()>& condition,
     MonoTime deadline,
     const std::string& description,
@@ -197,7 +197,7 @@ CHECKED_STATUS Wait(
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
-CHECKED_STATUS Wait(
+Status Wait(
     const std::function<Result<bool>()>& condition,
     CoarseTimePoint deadline,
     const std::string& description,
@@ -205,7 +205,7 @@ CHECKED_STATUS Wait(
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
-CHECKED_STATUS LoggedWait(
+Status LoggedWait(
     const std::function<Result<bool>()>& condition,
     CoarseTimePoint deadline,
     const std::string& description,
@@ -214,7 +214,7 @@ CHECKED_STATUS LoggedWait(
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
 // Waits for the given condition to be true or until the provided timeout has expired.
-CHECKED_STATUS WaitFor(
+Status WaitFor(
     const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
     const std::string& description,
@@ -222,7 +222,7 @@ CHECKED_STATUS WaitFor(
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
-CHECKED_STATUS LoggedWaitFor(
+Status LoggedWaitFor(
     const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
     const std::string& description,

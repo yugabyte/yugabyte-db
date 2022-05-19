@@ -1508,7 +1508,7 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::SetUniverseReplicationEnabled(const std::string& producer_id,
+Status ClusterAdminClient::SetUniverseReplicationEnabled(const std::string& producer_id,
                                                                  bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;
   master::SetUniverseReplicationEnabledResponsePB resp;

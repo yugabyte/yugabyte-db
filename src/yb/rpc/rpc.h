@@ -118,11 +118,11 @@ class RpcRetrier {
   // deadline has already expired at the time that Retry() was called.
   //
   // Callers should ensure that 'rpc' remains alive.
-  CHECKED_STATUS DelayedRetry(
+  Status DelayedRetry(
       RpcCommand* rpc, const Status& why_status,
       BackoffStrategy strategy = BackoffStrategy::kLinear);
 
-  CHECKED_STATUS DelayedRetry(
+  Status DelayedRetry(
       RpcCommand* rpc, const Status& why_status, MonoDelta add_delay);
 
   RpcController* mutable_controller() { return &controller_; }
@@ -157,7 +157,7 @@ class RpcRetrier {
   }
 
  private:
-  CHECKED_STATUS DoDelayedRetry(RpcCommand* rpc, const Status& why_status);
+  Status DoDelayedRetry(RpcCommand* rpc, const Status& why_status);
 
   // Called when an RPC comes up for retrying. Actually sends the RPC.
   void DoRetry(RpcCommand* rpc, const Status& status);
