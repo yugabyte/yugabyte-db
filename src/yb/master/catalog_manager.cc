@@ -4472,7 +4472,9 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
 
   // Truncate on a colocated table should not hit master because it should be handled by a write
   // DML that creates a table-level tombstone.
-  LOG_IF(WARNING, table->IsColocatedUserTable()) << "cannot truncate a colocated table on master";
+  RSTATUS_DCHECK(!table->IsColocatedUserTable(),
+                 InternalError,
+                 Format("Cannot truncate colocated table $0 on master", table->name()));
 
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && IsCdcEnabled(*table)) {
     return STATUS(NotSupported,
@@ -4488,13 +4490,15 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
             << RequestorString(rpc);
   background_tasks_->Wake();
 
-  // Truncate indexes also.
-  // Note: PG table does not have references to indexes in the base table, so associated indexes
-  //       must be truncated from the PG code separately.
-  const bool is_index = IsIndex(l->pb);
-  DCHECK(!is_index || l->pb.indexes().empty()) << "indexes should be empty for index table";
-  for (const auto& index_info : l->pb.indexes()) {
-    RETURN_NOT_OK(TruncateTable(index_info.table_id(), resp, rpc));
+  // Truncate indexes also.  For YSQL, truncate for each index is sent separately in
+  // YBCTruncateTable, so don't handle it here.  Also, it would be incorrect to handle it here in
+  // case the index is part of a tablegroup.
+  if (table->GetTableType() != PGSQL_TABLE_TYPE) {
+    const bool is_index = IsIndex(l->pb);
+    DCHECK(!is_index || l->pb.indexes().empty()) << "indexes should be empty for index table";
+    for (const auto& index_info : l->pb.indexes()) {
+      RETURN_NOT_OK(TruncateTable(index_info.table_id(), resp, rpc));
+    }
   }
 
   return Status::OK();
