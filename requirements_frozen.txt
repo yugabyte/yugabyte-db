@@ -25,7 +25,7 @@ py==1.11.0
 pycodestyle==2.7.0
 pycparser==2.20
 PyGithub==1.55
-PyJWT==2.1.0
+PyJWT==2.4.0
 PyNaCl==1.4.0
 pyparsing==2.4.7
 pytest==6.2.5
