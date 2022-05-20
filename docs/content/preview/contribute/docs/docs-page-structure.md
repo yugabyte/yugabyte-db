@@ -128,7 +128,7 @@ This is a warning with a [link](https://www.yugabyte.com).
 {{< /warning >}}
 ```
 
-### Inline Section Switcher
+### Inline section switcher
 
 An inline section switcher lets you switch between content sections **without a separate URL**. If you want to link to sub-sections inside a switcher, use tabs. This widget looks as follows:
 
