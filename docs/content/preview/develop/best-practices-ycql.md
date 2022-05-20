@@ -51,7 +51,7 @@ YugabyteDB supports the [`jsonb`](../../api/ycql/type_jsonb/) data type that mak
 
 {{< note title="Use jsonb columns only when necessary" >}}
 
-`jsonb` columns are slower to read and write compared to normal columns. They also take more space because they need to store keys in strings and make keeping data consistency harder. A good schema design is to keep most columns as regular ones or collections, and only using `jsonb` for truly dynamic values. Don't create a `data jsonb` column where you store everything, but a `dynamic_data jsonb` column and other ones being primitive columns.
+`jsonb` columns are slower to read and write compared to normal columns. They also take more space because they need to store keys in strings and make keeping data consistency harder. A good schema design is to keep most columns as regular ones or collections, and only using `jsonb` for truly dynamic values. Don't create a `data jsonb` column where you store everything; instead use a `dynamic_data jsonb` column with other ones being primitive columns.
 
 {{< /note >}}
 
@@ -91,9 +91,9 @@ Use batching for writing a set of operations. This will send all operations in a
 
 ### Column and row sizes
 
-For consistent latency/performance, try keeping columns in the `2MB` range or less even though you support an individual column being about `32 MB`.
+For consistent latency/performance, keep columns in the `2MB` range or less.
 
-Big columns add up when selecting full rows or multiple of them. For consistent latency/performance, you suggest keeping the size of rows in the `32 MB` range or less.
+Big columns add up when selecting multiple columns or full rows. For consistent latency/performance, keep the size of individual rows in the `32 MB` range or less.
 
 ### Don't use big collections
 
