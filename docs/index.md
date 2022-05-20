@@ -40,6 +40,12 @@ The RPM packages are also available in the official PostgreSQL (PGDG) `yum` repo
 * Use the [installation guidelines](setup.md) to install and set up `pg_stat_monitor`.
 * Refer to the [User guide](USER_GUIDE.md) for details about available features and functions, usage examples  and configuration parameters.
 
+## Get engaged
+
+* Use the [contributing guide](https://github.com/percona/pg_stat_monitor/blob/main/CONTRIBUTING.md) to learn how to become a contributor.
+* Use the [forum](https://forums.percona.com/c/postgresql/pg-stat-monitor/69) to discuss a topic with the community.
+
+
 ## Read more
 
 * [`pg_stat_monitor` view reference](REREFENCE.md)
