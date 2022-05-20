@@ -171,7 +171,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     },
     onError: (err: any) => {
       onHide();
-      toast.error(err?.data?.error ?? 'An Error occurred');
+      toast.error(err?.response?.data?.error ?? 'An Error occurred');
     }
   });
 
@@ -206,6 +206,21 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   const validationSchema = Yup.object().shape({
     scheduleName: Yup.string().when('storage_config', {
       is: () => isScheduledBackup,
+      then: Yup.string().required('Required')
+    }),
+    // we don't support schedules backups less than an hour
+    policy_interval: Yup.number().test({
+      message: 'Interval should be greater than an hour',
+      test: function (value) {
+        if (this.parent.use_cron_expression || !isScheduledBackup) {
+          return true;
+        }
+        return value * MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()] >=
+            MILLISECONDS_IN['HOURS']
+      }
+    }),
+    cron_expression: Yup.string().when('use_cron_expression', {
+      is: use_cron_expression => isScheduledBackup && use_cron_expression,
       then: Yup.string().required('Required')
     }),
     storage_config: Yup.object().required('Required'),
@@ -390,6 +405,11 @@ function BackupConfigurationForm({
                 Use cron expression (UTC)
               </Col>
             </Row>
+            {errors['policy_interval'] && (
+              <Col lg={12} className="no-padding help-block standard-error">
+                {errors['policy_interval']}
+              </Col>
+            )}
           </Col>
           {errors['retention_interval'] && (
             <Col lg={12} className="no-padding help-block standard-error">
