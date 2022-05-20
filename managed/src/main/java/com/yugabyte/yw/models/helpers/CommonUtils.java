@@ -134,6 +134,15 @@ public class CommonUtils {
     return processDataNew(config, CommonUtils::isSensitiveField, CommonUtils::getMaskedValue);
   }
 
+  public static Map<String, String> maskAllFields(Map<String, String> config) {
+    return processDataNew(
+        config,
+        (String s) -> {
+          return true;
+        },
+        CommonUtils::getMaskedValue);
+  }
+
   public static String getMaskedValue(String key, String value) {
     return isStrictlySensitiveField(key) || (value == null) || value.length() < 5
         ? MASKED_FIELD_VALUE
