@@ -57,7 +57,7 @@ When you run the command, it returns a unique ID for the snapshot:
 Started snapshot creation: 0d4b4935-2c95-4523-95ab-9ead1e95e794
 ```
 
-You can then use this ID to check the status of the snapshot, [delete it](#deleting-a-snapshot), or use it to [restore the database](#restoring-a-snapshot).
+You can then use this ID to check the status of the snapshot, [delete it](#delete-a-snapshot), or use it to [restore the database](#restore-a-snapshot).
 
 The `create_database_snapshot` command exits immediately, but the snapshot may take some time to complete. Before using the snapshot, verify its status with the [`list_snapshots`](../../../admin/yb-admin/#list-snapshots) command:
 
@@ -108,7 +108,7 @@ To move a snapshot to external storage, gather all the relevant files from all t
     Version: 1
     ```
 
-1. [Create an in-cluster snapshot](#creating-a-snapshot).
+1. [Create an in-cluster snapshot](#create-a-snapshot).
 
 1. Back up the YSQL metadata using the [`ysql_dump`](../../../admin/ysql-dump) command:
 
@@ -158,7 +158,7 @@ the folders of ONLY the leader tablets on that node. Because each tablet-replica
 
     {{< /note >}}
 
-1. If you don't want to keep the in-cluster snapshot, it's now safe to [delete it](#deleting-a-snapshot).
+1. If you don't want to keep the in-cluster snapshot, it's now safe to [delete it](#delete-a-snapshot).
 
 ## Restore a snapshot from external storage
 
@@ -222,7 +222,7 @@ For each tablet, you need to copy the snapshots folder on all tablet peers and i
 
     {{< /note >}}
 
-1. [Restore the snapshot](#restoring-a-snapshot).
+1. [Restore the snapshot](#restore-a-snapshot).
 
 
 {{< note title="Automated backups for YugabyteDB Anywhere" >}}
