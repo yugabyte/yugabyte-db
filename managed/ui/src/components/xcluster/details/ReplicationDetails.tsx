@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router';
 import { toast } from 'react-toastify';
-import { useMount } from 'react-use';
+import { useInterval, useMount } from 'react-use';
 import { IReplicationStatus } from '..';
 import { closeDialog, openDialog } from '../../../actions/modal';
 import { fetchUniverseList } from '../../../actions/universe';
@@ -55,6 +55,11 @@ export function ReplicationDetails({ params }: Props) {
     const resp = await dispatch(fetchUniverseList());
     setUniversesList((await resp.payload).data);
   });
+
+  //refresh metrics for every 20 seconds
+  useInterval(() => {
+    queryClient.invalidateQueries('xcluster-metric');
+  }, 20_000);
 
   const switchReplicationStatus = useMutation(
     (replication: IReplication) => {
