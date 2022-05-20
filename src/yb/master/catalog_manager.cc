@@ -11061,14 +11061,19 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
   if (!lock.locked()) {
     return;
   }
-  Status s = sys_catalog_->Upsert(leader_ready_term(), table);
-  if (!s.ok()) {
-    LOG_WITH_PREFIX(WARNING)
-        << "Error marking table as "
-        << (table->LockForRead()->started_deleting() ? "DELETED" : "HIDDEN") << ": " << s;
-    return;
-  }
-  lock.Commit();
+
+  auto lock_ptr = std::make_shared<TableInfo::WriteLock>(std::move(lock));
+  WARN_NOT_OK(async_task_pool_->SubmitFunc([this, lock_ptr, table]() {
+    lock_ptr->ThreadChanged();
+    Status s = sys_catalog_->Upsert(leader_ready_term(), table);
+    if (!s.ok()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Error marking table as "
+          << (lock_ptr->data().started_deleting() ? "DELETED" : "HIDDEN") << ": " << s;
+      return;
+    }
+    lock_ptr->Commit();
+  }), "Failed to submit update table task");
 }
 
 const YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
