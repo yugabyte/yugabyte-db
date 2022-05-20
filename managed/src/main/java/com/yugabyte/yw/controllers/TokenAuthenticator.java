@@ -3,10 +3,12 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.models.Users.Role;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.models.Customer;
@@ -177,6 +179,14 @@ public class TokenAuthenticator extends Action.Simple {
       return isSuperAdmin;
     }
     return false;
+  }
+
+  // TODO: Consider changing to a method annotation
+  public static void superAdminOrThrow(Http.Context ctx) {
+    if (!superAdminAuthentication(ctx)) {
+      throw new PlatformServiceException(
+          UNAUTHORIZED, "Only Super Admins can perform this operation.");
+    }
   }
 
   private static String fetchToken(Http.Context ctx, boolean isApiToken) {
