@@ -199,7 +199,7 @@ class TabletPeerTest : public YBTabletTest {
                                            multi_raft_manager_.get()));
   }
 
-  CHECKED_STATUS StartPeer(const ConsensusBootstrapInfo& info) {
+  Status StartPeer(const ConsensusBootstrapInfo& info) {
     RETURN_NOT_OK(tablet_peer_->Start(info));
 
     return LoggedWaitFor([&]() -> Result<bool> {
@@ -220,11 +220,13 @@ class TabletPeerTest : public YBTabletTest {
   }
 
   void TearDown() override {
+    multi_raft_manager_->StartShutdown();
     messenger_->Shutdown();
     WARN_NOT_OK(
         tablet_peer_->Shutdown(
             ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse),
         "Tablet peer shutdown failed");
+    multi_raft_manager_->CompleteShutdown();
     YBTabletTest::TearDown();
   }
 
@@ -272,7 +274,7 @@ class TabletPeerTest : public YBTabletTest {
   }
 
   // Execute insert requests and roll log after each one.
-  CHECKED_STATUS ExecuteInsertsAndRollLogs(int num_inserts) {
+  Status ExecuteInsertsAndRollLogs(int num_inserts) {
     for (int i = 0; i < num_inserts; i++) {
       WriteRequestPB req;
       GenerateSequentialInsertRequest(&req);

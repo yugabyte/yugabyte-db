@@ -21,6 +21,8 @@
 namespace yb {
 namespace docdb {
 
+// Value could contain extra attributes, such as TTL or user timestamp.
+// They are represented in this struct.
 struct ValueControlFields {
   static const MonoDelta kMaxTtl;
   // kResetTtl is useful for CQL when zero TTL indicates no TTL.
@@ -104,8 +106,8 @@ class Value {
   }
 
   // Decode the entire value
-  CHECKED_STATUS Decode(const Slice& rocksdb_value);
-  CHECKED_STATUS Decode(const Slice& rocksdb_value, const ValueControlFields& control_fields);
+  Status Decode(const Slice& rocksdb_value);
+  Status Decode(const Slice& rocksdb_value, const ValueControlFields& control_fields);
 
   std::string ToString() const;
 

@@ -6,6 +6,7 @@ CREATE TABLE test_yb (col int);
 INSERT INTO test_yb VALUES (null);
 CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb;
 CREATE UNIQUE INDEX ON mtest_yb(col);
+REFRESH MATERIALIZED VIEW NONCONCURRENTLY mtest_yb;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- should fail
 CREATE TABLE pg_temp_foo (col int);
 INSERT INTO pg_temp_foo values (1);

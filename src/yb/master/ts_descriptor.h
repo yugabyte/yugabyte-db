@@ -108,7 +108,7 @@ class TSDescriptor {
   MonoDelta TimeSinceHeartbeat() const;
 
   // Register this tablet server.
-  CHECKED_STATUS Register(const NodeInstancePB& instance,
+  Status Register(const NodeInstancePB& instance,
                           const TSRegistrationPB& registration,
                           CloudInfoPB local_cloud_info,
                           rpc::ProxyCache* proxy_cache);
@@ -148,7 +148,7 @@ class TSDescriptor {
 
   // Return an RPC proxy to a service.
   template <class TProxy>
-  CHECKED_STATUS GetProxy(std::shared_ptr<TProxy>* proxy) {
+  Status GetProxy(std::shared_ptr<TProxy>* proxy) {
     return GetOrCreateProxy(proxy, &proxies_.get<TProxy>());
   }
 
@@ -297,7 +297,7 @@ class TSDescriptor {
   virtual bool IsLiveAndHasReported() const;
 
  protected:
-  virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
+  virtual Status RegisterUnlocked(const NodeInstancePB& instance,
                                           const TSRegistrationPB& registration,
                                           CloudInfoPB local_cloud_info,
                                           rpc::ProxyCache* proxy_cache);
@@ -305,7 +305,7 @@ class TSDescriptor {
   mutable rw_spinlock lock_;
  private:
   template <class TProxy>
-  CHECKED_STATUS GetOrCreateProxy(std::shared_ptr<TProxy>* result,
+  Status GetOrCreateProxy(std::shared_ptr<TProxy>* result,
                                   std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);

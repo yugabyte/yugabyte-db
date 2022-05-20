@@ -54,7 +54,7 @@ class ParseTree {
   ~ParseTree();
 
   // Run semantics analysis.
-  CHECKED_STATUS Analyze(SemContext *sem_context);
+  Status Analyze(SemContext *sem_context);
 
   // Access function for stmt_.
   const std::string& stmt() const {

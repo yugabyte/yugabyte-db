@@ -499,4 +499,51 @@ TEST_F_EX(CqlTest, CompactRanges, CqlRF1Test) {
   ASSERT_OK(cluster_->CompactTablets());
 }
 
+TEST_F(CqlTest, ManyColumns) {
+  constexpr int kNumRows = 10;
+#ifndef NDEBUG
+  constexpr int kColumns = RegularBuildVsSanitizers(100, 10);
+#else
+  constexpr int kColumns = 1000;
+#endif
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  std::string expr = "CREATE TABLE t (id INT PRIMARY KEY";
+  for (int i = 1; i <= kColumns; ++i) {
+    expr += Format(", c$0 INT", i);
+  }
+  expr += ") WITH tablets = 1";
+  ASSERT_OK(session.ExecuteQuery(expr));
+  expr = "UPDATE t SET";
+  for (int i = 2;; ++i) { // Don't set first column.
+    expr += Format(" c$0 = ?", i);
+    if (i == kColumns) {
+      break;
+    }
+    expr += ",";
+  }
+  expr += " WHERE id = ?";
+  auto insert_prepared = ASSERT_RESULT(session.Prepare(expr));
+
+  for (int i = 1; i <= kNumRows; ++i) {
+    auto stmt = insert_prepared.Bind();
+    int idx = 0;
+    for (int c = 2; c <= kColumns; ++c) {
+      stmt.Bind(idx++, c);
+    }
+    stmt.Bind(idx++, i);
+    ASSERT_OK(session.Execute(stmt));
+  }
+  auto start = CoarseMonoClock::Now();
+  for (int i = 0; i <= 100; ++i) {
+    auto value = ASSERT_RESULT(session.FetchValue<int64_t>("SELECT COUNT(c1) FROM t"));
+    if (i == 0) {
+      ASSERT_EQ(value, 0);
+      start = CoarseMonoClock::Now();
+    }
+  }
+  MonoDelta passed = CoarseMonoClock::Now() - start;
+  LOG(INFO) << "Passed: " << passed;
+}
+
 }  // namespace yb

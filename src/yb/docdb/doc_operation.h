@@ -65,10 +65,10 @@ class DocOperation {
   // Returned doc paths are controlled by mode argument:
   //   kLock - paths should be locked for this operation.
   //   kIntents - paths that should be used when writing intents, i.e. for conflict resolution.
-  virtual CHECKED_STATUS GetDocPaths(
+  virtual Status GetDocPaths(
       GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const = 0;
 
-  virtual CHECKED_STATUS Apply(const DocOperationApplyData& data) = 0;
+  virtual Status Apply(const DocOperationApplyData& data) = 0;
   virtual Type OpType() = 0;
   virtual void ClearResponse() = 0;
 

@@ -356,16 +356,21 @@ class TransactionParticipant::Impl
   void SetRetainOpId(const OpId& op_id) {
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
-    if (cdc_sdk_min_checkpint_op_id_ != op_id) {
-      cdc_sdk_min_checkpint_op_id_expiration_ =
+    if (cdc_sdk_min_checkpoint_op_id_ != op_id) {
+      cdc_sdk_min_checkpoint_op_id_expiration_ =
           CoarseMonoClock::now() +
           MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
     }
-    cdc_sdk_min_checkpint_op_id_ = op_id;
+    cdc_sdk_min_checkpoint_op_id_ = op_id;
 
-    // If new op_id same as  cdc_sdk_min_checkpint_op_id_ it means already intent before it are
+    // If new op_id same as  cdc_sdk_min_checkpoint_op_id_ it means already intent before it are
     // already cleaned up, so no need call clean transactions, else call clean the transactions.
     CleanTransactionsUnlocked(&min_running_notifier);
+  }
+
+  OpId GetRetainOpId() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return cdc_sdk_min_checkpoint_op_id_;
   }
 
   // Cleans transactions that are requested and now is safe to clean.
@@ -431,7 +436,7 @@ class TransactionParticipant::Impl
         *client_result, std::move(callback), &lock_and_iterator.lock);
   }
 
-  CHECKED_STATUS CheckAborted(const TransactionId& id) {
+  Status CheckAborted(const TransactionId& id) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
     auto lock_and_iterator = LockAndFind(id, "check aborted"s, TransactionLoadFlags{});
@@ -477,7 +482,7 @@ class TransactionParticipant::Impl
     operation->CompleteWithStatus(error_status);
   }
 
-  CHECKED_STATUS ProcessReplicated(const ReplicatedData& data) {
+  Status ProcessReplicated(const ReplicatedData& data) {
     if (FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms > 0) {
       SleepFor(1ms * FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
     }
@@ -507,7 +512,7 @@ class TransactionParticipant::Impl
     participant_context_.StrandEnqueue(cleanup_aborts_task.get());
   }
 
-  CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
+  Status ProcessApply(const TransactionApplyData& data) {
     VLOG_WITH_PREFIX(2) << "Apply: " << data.ToString();
 
     loader_.WaitLoaded(data.transaction_id);
@@ -624,7 +629,7 @@ class TransactionParticipant::Impl
     }
   }
 
-  CHECKED_STATUS ProcessCleanup(const TransactionApplyData& data, CleanupType cleanup_type) {
+  Status ProcessCleanup(const TransactionApplyData& data, CleanupType cleanup_type) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(data) << ", " << AsString(cleanup_type);
 
     loader_.WaitLoaded(data.transaction_id);
@@ -757,7 +762,7 @@ class TransactionParticipant::Impl
     CheckMinRunningHybridTimeSatisfiedUnlocked(&min_running_notifier);
   }
 
-  CHECKED_STATUS ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline) {
+  Status ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline) {
     RETURN_NOT_OK(WaitUntil(participant_context_.clock_ptr().get(), resolve_at, deadline));
 
     if (FLAGS_max_transactions_in_status_request == 0) {
@@ -889,7 +894,7 @@ class TransactionParticipant::Impl
     return result;
   }
 
-  CHECKED_STATUS StopActiveTxnsPriorTo(
+  Status StopActiveTxnsPriorTo(
       HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
     vector<TransactionId> ids_to_abort;
     {
@@ -1394,7 +1399,7 @@ class TransactionParticipant::Impl
     operation->CompleteWithStatus(Status::OK());
   }
 
-  CHECKED_STATUS ReplicatedApplying(const TransactionId& id, const ReplicatedData& data) {
+  Status ReplicatedApplying(const TransactionId& id, const ReplicatedData& data) {
     // data.state.tablets contains only status tablet.
     if (data.state.tablets_size() != 1) {
       return STATUS_FORMAT(InvalidArgument,
@@ -1421,7 +1426,7 @@ class TransactionParticipant::Impl
     return Status::OK();
   }
 
-  CHECKED_STATUS ReplicatedAborted(const TransactionId& id, const ReplicatedData& data) {
+  Status ReplicatedAborted(const TransactionId& id, const ReplicatedData& data) {
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = transactions_.find(id);
@@ -1499,9 +1504,9 @@ class TransactionParticipant::Impl
   }
 
   OpId GetLatestCheckPoint() REQUIRES(mutex_) {
-    return CoarseMonoClock::Now() < cdc_sdk_min_checkpint_op_id_expiration_ &&
-                   cdc_sdk_min_checkpint_op_id_ != OpId::Invalid()
-               ? cdc_sdk_min_checkpint_op_id_
+    return CoarseMonoClock::Now() < cdc_sdk_min_checkpoint_op_id_expiration_ &&
+                   cdc_sdk_min_checkpoint_op_id_ != OpId::Invalid()
+               ? cdc_sdk_min_checkpoint_op_id_
                : OpId::Max();
   }
 
@@ -1608,8 +1613,8 @@ class TransactionParticipant::Impl
 
   rpc::Poller poller_;
 
-  OpId cdc_sdk_min_checkpint_op_id_ = OpId::Invalid();
-  CoarseTimePoint cdc_sdk_min_checkpint_op_id_expiration_ = CoarseTimePoint::min();
+  OpId cdc_sdk_min_checkpoint_op_id_ = OpId::Invalid();
+  CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration_ = CoarseTimePoint::min();
 };
 
 TransactionParticipant::TransactionParticipant(
@@ -1786,6 +1791,10 @@ HybridTime TransactionParticipantContext::Now() {
 
 void TransactionParticipant::SetRetainOpId(const yb::OpId& op_id) const {
   impl_->SetRetainOpId(op_id);
+}
+
+OpId TransactionParticipant::GetRetainOpId() const {
+  return impl_->GetRetainOpId();
 }
 
 } // namespace tablet

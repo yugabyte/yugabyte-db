@@ -119,7 +119,7 @@ void WaitLoadBalancerIdle(client::YBClient* client) {
 typedef std::unordered_map<std::string,
                            std::pair<std::unordered_map<std::string, int>, int>> DriveStats;
 
-CHECKED_STATUS GetTabletsDriveStats(DriveStats* stats,
+Status GetTabletsDriveStats(DriveStats* stats,
                                     yb::MiniCluster* mini_cluster,
                                     const yb::client::YBTableName& table_name) {
   scoped_refptr<master::TableInfo> tbl_info =

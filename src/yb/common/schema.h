@@ -87,7 +87,7 @@ struct DeletedColumn {
 
   DeletedColumn(ColumnId id_, HybridTime ht_) : id(id_), ht(ht_) {}
 
-  static CHECKED_STATUS FromPB(const DeletedColumnPB& col, DeletedColumn* ret);
+  static Status FromPB(const DeletedColumnPB& col, DeletedColumn* ret);
   void CopyToPB(DeletedColumnPB* pb) const;
 };
 
@@ -544,7 +544,7 @@ class Schema {
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
-  CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, size_t key_columns,
+  Status Reset(const vector<ColumnSchema>& cols, size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
                        const ColocationId colocation_id = kColocationIdNotSet,
@@ -553,7 +553,7 @@ class Schema {
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
-  CHECKED_STATUS Reset(const vector<ColumnSchema>& cols,
+  Status Reset(const vector<ColumnSchema>& cols,
                        const vector<ColumnId>& ids,
                        size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
@@ -860,7 +860,7 @@ class Schema {
   // Create a new schema containing only the selected columns.
   // The resulting schema will have no key columns defined.
   // If this schema has IDs, the resulting schema will as well.
-  CHECKED_STATUS CreateProjectionByNames(const std::vector<GStringPiece>& col_names,
+  Status CreateProjectionByNames(const std::vector<GStringPiece>& col_names,
                                          Schema* out, size_t num_key_columns = 0) const;
 
   // Create a new schema containing only the selected column IDs.
@@ -869,7 +869,7 @@ class Schema {
   // result will have fewer columns than requested.
   //
   // The resulting schema will have no key columns defined.
-  CHECKED_STATUS CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
+  Status CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
                                                     Schema* out) const;
 
   // Stringify this Schema. This is not particularly efficient,
@@ -927,27 +927,27 @@ class Schema {
   // Return a non-OK status if the project is not compatible with the current schema
   // - User columns non present in the tablet are considered errors
   // - Matching columns with different types, at the moment, are considered errors
-  CHECKED_STATUS VerifyProjectionCompatibility(const Schema& projection) const;
+  Status VerifyProjectionCompatibility(const Schema& projection) const;
 
   // Returns the projection schema mapped on the current one
   // If the project is invalid, return a non-OK status.
-  CHECKED_STATUS GetMappedReadProjection(const Schema& projection,
+  Status GetMappedReadProjection(const Schema& projection,
                                  Schema *mapped_projection) const;
 
   // Loops through this schema (the projection) and calls the projector methods once for
   // each column.
   //
-  // - CHECKED_STATUS ProjectBaseColumn(size_t proj_col_idx, size_t base_col_idx)
+  // - Status ProjectBaseColumn(size_t proj_col_idx, size_t base_col_idx)
   //
   //     Called if the column in this schema matches one of the columns in 'base_schema'.
   //     The column type must match exactly.
   //
-  // - CHECKED_STATUS ProjectDefaultColumn(size_t proj_idx)
+  // - Status ProjectDefaultColumn(size_t proj_idx)
   //
   //     Called if the column in this schema does not match any column in 'base_schema',
   //     but has a default or is nullable.
   //
-  // - CHECKED_STATUS ProjectExtraColumn(size_t proj_idx, const ColumnSchema& col)
+  // - Status ProjectExtraColumn(size_t proj_idx, const ColumnSchema& col)
   //
   //     Called if the column in this schema does not match any column in 'base_schema',
   //     and does not have a default, and is not nullable.
@@ -957,7 +957,7 @@ class Schema {
   //
   // TODO(MAYBE): Pass the ColumnSchema and not only the column index?
   template <class Projector>
-  CHECKED_STATUS GetProjectionMapping(const Schema& base_schema, Projector *projector) const {
+  Status GetProjectionMapping(const Schema& base_schema, Projector *projector) const {
     const bool use_column_ids = base_schema.has_column_ids() && has_column_ids();
 
     int proj_idx = 0;
@@ -1159,33 +1159,33 @@ class SchemaBuilder {
 
   // assumes type is allowed in primary key -- this should be checked before getting here
   // using DataType (not QLType) since primary key columns only support elementary types
-  CHECKED_STATUS AddKeyColumn(const std::string& name, const std::shared_ptr<QLType>& type);
-  CHECKED_STATUS AddKeyColumn(const std::string& name, DataType type);
+  Status AddKeyColumn(const std::string& name, const std::shared_ptr<QLType>& type);
+  Status AddKeyColumn(const std::string& name, DataType type);
 
   // assumes type is allowed in hash key -- this should be checked before getting here
   // using DataType (not QLType) since hash key columns only support elementary types
-  CHECKED_STATUS AddHashKeyColumn(const std::string& name, const std::shared_ptr<QLType>& type);
-  CHECKED_STATUS AddHashKeyColumn(const std::string& name, DataType type);
+  Status AddHashKeyColumn(const std::string& name, const std::shared_ptr<QLType>& type);
+  Status AddHashKeyColumn(const std::string& name, DataType type);
 
-  CHECKED_STATUS AddColumn(const ColumnSchema& column, bool is_key);
+  Status AddColumn(const ColumnSchema& column, bool is_key);
 
-  CHECKED_STATUS AddColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
+  Status AddColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
     return AddColumn(name, type, false, false, false, false, 0,
                      SortingType::kNotSpecified);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
-  CHECKED_STATUS AddColumn(const std::string& name, DataType type);
+  Status AddColumn(const std::string& name, DataType type);
 
-  CHECKED_STATUS AddNullableColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
+  Status AddNullableColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
     return AddColumn(name, type, true, false, false, false, 0,
                      SortingType::kNotSpecified);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
-  CHECKED_STATUS AddNullableColumn(const std::string& name, DataType type);
+  Status AddNullableColumn(const std::string& name, DataType type);
 
-  CHECKED_STATUS AddColumn(const std::string& name,
+  Status AddColumn(const std::string& name,
                            const std::shared_ptr<QLType>& type,
                            bool is_nullable,
                            bool is_hash_key,
@@ -1195,7 +1195,7 @@ class SchemaBuilder {
                            yb::SortingType sorting_type);
 
   // convenience function for adding columns with simple (non-parametric) data types
-  CHECKED_STATUS AddColumn(const std::string& name,
+  Status AddColumn(const std::string& name,
                            DataType type,
                            bool is_nullable,
                            bool is_hash_key,
@@ -1204,9 +1204,9 @@ class SchemaBuilder {
                            int32_t order,
                            yb::SortingType sorting_type);
 
-  CHECKED_STATUS RemoveColumn(const std::string& name);
-  CHECKED_STATUS RenameColumn(const std::string& old_name, const std::string& new_name);
-  CHECKED_STATUS AlterProperties(const TablePropertiesPB& pb);
+  Status RemoveColumn(const std::string& name);
+  Status RenameColumn(const std::string& old_name, const std::string& new_name);
+  Status AlterProperties(const TablePropertiesPB& pb);
 
  private:
   ColumnId next_id_;

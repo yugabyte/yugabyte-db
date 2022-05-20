@@ -34,6 +34,7 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
@@ -325,6 +326,11 @@ void IntentAwareIterator::SeekForward(KeyBytes* key_bytes) {
 void IntentAwareIterator::UpdatePlannedIntentSeekForward(const Slice& key,
                                                          const Slice& suffix,
                                                          bool use_suffix_for_prefix) {
+  VLOG_WITH_FUNC(4)
+      << "key: " << SubDocKey::DebugSliceToString(key) << ", suffix: " << suffix.ToDebugHexString()
+      << ", use_suffix_for_prefix: " << use_suffix_for_prefix << ", seek_intent_iter_needed: "
+      << seek_intent_iter_needed_ << ", seek_key_buffer: "
+      << SubDocKey::DebugSliceToString(seek_key_buffer_.AsSlice());
   if (seek_intent_iter_needed_ != SeekIntentIterNeeded::kNoNeed &&
       seek_key_buffer_.AsSlice().GreaterOrEqual(key, suffix)) {
     return;
@@ -350,13 +356,14 @@ void IntentAwareIterator::SeekPastSubKey(const Slice& key) {
     return;
   }
 
-  docdb::SeekPastSubKey(key, &iter_);
-  skip_future_records_needed_ = true;
-  if (intent_iter_.Initialized() && status_.ok()) {
+  if (intent_iter_.Initialized()) {
     // Skip all intents for subdoc_key.
     char kSuffix = KeyEntryTypeAsChar::kGreaterThanIntentType;
     UpdatePlannedIntentSeekForward(key, Slice(&kSuffix, 1));
   }
+
+  docdb::SeekPastSubKey(key, &iter_);
+  skip_future_records_needed_ = true;
 }
 
 void IntentAwareIterator::SeekOutOfSubDoc(KeyBytes* key_bytes) {
@@ -860,10 +867,9 @@ IntentAwareIterator::GetMatchingRegularRecordDocHybridTime(
 
 Result<HybridTime> IntentAwareIterator::FindOldestRecord(
     const Slice& key_without_ht, HybridTime min_hybrid_time) {
-  VLOG(4) << "FindOldestRecord("
-          << SubDocKey::DebugSliceToString(key_without_ht) << " = "
-          << key_without_ht.ToDebugHexString() << " , " << min_hybrid_time
-          << ")";
+  VLOG_WITH_FUNC(4)
+      << SubDocKey::DebugSliceToString(key_without_ht) << " = "
+      << key_without_ht.ToDebugHexString() << ", " << min_hybrid_time;
 #define DOCDB_DEBUG
   DOCDB_DEBUG_SCOPE_LOG(SubDocKey::DebugSliceToString(key_without_ht) + ", " +
                             yb::ToString(min_hybrid_time),
@@ -873,22 +879,22 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
 
   RETURN_NOT_OK(status_);
   if (!valid()) {
-    VLOG(4) << "Returning kInvalid";
+    VLOG_WITH_FUNC(4) << "Returning kInvalid";
     return HybridTime::kInvalid;
   }
 
   HybridTime result;
   if (intent_iter_.Initialized()) {
     auto intent_dht = VERIFY_RESULT(FindMatchingIntentRecordDocHybridTime(key_without_ht));
-    VLOG(4) << "Looking for Intent Record found ?  =  "
+    VLOG_WITH_FUNC(4) << "Looking for Intent Record found ?  =  "
             << (intent_dht != DocHybridTime::kInvalid);
     if (intent_dht != DocHybridTime::kInvalid &&
         intent_dht.hybrid_time() > min_hybrid_time) {
       result = intent_dht.hybrid_time();
-      VLOG(4) << " oldest_record_ht is now " << result;
+      VLOG_WITH_FUNC(4) << " oldest_record_ht is now " << result;
     }
   } else {
-    VLOG(4) << "intent_iter_ not Initialized";
+    VLOG_WITH_FUNC(4) << "intent_iter_ not Initialized";
   }
 
   seek_key_buffer_.Reserve(key_without_ht.size() +
@@ -928,8 +934,8 @@ Status IntentAwareIterator::FindLatestRecord(
   if (!latest_record_ht) {
     return STATUS(Corruption, "latest_record_ht should not be a null pointer");
   }
-  VLOG(4) << __func__ << "(" << SubDocKey::DebugSliceToString(key_without_ht) << ", "
-          << *latest_record_ht << ")";
+  VLOG_WITH_FUNC(4)
+      << SubDocKey::DebugSliceToString(key_without_ht) << ", " << *latest_record_ht;
   DOCDB_DEBUG_SCOPE_LOG(
       SubDocKey::DebugSliceToString(key_without_ht) + ", " + yb::ToString(latest_record_ht) + ", "
       + yb::ToString(result_value),
@@ -1040,7 +1046,8 @@ void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
     auto value_type = DecodeKeyEntryType(value);
     VLOG(4) << "Checking for skip, type " << value_type << ", encoded_doc_ht: "
             << DocHybridTime::DebugSliceToString(encoded_doc_ht)
-            << " value: " << value.ToDebugHexString();
+            << " value: " << value.ToDebugHexString() << ", current key: "
+            << SubDocKey::DebugSliceToString(iter_.key());
     if (value_type == KeyEntryType::kHybridTime) {
       // Value came from a transaction, we could try to filter it by original intent time.
       Slice encoded_intent_doc_ht = value;
@@ -1152,7 +1159,8 @@ Status IntentAwareIterator::SetIntentUpperbound() {
     subdoc_key.remove_suffix(1 + doc_ht_size);
     intent_upperbound_keybytes_.AppendRawBytes(subdoc_key);
     VLOG(4) << "SetIntentUpperbound = "
-            << SubDocKey::DebugSliceToString(intent_upperbound_keybytes_.AsSlice());
+            << SubDocKey::DebugSliceToString(intent_upperbound_keybytes_.AsSlice()) << "/"
+            << intent_upperbound_keybytes_.AsSlice().ToDebugHexString();
     intent_upperbound_keybytes_.AppendKeyEntryType(KeyEntryType::kMaxByte);
     intent_upperbound_ = intent_upperbound_keybytes_.AsSlice();
     intent_iter_.RevalidateAfterUpperBoundChange();
@@ -1170,6 +1178,17 @@ void IntentAwareIterator::ResetIntentUpperbound() {
   intent_upperbound_ = intent_upperbound_keybytes_.AsSlice();
   intent_iter_.RevalidateAfterUpperBoundChange();
   VLOG(4) << "ResetIntentUpperbound = " << intent_upperbound_.ToDebugString();
+}
+
+std::string IntentAwareIterator::DebugPosToString() {
+  if (!valid()) {
+    return "<INVALID>";
+  }
+  auto key = FetchKey();
+  if (!key.ok()) {
+    return key.status().ToString();
+  }
+  return SubDocKey::DebugSliceToString(key->key);
 }
 
 }  // namespace docdb

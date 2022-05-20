@@ -217,6 +217,7 @@ class UniverseDetail extends Component {
       showTLSConfigurationModal,
       showRollingRestartModal,
       showUpgradeSystemdModal,
+      showThirdpartyUpgradeModal,
       showRunSampleAppsModal,
       showSupportBundleModal,
       showGFlagsModal,
@@ -527,6 +528,9 @@ class UniverseDetail extends Component {
         : updateBackupState(currentUniverse.data.universeUUID, !takeBackups);
     };
 
+    const enableThirdpartyUpgrade =
+        featureFlags.test['enableThirdpartyUpgrade'] || featureFlags.released['enableThirdpartyUpgrade'];
+
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
         {showAlert && (
@@ -607,7 +611,21 @@ class UniverseDetail extends Component {
                           </YBLabelWithIcon>
                         </YBMenuItem>
                       )}
-
+                      {!universePaused &&
+                       enableThirdpartyUpgrade && (
+                        <YBMenuItem
+                          disabled={updateInProgress}
+                          onClick={showThirdpartyUpgradeModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                              'universes.details.overview.thirdpartyUpgrade'
+                            )}
+                          >
+                            <YBLabelWithIcon icon="fa fa-wrench fa-fw">
+                              Upgrade 3rd-party Software
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                      )}
                       {!isReadOnlyUniverse &&
                         !universePaused &&
                         isNotHidden(
@@ -822,6 +840,7 @@ class UniverseDetail extends Component {
               visibleModal === 'vmImageUpgradeModal' ||
               visibleModal === 'tlsConfigurationModal' ||
               visibleModal === 'rollingRestart' ||
+              visibleModal === 'thirdpartyUpgradeModal' ||
               visibleModal === 'systemdUpgrade')
           }
           onHide={closeModal}

@@ -59,7 +59,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
       : PgDocOp(pg_session, &dummy_table), data_(move(data)) {
   }
 
-  CHECKED_STATUS GetResult(std::list<PgDocResult> *rowsets) override {
+  Status GetResult(std::list<PgDocResult> *rowsets) override {
     if (data_) {
       for (const auto& d : *data_) {
         rowsets->emplace_back(d);
@@ -69,7 +69,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
     return Status::OK();
   }
 
-  CHECKED_STATUS ExecuteInit(const PgExecParameters* exec_params) override {
+  Status ExecuteInit(const PgExecParameters* exec_params) override {
     return Status::OK();
   }
 
@@ -516,9 +516,9 @@ Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl(
 }
 
 Result<bool> PgDocReadOp::DoCreateRequests() {
-  // All information from the SQL request has been collected and setup. This code populate
+  // All information from the SQL request has been collected and setup. This code populates
   // Protobuf requests before sending them to DocDB. For performance reasons, requests are
-  // constructed differently for different statement.
+  // constructed differently for different statements.
   if (read_op_->read_request().has_sampling_state()) {
     VLOG(1) << __PRETTY_FUNCTION__ << ": Preparing sampling requests ";
     return PopulateSamplingOps();

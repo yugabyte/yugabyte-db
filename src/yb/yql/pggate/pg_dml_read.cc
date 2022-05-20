@@ -58,7 +58,7 @@ auto Find(const boost::unordered_map<Key, Value>& map, const CompatibleKey& key)
 
 class DocKeyBuilder {
  public:
-  CHECKED_STATUS Prepare(
+  Status Prepare(
       const std::vector<docdb::KeyEntryValue>& hashed_components,
       const LWQLValuePB*const* hashed_values,
       const PartitionSchema& partition_schema) {

@@ -26,7 +26,7 @@ namespace yb {
 constexpr uint32_t kNumRandomToVerify = 10000;
 class UnsignedIntSetTest : public YBTest {
  protected:
-  CHECKED_STATUS SetRange(uint32_t lo, uint32_t hi) {
+  Status SetRange(uint32_t lo, uint32_t hi) {
     RETURN_NOT_OK(set_.SetRange(lo, hi));
     for (auto i = lo; i <= hi; ++i) {
       state_.insert(i);

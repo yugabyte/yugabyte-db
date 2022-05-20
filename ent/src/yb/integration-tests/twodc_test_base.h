@@ -87,41 +87,41 @@ class TwoDCTestBase : public YBTest {
 
   void TearDown() override;
 
-  CHECKED_STATUS SetupUniverseReplication(
+  Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
       bool leader_only = true);
 
-  CHECKED_STATUS VerifyUniverseReplication(
+  Status VerifyUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, master::GetUniverseReplicationResponsePB* resp);
 
-  CHECKED_STATUS ToggleUniverseReplication(
+  Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, bool is_enabled);
 
-  CHECKED_STATUS VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
+  Status VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
       YBClient* consumer_client, const std::string& universe_id, int timeout);
 
-  CHECKED_STATUS VerifyUniverseReplicationFailed(MiniCluster* consumer_cluster,
+  Status VerifyUniverseReplicationFailed(MiniCluster* consumer_cluster,
       YBClient* consumer_client, const std::string& producer_uuid,
       master::IsSetupUniverseReplicationDoneResponsePB* resp);
 
-  CHECKED_STATUS GetCDCStreamForTable(
+  Status GetCDCStreamForTable(
       const std::string& table_id, master::ListCDCStreamsResponsePB* resp);
 
   uint32_t GetSuccessfulWriteOps(MiniCluster* cluster);
 
-  CHECKED_STATUS DeleteUniverseReplication(const std::string& universe_id);
+  Status DeleteUniverseReplication(const std::string& universe_id);
 
-  CHECKED_STATUS DeleteUniverseReplication(
+  Status DeleteUniverseReplication(
       const std::string& universe_id, YBClient* client, MiniCluster* cluster);
 
   size_t NumProducerTabletsPolled(MiniCluster* cluster);
 
-  CHECKED_STATUS CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
+  Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 
-  CHECKED_STATUS WaitForSetupUniverseReplicationCleanUp(string producer_uuid);
+  Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();

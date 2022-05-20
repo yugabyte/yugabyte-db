@@ -176,13 +176,13 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // This initializer provides methods for avoiding disk IO when creating a
   // ReadableLogSegment for the current WritableLogSegment, i.e. for reading
   // the log entries in the same segment that is currently being written to.
-  CHECKED_STATUS Init(const LogSegmentHeaderPB& header,
+  Status Init(const LogSegmentHeaderPB& header,
               int64_t first_entry_offset);
 
   // Initialize the ReadableLogSegment.
   // This initializer provides methods for avoiding disk IO when creating a
   // ReadableLogSegment from a WritableLogSegment (i.e. for log rolling).
-  CHECKED_STATUS Init(const LogSegmentHeaderPB& header,
+  Status Init(const LogSegmentHeaderPB& header,
                       const LogSegmentFooterPB& footer,
                       int64_t first_entry_offset);
 
@@ -210,11 +210,11 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // This is an expensive operation as it reads and parses the whole segment
   // so it should be only used in the case of a crash, where the footer is
   // missing because we didn't have the time to write it out.
-  CHECKED_STATUS RebuildFooterByScanning();
+  Status RebuildFooterByScanning();
 
   // Copies log segment up to up_to_op_id into dest_file at dest_path and updates
   // log_index_to_rebuild.
-  CHECKED_STATUS CopyTo(const OpId& up_to_op_id, const std::string& dest_path,
+  Status CopyTo(const OpId& up_to_op_id, const std::string& dest_path,
       const std::shared_ptr<WritableFile>& dest_file, LogIndex* log_index_to_rebuild);
 
   bool IsInitialized() const {
@@ -292,50 +292,50 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
 
   // Helper functions called by Init().
 
-  CHECKED_STATUS ReadFileSize();
+  Status ReadFileSize();
 
   Result<bool> ReadHeader();
 
-  CHECKED_STATUS ReadHeaderMagicAndHeaderLength(uint32_t *len);
+  Status ReadHeaderMagicAndHeaderLength(uint32_t *len);
 
-  CHECKED_STATUS ParseHeaderMagicAndHeaderLength(const Slice &data, uint32_t *parsed_len);
+  Status ParseHeaderMagicAndHeaderLength(const Slice &data, uint32_t *parsed_len);
 
-  CHECKED_STATUS ReadFooter();
+  Status ReadFooter();
 
-  CHECKED_STATUS ReadFooterMagicAndFooterLength(uint32_t *len);
+  Status ReadFooterMagicAndFooterLength(uint32_t *len);
 
-  CHECKED_STATUS ParseFooterMagicAndFooterLength(const Slice &data, uint32_t *parsed_len);
+  Status ParseFooterMagicAndFooterLength(const Slice &data, uint32_t *parsed_len);
 
   // Starting at 'offset', read the rest of the log file, looking for any
   // valid log entry headers. If any are found, sets *has_valid_entries to true.
   //
   // Returns a bad Status only in the case that some IO error occurred reading the
   // file.
-  CHECKED_STATUS ScanForValidEntryHeaders(int64_t offset, bool* has_valid_entries);
+  Status ScanForValidEntryHeaders(int64_t offset, bool* has_valid_entries);
 
   // Format a nice error message to report on a corruption in a log file.
-  CHECKED_STATUS MakeCorruptionStatus(
+  Status MakeCorruptionStatus(
       size_t batch_number, int64_t batch_offset, std::vector<int64_t>* recent_offsets,
       const std::vector<std::unique_ptr<LogEntryPB>>& entries, const Status& status) const;
 
-  CHECKED_STATUS ReadEntryHeaderAndBatch(int64_t* offset,
+  Status ReadEntryHeaderAndBatch(int64_t* offset,
                                          faststring* tmp_buf,
                                          LogEntryBatchPB* batch);
 
   // Reads a log entry header from the segment.
   // Also increments the passed offset* by the length of the entry.
-  CHECKED_STATUS ReadEntryHeader(int64_t *offset, EntryHeader* header);
+  Status ReadEntryHeader(int64_t *offset, EntryHeader* header);
 
   // Decode a log entry header from the given slice, which must be kEntryHeaderSize
   // bytes long. Returns true if successful, false if corrupt.
   //
   // NOTE: this is performance-critical since it is used by ScanForValidEntryHeaders
   // and thus returns bool instead of Status.
-  CHECKED_STATUS DecodeEntryHeader(const Slice& data, EntryHeader* header);
+  Status DecodeEntryHeader(const Slice& data, EntryHeader* header);
 
   // Reads a log entry batch from the provided readable segment, which gets decoded
   // into 'entry_batch' and increments 'offset' by the batch's length.
-  CHECKED_STATUS ReadEntryBatch(int64_t *offset,
+  Status ReadEntryBatch(int64_t *offset,
                                 const EntryHeader& header,
                                 faststring* tmp_buf,
                                 LogEntryBatchPB* entry_batch);
@@ -387,11 +387,11 @@ class WritableLogSegment {
                      std::shared_ptr<WritableFile> writable_file);
 
   // Opens the segment by writing the header.
-  CHECKED_STATUS WriteHeaderAndOpen(const LogSegmentHeaderPB& new_header);
+  Status WriteHeaderAndOpen(const LogSegmentHeaderPB& new_header);
 
   // Closes the segment by writing the footer and then actually closing the
   // underlying WritableFile.
-  CHECKED_STATUS WriteFooterAndClose(const LogSegmentFooterPB& footer);
+  Status WriteFooterAndClose(const LogSegmentFooterPB& footer);
 
   bool IsClosed() {
     return IsHeaderWritten() && IsFooterWritten();
@@ -404,10 +404,10 @@ class WritableLogSegment {
   // Appends the provided batch of data, including a header
   // and checksum.
   // Makes sure that the log segment has not been closed.
-  CHECKED_STATUS WriteEntryBatch(const Slice& entry_batch_data);
+  Status WriteEntryBatch(const Slice& entry_batch_data);
 
   // Makes sure the I/O buffers in the underlying writable file are flushed.
-  CHECKED_STATUS Sync();
+  Status Sync();
 
   // Returns true if the segment header has already been written to disk.
   bool IsHeaderWritten() const {
@@ -481,11 +481,11 @@ LogEntryBatchPB CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs);
 // Checks if 'fname' is a correctly formatted name of log segment file.
 bool IsLogFileName(const std::string& fname);
 
-CHECKED_STATUS CheckPathsAreODirectWritable(const std::vector<std::string>& paths);
-CHECKED_STATUS CheckRelevantPathsAreODirectWritable();
+Status CheckPathsAreODirectWritable(const std::vector<std::string>& paths);
+Status CheckRelevantPathsAreODirectWritable();
 
 // Modify durable wal write flag depending on the value of FLAGS_require_durable_wal_write.
-CHECKED_STATUS ModifyDurableWriteFlagIfNotODirect();
+Status ModifyDurableWriteFlagIfNotODirect();
 
 void UpdateSegmentFooterIndexes(
     const consensus::ReplicateMsg& replicate, LogSegmentFooterPB* footer);

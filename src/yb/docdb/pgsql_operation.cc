@@ -83,7 +83,7 @@ namespace docdb {
 namespace {
 
 // Compatibility: accept column references from a legacy nodes as a list of column ids only
-CHECKED_STATUS CreateProjection(const Schema& schema,
+Status CreateProjection(const Schema& schema,
                                 const PgsqlColumnRefsPB& column_refs,
                                 Schema* projection) {
   // Create projection of non-primary key columns. Primary key columns are implicitly read by DocDB.
@@ -99,7 +99,7 @@ CHECKED_STATUS CreateProjection(const Schema& schema,
   return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
 }
 
-CHECKED_STATUS CreateProjection(
+Status CreateProjection(
     const Schema& schema,
     const google::protobuf::RepeatedPtrField<PgsqlColRefPB> &column_refs,
     Schema* projection) {
@@ -124,7 +124,7 @@ void AddIntent(const std::string& encoded_key, WaitPolicy wait_policy, KeyValueW
   out->set_wait_policy(wait_policy);
 }
 
-CHECKED_STATUS AddIntent(const PgsqlExpressionPB& ybctid, WaitPolicy wait_policy,
+Status AddIntent(const PgsqlExpressionPB& ybctid, WaitPolicy wait_policy,
                          KeyValueWriteBatchPB* out) {
   const auto &val = ybctid.value().binary_value();
   SCHECK(!val.empty(), InternalError, "empty ybctid");

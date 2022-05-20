@@ -122,6 +122,11 @@ export default class RollingUpgradeForm extends Component {
         payload.upgradeOption = 'Rolling';
         break;
       }
+      case 'thirdpartyUpgradeModal': {
+        payload.taskType = 'Thirdparty_Software';
+        payload.upgradeOption = 'Rolling';
+        break;
+      }
       default:
         return;
     }
@@ -312,7 +317,7 @@ export default class RollingUpgradeForm extends Component {
             formName="RollingUpgradeForm"
             onHide={this.resetAndClose}
             footerAccessory={
-              formValues.upgradeOption === 'Non-Rolling' && (
+              formValues.upgradeOption === 'Non-Restart' && (
                 <span className="non-rolling-msg">
                   <img alt="Note" src={WarningIcon} />
                   &nbsp; <b>Note!</b> &nbsp; Flags that require rolling restart won't be applied
@@ -545,6 +550,41 @@ export default class RollingUpgradeForm extends Component {
             {errorAlert}
           </YBModal>
         );
+      }
+      case 'thirdpartyUpgradeModal': {
+        return (
+               <YBModal
+                   className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
+                   visible={modalVisible}
+                   formName="RollingUpgradeForm"
+                   onHide={this.resetAndClose}
+                   submitLabel="Upgrade"
+                   showCancelButton
+                   title="Initiate Third-party Software Upgrade"
+                   onFormSubmit={submitAction}
+                   error={error}
+                   footerAccessory={
+                     <YBCheckBox
+                         label="Confirm third-party software upgrade"
+                         input={{
+                           checked: this.state.formConfirmed,
+                           onChange: this.toggleConfirmValidation
+                         }}
+                     />
+                   }
+                   asyncValidating={!this.state.formConfirmed}
+               >
+                 <div className="form-right-aligned-labels rolling-upgrade-form">
+                   <Field
+                       name="timeDelay"
+                       type="number"
+                       component={YBInputField}
+                       label="Rolling Upgrade Delay Between Servers (secs)"
+                   />
+                 </div>
+                 {errorAlert}
+               </YBModal>
+               );
       }
       default: {
         return null;

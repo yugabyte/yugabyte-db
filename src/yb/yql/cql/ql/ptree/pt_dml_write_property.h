@@ -59,7 +59,7 @@ class PTDmlWriteProperty : public PTProperty {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   DmlWritePropertyType property_type() const {
@@ -111,7 +111,7 @@ class PTDmlWritePropertyListNode : public TreeListNode<PTDmlWriteProperty> {
     return MCMakeShared<PTDmlWritePropertyListNode>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   bool ignore_null_jsonb_attributes();
 };
@@ -138,7 +138,7 @@ class PTDmlWritePropertyMap : public PTDmlWriteProperty {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   void SetPropertyName(MCSharedPtr<MCString> property_name) {

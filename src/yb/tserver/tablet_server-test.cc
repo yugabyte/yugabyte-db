@@ -112,7 +112,7 @@ class TabletServerTest : public TabletServerTestBase {
     StartTabletServer();
   }
 
-  CHECKED_STATUS CallDeleteTablet(const std::string& uuid,
+  Status CallDeleteTablet(const std::string& uuid,
                     const char* tablet_id,
                     tablet::TabletDataState state) {
     DeleteTabletRequestPB req;

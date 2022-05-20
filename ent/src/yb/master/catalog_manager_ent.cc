@@ -158,7 +158,7 @@ namespace enterprise {
 
 namespace {
 
-CHECKED_STATUS CheckStatus(const Status& status, const char* action) {
+Status CheckStatus(const Status& status, const char* action) {
   if (status.ok()) {
     return status;
   }
@@ -168,12 +168,12 @@ CHECKED_STATUS CheckStatus(const Status& status, const char* action) {
   return s;
 }
 
-CHECKED_STATUS CheckLeaderStatus(const Status& status, const char* action) {
+Status CheckLeaderStatus(const Status& status, const char* action) {
   return CheckIfNoLongerLeader(CheckStatus(status, action));
 }
 
 template<class RespClass>
-CHECKED_STATUS CheckLeaderStatusAndSetupError(
+Status CheckLeaderStatusAndSetupError(
     const Status& status, const char* action, RespClass* resp) {
   return CheckIfNoLongerLeaderAndSetupError(CheckStatus(status, action), resp);
 }
@@ -188,7 +188,7 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
  public:
   explicit SnapshotLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  CHECKED_STATUS Visit(const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) override {
+  Status Visit(const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) override {
     if (TryFullyDecodeTxnSnapshotId(snapshot_id)) {
       // Transaction aware snapshots should be already loaded.
       return Status::OK();
@@ -196,7 +196,7 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
     return VisitNonTransactionAwareSnapshot(snapshot_id, metadata);
   }
 
-  CHECKED_STATUS VisitNonTransactionAwareSnapshot(
+  Status VisitNonTransactionAwareSnapshot(
       const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) {
 
     // Setup the snapshot info.
@@ -577,12 +577,39 @@ Result<SysRowEntries> CatalogManager::CollectEntries(
   return entries;
 }
 
+Result<SysRowEntries> CatalogManager::CollectEntriesForSequencesDataTable() {
+  auto sequence_entries_result = CollectEntries(
+      CatalogManagerUtil::SequenceDataFilter(),
+      CollectFlags{CollectFlag::kSucceedIfCreateInProgress});
+  // If there are no sequences yet, then we won't be able to find the table.
+  // It is ok and we shouldn't crash. Return an empty SysRowEntries in such a case.
+  if (!sequence_entries_result.ok() && sequence_entries_result.status().IsNotFound()) {
+    LOG(INFO) << "No sequences_data table created yet, so not including it in snapshot";
+    return SysRowEntries();
+  }
+  return sequence_entries_result;
+}
+
 Result<SysRowEntries> CatalogManager::CollectEntriesForSnapshot(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) {
-  return CollectEntries(
+  SysRowEntries entries = VERIFY_RESULT(CollectEntries(
       tables,
       CollectFlags{CollectFlag::kAddIndexes, CollectFlag::kIncludeParentColocatedTable,
-                   CollectFlag::kSucceedIfCreateInProgress});
+                   CollectFlag::kSucceedIfCreateInProgress}));
+  // Include sequences_data table if the filter is on a ysql database.
+  // For sequences, we have a special sequences_data (id=0000ffff00003000800000000000ffff)
+  // table in the system_postgres database.
+  // It is a normal YB table that has data partitioned into tablets and replicated using raft.
+  // These tablets reside on the tservers. This table is created when the first
+  // sequence is created. It stores one row per sequence and also needs to be restored.
+  for (const auto& table : tables) {
+    if (table.namespace_().database_type() == YQL_DATABASE_PGSQL) {
+      auto seq_entries = VERIFY_RESULT(CollectEntriesForSequencesDataTable());
+      entries.mutable_entries()->MergeFrom(seq_entries.entries());
+      break;
+    }
+  }
+  return entries;
 }
 
 server::Clock* CatalogManager::Clock() {
@@ -771,7 +798,7 @@ Status CatalogManager::RestoreNonTransactionAwareSnapshot(const string& snapshot
       sys_catalog_->Upsert(leader_ready_term(), snapshot),
       "updating snapshot in sys-catalog"));
 
-  // CataloManager lock 'lock_' is still locked here.
+  // CatalogManager lock 'lock_' is still locked here.
   current_snapshot_id_ = snapshot_id;
 
   // Restore all entries.
@@ -1938,7 +1965,10 @@ Status CatalogManager::RestoreSysCatalog(
       tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
 
   // Restore the pg_catalog tables.
-  if (FLAGS_enable_ysql) {
+  if (FLAGS_enable_ysql && state.IsYsqlRestoration()) {
+    // Restore sequences_data table.
+    RETURN_NOT_OK(state.PatchSequencesDataObjects());
+
     // We also need to increment the catalog version by 1 so that
     // postgres and tservers can refresh their catalog cache.
     const auto* meta = tablet->metadata();
@@ -2427,6 +2457,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
 Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleRequestPB* req,
                                               CreateSnapshotScheduleResponsePB* resp,
                                               rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing CreateSnapshotSchedule " << req->ShortDebugString();
   auto id = VERIFY_RESULT(snapshot_coordinator_.CreateSchedule(
       *req, leader_ready_term(), rpc->GetClientDeadline()));
   resp->set_snapshot_schedule_id(id.data(), id.size());

@@ -266,7 +266,7 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
-CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
+Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
                                                 const vector<string>& requested_metrics,
                                                 const MetricPrometheusOptions& opts) const {
   bool select_all = MatchMetricInList(id(), requested_metrics);

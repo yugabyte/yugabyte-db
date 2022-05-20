@@ -265,17 +265,17 @@ class CQLMessage {
 
     QueryParameters() : ql::StatementParameters() { }
 
-    virtual CHECKED_STATUS GetBindVariable(const std::string& name,
+    virtual Status GetBindVariable(const std::string& name,
                                            int64_t pos,
                                            const std::shared_ptr<QLType>& type,
                                            QLValue* value) const override;
     virtual Result<bool> IsBindVariableUnset(const std::string& name,
                                              int64_t pos) const override;
 
-    CHECKED_STATUS ValidateConsistency();
+    Status ValidateConsistency();
 
    private:
-    CHECKED_STATUS GetBindVariableValue(const std::string& name,
+    Status GetBindVariableValue(const std::string& name,
                                         size_t pos,
                                         const Value** value) const;
   };
@@ -323,14 +323,14 @@ class CQLRequest : public CQLMessage {
   CQLRequest(const Header& header, const Slice& body);
 
   // Function to parse a request body that all CQLRequest subclasses need to implement
-  virtual CHECKED_STATUS ParseBody() = 0;
+  virtual Status ParseBody() = 0;
 
   // Parse a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the parsed integer type.
   // <converter> converts the number from network byte-order to machine order and <data_type>
   // is the coverter's return type. The converter's return type <data_type> is unsigned while
   // <num_type> may be signed or unsigned.
   template<typename num_type, typename data_type>
-  inline CHECKED_STATUS ParseNum(
+  inline Status ParseNum(
       const char* type_name, data_type (*converter)(const void*), num_type* val) {
     RETURN_NOT_OK(CQLDecodeNum(sizeof(num_type), converter, &body_, val));
     DVLOG(4) << type_name << " " << static_cast<int64_t>(*val);
@@ -340,7 +340,7 @@ class CQLRequest : public CQLMessage {
   // Parse a CQL byte stream (string or bytes). <len_type> is the parsed length type.
   // <len_parser> parses the byte length from network byte-order to machine order.
   template<typename len_type>
-  inline CHECKED_STATUS ParseBytes(
+  inline Status ParseBytes(
       const char* type_name, Status (CQLRequest::*len_parser)(len_type*), std::string* val) {
     len_type len = 0;
     RETURN_NOT_OK((this->*len_parser)(&len));
@@ -349,25 +349,25 @@ class CQLRequest : public CQLMessage {
     return Status::OK();
   }
 
-  CHECKED_STATUS ParseByte(uint8_t* value);
-  CHECKED_STATUS ParseShort(uint16_t* value);
-  CHECKED_STATUS ParseInt(int32_t* value);
-  CHECKED_STATUS ParseLong(int64_t* value);
-  CHECKED_STATUS ParseString(std::string* value);
-  CHECKED_STATUS ParseLongString(std::string* value);
-  CHECKED_STATUS ParseShortBytes(std::string* value);
-  CHECKED_STATUS ParseBytes(std::string* value);
-  CHECKED_STATUS ParseConsistency(Consistency* consistency);
-  CHECKED_STATUS ParseUUID(std::string* value);
-  CHECKED_STATUS ParseTimeUUID(std::string* value);
-  CHECKED_STATUS ParseStringList(std::vector<std::string>* list);
-  CHECKED_STATUS ParseInet(Endpoint* value);
-  CHECKED_STATUS ParseStringMap(std::unordered_map<std::string, std::string>* map);
-  CHECKED_STATUS ParseStringMultiMap(
+  Status ParseByte(uint8_t* value);
+  Status ParseShort(uint16_t* value);
+  Status ParseInt(int32_t* value);
+  Status ParseLong(int64_t* value);
+  Status ParseString(std::string* value);
+  Status ParseLongString(std::string* value);
+  Status ParseShortBytes(std::string* value);
+  Status ParseBytes(std::string* value);
+  Status ParseConsistency(Consistency* consistency);
+  Status ParseUUID(std::string* value);
+  Status ParseTimeUUID(std::string* value);
+  Status ParseStringList(std::vector<std::string>* list);
+  Status ParseInet(Endpoint* value);
+  Status ParseStringMap(std::unordered_map<std::string, std::string>* map);
+  Status ParseStringMultiMap(
       std::unordered_map<std::string, std::vector<std::string>>* map);
-  CHECKED_STATUS ParseBytesMap(std::unordered_map<std::string, std::string>* map);
-  CHECKED_STATUS ParseValue(bool with_name, Value* value);
-  CHECKED_STATUS ParseQueryParameters(QueryParameters* params);
+  Status ParseBytesMap(std::unordered_map<std::string, std::string>* map);
+  Status ParseValue(bool with_name, Value* value);
+  Status ParseQueryParameters(QueryParameters* params);
 
  private:
   Slice body_;
@@ -382,7 +382,7 @@ class StartupRequest : public CQLRequest {
   const std::unordered_map<std::string, std::string>& options() const { return options_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
   std::unordered_map<std::string, std::string> options_;
@@ -395,7 +395,7 @@ class AuthResponseRequest : public CQLRequest {
    public:
     AuthQueryParameters() : ql::StatementParameters() {}
 
-    CHECKED_STATUS GetBindVariable(const std::string& name,
+    Status GetBindVariable(const std::string& name,
                                    int64_t pos,
                                    const std::shared_ptr<QLType>& type,
                                    QLValue* value) const override;
@@ -410,7 +410,7 @@ class AuthResponseRequest : public CQLRequest {
   const AuthQueryParameters& params() const { return params_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
   std::string token_;
@@ -424,7 +424,7 @@ class OptionsRequest : public CQLRequest {
   virtual ~OptionsRequest() override;
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 };
 
 //------------------------------------------------------------
@@ -437,7 +437,7 @@ class QueryRequest : public CQLRequest {
   const QueryParameters& params() const { return params_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
   std::string query_;
@@ -453,7 +453,7 @@ class PrepareRequest : public CQLRequest {
   const std::string& query() const { return query_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
   std::string query_;
@@ -469,7 +469,7 @@ class ExecuteRequest : public CQLRequest {
   const QueryParameters& params() const { return params_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
   QueryId query_id_;
@@ -497,7 +497,7 @@ class BatchRequest : public CQLRequest {
   const std::vector<Query>& queries() const { return queries_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
 
@@ -514,7 +514,7 @@ class RegisterRequest : public CQLRequest {
   Events events() const { return events_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
   Events events_;

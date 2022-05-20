@@ -158,13 +158,13 @@ class TransactionParticipant : public TransactionStatusManager {
     std::string ToString() const;
   };
 
-  CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
+  Status ProcessReplicated(const ReplicatedData& data);
 
   void SetDB(
       const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
       RWOperationCounter* pending_op_counter);
 
-  CHECKED_STATUS CheckAborted(const TransactionId& id);
+  Status CheckAborted(const TransactionId& id);
 
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
@@ -193,13 +193,13 @@ class TransactionParticipant : public TransactionStatusManager {
   // After this function returns with success:
   // - All intents of committed transactions will have been applied.
   // - No transactions can be committed with commit time <= resolve_at from that point on..
-  CHECKED_STATUS ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
+  Status ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
 
   // Attempts to abort all transactions that started prior to cutoff time.
   // Waits until deadline, for txns to abort. If not, it returns a TimedOut.
   // After this call, there should be no active (non-aborted/committed) txn that
   // started before cutoff which is active on this tablet.
-  CHECKED_STATUS StopActiveTxnsPriorTo(
+  Status StopActiveTxnsPriorTo(
       HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id = nullptr);
 
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
@@ -211,6 +211,8 @@ class TransactionParticipant : public TransactionStatusManager {
   std::string DumpTransactions() const;
 
   void SetRetainOpId(const OpId& op_id) const;
+
+  OpId GetRetainOpId() const;
 
   const TabletId& tablet_id() const override;
 

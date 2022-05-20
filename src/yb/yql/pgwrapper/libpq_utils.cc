@@ -312,7 +312,7 @@ Result<std::string> PGConn::FetchAllAsString(
   return result;
 }
 
-CHECKED_STATUS PGConn::StartTransaction(IsolationLevel isolation_level) {
+Status PGConn::StartTransaction(IsolationLevel isolation_level) {
   switch (isolation_level) {
     case IsolationLevel::NON_TRANSACTIONAL:
       return Status::OK();
@@ -327,11 +327,11 @@ CHECKED_STATUS PGConn::StartTransaction(IsolationLevel isolation_level) {
   FATAL_INVALID_ENUM_VALUE(IsolationLevel, isolation_level);
 }
 
-CHECKED_STATUS PGConn::CommitTransaction() {
+Status PGConn::CommitTransaction() {
   return Execute("COMMIT");
 }
 
-CHECKED_STATUS PGConn::RollbackTransaction() {
+Status PGConn::RollbackTransaction() {
   return Execute("ROLLBACK");
 }
 
