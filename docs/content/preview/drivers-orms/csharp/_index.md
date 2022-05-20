@@ -42,9 +42,9 @@ To develop C# applications for YugabyteDB, you need the following:
 - **.NET SDK**\
   Install .NET SDK 3.1 or later. To download it for your supported OS, visit [Download .NET](https://dotnet.microsoft.com/en-us/download).
 
-- **Create a C# project**
+- **Create a C# project**\
    For ease-of-use, use an integrated development environment (IDE) such as Visual Studio. To download and install Visual Studio, visit the [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/) page.
-  - To create a C# project in Visual Studio, select **Console Application** as template when creating a new project.
+  - To create a C# project in Visual Studio, select [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as template when creating a new project.
   - If you are not using an IDE, use the dotnet command:
 
     ```csharp
@@ -54,3 +54,8 @@ To develop C# applications for YugabyteDB, you need the following:
 - **YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that YugabyteDB Managed requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
+
+## Next steps
+
+- Learn how to build C# applications using [Entity Framework ORM](entityframework/).
+- Learn how to use [Entity Framework core](/preview/integrations/entity-framework/) with YugabyteDB.

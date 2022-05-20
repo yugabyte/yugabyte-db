@@ -51,7 +51,7 @@ This tutorial assumes that you have:
 
 {{< warning title="Warning" >}}
 
-On every new connection the NpgSQL driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
+On every new connection, the Npgsql driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
 
 ```csharp
 connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
@@ -61,15 +61,14 @@ connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoadin
 
 ## Create a sample C# application
 
-In Visual Studio, create a new project and choose **Console Application as template**. Follow the instructions to save the project.
+In Visual Studio, create a new C# project and choose [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as template. Follow the instructions to save the project.
 
-First, install the Npgsql driver in your Visual Studio project:
+- Add the Npgsql package in your Visual Studio project as follows:
 
-1. Open your Project Solution View
-1. Right-click on **Packages** and click **Add Packages**
-1. Search for `Npgsql` and click **Add Package**
+1. Right-click on **Dependencies** and click **Manage Nuget Packages**.
+1. Search for `Npgsql` and click **Add Package**.
 
-Next, copy the contents below to your `Program.cs` file:
+- Copy the following code to your `Program.cs` file:
 
 ```csharp
 using System;
@@ -81,7 +80,7 @@ namespace Yugabyte_CSharp_Demo
     {
         static void Main(string[] args)
         {
-            NpgsqlConnection conn = new NpgsqlConnection("host=localhost;port=5433;database=yb_demo;user id=yugabyte;password=");
+            NpgsqlConnection conn = new NpgsqlConnection("host=localhost;port=5433;database=yugabyte;user id=yugabyte;password=");
 
             try
             {
@@ -125,9 +124,9 @@ namespace Yugabyte_CSharp_Demo
 
 ### Run the C# application
 
-Run the C# app. Select `Run -> Start Without Debugging`.
+Run the application by selecting `Run -> Start Without Debugging`.
 
-You should see the following as the output:
+You should see the following output:
 
 ```output
 Created table Employee
@@ -160,7 +159,7 @@ The .NET Npgsql driver validates certificates differently from other PostgreSQL 
 
 ### Create a sample C# application with SSL
 
-In Visual Studio, create a new project and choose **Console Application as template**. Follow the instructions to save the project.
+In Visual Studio, create a new C# project and choose [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as template. Follow the instructions to save the project.
 
 First, install the Npgsql driver in your Visual Studio project, replacing the values in the `connStringBuilder` object as appropriate for your cluster::
 

@@ -8,10 +8,11 @@ menu:
     identifier: postgres-npgsql-driver
     parent: csharp-drivers
     weight: 400
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
+For C# applications,
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
@@ -35,10 +36,9 @@ After completing these steps, you should have a working C# application that uses
 
 ### Step 1: Add the Npgsql driver dependency
 
-If you are using Visual Studio IDE, follow these steps:
+If you are using Visual Studio IDE, add the Npgsql package in your project as follows:
 
-1. Open your Project Solution View.
-1. Right-click on **Packages** and click **Add Packages**.
+1. Right-click on **Dependencies** and click **Manage Nuget Packages**.
 1. Search for `Npgsql` and click **Add Package**.
 
 To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
@@ -58,7 +58,7 @@ Import Npgsql and use the `NpgsqlConnection` class for getting connection object
 The following is an example URL for connecting to YugabyteDB.
 
 ```csharp
-var yburl = "host=localhost;port=5433;database=yb_demo;user id=yugabyte;password="
+var yburl = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
 NpgsqlConnection conn = new NpgsqlConnection(yburl)
 ```
 
@@ -67,8 +67,10 @@ NpgsqlConnection conn = new NpgsqlConnection(yburl)
 | host  | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
 | database | Database name | yugabyte
-| user | User for connecting to the database | yugabyte
+| user id| User for connecting to the database | yugabyte
 | password | Password for connecting to the database | yugabyte
+
+#### Use SSL (Optional)
 
 Set up the driver properties to configure the credentials and SSL Certificates for connecting to your cluster.
 The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers. When you specify SSL mode `require`, the driver verifies the certificate by default (like the `verify-ca` or `verify-full` modes), and fails for self-signed certificates (like YugabyteDB's). You can override this by specifying `Trust Server Certificate = true`, in which case it bypasses walking the certificate chain to validate trust, and hence works like other drivers' `require` mode. In this case, the Root-CA certificate is not required to be configured.
