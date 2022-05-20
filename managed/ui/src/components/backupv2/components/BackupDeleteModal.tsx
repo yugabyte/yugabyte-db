@@ -42,7 +42,6 @@ export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible,
       title="Delete Backup"
       showCancelButton={true}
       onHide={onHide}
-      className="backup-modal"
       onFormSubmit={async (_values: any, { setSubmitting }: { setSubmitting: Function }) => {
         await delBackup.mutateAsync(backupsList);
         setSubmitting(false);
