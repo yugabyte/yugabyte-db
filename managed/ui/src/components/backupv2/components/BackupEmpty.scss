@@ -30,6 +30,7 @@
     font-weight: 400;
     font-size: 15px;
     line-height: 18px;
+    pointer-events: all;
   }
 
   &.account-level-backup {
@@ -40,5 +41,32 @@
     .sub-text {
       margin-bottom: 8px;
     }
+  }
+  .backup-disabled-tooltip {
+    position: relative;
+
+    .placeholder {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      cursor: not-allowed;
+      z-index: 2;
+    }
+  }
+}
+
+#popover-backup-disabled {
+  background: $YB_BG_WHITE_3;
+  color: $YB_TEXT_COLOR;
+
+  .popover-title {
+    background-color: $YB_BG_WHITE_3;
+    border: none;
+  }
+
+  .popover-content {
+    display: none;
   }
 }
