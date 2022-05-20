@@ -135,11 +135,7 @@ class YBOperation {
   void ResetTablet();
 
   // Returns the partition key of the operation.
-  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const = 0;
-
-  // Returns whether this operation is being performed on a table where distributed transactions
-  // are enabled.
-  virtual bool IsTransactional() const;
+  virtual Status GetPartitionKey(std::string* partition_key) const = 0;
 
   // Whether this is an operation on one of the YSQL system catalog tables.
   bool IsYsqlCatalogOp() const;
@@ -228,7 +224,7 @@ class YBRedisWriteOp : public YBRedisOp {
 
   const std::string& GetKey() const override;
 
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+  Status GetPartitionKey(std::string* partition_key) const override;
 
  protected:
   virtual Type type() const override { return REDIS_WRITE; }
@@ -262,7 +258,7 @@ class YBRedisReadOp : public YBRedisOp {
 
   const std::string& GetKey() const override;
 
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+  Status GetPartitionKey(std::string* partition_key) const override;
 
  protected:
   Type type() const override { return REDIS_READ; }
@@ -319,7 +315,7 @@ class YBqlWriteOp : public YBqlOp {
 
   uint16_t GetHashCode() const;
 
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+  Status GetPartitionKey(std::string* partition_key) const override;
 
   // Does this operation read/write the static or primary row?
   bool ReadsStaticRow() const;
@@ -389,7 +385,7 @@ class YBqlReadOp : public YBqlOp {
 
   // Returns the partition key of the read request if it exists.
   // Also sets the hash_code and max_hash_code in the request.
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+  Status GetPartitionKey(std::string* partition_key) const override;
 
   YBConsistencyLevel yb_consistency_level() {
     return yb_consistency_level_;
@@ -450,7 +446,7 @@ class YBPgsqlOp : public YBOperation {
     return rows_data_holder_;
   }
 
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override {
+  Status GetPartitionKey(std::string* partition_key) const override {
     *partition_key = partition_key_;
     return Status::OK();
   }
@@ -484,8 +480,6 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
 
   void SetHashCode(uint16_t hash_code) override;
 
-  bool IsTransactional() const override;
-
   void set_is_single_row_txn(bool is_single_row_txn) {
     is_single_row_txn_ = is_single_row_txn;
   }
@@ -493,7 +487,7 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   const HybridTime& write_time() const { return write_time_; }
   void SetWriteTime(const HybridTime& value) { write_time_ = value; }
 
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+  Status GetPartitionKey(std::string* partition_key) const override;
 
   static std::unique_ptr<YBPgsqlWriteOp> NewInsert(const YBTablePtr& table);
   static std::unique_ptr<YBPgsqlWriteOp> NewUpdate(const YBTablePtr& table);
@@ -555,7 +549,7 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   void SetUsedReadTime(const ReadHybridTime& used_time);
   const ReadHybridTime& used_read_time() const { return used_read_time_; }
 
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+  Status GetPartitionKey(std::string* partition_key) const override;
 
  protected:
   virtual Type type() const override { return PGSQL_READ; }
@@ -580,27 +574,27 @@ class YBNoOp {
 
   // Executes a no-op request against the tablet server on which the row specified
   // by "key" lives.
-  CHECKED_STATUS Execute(YBClient* client, const YBPartialRow& key);
+  Status Execute(YBClient* client, const YBPartialRow& key);
  private:
   const std::shared_ptr<YBTable> table_;
 
   DISALLOW_COPY_AND_ASSIGN(YBNoOp);
 };
 
-CHECKED_STATUS InitPartitionKey(
+Status InitPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema,
     const std::string& last_partition, LWPgsqlReadRequestPB* request);
 
-CHECKED_STATUS InitPartitionKey(
+Status InitPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request);
 
-CHECKED_STATUS GetRangePartitionBounds(
+Status GetRangePartitionBounds(
     const Schema& schema,
     const PgsqlReadRequestPB& request,
     std::vector<docdb::KeyEntryValue>* lower_bound,
     std::vector<docdb::KeyEntryValue>* upper_bound);
 
-CHECKED_STATUS GetRangePartitionBounds(
+Status GetRangePartitionBounds(
     const Schema& schema,
     const LWPgsqlReadRequestPB& request,
     std::vector<docdb::KeyEntryValue>* lower_bound,

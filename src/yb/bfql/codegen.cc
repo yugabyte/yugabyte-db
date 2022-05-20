@@ -77,6 +77,7 @@ class BFCodegen {
             << "#define YB_UTIL_BFQL_GEN_OPCODES_H_" << endl
             << endl
             << "#include <unordered_map>" << endl
+            << "#include <string>" << endl
             << endl
             << kFileNamespace;
 
@@ -138,6 +139,7 @@ class BFCodegen {
             // Including header files.
             << "#include <iostream>" << endl
             << "#include <unordered_map>" << endl
+            << "#include <string>" << endl
             << "#include \"yb/bfql/gen_opcodes.h\"" << endl
             << endl
             // Use namespaces.
@@ -175,6 +177,7 @@ class BFCodegen {
             << "#include \"yb/bfql/bfunc.h\"" << endl
             << endl
             << "#include <vector>" << endl
+            << "#include <string>" << endl
             << endl
             // Use namespaces.
             << "using std::vector;" << endl

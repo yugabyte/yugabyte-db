@@ -136,3 +136,6 @@ DEFINE_bool(yb_enable_read_committed_isolation, false,
             "READ UNCOMMITTED are mapped internally. If false (default), both map to the stricter "
             "REPEATABLE READ implementation. If true, both use the new READ COMMITTED "
             "implementation instead.");
+
+DEFINE_test_flag(bool, yb_lwlock_crash_after_acquire_pg_stat_statements_reset, false,
+             "Issue sigkill for crash test after acquiring a LWLock in pg_stat_statements reset.");

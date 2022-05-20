@@ -42,7 +42,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   PgTableDesc(const PgObjectId& id, const master::GetTableSchemaResponsePB& resp,
               std::shared_ptr<client::VersionedTablePartitionList> partitions);
 
-  CHECKED_STATUS Init();
+  Status Init();
 
   const PgObjectId& id() const {
     return id_;
@@ -78,7 +78,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   Result<size_t> FindPartitionIndex(const Slice& ybctid) const;
 
   // These values are set by  PgGate to optimize query to narrow the scanning range of a query.
-  CHECKED_STATUS SetScanBoundary(LWPgsqlReadRequestPB *req,
+  Status SetScanBoundary(LWPgsqlReadRequestPB *req,
                                  const string& partition_lower_bound,
                                  bool lower_bound_is_inclusive,
                                  const string& partition_upper_bound,
@@ -86,6 +86,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   const Schema& schema() const;
 
+  // True if table is colocated (including tablegroups, excluding YSQL system tables).
   bool IsColocated() const;
 
   YBCPgOid GetColocationId() const;

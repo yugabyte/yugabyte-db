@@ -158,7 +158,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
   void SetValue(const YBSessionPtr& session, int32_t key, int32_t value, const TableHandle& table) {
     auto op = CreateSetValueOp(key, value, table);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())
         << op->response().error_message();
   }
@@ -166,7 +166,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
   boost::optional<int32_t> GetValue(
       const YBSessionPtr& session, int32_t key, const TableHandle& table) {
     const auto op = CreateReadOp(key, table);
-    EXPECT_OK(session->ApplyAndFlush(op));
+    EXPECT_OK(session->TEST_ApplyAndFlush(op));
     auto rowblock = RowsResult(op.get()).GetRowBlock();
     if (rowblock->row_count() == 0) {
       return boost::none;
@@ -216,7 +216,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     ASSERT_OK(WaitSync(begin, end, table));
   }
 
-  CHECKED_STATUS BatchedFillTable(
+  Status BatchedFillTable(
       const int begin, const int end, const int batch_size, const TableHandle& table) {
     {
       auto session = CreateSession();
@@ -224,7 +224,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
         auto op = CreateSetValueOp(i, ValueForKey(i), table);
         ++i;
         if ((i - begin) % batch_size == 0 || i == end) {
-          RETURN_NOT_OK(session->ApplyAndFlush(op));
+          RETURN_NOT_OK(session->TEST_ApplyAndFlush(op));
         } else {
           session->Apply(op);
         }
@@ -264,7 +264,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return TabletIdsAndReplicas(tablet_ids, replicas);
   }
 
-  CHECKED_STATUS WaitSync(int begin, int end, const TableHandle& table) {
+  Status WaitSync(int begin, int end, const TableHandle& table) {
     auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
     TabletIdsAndReplicas info = VERIFY_RESULT(GetTabletIdsAndReplicas(table));
     std::vector<std::string> tablet_ids = info.first;
@@ -275,7 +275,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  CHECKED_STATUS DoWaitSync(
+  Status DoWaitSync(
       const MonoTime& deadline,
       const std::vector<std::string>& tablet_ids,
       const std::string& replica,
@@ -356,7 +356,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Wait(condition, deadline, "Waiting for replication");
   }
 
-  CHECKED_STATUS VerifyConsistency(
+  Status VerifyConsistency(
       int begin, int end, const TableHandle& table, int expected_rows_mismatched = 0) {
     auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30 * kTimeMultiplier);
     TabletIdsAndReplicas info = VERIFY_RESULT(GetTabletIdsAndReplicas(table));
@@ -370,7 +370,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  CHECKED_STATUS DoVerify(
+  Status DoVerify(
       const MonoTime& deadline,
       const std::vector<std::string>& tablet_ids,
       const std::string& replica,
@@ -420,7 +420,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  CHECKED_STATUS Import() {
+  Status Import() {
     std::this_thread::sleep_for(1s); // Wait until all tablets a synced and flushed.
     EXPECT_OK(cluster_->FlushTablets());
 
@@ -482,7 +482,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
   Status WaitForTableCreation(const YBTableName& table_name,
                               master::IsCreateTableDoneResponsePB *resp) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, table_name, resp]() -> Result<bool> {
       master::IsCreateTableDoneRequestPB req;
       req.mutable_table()->set_table_name(table_name.table_name());
       req.mutable_table()->mutable_namespace_()->set_name(table_name.namespace_name());
@@ -700,7 +700,7 @@ TEST_F(QLTabletTest, LeaderLease) {
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, 1);
   table.AddInt32ColumnValue(req, kValueColumn, 1);
-  auto status = session->ApplyAndFlush(op);
+  auto status = session->TEST_ApplyAndFlush(op);
   ASSERT_TRUE(status.IsIOError()) << "Status: " << status;
 }
 
@@ -875,7 +875,7 @@ TEST_F(QLTabletTest, SkewedClocks) {
     rscol_desc->set_name(kValueColumn);
     table.ColumnType(kValueColumn)->ToQLTypePB(rscol_desc->mutable_ql_type());
     op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
   }
 
@@ -998,7 +998,7 @@ void QLTabletTest::TestDeletePartialKey(int num_range_keys_in_delete) {
       QLAddInt32RangeValue(req, key);
       QLAddInt32RangeValue(req, key);
       table.AddInt32ColumnValue(req, kValueColumn, kValue1);
-      ASSERT_OK(session1->ApplyAndFlush(op));
+      ASSERT_OK(session1->TEST_ApplyAndFlush(op));
       ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
     }
 
@@ -1451,7 +1451,7 @@ Result<OpId> GetAllAppliedOpId(const std::vector<tablet::TabletPeerPtr>& peers) 
   return STATUS(NotFound, "No leader found");
 }
 
-CHECKED_STATUS WaitForAppliedOpIdsStabilized(
+Status WaitForAppliedOpIdsStabilized(
     const std::vector<tablet::TabletPeerPtr>& peers, const MonoDelta& timeout) {
   std::vector<OpId> prev_last_applied_op_ids;
   return WaitFor(
@@ -1717,7 +1717,7 @@ TEST_F_EX(QLTabletTest, CompactDeletedColumn, QLTabletRf1Test) {
     table.AddStringColumnValue(req, kStringColumn, RandomHumanReadableString(1_KB));
     session->Apply(op);
   }
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
   ASSERT_OK(cluster_->FlushTablets());
   uint64_t files_size = 0;
   for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {

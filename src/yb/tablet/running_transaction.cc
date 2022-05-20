@@ -135,7 +135,7 @@ bool RunningTransaction::WasAborted() const {
   return last_known_status_ == TransactionStatus::ABORTED;
 }
 
-CHECKED_STATUS RunningTransaction::CheckAborted() const {
+Status RunningTransaction::CheckAborted() const {
   if (WasAborted()) {
     return MakeAbortedStatus(id());
   }
@@ -519,6 +519,11 @@ void RunningTransaction::SetOpId(const OpId& id) {
 
 bool RunningTransaction::ProcessingApply() const {
   return processing_apply_.load(std::memory_order_acquire);
+}
+
+void RunningTransaction::UpdateTransactionStatusLocation(const TabletId& new_status_tablet) {
+  metadata_.old_status_tablet = std::move(metadata_.status_tablet);
+  metadata_.status_tablet = new_status_tablet;
 }
 
 void RunningTransaction::UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode) {

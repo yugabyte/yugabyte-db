@@ -5,7 +5,7 @@ linkTitle: Create deployments
 description: Create YugabyteDB universe deployments.
 image: /images/section_icons/index/deploy.png
 type: page
-section: YUGABYTE PLATFORM
+section: YUGABYTEDB ANYWHERE
 menu:
   preview:
     identifier: create-deployments
@@ -24,7 +24,7 @@ showAsideToc: true
         <div class="title">Create a single-zone universe</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to create a single-zone universe.
+        Use YugabyteDB Anywhere to create a single-zone universe.
       </div>
     </a>
   </div>
@@ -37,7 +37,7 @@ showAsideToc: true
         <div class="title">Create a multi-zone universe</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to deploy a multi-zone universe.
+        Use YugabyteDB Anywhere to deploy a multi-zone universe.
       </div>
     </a>
   </div>
@@ -49,7 +49,7 @@ showAsideToc: true
         <div class="title">Create a multi-region universe</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to deploy a multi-region universe.
+        Use YugabyteDB Anywhere to deploy a multi-region universe.
       </div>
     </a>
   </div>
@@ -61,7 +61,7 @@ showAsideToc: true
         <div class="title">Create a multi-cloud universe</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to deploy a multi-cloud universe.
+        Use YugabyteDB Anywhere to deploy a multi-cloud universe.
       </div>
     </a>
   </div>
@@ -73,7 +73,7 @@ showAsideToc: true
         <div class="title">Create a read-replica cluster</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to create a read-replica cluster for a universe.
+        Use YugabyteDB Anywhere to create a read-replica cluster for a universe.
       </div>
     </a>
   </div>

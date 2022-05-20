@@ -336,10 +336,10 @@ class AllTypesItest : public YBTest {
       for (int j = 0; j < max_rows_per_tablet; ++j) {
         RETURN_NOT_OK(GenerateRow(session.get(), i, j));
         if (j % 1000 == 0) {
-          RETURN_NOT_OK(session->Flush());
+          RETURN_NOT_OK(session->TEST_Flush());
         }
       }
-      RETURN_NOT_OK(session->Flush());
+      RETURN_NOT_OK(session->TEST_Flush());
     }
     return Status::OK();
   }

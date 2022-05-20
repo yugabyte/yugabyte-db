@@ -9,7 +9,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -129,9 +128,7 @@ public class RunExternalScript extends AbstractTaskBase {
       String description = String.join(" ", commandList);
 
       // Execute the command.
-      ShellResponse shellResponse =
-          shellProcessHandler.run(commandList, new HashMap<>(), description);
-      processShellResponse(shellResponse);
+      shellProcessHandler.run(commandList, new HashMap<>(), description).processErrors();
     } catch (Exception e) {
       log.error("Error executing task {}, error='{}'", getName(), e.getMessage(), e);
       throw new RuntimeException(e);

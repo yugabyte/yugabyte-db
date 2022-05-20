@@ -132,6 +132,8 @@ class TableBuilder {
 
   // Returns table properties
   virtual TableProperties GetTableProperties() const = 0;
+
+  virtual const std::string& LastKey() const = 0;
 };
 
 }  // namespace rocksdb

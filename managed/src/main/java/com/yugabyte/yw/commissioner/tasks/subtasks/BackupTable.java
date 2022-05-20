@@ -63,8 +63,7 @@ public class BackupTable extends AbstractTaskBase {
           int backupIdx = 0;
           for (BackupTableParams backupParams : taskParams().backupList) {
             backupParams.backupUuid = taskParams().backupUuid;
-            ShellResponse response = tableManager.createBackup(backupParams);
-            processShellResponse(response);
+            ShellResponse response = tableManager.createBackup(backupParams).processErrors();
             JsonNode jsonNode = null;
             try {
               jsonNode = Json.parse(response.message);
@@ -98,8 +97,7 @@ public class BackupTable extends AbstractTaskBase {
           }
           backup.transitionState(Backup.BackupState.Completed);
         } else {
-          ShellResponse response = tableManager.createBackup(taskParams());
-          processShellResponse(response);
+          ShellResponse response = tableManager.createBackup(taskParams()).processErrors();
           JsonNode jsonNode = null;
           try {
             jsonNode = Json.parse(response.message);

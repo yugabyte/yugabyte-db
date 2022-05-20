@@ -6,6 +6,7 @@ import { Grid } from 'react-bootstrap';
 import { change, Fields } from 'redux-form';
 import { browserHistory, withRouter, Link } from 'react-router';
 import _ from 'lodash';
+import { toast } from 'react-toastify';
 import {
   isNonEmptyObject,
   isDefinedNotNull,
@@ -42,6 +43,10 @@ const initialState = {
   currentView: 'Primary'
 };
 
+const DEFAULT_SUBMIT_TIMEOUT = 5000;
+const TASK_REFETCH_DELAY = 2000;
+const TOAST_DISMISS_TIME_MS = 3000;
+
 class UniverseForm extends Component {
   static propTypes = {
     type: PropTypes.oneOf(['Async', 'Edit', 'Create']).isRequired
@@ -65,6 +70,7 @@ class UniverseForm extends Component {
       ...initialState,
       hasFieldChanged: true,
       disableSubmit: false,
+      isSubmitting: false,
       currentView: props.type === 'Async' ? 'Async' : 'Primary'
     };
   }
@@ -94,7 +100,15 @@ class UniverseForm extends Component {
     this.setState({ currentView: 'Primary' });
   };
 
-  transitionToDefaultRoute = () => {
+  /**
+   * Redirects user based on what type of operation was just performed.
+   * By default, we should redirect the user to the details page of the
+   * universe they performed the operation against.
+   * Fallback is to redirect to the `/universes` page.
+   * 
+   * @param {String} uid Universe UUID that can be passed into function
+   */
+  transitionToDefaultRoute = (uid) => {
     const {
       universe: {
         currentUniverse: {
@@ -103,17 +117,16 @@ class UniverseForm extends Component {
       }
     } = this.props;
     if (this.props.type === 'Create') {
-      if (this.context.prevPath) {
-        browserHistory.push(this.context.prevPath);
+      if (uid) {
+        browserHistory.push(`/universes/${uid}/tasks`);
       } else {
-        browserHistory.push('/universes');
+        browserHistory.push(this.context.prevPath ?? '/universes');
       }
     } else {
-      if (this.props.location && this.props.location.pathname) {
-        this.props.fetchCurrentUniverse(universeUUID);
-        browserHistory.push(`/universes/${universeUUID}`);
-      }
+      this.props.fetchCurrentUniverse(universeUUID);
+      browserHistory.push(`/universes/${universeUUID}`);
     }
+    setTimeout(this.props.fetchCustomerTasks, TASK_REFETCH_DELAY);
   };
 
   handleCancelButtonClick = () => {
@@ -124,10 +137,12 @@ class UniverseForm extends Component {
 
   handleSubmitButtonClick = () => {
     const { type } = this.props;
-    setTimeout(this.props.fetchCustomerTasks, 2000);
+    this.setState({ isSubmitting: true });    
     if (type === 'Create') {
-      this.createUniverse().then(() => {
-        this.transitionToDefaultRoute();
+      this.createUniverse().then((response) => {
+        const { universeUUID, name } = response.payload.data;
+        this.transitionToDefaultRoute(universeUUID);
+        toast.success(`Creating universe "${name}"`, { autoClose: TOAST_DISMISS_TIME_MS });
       });
     } else if (type === 'Async') {
       const {
@@ -152,6 +167,8 @@ class UniverseForm extends Component {
         this.transitionToDefaultRoute();
       });
     }
+    // Reset submitting state if submit was unsuccessful
+    setTimeout(() => this.setState({ isSubmitting: false }), DEFAULT_SUBMIT_TIMEOUT);
   };
 
   getCurrentUserIntent = (clusterType) => {
@@ -324,11 +341,11 @@ class UniverseForm extends Component {
     return null;
   };
 
-  getYSQLstate = () => {
+  getYSQLstate = (clusterType) => {
     const { formValues, universe } = this.props;
 
-    if (isNonEmptyObject(formValues['primary'])) {
-      return formValues['primary'].enableYSQL;
+    if (isNonEmptyObject(formValues[clusterType])) {
+      return formValues[clusterType].enableYSQL;
     }
 
     const {
@@ -344,11 +361,11 @@ class UniverseForm extends Component {
     return null;
   };
 
-  getYCQLstate = () => {
+  getYCQLstate = (clusterType) => {
     const { formValues, universe } = this.props;
 
-    if (isNonEmptyObject(formValues['primary'])) {
-      return formValues['primary'].enableYCQL;
+    if (isNonEmptyObject(formValues[clusterType])) {
+      return formValues[clusterType].enableYCQL;
     }
 
     const {
@@ -364,11 +381,11 @@ class UniverseForm extends Component {
     return null;
   };
 
-  getYEDISstate = () => {
+  getYEDISstate = (clusterType) => {
     const { formValues, universe } = this.props;
 
-    if (isNonEmptyObject(formValues['primary'])) {
-      return formValues['primary'].enableYEDIS;
+    if (isNonEmptyObject(formValues[clusterType])) {
+      return formValues[clusterType].enableYEDIS;
     }
 
     const {
@@ -411,13 +428,13 @@ class UniverseForm extends Component {
         provider: formValues[clusterType].provider,
         assignPublicIP: formValues[clusterType].assignPublicIP,
         useTimeSync: formValues[clusterType].useTimeSync,
-        enableYSQL: self.getYSQLstate(),
+        enableYSQL: self.getYSQLstate(clusterType),
         enableYSQLAuth: formValues[clusterType].enableYSQLAuth,
         ysqlPassword: formValues[clusterType].ysqlPassword,
-        enableYCQL: self.getYCQLstate(),
+        enableYCQL: self.getYCQLstate(clusterType),
         enableYCQLAuth: formValues[clusterType].enableYCQLAuth,
         ycqlPassword: formValues[clusterType].ycqlPassword,
-        enableYEDIS: self.getYEDISstate(),
+        enableYEDIS: self.getYEDISstate(clusterType),
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
         enableIPV6: formValues[clusterType].enableIPV6,
@@ -603,7 +620,7 @@ class UniverseForm extends Component {
       modal: { showModal, visibleModal }
     } = this.props;
     const updateInProgress = universe?.currentUniverse?.data?.universeDetails?.updateInProgress;
-    const { disableSubmit, hasFieldChanged } = this.state;
+    const { disableSubmit, hasFieldChanged, isSubmitting } = this.state;
     const createUniverseTitle = (
       <h2 className="content-title">
         <FlexContainer>
@@ -827,7 +844,9 @@ class UniverseForm extends Component {
       getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
       fetchCurrentUniverse: this.props.fetchCurrentUniverse,
       location: this.props.location,
-      featureFlags: this.props.featureFlags
+      featureFlags: this.props.featureFlags,
+      fetchRunTimeConfigs: this.props.fetchRunTimeConfigs,
+      runtimeConfigs: this.props.runtimeConfigs
     };
 
     if (this.state.currentView === 'Primary') {
@@ -1087,6 +1106,7 @@ class UniverseForm extends Component {
               <YBButton
                 btnClass="btn btn-orange universe-form-submit-btn"
                 disabled={disableSubmit || updateInProgress}
+                loading={isSubmitting}
                 btnText={submitTextLabel}
                 btnType={'submit'}
               />

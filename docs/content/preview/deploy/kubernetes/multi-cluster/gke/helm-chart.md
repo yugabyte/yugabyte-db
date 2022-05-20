@@ -290,8 +290,8 @@ $ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview"
 ```
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.13.0           2.13.0.1-b2    YugabyteDB is the high-performance distributed ...
+NAME                 CHART VERSION  APP VERSION   DESCRIPTION
+yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -401,6 +401,7 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 
 ```sh
 $ helm install yb-demo-us-west1-b yugabytedb/yugabyte \
+ --version {{<yb-version version="preview" format="short">}} \
  --namespace yb-demo-us-west1-b \
  -f overrides-us-west1-b.yaml \
  --kube-context gke_yugabyte_us-west1-b_yugabytedb1 --wait
@@ -408,6 +409,7 @@ $ helm install yb-demo-us-west1-b yugabytedb/yugabyte \
 
 ```sh
 $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
+ --version {{<yb-version version="preview" format="short">}} \
  --namespace yb-demo-us-central1-b \
  -f overrides-us-central1-b.yaml \
  --kube-context gke_yugabyte_us-central1-b_yugabytedb2 --wait
@@ -415,6 +417,7 @@ $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
 
 ```sh
 $ helm install yb-demo-us-east1-b yugabytedb/yugabyte \
+ --version {{<yb-version version="preview" format="short">}} \
  --namespace yb-demo-us-east1-b \
  -f overrides-us-east1-b.yaml \
  --kube-context gke_yugabyte_us-east1-b_yugabytedb3 --wait

@@ -1,7 +1,7 @@
 <!--
 title: Connect a Spring application
 linkTitle: Connect a Spring application
-description: Connect a Spring application to Yugabyte Cloud and containerize it in Docker.
+description: Connect a Spring application to YugabyteDB Managed and containerize it in Docker.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -13,16 +13,16 @@ isTocNested: true
 showAsideToc: true
 -->
 
-[Spring Boot](https://spring.io/projects/spring-boot) is a popular framework for building cloud native applications. Each Spring Boot application is stand-alone and self-contained, which makes them easy to deploy in a distributed fashion – whether to containers or on Kubernetes.
+[Spring Boot](https://spring.io/projects/spring-boot) is a popular framework for building cloud-native applications. Each Spring Boot application is stand-alone and self-contained, which makes them easy to deploy in a distributed fashion – whether to containers or on Kubernetes.
 
-The example on this page shows how you can connect a Spring Boot application to Yugabyte Cloud, using a version of the Spring Boot PetClinic sample application that has been updated with a profile making it compatible with YugabyteDB.
+The example on this page shows how you can connect a Spring Boot application to YugabyteDB Managed, using a version of the Spring Boot PetClinic sample application that has been updated with a profile making it compatible with YugabyteDB.
 
 The repository for the application is at <https://github.com/yugabyte/spring-petclinic>. Instructions for connecting this application to YugabyteDB are also provided in the `petclinic_db_setup_yugabytedb.md` file in this repository.
 
 In this walkthrough, you will:
 
 - Download the Spring Boot PetClinic application
-- Connect the application to Yugabyte Cloud
+- Connect the application to YugabyteDB Managed
 - Containerize the application in Docker
 
 ## Prerequisites
@@ -30,7 +30,7 @@ In this walkthrough, you will:
 - Java 8 or newer (full JDK)
 - Git
 - Docker
-- Yugabyte Cloud cluster, with your computer IP address [whitelisted in an IP allow list](../cloud-secure-clusters/add-connections/)
+- YugabyteDB Managed cluster, with your computer IP address [whitelisted in an IP allow list](../cloud-secure-clusters/add-connections/)
 
 ## Download and connect the PetClinic application
 
@@ -58,7 +58,7 @@ In this walkthrough, you will:
 
 1. Open the file `spring-petclinic/src/main/resources/db/yugabytedb/user.sql` and copy the contents.
 
-1. Sign in to Yugabyte Cloud and select your cluster, and note the host and port details.
+1. Sign in to YugabyteDB Managed and select your cluster, and note the host and port details.
 
 1. Click **Connect** and choose **Launch Cloud Shell**.
 
@@ -90,7 +90,7 @@ In this walkthrough, you will:
     -Dspring-boot.run.arguments="--YBDB_URL=jdbc:postgresql://[host]:[port]/petclinic?load-balance=true"
     ```
 
-    where `[host]` and `[port]` are the host and port number of your Yugabyte Cloud cluster. The `spring-boot.run.profiles` parameter tells the application to use the YugabyteDB database configuration. The `spring-boot.run.arguments` parameter provides the application with the connection string to your Yugabyte Cloud cluster.
+    where `[host]` and `[port]` are the host and port number of your YugabyteDB Managed cluster. The `spring-boot.run.profiles` parameter tells the application to use the YugabyteDB database configuration. The `spring-boot.run.arguments` parameter provides the application with the connection string to your YugabyteDB Managed cluster.
 
     ```output
     [INFO] Scanning for projects...
@@ -117,7 +117,7 @@ Dspring-boot.run.profiles=yugabytedb \
 
 1. Go to <http://localhost:8080>.
 
-The PetClinic application is now running locally and is connected to your Yugabyte Cloud cluster.
+The PetClinic application is now running locally and is connected to your YugabyteDB Managed cluster.
 
 ![PetClinic application running](/images/yb-cloud/petclinic.png)
 
@@ -148,8 +148,8 @@ The PetClinic application is now running locally and is connected to your Yugaby
     -Dspring.datasource.initialization-mode=never" spring-petclinic
     ```
 
-    where `[host]` and `[port]` are the host and port number of your Yugabyte Cloud cluster.
+    where `[host]` and `[port]` are the host and port number of your YugabyteDB Managed cluster.
 
 1. Go to <http://localhost:8080>.
 
-The PetClinic sample application is now connected to your Yugabyte Cloud cluster and running locally on Docker.
+The PetClinic sample application is now connected to your YugabyteDB Managed cluster and running locally on Docker.

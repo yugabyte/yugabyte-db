@@ -7,6 +7,7 @@ import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.when;
 
@@ -110,5 +111,42 @@ public class ShellProcessHandlerTest extends TestCase {
     Files.write(fileName, ("#/bin/bash\n" + cmd).getBytes());
     fileName.toFile().setExecutable(true);
     return fileName.toString();
+  }
+
+  @Test
+  public void testLongCommand() throws IOException {
+    String testCmd = "echo output; >&2 echo error; sleep 20";
+    String fileName = createTestShellScript(testCmd);
+    List<String> command = new ArrayList<String>();
+    command.add(fileName);
+    long startMs = System.currentTimeMillis();
+    ShellResponse response =
+        shellProcessHandler.run(
+            command,
+            null,
+            true /*logCmdOutput*/,
+            "test cmd",
+            null /*uuid*/,
+            null /*sensitiveData*/,
+            5 /*5 secs timeout*/);
+    long durationMs = System.currentTimeMillis() - startMs;
+    assert (durationMs < 7000); // allow for some slack on loaded Jenkins servers
+    assertNotEquals(0, response.code);
+    assertThat(response.message.trim(), allOf(notNullValue(), equalTo("error")));
+  }
+
+  @Test
+  public void testGetPythonErrMsg() {
+    String errMsg =
+        "<yb-python-error>{\"type\": \"YBOpsRuntimeError\","
+            + "\"message\": \"Runtime error: Instance: i does not exist\","
+            + "\"file\": \"/Users/test/code/yugabyte-db/managed/devops/venv/bin/ybcloud.py\","
+            + "\"method\": \"<module>\", \"line\": 4}</yb-python-error>";
+    String out = ShellProcessHandler.getPythonErrMsg(0, errMsg);
+    assertNull(out);
+    out = ShellProcessHandler.getPythonErrMsg(2, errMsg);
+    assertEquals("YBOpsRuntimeError: Runtime error: Instance: i does not exist", out);
+    out = ShellProcessHandler.getPythonErrMsg(2, "{}");
+    assertNull(out);
   }
 }

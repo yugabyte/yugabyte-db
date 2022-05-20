@@ -25,6 +25,7 @@
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_util.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/barrier.h"
@@ -52,6 +53,9 @@ METRIC_DECLARE_counter(rpc_inbound_calls_created);
 
 namespace yb {
 namespace pgwrapper {
+
+using master::GetColocatedDbParentTableId;
+using master::GetTablegroupParentTableId;
 
 class PgLibPqTest : public LibPqTestBase {
  protected:
@@ -1065,7 +1069,7 @@ Result<master::TabletLocationsPB> GetColocatedTabletLocations(
   RETURN_NOT_OK(WaitFor(
       [&]() -> Result<bool> {
         Status s = client->GetTabletsFromTableId(
-            ns_id + master::kColocatedParentTableIdSuffix,
+            GetColocatedDbParentTableId(ns_id),
             0 /* max_tablets */,
             &tablets);
         if (s.ok()) {
@@ -1080,10 +1084,6 @@ Result<master::TabletLocationsPB> GetColocatedTabletLocations(
       "wait for colocated parent tablet"));
 
   return tablets[0];
-}
-
-const TableId GetTableGroupTableId(const std::string& tablegroup_id) {
-  return tablegroup_id + master::kTablegroupParentTableIdSuffix;
 }
 
 Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
@@ -1102,7 +1102,7 @@ Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
   RETURN_NOT_OK(WaitFor(
       [&]() -> Result<bool> {
         Status s = client->GetTabletsFromTableId(
-            GetTableGroupTableId(tablegroup_id),
+            GetTablegroupParentTableId(tablegroup_id),
             0 /* max_tablets */,
             &tablets);
         if (s.ok()) {
@@ -1364,7 +1364,7 @@ struct TableGroupInfo {
   std::shared_ptr<client::YBTable> table;
 };
 
-Result<TableGroupInfo> SelectTableGroup(
+Result<TableGroupInfo> SelectTablegroup(
     client::YBClient* client, PGConn* conn, const std::string& database_name,
     const std::string& group_name) {
   TableGroupInfo group_info;
@@ -1382,7 +1382,10 @@ Result<TableGroupInfo> SelectTableGroup(
       group_info.id,
       30s))
     .tablet_id();
-  group_info.table = VERIFY_RESULT(client->OpenTable(GetTableGroupTableId(group_info.id)));
+  group_info.table = VERIFY_RESULT(client->OpenTable(GetTablegroupParentTableId(group_info.id)));
+  SCHECK(VERIFY_RESULT(client->TablegroupExists(database_name, group_info.id)),
+         InternalError,
+         "YBClient::TablegroupExists couldn't find a tablegroup!");
   return group_info;
 }
 
@@ -1403,7 +1406,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupName));
 
   // A parent table with one tablet should be created when the tablegroup is created.
-  const auto tablegroup = ASSERT_RESULT(SelectTableGroup(
+  const auto tablegroup = ASSERT_RESULT(SelectTablegroup(
       client.get(), &conn, kDatabaseName, kTablegroupName));
 
   // Create a range partition table, the table should share the tablet with the parent table.
@@ -1462,7 +1465,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupAltName));
 
   // A parent table with one tablet should be created when the tablegroup is created.
-  auto tablegroup_alt = ASSERT_RESULT(SelectTableGroup(
+  auto tablegroup_alt = ASSERT_RESULT(SelectTablegroup(
       client.get(), &conn, kDatabaseName, kTablegroupAltName));
 
   // Create another range partition table - should be part of the second tablegroup
@@ -1512,8 +1515,9 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
       30s, "Drop table did not use tablegroups"));
 
   // Drop a tablegroup.
+  ASSERT_TRUE(ASSERT_RESULT(client->TablegroupExists(kDatabaseName, tablegroup_alt.id)));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLEGROUP $0", kTablegroupAltName));
-  ASSERT_FALSE(ASSERT_RESULT(client->TablegroupExists(kDatabaseName, kTablegroupAltName)));
+  ASSERT_FALSE(ASSERT_RESULT(client->TablegroupExists(kDatabaseName, tablegroup_alt.id)));
 
   // The alt tablegroup tablet should be deleted after dropping the tablegroup.
   bool alt_tablet_found = true;
@@ -1540,7 +1544,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupAltName));
 
   // A parent table with one tablet should be created when the tablegroup is created.
-  tablegroup_alt = ASSERT_RESULT(SelectTableGroup(
+  tablegroup_alt = ASSERT_RESULT(SelectTablegroup(
         client.get(), &conn, kDatabaseName, kTablegroupAltName));
 
   // Add a table back in and ensure that it is part of the recreated tablegroup.
@@ -2450,6 +2454,56 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CollationRangePresplit)) {
                 partition_end.size() >= partition_key_length + min_collation_extra_bytes);
   }
 }
+
+// The motive of this test is to prove that when a postgres backend crashes
+// while possessing an LWLock, the postmaster will kill all postgres backends
+// and would perform a restart.
+// TEST_lwlock_crash_after_acquire_lock_pg_stat_statements_reset when set true
+// will crash a postgres backend after acquiring a LWLock. Specifically in this
+// example, when pg_stat_statements_reset() function is called when this flag
+// is set, it crashes after acquiring a lock on pgss->lock. This causes the
+// postmaster to terminate all the connections. Hence, the SELECT 1 that is
+// executed by conn2 also fails.
+class PgLibPqYSQLBackendCrash: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        Format("--yb_pg_terminate_child_backend=false"));
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset=true"));
+    options->extra_tserver_flags.push_back(
+        Format("--yb_backend_oom_score_adj=" + expected_oom_score));
+  }
+
+ protected:
+  const std::string expected_oom_score = "123";
+};
+
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(TestLWPgBackendKillAfterLWLockAcquire),
+          PgLibPqYSQLBackendCrash) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_NOK(conn1.FetchFormat("SELECT pg_stat_statements_reset()"));
+  ASSERT_NOK(conn2.FetchFormat("SELECT 1"));
+}
+
+#ifdef __linux__
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(TestOomScoreAdjPGBackend),
+          PgLibPqYSQLBackendCrash) {
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT pg_backend_pid()"));
+
+  auto backend_pid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  std::string file_name = "/proc/" + std::to_string(backend_pid) + "/oom_score_adj";
+  std::ifstream fPtr(file_name);
+  std::string oom_score_adj;
+  getline(fPtr, oom_score_adj);
+  ASSERT_EQ(oom_score_adj, expected_oom_score);
+}
+#endif
 
 } // namespace pgwrapper
 } // namespace yb

@@ -33,6 +33,13 @@
  */
 extern bool yb_disable_transactional_writes;
 
+/**
+ * YSQL guc variables that can be used to enable upsert mode for writes.
+ * e.g. 'SET yb_enable_upsert_mode=true'
+ * See also the corresponding entries in guc.c.
+ */
+extern bool yb_enable_upsert_mode;
+
 //------------------------------------------------------------------------------
 // YugaByte modify table API.
 

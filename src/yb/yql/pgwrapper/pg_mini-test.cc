@@ -29,6 +29,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rocksdb/db.h"
@@ -67,7 +68,6 @@ DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
-DECLARE_int32(max_packed_row_columns);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
@@ -94,11 +94,11 @@ namespace {
 template<IsolationLevel level>
 class TxnHelper {
  public:
-  static CHECKED_STATUS StartTxn(PGConn* connection) {
+  static Status StartTxn(PGConn* connection) {
     return connection->StartTransaction(level);
   }
 
-  static CHECKED_STATUS ExecuteInTxn(PGConn* connection, const std::string& query) {
+  static Status ExecuteInTxn(PGConn* connection, const std::string& query) {
     const auto guard = CreateTxnGuard(connection);
     return connection->Execute(query);
   }
@@ -137,6 +137,16 @@ std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type) {
 }
 
 YB_DEFINE_ENUM(TestStatement, (kInsert)(kDelete));
+
+Result<int64_t> GetCatalogVersion(PGConn* conn) {
+  return conn->FetchValue<int64_t>("SELECT current_version FROM pg_yb_catalog_version");
+}
+
+Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
+  const auto initial_version = VERIFY_RESULT(GetCatalogVersion(conn));
+  RETURN_NOT_OK(conn->Execute(ddl_query));
+  return initial_version != VERIFY_RESULT(GetCatalogVersion(conn));
+}
 
 } // namespace
 
@@ -1244,11 +1254,11 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     return connection;
   }
 
-  static CHECKED_STATUS StartTxn(PGConn* connection) {
+  static Status StartTxn(PGConn* connection) {
     return TxnHelper<level>::StartTxn(connection);
   }
 
-  static CHECKED_STATUS ExecuteInTxn(PGConn* connection, const std::string& query) {
+  static Status ExecuteInTxn(PGConn* connection, const std::string& query) {
     return TxnHelper<level>::ExecuteInTxn(connection, query);
   }
 
@@ -1454,6 +1464,34 @@ TEST_F_EX(PgMiniTest,
           YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertSnapshot),
           PgMiniTestTxnHelperSnapshot) {
   TestDuplicateNonUniqueIndexInsert();
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentSingleRowUpdate)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, counter INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 0)"));
+  const size_t thread_count = 10;
+  const size_t increment_per_thread = 5;
+  {
+    CountDownLatch latch(thread_count);
+    TestThreadHolder thread_holder;
+    for (size_t i = 0; i < thread_count; ++i) {
+      thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &latch] {
+        auto thread_conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(thread_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+        latch.CountDown();
+        latch.Wait();
+        for (size_t j = 0; j < increment_per_thread; ++j) {
+          ASSERT_OK(thread_conn.Execute("UPDATE t SET counter = counter + 1 WHERE k = 1"));
+        }
+      });
+    }
+  }
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT counter FROM t WHERE k = 1"));
+  ASSERT_EQ(1, PQnfields(res.get()));
+  ASSERT_EQ(1, PQntuples(res.get()));
+  auto counter = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  ASSERT_EQ(thread_count * increment_per_thread, counter);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -2141,6 +2179,26 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumnWit
   TestConcurrentDeleteRowAndUpdateColumn(/* select_before_update= */ true);
 }
 
+// The test checks catalog version is updated only in case of changes in sys catalog.
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CatalogVersionUpdateIfNeeded)) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto schema_ddl = "CREATE SCHEMA IF NOT EXISTS test";
+  const auto first_create_schema = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, schema_ddl));
+  ASSERT_TRUE(first_create_schema);
+  const auto second_create_schema = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, schema_ddl));
+  ASSERT_FALSE(second_create_schema);
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  const auto add_column_ddl = "ALTER TABLE t ADD COLUMN IF NOT EXISTS v INT";
+  const auto first_add_column = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, add_column_ddl));
+  ASSERT_TRUE(first_add_column);
+  const auto second_add_column = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, add_column_ddl));
+  ASSERT_FALSE(second_add_column);
+}
+
 // Test that we don't sequential restart read on the same table if intents were written
 // after the first read. GH #6972.
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoRestartSecondRead)) {
@@ -2543,6 +2601,81 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TestSerializableStrongReadLockNotAbor
       << "Update status: " << update_status << ".\n";
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ColocatedCompaction)) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+
+  const std::string kDatabaseName = "testdb";
+  const auto kNumTables = 3;
+  constexpr int kKeys = 100;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  for (int i = 0; i < kNumTables; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(R"#(
+        CREATE TABLE test$0 (
+          key INTEGER NOT NULL PRIMARY KEY,
+          value INTEGER,
+          string VARCHAR
+        )
+      )#", i));
+    for (int j = 0; j < kKeys; ++j) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO test$0(key, value, string) VALUES($1, -$1, '$2')", i, j,
+          RandomHumanReadableString(128_KB)));
+    }
+  }
+
+  ASSERT_OK(cluster_->FlushTablets());
+  uint64_t files_size = 0;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+  }
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", kNumTables - 1));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", 0));
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  uint64_t new_files_size = 0;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    new_files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+  }
+
+  LOG(INFO) << "Old files size: " << files_size << ", new files size: " << new_files_size;
+  ASSERT_LE(new_files_size * 2, files_size);
+  ASSERT_GE(new_files_size * 3, files_size);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
+  const std::string kDatabaseName = "testdb";
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto sys_catalog_tablet = catalog_manager.sys_catalog()->tablet_peer()->tablet();
+
+  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+  uint64_t base_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
+  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
+  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
+
+  // Make sure compaction works without error for the hybrid_time > history_cutoff case.
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+
+  uint64_t new_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
+  LOG(INFO) << "Base file size: " << base_file_size << ", new file size: " << new_file_size;
+  ASSERT_LE(new_file_size, base_file_size + 100_KB);
+}
+
 // Use special mode when non leader master times out all rpcs.
 // Then step down master leader and perform backup.
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
@@ -2571,29 +2704,6 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
       pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
       *tmp_dir, {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
        "create"}));
-}
-
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(PackedRow)) {
-  FLAGS_max_packed_row_columns = 10;
-
-  auto conn = ASSERT_RESULT(Connect());
-
-  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'two')"));
-
-  auto value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "one, two");
-
-  ASSERT_OK(conn.Execute("UPDATE t SET v2 = 'three' where key = 1"));
-  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "one, three");
-
-  ASSERT_OK(conn.Execute("DELETE FROM t WHERE key = 1"));
-  ASSERT_OK(conn.FetchMatrix("SELECT * FROM t", 0, 3));
-
-  ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'four', 'five')"));
-  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "four, five");
 }
 
 } // namespace pgwrapper

@@ -13,6 +13,8 @@
 
 // Tests for the EE yb-admin command-line tool.
 
+#include <gflags/gflags.h>
+
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
@@ -46,6 +48,7 @@ DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_bool(parallelize_bootstrap_producer);
+DECLARE_bool(check_bootstrap_required);
 
 namespace yb {
 namespace tools {
@@ -110,9 +113,9 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
     return result;
   }
 
-  CHECKED_STATUS WaitForRestoreSnapshot() {
+  Status WaitForRestoreSnapshot() {
     return WaitFor([this]() -> Result<bool> {
-      auto document = VERIFY_RESULT(RunAdminToolCommandJson("list_snapshot_restorations"));
+      const auto document = VERIFY_RESULT(RunAdminToolCommandJson("list_snapshot_restorations"));
       auto it = document.FindMember("restorations");
       if (it == document.MemberEnd()) {
         LOG(INFO) << "No restorations";
@@ -664,6 +667,7 @@ class XClusterAdminCliTest : public AdminCliTest {
     AdminCliTest::SetUp();
     // Only create a table on the consumer, producer table may differ in tests.
     CreateTable(Transactional::kTrue);
+    FLAGS_check_bootstrap_required = false;
 
     // Create the producer cluster.
     opts.num_tablet_servers = num_tablet_servers();
@@ -681,7 +685,7 @@ class XClusterAdminCliTest : public AdminCliTest {
     AdminCliTest::DoTearDown();
   }
 
-  CHECKED_STATUS WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
+  Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
     auto proxy = std::make_shared<master::MasterReplicationProxy>(
         &client_->proxy_cache(),
         VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
@@ -1329,6 +1333,88 @@ TEST_F(XClusterAdminCliTest, TestFailedSetupUniverseWithDeletion) {
   std::this_thread::sleep_for(5s);
 }
 
+TEST_F(AdminCliTest, TestSetPreferredZone) {
+  const std::string c1z1 = "c1.r1.z1";
+  const std::string c1z2 = "c1.r1.z2";
+  const std::string c2z1 = "c2.r1.z1";
+  const std::string c1z1_json =
+      "{\"placementCloud\":\"c1\",\"placementRegion\":\"r1\",\"placementZone\":\"z1\"}";
+  const std::string c1z2_json =
+      "{\"placementCloud\":\"c1\",\"placementRegion\":\"r1\",\"placementZone\":\"z2\"}";
+  const std::string c2z1_json =
+      "{\"placementCloud\":\"c2\",\"placementRegion\":\"r1\",\"placementZone\":\"z1\"}";
+  const std::string affinitized_leaders_json_Start = "\"affinitizedLeaders\"";
+  const std::string multi_affinitized_leaders_json_start =
+      "\"multiAffinitizedLeaders\":[{\"zones\":[";
+  const std::string json_end = "]}]";
+
+  ASSERT_OK(RunAdminToolCommand(
+      "modify_placement_info", strings::Substitute("$0,$1,$2", c1z1, c1z2, c2z1), 5, ""));
+
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", ""));
+  auto output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_EQ(output.find(multi_affinitized_leaders_json_start), string::npos);
+
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", c1z1));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(output.find(multi_affinitized_leaders_json_start + c1z1_json + json_end), string::npos);
+
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", c1z1, c1z2, c2z1));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(
+      output.find(
+          multi_affinitized_leaders_json_start + c1z1_json + "," + c1z2_json + "," + c2z1_json +
+          json_end),
+      string::npos);
+
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:1", c1z1)));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(output.find(multi_affinitized_leaders_json_start + c1z1_json + json_end), string::npos);
+
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:1", c1z1), c1z2));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(
+      output.find(multi_affinitized_leaders_json_start + c1z1_json + "," + c1z2_json + json_end),
+      string::npos);
+
+  ASSERT_OK(RunAdminToolCommand(
+      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:2", c1z2),
+      strings::Substitute("$0:3", c2z1)));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(
+      output.find(
+          multi_affinitized_leaders_json_start + c1z1_json + "]},{\"zones\":[" + c1z2_json +
+          "]},{\"zones\":[" + c2z1_json + json_end),
+      string::npos);
+
+  ASSERT_OK(RunAdminToolCommand(
+      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:1", c1z2),
+      strings::Substitute("$0:2", c2z1)));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(
+      output.find(
+          multi_affinitized_leaders_json_start + c1z1_json + "," + c1z2_json + "]},{\"zones\":[" +
+          c2z1_json + json_end),
+      string::npos);
+
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:0", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:-13", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:2", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand(
+      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:3", c1z2)));
+  ASSERT_NOK(RunAdminToolCommand(
+      "set_preferred_zones", strings::Substitute("$0:2", c1z1), strings::Substitute("$0:2", c1z2),
+      strings::Substitute("$0:3", c2z1)));
+}
+
 class XClusterAdminCliTest_Large : public XClusterAdminCliTest {
  public:
   int num_tablet_servers() override {
@@ -1371,7 +1457,7 @@ TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
   }
 
   std::string table_ids = tables.at(0)->id();
-  for (int i = 1; i < tables.size(); ++i) {
+  for (size_t i = 1; i < tables.size(); ++i) {
     table_ids += "," + tables.at(i)->id();
   }
 

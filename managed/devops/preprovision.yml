@@ -29,10 +29,14 @@
     # Disable unattended-upgrades so we can acquire locks to install packages on Ubuntu 18.
     - block:
       - name: Disable timers for unattended upgrade, so none will be triggered by `date -s` call.
-        raw: systemctl disable --now {{item}}
+        raw: >
+          if systemctl is-enabled --quiet {{item}}; then systemctl disable --now {{item}} &&
+          echo disabled ; fi
         with_items:
           - 'apt-daily.timer'
           - 'apt-daily-upgrade.timer'
+        register: output
+        changed_when: "'disabled' in output.stdout"
 
       - name: Reload systemctl daemon to apply the new changes
         raw: systemctl daemon-reload
@@ -100,7 +104,7 @@
         name: policycoreutils-python
         state: present
       when: >
-        'policycoreutils-python' not in ansible_facts.packages and
+        'policycoreutils-python' not in ansible_facts.packages and custom_ssh_port != '22' and
         ((ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7') or
         (ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '7'))
       tags: yb-prebuilt-ami
@@ -112,7 +116,8 @@
     - name: clean dnf
       shell:
         cmd: sudo dnf clean all
-      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'
+      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8' and
+            custom_ssh_port != '22'
       tags: yb-prebuilt-ami
     - name: install latest version of selinux-policy
       shell:
@@ -120,5 +125,6 @@
       register: result
       until: result.rc == 0
       retries: 10
-      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'
+      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8' and
+            custom_ssh_port != '22'
       tags: yb-prebuilt-ami

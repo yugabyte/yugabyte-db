@@ -71,6 +71,11 @@ class GenericServiceImpl : public GenericServiceIf {
 
   void Ping(const PingRequestPB* req, PingResponsePB* resp, rpc::RpcContext rpc) override;
 
+  // Reload TLS certificates to start using newly added certificates, if any.
+  void ReloadCertificates(const ReloadCertificatesRequestPB* req,
+                          ReloadCertificatesResponsePB* resp,
+                          rpc::RpcContext context) override;
+
  private:
   RpcServerBase* server_;
 

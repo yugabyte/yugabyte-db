@@ -38,8 +38,10 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   int col_count = 0;
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, kDefaultSchema, tabname,
                                        kDefaultDatabaseOid, tab_oid,
-                                       false /* is_shared_table */, true /* if_not_exist */,
-                                       false /* add_primary_key */, true /* colocated */,
+                                       false /* is_shared_table */,
+                                       true /* if_not_exist */,
+                                       false /* add_primary_key */,
+                                       true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kColocationIdNotSet /* colocation_id */,
                                        kInvalidOid /* tablespace_id */,
@@ -57,8 +59,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid,
-                                  false /* is_single_row_txn */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid, false /* is_single_row_txn */,
+                                  false /* is_region_local */, &pg_stmt));
 
   int h = 0, r = 0;
   // Allocate constant expressions.
@@ -112,8 +114,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- A < r1 < B -------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -182,8 +184,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- A < r1 -----------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values: A < r1";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
@@ -249,8 +251,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- r1 < B -----------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values: r1 < B";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
@@ -316,8 +318,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- A < r1 < A -------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values: A < r1 < A";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));

@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: snapshots-1-ysql
     parent: backup-restore
-    weight: 705
+    weight: 704
 isTocNested: true
 showAsideToc: true
 ---

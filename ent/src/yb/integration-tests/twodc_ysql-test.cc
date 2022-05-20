@@ -26,6 +26,9 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/log.h"
+#include "yb/consensus/log_reader.h"
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
@@ -51,9 +54,11 @@
 
 #include "yb/master/cdc_consumer_registry_service.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_util.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/sys_catalog_initialization.h"
@@ -88,6 +93,15 @@ DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_bool(enable_delete_truncate_xcluster_replicated_table);
+DECLARE_int32(update_min_cdc_indices_interval_secs);
+DECLARE_int32(log_cache_size_limit_mb);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_uint64(log_segment_size_bytes);
+DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+DECLARE_int32(log_max_seconds_to_retain);
+DECLARE_int32(log_min_segments_to_retain);
+DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(enable_load_balancing);
 
 namespace yb {
 
@@ -120,7 +134,11 @@ constexpr static const char* const kKeyColumnName = "key";
 
 class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDCTestParams> {
  public:
-  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1) {
+  void ValidateRecordsTwoDCWithCDCSDK(bool update_min_cdc_indices_interval = false,
+                                      bool enable_cdc_sdk_in_producer = false,
+                                      bool do_explict_transaction = false);
+
+    Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1) {
     master::SetDefaultInitialSysCatalogSnapshotFlags();
     TwoDCTestBase::SetUp();
     FLAGS_enable_ysql = true;
@@ -213,7 +231,8 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
               << pg_process_conf.listen_addresses << ":" << pg_process_conf.pg_port << ", data: "
               << pg_process_conf.data_dir
               << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-    cluster->pg_supervisor_ = std::make_unique<yb::pgwrapper::PgSupervisor>(pg_process_conf);
+    cluster->pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(
+        pg_process_conf, nullptr /* tserver */);
     RETURN_NOT_OK(cluster->pg_supervisor_->Start());
 
     cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
@@ -270,7 +289,10 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
       std::string with_clause =
           colocation_id_string.empty() ? colocated_clause
                                        : Format("$0, $1", colocation_id_string, colocated_clause);
-      query += Format("WITH ($0) SPLIT INTO $1 TABLETS", with_clause, num_tablets);
+      query += Format("WITH ($0)", with_clause);
+      if (!colocated) {
+         query += Format(" SPLIT INTO $0 TABLETS", num_tablets);
+      }
     }
     EXPECT_OK(conn.Execute(query));
     return GetTable(cluster, namespace_name, table_name);
@@ -392,7 +414,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
                     Format("Unable to find tablegroup in namespace $0", namespace_name));
     }
 
-    return resp.tablegroups()[0].id() + master::kTablegroupParentTableIdSuffix;
+    return master::GetTablegroupParentTableId(resp.tablegroups()[0].id());
   }
 
   Status CreateTablegroup(Cluster* cluster,
@@ -444,7 +466,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
 
   Status VerifyWrittenRecords(const YBTableName& producer_table,
                               const YBTableName& consumer_table) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, producer_table, consumer_table]() -> Result<bool> {
       auto producer_results = ScanToStrings(producer_table, &producer_cluster_);
       auto consumer_results = ScanToStrings(consumer_table, &consumer_cluster_);
       if (PQntuples(producer_results.get()) != PQntuples(consumer_results.get())) {
@@ -462,7 +484,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
   }
 
   Status VerifyNumRecords(const YBTableName& table, Cluster* cluster, int expected_size) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, table, cluster, expected_size]() -> Result<bool> {
       auto results = ScanToStrings(table, cluster);
       return PQntuples(results.get()) == expected_size;
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
@@ -481,11 +503,11 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     return Status::OK();
   }
 };
-
-INSTANTIATE_TEST_CASE_P(TwoDCTestParams, TwoDCYsqlTest,
-                        ::testing::Values(TwoDCTestParams(1, true), TwoDCTestParams(1, false),
-                                          TwoDCTestParams(0, true), TwoDCTestParams(0, false)));
-
+INSTANTIATE_TEST_CASE_P(
+    TwoDCTestParams, TwoDCYsqlTest,
+    ::testing::Values(
+        TwoDCTestParams(1, true, true), TwoDCTestParams(1, false, false),
+        TwoDCTestParams(0, true, true), TwoDCTestParams(0, false, false)));
 
 TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   YB_SKIP_TEST_IN_TSAN();
@@ -835,7 +857,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   // Only need to add the colocated parent table id.
   setup_universe_req.mutable_producer_table_ids()->Reserve(1);
   setup_universe_req.add_producer_table_ids(
-      ns_resp.namespace_().id() + master::kColocatedParentTableIdSuffix);
+      master::GetColocatedDbParentTableId(ns_resp.namespace_().id()));
   auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client()->proxy_cache(),
@@ -1091,12 +1113,204 @@ TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
       &get_universe_replication_resp));
 }
 
+// Checks that in regular replication set up, bootstrap is not required
+TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
+  YB_SKIP_TEST_IN_TSAN();
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); ++i) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  // 1. Write some data.
+  for (const auto& producer_table : producer_tables) {
+    WriteWorkload(0, 100, &producer_cluster_, producer_table->name());
+  }
+
+  // Verify data is written on the producer.
+  for (const auto& producer_table : producer_tables) {
+    auto producer_results = ScanToStrings(producer_table->name(), &producer_cluster_);
+    ASSERT_EQ(100, PQntuples(producer_results.get()));
+    int result;
+    for (int i = 0; i < 100; ++i) {
+      result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+      ASSERT_EQ(i, result);
+    }
+  }
+
+  // 2. Setup replication.
+  FLAGS_check_bootstrap_required = true;
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+                                     kUniverseId, producer_tables));
+  master::GetUniverseReplicationResponsePB verify_resp;
+  ASSERT_OK(VerifyUniverseReplication(
+    consumer_cluster(), consumer_client(), kUniverseId, &verify_resp));
+
+  std::unique_ptr<client::YBClient> client;
+  std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
+  client = ASSERT_RESULT(consumer_cluster()->CreateClient());
+  producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+      &client->proxy_cache(),
+      HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+
+  master::ListCDCStreamsResponsePB stream_resp;
+  ASSERT_OK(GetCDCStreamForTable(producer_tables[0]->id(), &stream_resp));
+  ASSERT_EQ(stream_resp.streams_size(), 1);
+
+  std::vector<TabletId> tablet_ids;
+  if (producer_tables[0]) {
+    ASSERT_OK(producer_cluster_.client_->GetTablets(producer_tables[0]->name(),
+                                                    (int32_t) 3,
+                                                    &tablet_ids,
+                                                    NULL));
+    ASSERT_GT(tablet_ids.size(), 0);
+  }
+
+  rpc::RpcController rpc;
+  cdc::IsBootstrapRequiredRequestPB req;
+  cdc::IsBootstrapRequiredResponsePB resp;
+  auto stream_id = stream_resp.streams(0).stream_id();
+  req.set_stream_id(stream_id);
+  req.add_tablet_ids(tablet_ids[0]);
+
+  ASSERT_OK(producer_cdc_proxy->IsBootstrapRequired(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error());
+  ASSERT_FALSE(resp.bootstrap_required());
+
+  auto should_bootstrap = ASSERT_RESULT(producer_cluster_.client_->IsBootstrapRequired(
+                                          producer_tables[0]->id(), stream_id));
+  ASSERT_FALSE(should_bootstrap);
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+// Checks that with missing logs, replication will require bootstrapping
+TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
+  YB_SKIP_TEST_IN_TSAN();
+
+  FLAGS_enable_load_balancing = false;
+  FLAGS_log_cache_size_limit_mb = 1;
+  FLAGS_log_segment_size_bytes = 5_KB;
+  FLAGS_log_min_segments_to_retain = 1;
+  FLAGS_log_min_seconds_to_retain = 1;
+
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); ++i) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  auto table = producer_tables[0];
+  // Write some data.
+  WriteWorkload(0, 50, &producer_cluster_, table->name());
+
+  auto tablet_ids = ListTabletIdsForTable(producer_cluster(), table->id());
+  ASSERT_EQ(tablet_ids.size(), 1);
+  auto tablet_to_flush = *tablet_ids.begin();
+
+  std::unique_ptr<client::YBClient> client;
+  std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
+  client = ASSERT_RESULT(consumer_cluster()->CreateClient());
+  producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+      &client->proxy_cache(),
+      HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+  ASSERT_OK(WaitFor([this, tablet_to_flush]() -> Result<bool> {
+    LOG(INFO) << "Cleaning tablet logs";
+    RETURN_NOT_OK(producer_cluster()->CleanTabletLogs());
+    auto leaders = ListTabletPeers(producer_cluster(), ListPeersFilter::kLeaders);
+    if (leaders.empty()) {
+      return false;
+    }
+    // locate the leader with the expected logs
+    tablet::TabletPeerPtr tablet_peer = leaders.front();
+    for (auto leader : leaders) {
+      LOG(INFO) << leader->tablet_id() << " @OpId " << leader->GetLatestLogEntryOpId().index;
+      if (leader->tablet_id() == tablet_to_flush) {
+        tablet_peer = leader;
+        break;
+      }
+    }
+    SCHECK(tablet_peer, InternalError, "Missing tablet peer with the WriteWorkload");
+
+    RETURN_NOT_OK(producer_cluster()->FlushTablets());
+    RETURN_NOT_OK(producer_cluster()->CleanTabletLogs());
+
+    // Check that first log was garbage collected, so remote bootstrap will be required.
+    consensus::ReplicateMsgs replicates;
+    int64_t starting_op;
+    yb::SchemaPB schema;
+    uint32_t schema_version;
+    return !tablet_peer->log()->GetLogReader()->ReadReplicatesInRange(
+        1, 2, 0, &replicates, &starting_op, &schema, &schema_version).ok();
+  }, MonoDelta::FromSeconds(30), "Logs cleaned"));
+
+  auto leaders = ListTabletPeers(producer_cluster(), ListPeersFilter::kLeaders);
+  // locate the leader with the expected logs
+  tablet::TabletPeerPtr tablet_peer = leaders.front();
+  for (auto leader : leaders) {
+    if (leader->tablet_id() == tablet_to_flush) {
+      tablet_peer = leader;
+      break;
+    }
+  }
+
+  // IsBootstrapRequired for this specific tablet should fail.
+  rpc::RpcController rpc;
+  cdc::IsBootstrapRequiredRequestPB req;
+  cdc::IsBootstrapRequiredResponsePB resp;
+  req.add_tablet_ids(tablet_peer->log()->tablet_id());
+
+  ASSERT_OK(producer_cdc_proxy->IsBootstrapRequired(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error());
+  ASSERT_TRUE(resp.bootstrap_required());
+
+  // The high level API should also fail.
+  auto should_bootstrap = ASSERT_RESULT(producer_client()->IsBootstrapRequired(table->id()));
+  ASSERT_TRUE(should_bootstrap);
+
+  // Setup replication should fail if this check is enabled.
+  FLAGS_check_bootstrap_required = true;
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+                                     kUniverseId, producer_tables));
+  master::IsSetupUniverseReplicationDoneResponsePB is_resp;
+  ASSERT_OK(VerifyUniverseReplicationFailed(consumer_cluster(), consumer_client(),
+                                            kUniverseId, &is_resp));
+  ASSERT_TRUE(is_resp.has_replication_error());
+  ASSERT_TRUE(StatusFromPB(is_resp.replication_error()).IsIllegalState());
+}
+
 // TODO adapt rest of twodc-test.cc tests.
 
 TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
   YB_SKIP_TEST_IN_TSAN();
-  constexpr int kNTabletsPerTable = 1;
-  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  constexpr int kNT = 1; // Tablets per table.
+  std::vector<uint32_t> tables_vector = {kNT, kNT, kNT}; // Each entry is a table. (Currently 3)
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -1131,16 +1345,53 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
     }
   }
 
-  // 2. Setup replication.
+  // Set aside one table for AlterUniverseReplication.
+  std::shared_ptr<client::YBTable> producer_alter_table, consumer_alter_table;
+  producer_alter_table = producer_tables.back();
+  producer_tables.pop_back();
+  consumer_alter_table = consumer_tables.back();
+  consumer_tables.pop_back();
+
+  // 2a. Setup replication.
   ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
                                      kUniverseId, producer_tables));
 
-  // 3. Verify everything is setup correctly.
+  // Verify everything is setup correctly.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
       &get_universe_replication_resp));
   ASSERT_OK(CorrectlyPollingAllTablets(
-      consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
+      consumer_cluster(), narrow_cast<uint32_t>(producer_tables.size() * kNT)));
+
+  // 2b. Alter Replication
+  {
+    auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client()->proxy_cache(),
+        consumer_leader_mini_master->bound_rpc_addr());
+    master::AlterUniverseReplicationRequestPB alter_req;
+    master::AlterUniverseReplicationResponsePB alter_resp;
+    alter_req.set_producer_id(kUniverseId);
+    alter_req.add_producer_table_ids_to_add(producer_alter_table->id());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
+    ASSERT_FALSE(alter_resp.has_error());
+    // Wait until we have the new table listed in the existing universe config.
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          master::GetUniverseReplicationResponsePB tmp_resp;
+          RETURN_NOT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(),
+                                                  kUniverseId, &tmp_resp));
+          return tmp_resp.entry().tables_size() == static_cast<int64>(producer_tables.size() + 1);
+        },
+        MonoDelta::FromSeconds(kRpcTimeout), "Verify table created with alter."));
+
+    ASSERT_OK(CorrectlyPollingAllTablets(
+        consumer_cluster(), narrow_cast<uint32_t>((producer_tables.size() + 1) * kNT)));
+  }
+  producer_tables.push_back(producer_alter_table);
+  consumer_tables.push_back(consumer_alter_table);
 
   auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
     for (const auto& consumer_table : consumer_tables) {
@@ -1164,16 +1415,21 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 
   // Attempt to destroy the producer and consumer tables.
-  string producer_table_name = producer_tables[0]->name().ToString();
-  string producer_table_id = producer_tables[0]->id();
-  string consumer_table_name = consumer_tables[0]->name().ToString();
-  string consumer_table_id = consumer_tables[0]->id();
-  ASSERT_NOK(DeleteTable(&producer_cluster_, &producer_table_id));
-  ASSERT_NOK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+  for (size_t i = 0; i < producer_tables.size(); ++i) {
+    string producer_table_id = producer_tables[i]->id();
+    string consumer_table_id = consumer_tables[i]->id();
+    ASSERT_NOK(DeleteTable(&producer_cluster_, &producer_table_id));
+    ASSERT_NOK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+  }
 
-  FLAGS_enable_delete_truncate_xcluster_replicated_table = true;
-  ASSERT_OK(DeleteTable(&producer_cluster_, &producer_table_id));
-  ASSERT_OK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+
+  for (size_t i = 0; i < producer_tables.size(); ++i) {
+    string producer_table_id = producer_tables[i]->id();
+    string consumer_table_id = consumer_tables[i]->id();
+    ASSERT_OK(DeleteTable(&producer_cluster_, &producer_table_id));
+    ASSERT_OK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+  }
 }
 
 TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
@@ -1255,6 +1511,298 @@ TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
   FLAGS_enable_delete_truncate_xcluster_replicated_table = true;
   ASSERT_OK(TruncateTable(&producer_cluster_, {producer_table_id}));
   ASSERT_OK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
+}
+
+void PrepareChangeRequest(
+    cdc::GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
+  change_req->set_stream_id(stream_id);
+  change_req->set_tablet_id(tablets.Get(0).tablet_id());
+  change_req->mutable_from_cdc_sdk_checkpoint()->set_term(0);
+  change_req->mutable_from_cdc_sdk_checkpoint()->set_index(0);
+  change_req->mutable_from_cdc_sdk_checkpoint()->set_key("");
+  change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(0);
+}
+
+void PrepareChangeRequest(
+    cdc::GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+    const cdc::CDCSDKCheckpointPB& cp) {
+  change_req->set_stream_id(stream_id);
+  change_req->set_tablet_id(tablets.Get(0).tablet_id());
+  change_req->mutable_from_cdc_sdk_checkpoint()->set_term(cp.term());
+  change_req->mutable_from_cdc_sdk_checkpoint()->set_index(cp.index());
+  change_req->mutable_from_cdc_sdk_checkpoint()->set_key(cp.key());
+  change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(cp.write_id());
+}
+
+Result<cdc::GetChangesResponsePB> GetChangesFromCDC(
+    const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy, const CDCStreamId& stream_id,
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+    const cdc::CDCSDKCheckpointPB* cp = nullptr) {
+  cdc::GetChangesRequestPB change_req;
+  cdc::GetChangesResponsePB change_resp;
+
+  if (!cp) {
+    PrepareChangeRequest(&change_req, stream_id, tablets);
+  } else {
+    PrepareChangeRequest(&change_req, stream_id, tablets, *cp);
+  }
+
+  rpc::RpcController get_changes_rpc;
+  RETURN_NOT_OK(cdc_proxy->GetChanges(change_req, &change_resp, &get_changes_rpc));
+
+  if (change_resp.has_error()) {
+    return StatusFromPB(change_resp.error().status());
+  }
+
+  return change_resp;
+}
+
+// Initialize a CreateCDCStreamRequest to be used while creating a DB stream ID.
+void InitCreateStreamRequest(
+    cdc::CreateCDCStreamRequestPB* create_req,
+    const cdc::CDCCheckpointType& checkpoint_type,
+    const std::string& namespace_name) {
+  create_req->set_namespace_name(namespace_name);
+  create_req->set_checkpoint_type(checkpoint_type);
+  create_req->set_record_type(cdc::CDCRecordType::CHANGE);
+  create_req->set_record_format(cdc::CDCRecordFormat::PROTO);
+  create_req->set_source_type(cdc::CDCSDK);
+}
+
+// This creates a DB stream on the database kNamespaceName by default.
+Result<CDCStreamId> CreateDBStream(const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
+                                   cdc::CDCCheckpointType checkpoint_type) {
+  cdc::CreateCDCStreamRequestPB req;
+  cdc::CreateCDCStreamResponsePB resp;
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+
+  InitCreateStreamRequest(&req, checkpoint_type, kNamespaceName);
+  RETURN_NOT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
+  return resp.db_stream_id();
+}
+
+void PrepareSetCheckpointRequest(
+    cdc::SetCDCCheckpointRequestPB* set_checkpoint_req, const CDCStreamId stream_id,
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets) {
+  set_checkpoint_req->set_stream_id(stream_id);
+  set_checkpoint_req->set_initial_checkpoint(true);
+  set_checkpoint_req->set_tablet_id(tablets.Get(0).tablet_id());
+  set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_term(0);
+  set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_index(0);
+}
+
+Status SetInitialCheckpoint(const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
+    YBClient* client,
+    const CDCStreamId& stream_id,
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
+  rpc::RpcController set_checkpoint_rpc;
+  cdc::SetCDCCheckpointRequestPB set_checkpoint_req;
+  cdc::SetCDCCheckpointResponsePB set_checkpoint_resp;
+  auto deadline = CoarseMonoClock::now() + client->default_rpc_timeout();
+  set_checkpoint_rpc.set_deadline(deadline);
+  PrepareSetCheckpointRequest(&set_checkpoint_req, stream_id, tablets);
+
+  return cdc_proxy->SetCDCCheckpoint(set_checkpoint_req,
+                                      &set_checkpoint_resp,
+                                      &set_checkpoint_rpc);
+}
+
+void TwoDCYsqlTest::ValidateRecordsTwoDCWithCDCSDK(bool update_min_cdc_indices_interval,
+                                                   bool enable_cdc_sdk_in_producer,
+                                                   bool do_explict_transaction) {
+  constexpr int kNTabletsPerTable = 1;
+  // Change the default value from 60 secs to 1 secs.
+  if (update_min_cdc_indices_interval) {
+    // Intent should not be cleaned up, even if updatepeers thread keeps updating the
+    // minimum checkpoint op_id to all the tablet peers every second, because the
+    // intents are still not consumed by the clients.
+    FLAGS_update_min_cdc_indices_interval_secs = 1;
+  }
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // Tables contains both producer and consumer universe tables (alternately).
+  // Pick out just the producer tables from the list.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); ++i) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  // 2. Setup replication.
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(),
+                                     consumer_cluster(), consumer_client(),
+                                     kUniverseId, producer_tables));
+
+  // 3. Create cdc proxy according the flag.
+  rpc::ProxyCache* proxy_cache;
+  Endpoint endpoint;
+  if (enable_cdc_sdk_in_producer) {
+    proxy_cache = &producer_client()->proxy_cache();
+    endpoint = producer_cluster()->mini_tablet_servers().front()->bound_rpc_addr();
+  } else {
+    proxy_cache = &consumer_client()->proxy_cache();
+    endpoint = consumer_cluster()->mini_tablet_servers().front()->bound_rpc_addr();
+  }
+  std::unique_ptr<cdc::CDCServiceProxy> sdk_proxy =
+      std::make_unique<cdc::CDCServiceProxy>(proxy_cache, HostPort::FromBoundEndpoint(endpoint));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  std::shared_ptr<client::YBTable> cdc_enabled_table;
+  YBClient* client;
+  if (enable_cdc_sdk_in_producer) {
+    cdc_enabled_table = producer_tables[0];
+    client = producer_client();
+  } else {
+    cdc_enabled_table = consumer_tables[0];
+    client = consumer_client();
+  }
+  ASSERT_OK(client->GetTablets(cdc_enabled_table->name(),
+                               0,
+                               &tablets, /* partition_list_version =*/
+                               nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId db_stream_id = ASSERT_RESULT(CreateDBStream(sdk_proxy,
+                                                          cdc::CDCCheckpointType::IMPLICIT));
+  ASSERT_OK(SetInitialCheckpoint(sdk_proxy, client, db_stream_id, tablets));
+
+  // 1. Write some data.
+  const auto& producer_table = producer_tables[0];
+  LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+  if (do_explict_transaction) {
+    WriteTransactionalWorkload(0, 10, &producer_cluster_, producer_table->name());
+  } else {
+    WriteWorkload(0, 10, &producer_cluster_, producer_table->name());
+  }
+
+  // Verify data is written on the producer.
+  int batch_insert_count = 10;
+  auto producer_results = ScanToStrings(producer_table->name(), &producer_cluster_);
+  ASSERT_EQ(batch_insert_count, PQntuples(producer_results.get()));
+  int result;
+
+  for (int i = 0; i < batch_insert_count; ++i) {
+    result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+    ASSERT_EQ(i, result);
+  }
+
+  // 3. Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
+                                      &get_universe_replication_resp));
+  ASSERT_OK(CorrectlyPollingAllTablets(
+      consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
+
+  const auto &consumer_table = consumer_tables[0];
+  auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
+    LOG(INFO) << "Checking records for table " << consumer_table->name().ToString();
+    auto consumer_results = ScanToStrings(consumer_table->name(), &consumer_cluster_);
+
+    if (num_results != PQntuples(consumer_results.get())) {
+      return false;
+    }
+    int result;
+    for (int i = 0; i < num_results; ++i) {
+      result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+      if (i != result) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(10); },
+                    MonoDelta::FromSeconds(30), "IsDataReplicatedCorrectly"));
+
+  // Call GetChanges for CDCSDK
+  cdc::GetChangesRequestPB change_req;
+  cdc::GetChangesResponsePB change_resp;
+
+  // Get first change request.
+  rpc::RpcController change_rpc;
+  PrepareChangeRequest(&change_req, db_stream_id, tablets);
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(sdk_proxy, db_stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  uint32_t ins_count = 0;
+  uint32_t expected_record = 0;
+  uint32_t expected_record_count = 10;
+
+  LOG(INFO) << "Record received after the first call to GetChanges: " << record_size;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const cdc::CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == cdc::RowMessage::INSERT) {
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), expected_record++);
+      ins_count++;
+    }
+
+  }
+  LOG(INFO) << "Got " << ins_count << " insert records";
+  ASSERT_EQ(expected_record_count, ins_count);
+
+  // Do more insert into producer.
+  LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+  if (do_explict_transaction) {
+    WriteTransactionalWorkload(10, 20, &producer_cluster_, producer_table->name());
+  } else {
+    WriteWorkload(10, 20, &producer_cluster_, producer_table->name());
+  }
+  // Verify data is written on the producer, which should previous plus
+  // current new insert.
+  producer_results = ScanToStrings(producer_table->name(), &producer_cluster_);
+  ASSERT_EQ(batch_insert_count * 2, PQntuples(producer_results.get()));
+  for (int i = 10; i < 20; ++i) {
+    result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+    ASSERT_EQ(i, result);
+  }
+  // 5. Make sure this data is also replicated now.
+  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(20); },
+                    MonoDelta::FromSeconds(30), "IsDataReplicatedCorrectly"));
+  cdc::GetChangesRequestPB change_req2;
+  cdc::GetChangesResponsePB change_resp2;
+
+  // Checkpoint from previous GetChanges call.
+  cdc::CDCSDKCheckpointPB cp = change_resp.cdc_sdk_checkpoint();
+  PrepareChangeRequest(&change_req2, db_stream_id, tablets, cp);
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(sdk_proxy, db_stream_id, tablets, &cp));
+
+  record_size = change_resp.cdc_sdk_proto_records_size();
+  ins_count = 0;
+  expected_record = 10;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const cdc::CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+    if (record.row_message().op() == cdc::RowMessage::INSERT) {
+      ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), expected_record++);
+      ins_count++;
+    }
+  }
+  LOG(INFO) << "Got " << ins_count << " insert records";
+  ASSERT_EQ(expected_record_count, ins_count);
+}
+
+TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKEnabled) {
+  YB_SKIP_TEST_IN_TSAN();
+  ValidateRecordsTwoDCWithCDCSDK(false, false, false);
+}
+
+TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKExplictTransaction) {
+  YB_SKIP_TEST_IN_TSAN();
+  ValidateRecordsTwoDCWithCDCSDK(false, true, true);
+}
+
+TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKUpdateCDCInterval) {
+  YB_SKIP_TEST_IN_TSAN();
+  ValidateRecordsTwoDCWithCDCSDK(true, true, false);
 }
 
 } // namespace enterprise

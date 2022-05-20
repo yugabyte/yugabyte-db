@@ -331,7 +331,7 @@ void LogicalRocksDBDebugSnapshot::Capture(rocksdb::DB* rocksdb) {
   }
   // Save the DocDB debug dump as a string so we can check that we've properly restored the snapshot
   // in RestoreTo.
-  docdb_debug_dump_str = DocDBDebugDumpToStr(rocksdb);
+  docdb_debug_dump_str = DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage());
 }
 
 void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
@@ -347,7 +347,7 @@ void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
     ASSERT_OK(rocksdb->Put(write_options, kv.first, kv.second));
   }
   ASSERT_OK(FullyCompactDB(rocksdb));
-  ASSERT_EQ(docdb_debug_dump_str, DocDBDebugDumpToStr(rocksdb));
+  ASSERT_EQ(docdb_debug_dump_str, DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage()));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -441,7 +441,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, pv));
     const auto set_primitive_status = dwb.SetPrimitive(doc_path, value);
     if (!set_primitive_status.ok()) {
-      DocDBDebugDump(rocksdb(), std::cerr, StorageDbType::kRegular);
+      DocDBDebugDump(rocksdb(), std::cerr, SchemaPackingStorage(), StorageDbType::kRegular);
       LOG(INFO) << "doc_path=" << doc_path.ToString();
     }
     ASSERT_OK(set_primitive_status);
@@ -684,7 +684,7 @@ void DocDBRocksDBFixture::MinorCompaction(
     ASSERT_LE(num_files_to_compact, files.size());
     vector<string> file_names;
     for (const auto& sst_meta : files) {
-      file_names.push_back(sst_meta.name);
+      file_names.push_back(sst_meta.Name());
     }
     SortByKey(file_names.begin(), file_names.end(), rocksdb::TableFileNameToNumber);
 
@@ -710,10 +710,17 @@ void DocDBRocksDBFixture::MinorCompaction(
               << "  files being compacted: " << yb::ToString(compaction_input_file_names) << "\n"
               << "  other files: " << yb::ToString(remaining_file_names);
 
+    auto minor_compaction = file_names.size() != compaction_input_file_names.size();
+    if (minor_compaction) {
+      delete_marker_retention_time_ = HybridTime::kMin;
+    }
     ASSERT_OK(regular_db_->CompactFiles(
         rocksdb::CompactionOptions(),
         compaction_input_file_names,
         /* output_level */ 0));
+    if (minor_compaction) {
+      delete_marker_retention_time_ = HybridTime::kMax;
+    }
     const auto sstables_after_compaction = SSTableFileNames();
     LOG(INFO) << "SSTable files after compaction: " << sstables_after_compaction.size()
               << " (" << yb::ToString(sstables_after_compaction) << ")";
@@ -730,7 +737,7 @@ void DocDBRocksDBFixture::MinorCompaction(
   regular_db_->GetColumnFamilyMetaData(&cf_meta);
   vector<string> files_after_compaction;
   for (const auto& sst_meta : cf_meta.levels[0].files) {
-    files_after_compaction.push_back(sst_meta.name);
+    files_after_compaction.push_back(sst_meta.Name());
   }
   const int64_t expected_resulting_num_files = initial_num_files - num_files_to_compact + 1;
   ASSERT_EQ(expected_resulting_num_files,
@@ -749,7 +756,7 @@ StringVector DocDBRocksDBFixture::SSTableFileNames() {
   regular_db_->GetColumnFamilyMetaData(&cf_meta);
   StringVector files;
   for (const auto& sstable_meta : cf_meta.levels[0].files) {
-    files.push_back(sstable_meta.name);
+    files.push_back(sstable_meta.Name());
   }
   SortByKey(files.begin(), files.end(), rocksdb::TableFileNameToNumber);
   return files;

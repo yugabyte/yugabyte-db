@@ -20,6 +20,8 @@
 #include <future>
 #include <memory>
 
+#include <boost/functional/hash.hpp>
+
 #include "yb/client/batcher.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
@@ -87,43 +89,44 @@ using yb::tserver::TServerSharedObject;
 
 namespace {
 
-struct PgForeignKeyReferenceLightweight {
-  PgOid table_id;
-  Slice ybctid;
-};
-
-size_t ForeignKeyReferenceHash(PgOid table_id, const char* begin, const char* end) {
-  size_t hash = 0;
-  boost::hash_combine(hash, table_id);
-  boost::hash_range(hash, begin, end);
-  return hash;
-}
-
-template<class Container>
-auto Find(const Container& container, PgOid table_id, const Slice& ybctid) {
-  return container.find(PgForeignKeyReferenceLightweight{table_id, ybctid},
-      [](const auto& k) {
-        return ForeignKeyReferenceHash(k.table_id, k.ybctid.cdata(), k.ybctid.cend()); },
-      [](const auto& l, const auto& r) {
-        return l.table_id == r.table_id && l.ybctid == r.ybctid; });
-}
-
-template<class Container>
-bool Erase(Container* container, PgOid table_id, const Slice& ybctid) {
-  const auto it = Find(*container, table_id, ybctid);
+template<class Container, class Key>
+void Erase(Container* container, const Key& key) {
+  auto it = container->find(key);
   if (it != container->end()) {
     container->erase(it);
-    return true;
   }
-  return false;
 }
 
 YB_DEFINE_ENUM(SessionType, (kRegular)(kTransactional)(kCatalog));
 
+bool IsNeedTransaction(const PgsqlOp& op, bool non_ddl_txn_for_sys_tables_allowed) {
+  // op.need_transaction will be false for write operation in case upper level decides that
+  // it is single row transaction. But in case the non_ddl_txn_for_sys_tables_allowed flag is true
+  // extra read operation is possible within current transaction.
+  //
+  // Example:
+  // CREATE TABLE t (k INT PRIMARY KEY);
+  // INSERT INTO t VALUES(1);
+  // SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+  // INSERT INTO t VALUES(1);
+  //
+  // Last statement inserts row with k = 1 and this is a single row transaction.
+  // But row with k = 1 already exists in the t table. As a result the
+  // 'duplicate key value violates unique constraint "t_pkey"' will be raised.
+  // But this error contains contraints name which is read from sys table pg_class (in case it
+  // is not yet in the postgres's cache). And this read from sys table will be performed in context
+  // of currently running transaction (single row) because the yb_non_ddl_txn_for_sys_tables_allowed
+  // GUC variable is true. As a result there will be 2 operations in context of single row
+  // transaction.
+  // To handle this situation correctly is it necessary to start transaction in case write
+  // operation doesn't require it, but the non_ddl_txn_for_sys_tables_allowed flag is true.
+  return op.need_transaction() || (op.is_write() && non_ddl_txn_for_sys_tables_allowed);
+}
+
 Result<bool> ShouldHandleTransactionally(
   const PgTxnManager& txn_manager, const PgTableDesc& table, const PgsqlOp& op) {
   if (!table.schema().table_properties().is_transactional() ||
-      !op.need_transaction() ||
+      !IsNeedTransaction(op, yb_non_ddl_txn_for_sys_tables_allowed) ||
       YBCIsInitDbModeEnvVarSet()) {
     return false;
   }
@@ -154,7 +157,9 @@ Result<SessionType> GetRequiredSessionType(
     return SessionType::kTransactional;
   }
 
-  return !YBCIsInitDbModeEnvVarSet() && table.schema().table_properties().is_ysql_catalog_table()
+  return op.is_read() &&
+         table.schema().table_properties().is_ysql_catalog_table() &&
+        !YBCIsInitDbModeEnvVarSet()
       ? SessionType::kCatalog
       : SessionType::kRegular;
 }
@@ -171,6 +176,16 @@ void Update(BufferingSettings* buffering_settings) {
   buffering_settings->max_in_flight_operations = static_cast<uint64_t>(ysql_max_in_flight_ops);
 }
 
+RowMarkType GetRowMarkType(const PgsqlOp& op) {
+  return op.is_read()
+      ? GetRowMarkTypeFromPB(down_cast<const PgsqlReadOp&>(op).read_request())
+      : RowMarkType::ROW_MARK_ABSENT;
+}
+
+bool IsReadOnly(const PgsqlOp& op) {
+  return op.is_read() && !IsValidRowMarkType(GetRowMarkType(op));
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -183,7 +198,7 @@ class PgSession::RunHelper {
       : pg_session_(*pg_session), session_type_(session_type) {
   }
 
-  CHECKED_STATUS Apply(const PgTableDesc& table,
+  Status Apply(const PgTableDesc& table,
                        const PgsqlOpPtr& op,
                        uint64_t* read_time,
                        bool force_non_bufferable) {
@@ -228,19 +243,15 @@ class PgSession::RunHelper {
       return Status::OK();
     }
 
-    TxnPriorityRequirement txn_priority_requirement = kLowerPriorityRange;
-    if (pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
-      txn_priority_requirement = kHighestPriority;
-    } else if (op->is_read()) {
-      const auto& read_req = down_cast<PgsqlReadOp&>(*op).read_request();
-      auto row_mark_type = GetRowMarkTypeFromPB(read_req);
-      read_only = read_only && !IsValidRowMarkType(row_mark_type);
-      if (RowMarkNeedsHigherPriority((RowMarkType) row_mark_type)) {
-        txn_priority_requirement = kHigherPriorityRange;
-      }
-    }
-    pg_session_.UpdateInTxnLimit(read_time);
-    return pg_session_.pg_txn_manager_->CalculateIsolation(read_only, txn_priority_requirement);
+    const auto row_mark_type = GetRowMarkType(*op);
+    const auto txn_priority_requirement =
+      pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED ||
+      RowMarkNeedsHigherPriority(row_mark_type)
+          ? kHigherPriorityRange : kLowerPriorityRange;
+    read_only = read_only && !IsValidRowMarkType(row_mark_type);
+
+    return pg_session_.pg_txn_manager_->CalculateIsolation(
+        read_only, txn_priority_requirement, read_time);
   }
 
   Result<PerformFuture> Flush() {
@@ -271,20 +282,18 @@ class PgSession::RunHelper {
 };
 
 //--------------------------------------------------------------------------------------------------
-// Class PgForeignKeyReference
+// Class TableYbctidHasher
 //--------------------------------------------------------------------------------------------------
 
-PgForeignKeyReference::PgForeignKeyReference(PgOid tid, std::string yid) :
-  table_id(tid), ybctid(std::move(yid)) {
+size_t TableYbctidHasher::operator()(const LightweightTableYbctid& value) const {
+  size_t hash = 0;
+  boost::hash_combine(hash, value.table_id);
+  boost::hash_range(hash, value.ybctid.begin(), value.ybctid.end());
+  return hash;
 }
 
-bool operator==(const PgForeignKeyReference& k1, const PgForeignKeyReference& k2) {
-  return k1.table_id == k2.table_id && k1.ybctid == k2.ybctid;
-}
-
-size_t hash_value(const PgForeignKeyReference& key) {
-  return ForeignKeyReferenceHash(
-      key.table_id, key.ybctid.c_str(), key.ybctid.c_str() + key.ybctid.length());
+size_t TableYbctidHasher::operator()(const TableYbctid& value) const {
+  return (*this)(static_cast<LightweightTableYbctid>(value));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -503,13 +512,15 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
   }
 
   if (transactional) {
-    TxnPriorityRequirement txn_priority_requirement = kLowerPriorityRange;
+    auto txn_priority_requirement = kLowerPriorityRange;
     if (GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
       txn_priority_requirement = kHighestPriority;
     }
 
-    RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(false, txn_priority_requirement));
-    in_txn_limit_ = clock_->Now();
+    // Use 0 as the value of in_txn_limit to force setting current time as txn limit
+    uint64_t in_txn_limit = 0;
+    RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
+        false /* read_only */, txn_priority_requirement, &in_txn_limit));
   }
 
   return Perform(std::move(ops), UseCatalogSession::kFalse);
@@ -531,12 +542,12 @@ Result<PerformFuture> PgSession::Perform(
     options.set_use_catalog_session(true);
   } else {
     pg_txn_manager_->SetupPerformOptions(&options);
-
-    if (in_txn_limit_ && pg_txn_manager_->IsTxnInProgress()) {
-      options.set_in_txn_limit_ht(in_txn_limit_.ToUint64());
-    }
   }
-  options.set_force_global_transaction(yb_force_global_transaction);
+  bool global_transaction = yb_force_global_transaction;
+  for (auto i = ops.operations.begin(); !global_transaction && i != ops.operations.end(); ++i) {
+    global_transaction = !(*i)->is_region_local();
+  }
+  options.set_force_global_transaction(global_transaction);
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
@@ -562,17 +573,16 @@ Result<uint64_t> PgSession::GetSharedAuthKey() {
   }
 }
 
-Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
-                                                  const Slice& ybctid,
+Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& key,
                                                   const YbctidReader& reader) {
-  if (Find(fk_reference_cache_, table_id, ybctid) != fk_reference_cache_.end()) {
+  if (fk_reference_cache_.find(key) != fk_reference_cache_.end()) {
     return true;
   }
 
   // Check existence of required FK intent.
   // Absence means the key was checked by previous batched request and was not found.
   // We don't need to call the reader in this case.
-  auto it = Find(fk_reference_intent_, table_id, ybctid);
+  auto it = fk_reference_intent_.find(key);
   if (it == fk_reference_intent_.end()) {
     return false;
   }
@@ -584,55 +594,52 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
   // If the reader fails to get the result, we fail the whole operation (and transaction).
   // Hence it's ok to extract (erase) the keys from intent before calling reader.
   auto node = fk_reference_intent_.extract(it);
-  ybctids.push_back({table_id, std::move(node.value().ybctid)});
+  ybctids.emplace_back(key.table_id, std::move(node.value().ybctid));
 
   // Read up to session max batch size keys.
   for (auto it = fk_reference_intent_.begin();
-       it != fk_reference_intent_.end() && ybctids.size() < buffering_settings_.max_batch_size; ) {
+       it != fk_reference_intent_.end() && ybctids.size() < ybctids.capacity(); ) {
     node = fk_reference_intent_.extract(it++);
-    auto& key_ref = node.value();
-    ybctids.push_back({key_ref.table_id, std::move(key_ref.ybctid)});
+    ybctids.push_back(std::move(node.value()));
   }
 
   // Add the keys found in docdb to the FK cache.
-  RETURN_NOT_OK(reader(&ybctids));
-  for (auto& it : ybctids) {
-    fk_reference_cache_.emplace(it.table_id, std::move(it.ybctid));
+  RETURN_NOT_OK(reader(&ybctids, fk_intent_region_local_tables_));
+  for (auto& ybctid : ybctids) {
+    fk_reference_cache_.insert(std::move(ybctid));
   }
 
-  return Find(fk_reference_cache_, table_id, ybctid) != fk_reference_cache_.end();
+  return fk_reference_cache_.find(key) != fk_reference_cache_.end();
 }
 
-void PgSession::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {
-  if (Find(fk_reference_cache_, table_id, ybctid) == fk_reference_cache_.end()) {
-    fk_reference_intent_.emplace(table_id, ybctid.ToBuffer());
+void PgSession::AddForeignKeyReferenceIntent(
+    const LightweightTableYbctid& key, bool is_region_local) {
+  if (fk_reference_cache_.find(key) == fk_reference_cache_.end()) {
+    if (is_region_local) {
+      fk_intent_region_local_tables_.insert(key.table_id);
+    } else {
+      fk_intent_region_local_tables_.erase(key.table_id);
+    }
+    fk_reference_intent_.emplace(key.table_id, std::string(key.ybctid));
   }
 }
 
-void PgSession::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
-  if (Find(fk_reference_cache_, table_id, ybctid) == fk_reference_cache_.end()) {
-    fk_reference_cache_.emplace(table_id, ybctid.ToBuffer());
+void PgSession::AddForeignKeyReference(const LightweightTableYbctid& key) {
+  if (fk_reference_cache_.find(key) == fk_reference_cache_.end()) {
+    fk_reference_cache_.emplace(key.table_id, std::string(key.ybctid));
   }
 }
 
-void PgSession::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
-  Erase(&fk_reference_cache_, table_id, ybctid);
+void PgSession::DeleteForeignKeyReference(const LightweightTableYbctid& key) {
+  Erase(&fk_reference_cache_, key);
 }
 
 Status PgSession::PatchStatus(const Status& status, const PgObjectIds& relations) {
   if (PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
     auto op_index = OpIndex::ValueFromStatus(status);
     if (op_index && *op_index < relations.size()) {
-      char constraint_name[0xFF];
-      constraint_name[sizeof(constraint_name) - 1] = 0;
-      pg_callbacks_.FetchUniqueConstraintName(relations[*op_index].object_oid,
-                                              constraint_name,
-                                              sizeof(constraint_name) - 1);
-      return STATUS(
-          AlreadyPresent,
-          Format("duplicate key value violates unique constraint \"$0\"", Slice(constraint_name)),
-          Slice(),
-          PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION));
+      return STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION))
+          .CloneAndAddErrorCode(RelationOid(relations[*op_index].object_oid));
     }
   }
   return status;
@@ -696,15 +703,12 @@ Status PgSession::RollbackSubTransaction(SubTransactionId id) {
   return pg_client_.RollbackSubTransaction(id);
 }
 
-void PgSession::UpdateInTxnLimit(uint64_t* read_time) {
-  if (!read_time) {
-    return;
-  }
+void PgSession::ResetHasWriteOperationsInDdlMode() {
+  has_write_ops_in_ddl_mode_ = false;
+}
 
-  if (!*read_time) {
-    *read_time = clock_->Now().ToUint64();
-  }
-  in_txn_limit_ = HybridTime(*read_time);
+bool PgSession::HasWriteOperationsInDdlMode() const {
+  return has_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
 }
 
 Status PgSession::ValidatePlacement(const string& placement_info) {
@@ -728,6 +732,7 @@ Status PgSession::ValidatePlacement(const string& placement_info) {
     pb->set_region(block.region);
     pb->set_zone(block.zone);
     pb->set_min_num_replicas(block.min_num_replicas);
+    pb->set_leader_preference(block.leader_preference);
   }
   req.set_num_replicas(placement.num_replicas);
 
@@ -743,6 +748,7 @@ Result<PerformFuture> PgSession::RunAsync(
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
       *pg_txn_manager_, *table, **op));
   RunHelper runner(this, group_session_type);
+  const auto ddl_mode = pg_txn_manager_->IsDdlMode();
   for (; table_op.operation; table_op = generator()) {
     table = table_op.table;
     op = table_op.operation;
@@ -752,6 +758,7 @@ Result<PerformFuture> PgSession::RunAsync(
               group_session_type,
               IllegalState,
               "Operations on different sessions can't be mixed");
+    has_write_ops_in_ddl_mode_ = has_write_ops_in_ddl_mode_ || (ddl_mode && !IsReadOnly(**op));
     RETURN_NOT_OK(runner.Apply(*table, *op, read_time, force_non_bufferable));
   }
   return runner.Flush();

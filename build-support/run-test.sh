@@ -57,7 +57,7 @@ cleanup() {
   # shellcheck disable=SC2119
   kill_stuck_processes
 
-  if [[ -n ${YB_TEST_INVOCATION_ID:-} ]]; then
+  if [[ -n ${YB_TEST_INVOCATION_ID:-} && "${YB_NO_TEST_INVOCATION_FLAG_FILE:-}" != "1" ]]; then
     mkdir -p /tmp/yb_completed_tests
     touch "$YB_COMPLETED_TEST_FLAG_DIR/$YB_TEST_INVOCATION_ID"
   fi

@@ -156,8 +156,9 @@ class TsTabletManagerTest : public YBTest {
     std::pair<PartitionSchema, Partition> partition = tablet::CreateDefaultPartition(full_schema);
 
     auto table_info = std::make_shared<tablet::TableInfo>(
-        table_id, tablet_id, tablet_id, TableType::DEFAULT_TABLE_TYPE, full_schema, IndexMap(),
-        boost::none /* index_info */, 0 /* schema_version */, partition.first);
+        tablet::Primary::kTrue, table_id, tablet_id, tablet_id, TableType::DEFAULT_TABLE_TYPE,
+        full_schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
+        partition.first);
     auto tablet_peer = VERIFY_RESULT(tablet_manager_->CreateNewTablet(
         table_info, tablet_id, partition.second, config_));
     if (out_tablet_peer) {

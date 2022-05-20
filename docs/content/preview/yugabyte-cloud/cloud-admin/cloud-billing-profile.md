@@ -1,7 +1,7 @@
 ---
 title: Manage your billing profile and payment method
 linkTitle: Manage billing
-description: Manage your Yugabyte Cloud billing profile and payment methods and view invoices.
+description: Manage your YugabyteDB Managed billing profile and payment methods and view invoices.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -13,26 +13,19 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Review your cloud charges and manage your billing profile and payment methods using the **Billing** tab.
+Review your charges and manage your billing profile and payment methods using the **Billing** tab.
 
-You must be signed in as the Admin user (the user who created the Yugabyte Cloud account) to perform Admin tasks. Developer (invited) users cannot view the billing profile.
+You must be signed in as an Admin user; Developer users cannot view the billing profile.
 
 Yugabyte bills for its services as follows:
 
-- Charges by the minute for your Yugabyte Cloud clusters.
+- Charges by the minute for your YugabyteDB Managed clusters.
 - Tabulates costs daily.
 - Displays your current monthly costs under **Invoices** on the **Billing** tab.
 
 **Invoices are sent to the email provided in the billing profile**.
 
-Yugabyte Cloud Billing is based on your actual usage across the following dimensions:
-
-- Instance Capacity
-- Disk Storage
-- Backup Storage
-- Data Transfer
-
-For information on Yugabyte Cloud pricing, refer to the [Yugabyte Cloud Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-billing-costs/).
+For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-billing-costs/).
 
 ![Admin Billing tab](/images/yb-cloud/cloud-admin-billing.png)
 
@@ -72,9 +65,9 @@ The **Credits** section displays any credits applied to your account, including 
 
 ## Invoices
 
-At the end of each month, your invoice is generated, the amount is charged automatically to the default credit card, and the invoice and receipt are emailed to the address on the billing profile. If you are using a payment method other than credit card, the invoice will be settled out of band.
+Your invoice is generated at the end of each month. The amount is charged automatically to the default credit card, and the invoice and receipt are emailed to the address on the billing profile. If you are using a payment method other than credit card, the invoice will be settled out of band.
 
-**Invoices** lists your active and past invoices, along with a running total of cloud usage for the current billing period. To review a specific invoice, select it in **Invoice History**.
+**Invoices** lists your active and past invoices, along with a running total of usage for the current billing period. To review a specific invoice, select it in **Invoice History**.
 
 ### Active Invoice
 
@@ -91,7 +84,12 @@ Click **Invoice Details** to view the invoice [Summary](#invoice-summary) for th
 
 ### Usage Breakdown
 
-Shows a breakdown of costs for the current billing cycle.
+Shows a breakdown of costs for the current billing cycle. YugabyteDB Managed billing is based on your actual usage across the following dimensions:
+
+- Instance Capacity
+- Disk Storage
+- Backup Storage
+- Data Transfer
 
 ### Invoice History
 
@@ -120,7 +118,7 @@ To download the invoice as a PDF, click **Download Invoice**.
 
 **Summary** shows the following invoice details:
 
-- Running total - running total of the amount you owe in the current billing period; Yugabyte updates this once a day.
+- Total - the amount you owe in the billing period (or running total in the current billing period; Yugabyte updates the running total once a day).
 - Billing option - your billing plan (pay-as-you-go or subscription).
 - Billing period - the start and end date of the current billing period. Your first billing period starts the day you created your billing profile and ends on the last day of the month; subsequent periods start on the first day of the month and end on the last.
 - Previous invoice - the amount of the previous invoice.

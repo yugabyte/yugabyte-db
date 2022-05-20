@@ -40,6 +40,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <vector>
 
 #include <boost/signals2/dummy_mutex.hpp>
@@ -306,7 +307,7 @@ class ArenaAllocatorBase {
     CHECK_NOTNULL(arena_);
   }
 
-  pointer allocate(size_type n, std::allocator<void>::const_pointer /*hint*/ = 0) {
+  pointer allocate(size_type n) {
     return reinterpret_cast<T*>(arena_->AllocateBytesAligned(n * sizeof(T), alignof(T)));
   }
 

@@ -13,7 +13,6 @@ import { Link } from 'react-router';
 import { Backup_States, IBackup, Keyspace_Table, TableType } from '..';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
-import './BackupDetails.scss';
 import {
   calculateDuration,
   FormatUnixTimeStampTimeToTimezone,
@@ -22,6 +21,12 @@ import {
 import { YCQLTableList, YSQLTableList } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { TABLE_TYPE_MAP } from '../common/IBackup';
+import { isFunction } from 'lodash';
+import { formatBytes } from '../../xcluster/ReplicationUtils';
+import { useQuery } from 'react-query';
+import { getKMSConfigs } from '../common/BackupAPI';
+
+import './BackupDetails.scss';
 interface BackupDetailsProps {
   backup_details: IBackup | null;
   onHide: () => void;
@@ -32,6 +37,7 @@ interface BackupDetailsProps {
     data?: any[];
   };
   hideRestore?: boolean;
+  onAssignStorageConfig?: () => void;
 }
 const SOURCE_UNIVERSE_DELETED_MSG = (
   <span className="alert-message warning">
@@ -51,14 +57,26 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
   onRestore,
   onDelete,
   storageConfigs,
-  hideRestore = false
+  hideRestore = false,
+  onAssignStorageConfig
 }) => {
   const [searchKeyspaceText, setSearchKeyspaceText] = useState('');
+
+  const { data: kmsConfigs } = useQuery(['kms_configs'], () => getKMSConfigs(), {
+    enabled: backup_details?.kmsConfigUUID !== undefined
+  });
+
+  const kmsConfig = kmsConfigs
+    ? kmsConfigs.find((config: any) => {
+        return config.metadata.configUUID === backup_details?.kmsConfigUUID;
+      })
+    : undefined;
 
   if (!backup_details) return null;
   const storageConfig = storageConfigs?.data?.find(
     (config) => config.configUUID === backup_details.storageConfigUUID
   );
+
   return (
     <div id="universe-tab-panel-pane-queries" className={'backup-details-panel'}>
       <div className={`side-panel`}>
@@ -82,14 +100,18 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               disabled={
                 backup_details.state === Backup_States.DELETED ||
                 backup_details.state === Backup_States.DELETE_IN_PROGRESS ||
-                backup_details.state === Backup_States.QUEUED_FOR_DELETION
+                backup_details.state === Backup_States.QUEUED_FOR_DELETION ||
+                !backup_details.isStorageConfigPresent
               }
             />
             {!hideRestore && (
               <YBButton
                 btnText="Restore Entire Backup"
                 onClick={() => onRestore()}
-                disabled={backup_details.state !== Backup_States.COMPLETED}
+                disabled={
+                  backup_details.state !== Backup_States.COMPLETED ||
+                  !backup_details.isStorageConfigPresent
+                }
               />
             )}
           </Row>
@@ -128,7 +150,17 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div>{TABLE_TYPE_MAP[backup_details.backupType]}</div>
               </div>
               <div>
-                <div className="header-text">Create Time</div>
+                <div className="header-text">Size</div>
+                <div>{formatBytes(backup_details.totalBackupSizeInBytes ?? 0)}</div>
+              </div>
+              <div>
+                <div className="header-text">Duration</div>
+                <div>
+                  {calculateDuration(backup_details.createTime, backup_details.completionTime)}
+                </div>
+              </div>
+              <div>
+                <div className="header-text">Created At</div>
                 <div>
                   <FormatUnixTimeStampTimeToTimezone timestamp={backup_details.createTime} />
                 </div>
@@ -139,11 +171,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                   <FormatUnixTimeStampTimeToTimezone timestamp={backup_details.expiryTime} />
                 </div>
               </div>
-              <div>
-                <div className="header-text">Duration</div>
-                <div>{calculateDuration(backup_details.createTime, backup_details.updateTime)}</div>
-              </div>
-              <div>
+              <span className="flex-divider" />
+              <div className="details-storage-config">
                 <div className="header-text">Storage Config</div>
                 <div className="universeLink">
                   <Link
@@ -155,7 +184,27 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 </div>
                 {!storageConfigName && STORAGE_CONFIG_DELETED_MSG}
               </div>
+              <div>
+                <div className="header-text">KMS Config</div>
+                <div>{kmsConfig ? kmsConfig.label : '-'}</div>
+              </div>
             </div>
+            {!storageConfigName && (
+              <span className="assign-config-msg">
+                <span>
+                  In order to <b>Delete</b> or <b>Restore</b> this backup you must first assign a
+                  new storage config to this backup.
+                </span>
+                <YBButton
+                  btnText="Assign storage config"
+                  onClick={() => {
+                    if (isFunction(onAssignStorageConfig)) {
+                      onAssignStorageConfig();
+                    }
+                  }}
+                />
+              </span>
+            )}
           </Row>
           {backup_details.state !== Backup_States.FAILED && (
             <Row className="tables-list">
@@ -169,7 +218,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </Col>
 
               <Col lg={12} className="no-padding">
-                {backup_details.backupType === TableType.YQL_TABLE_TYPE ? (
+                {backup_details.backupType === TableType.YQL_TABLE_TYPE ||
+                backup_details.backupType === TableType.REDIS_TABLE_TYPE ? (
                   <YCQLTableList
                     backup={backup_details}
                     keyspaceSearch={searchKeyspaceText}

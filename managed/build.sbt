@@ -158,7 +158,7 @@ libraryDependencies ++= Seq(
   "com.typesafe.play" %% "play-json" % "2.6.14",
   "org.asynchttpclient" % "async-http-client" % "2.2.1",
   "commons-validator" % "commons-validator" % "1.7",
-  "com.h2database" % "h2" % "2.1.210" % Test,
+  "com.h2database" % "h2" % "2.1.212" % Test,
   "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
   "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test,
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
@@ -179,7 +179,8 @@ libraryDependencies ++= Seq(
   "com.github.dikhan" % "pagerduty-client" % "3.1.2",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
-  "io.fabric8" % "kubernetes-client" % "5.10.2"
+  "io.fabric8" % "kubernetes-client" % "5.10.2",
+  "org.apache.commons" % "commons-text" % "1.9"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -375,7 +376,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.16-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.17-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:

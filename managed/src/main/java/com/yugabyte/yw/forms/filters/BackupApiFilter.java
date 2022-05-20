@@ -31,6 +31,8 @@ public class BackupApiFilter {
   private Set<UUID> storageConfigUUIDList;
   private Set<UUID> scheduleUUIDList;
   private Set<UUID> universeUUIDList;
+  private boolean onlyShowDeletedUniverses;
+  private boolean onlyShowDeletedConfigs;
 
   public BackupFilter toFilter() {
     BackupFilter.BackupFilterBuilder builder = BackupFilter.builder();
@@ -57,6 +59,12 @@ public class BackupApiFilter {
     }
     if (dateRangeStart != null) {
       builder.dateRangeStart(dateRangeStart);
+    }
+    if (onlyShowDeletedUniverses) {
+      builder.onlyShowDeletedUniverses(onlyShowDeletedUniverses);
+    }
+    if (onlyShowDeletedConfigs) {
+      builder.onlyShowDeletedConfigs(onlyShowDeletedConfigs);
     }
 
     return builder.build();

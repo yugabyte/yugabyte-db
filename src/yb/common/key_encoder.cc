@@ -60,7 +60,7 @@ class EncoderResolver {
   }
 
  private:
-  EncoderResolver<Buffer>() {
+  EncoderResolver() {
     AddMapping<BOOL>();
     AddMapping<UINT8>();
     AddMapping<INT8>();

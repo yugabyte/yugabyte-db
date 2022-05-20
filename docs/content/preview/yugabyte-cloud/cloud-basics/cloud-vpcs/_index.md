@@ -15,11 +15,11 @@ menu:
     weight: 200
 ---
 
-A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your Yugabyte Cloud clusters to communicate with those clusters without traversing the public internet; all traffic stays in the cloud provider's network.
+A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your YugabyteDB Managed clusters to communicate with those clusters without traversing the public internet; all traffic stays in the cloud provider's network.
 
 Use VPC networks to lower network latencies, make your application and database infrastructure more secure, and reduce network data transfer costs.
 
-In Yugabyte Cloud, a VPC network consists of the following:
+In YugabyteDB Managed, a VPC network consists of the following:
 
 - The _VPC_, where you can deploy clusters. The VPC reserves a block of IP addresses on the cloud provider.
 - A _peering connection_, which links the cluster VPC to an application VPC on the same cloud provider.
@@ -39,23 +39,23 @@ VPC peering is not supported in free clusters.
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./cloud-vpc-intro/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
         <div class="title">Overview</div>
       </div>
       <div class="body">
-        VPC networking in Yugabyte Cloud.
+        VPC networking in YugabyteDB Managed.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./cloud-vpc-setup/">
+    <a class="section-link icon-offset" href="./cloud-add-vpc-aws/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Set up a VPC network</div>
+        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
+        <div class="title">Create a VPC network</div>
       </div>
       <div class="body">
-        How to set up a VPC network in Yugabyte Cloud.
+        Create a VPC network on AWS and GCP.
       </div>
     </a>
   </div>
@@ -63,11 +63,11 @@ VPC peering is not supported in free clusters.
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./cloud-add-vpc/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
         <div class="title">VPCs</div>
       </div>
       <div class="body">
-        Create and manage VPCs for your clusters.
+        Manage VPCs for your clusters.
       </div>
     </a>
   </div>
@@ -79,21 +79,9 @@ VPC peering is not supported in free clusters.
         <div class="title">Peering Connections</div>
       </div>
       <div class="body">
-        Create and manage peering connections to application VPCs.
+        Manage peering connections to application VPCs.
       </div>
     </a>
   </div>
-<!--
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="endpoints/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
-        <div class="title">Manage Endpoints</div>
-      </div>
-      <div class="body">
-        Manage the endpoints for connecting to clusters.
-      </div>
-    </a>
-  </div>
--->
+
 </div>

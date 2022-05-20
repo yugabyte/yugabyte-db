@@ -62,6 +62,7 @@
 using namespace std::literals;
 
 DECLARE_bool(TEST_disallow_lmp_failures);
+DECLARE_bool(enable_multi_raft_heartbeat_batcher);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_int32(TEST_inject_load_transaction_delay_ms);
@@ -357,6 +358,7 @@ void SnapshotTxnTest::TestBankAccounts(
 
 TEST_F(SnapshotTxnTest, BankAccounts) {
   FLAGS_TEST_disallow_lmp_failures = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */);
 }
 
@@ -393,6 +395,7 @@ TEST_F(SnapshotTxnTest, BankAccountsDelayCreate) {
 
 TEST_F(SnapshotTxnTest, BankAccountsDelayAddLeaderPending) {
   FLAGS_TEST_disallow_lmp_failures = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms = 20;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(5, 1) /* minimal_updates_per_second */);
 }
@@ -506,7 +509,7 @@ Result<PagingReadCounts> SingleTabletSnapshotTxnTest::TestPaging() {
             session->SetForceConsistentRead(ForceConsistentRead::kTrue);
             *req->mutable_paging_state() = std::move(paging_state);
           }
-          auto flush_status = session->ApplyAndFlush(op);
+          auto flush_status = session->TEST_ApplyAndFlush(op);
 
           if (!flush_status.ok() || !op->succeeded()) {
             if (flush_status.IsTimedOut()) {
@@ -634,7 +637,7 @@ TEST_F(SnapshotTxnTest, HotRow) {
     session->SetTransaction(txn);
 
     ASSERT_OK(kv_table_test::Increment(&table_, session, kKey));
-    ASSERT_OK(session->Flush());
+    ASSERT_OK(session->TEST_Flush());
     ASSERT_OK(txn->CommitFuture().get());
     if (i % kBlockSize == 0) {
       auto now = MonoTime::Now();
@@ -774,7 +777,7 @@ void SnapshotTxnTest::TestMultiWriteWithRestart() {
       YBqlReadOpPtr op;
       for (;;) {
         op = ReadRow(session, key->value);
-        auto flush_result = session->Flush();
+        auto flush_result = session->TEST_Flush();
         if (flush_result.ok()) {
           if (op->succeeded()) {
             break;

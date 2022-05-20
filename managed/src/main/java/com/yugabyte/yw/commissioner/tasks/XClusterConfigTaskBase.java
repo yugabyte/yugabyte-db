@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetSta
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -28,6 +29,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
@@ -156,9 +158,39 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     IsSetupUniverseReplicationDoneResponse poll(String replicationGroupName) throws Exception;
   }
 
+  /**
+   * It parses a replication group name in the coreDB, and return the source universe UUID and the
+   * xCluster config name shown in the Platform UI. The input must have a format of
+   * sourceUniverseUuid_xClusterConfigName (e.g., dc510c24-9c4a-4e15-b59b-333e5815e936_MyRepl).
+   *
+   * @param replicationGroupName The replication group name saved in the coreDB.
+   * @return returns an optional of a Pair of source universe UUID and the xCluster config name if
+   *     the input has the correct format. Otherwise, the optional is empty.
+   */
+  public static Optional<Pair<UUID, String>> maybeParseReplicationGroupName(
+      String replicationGroupName) {
+    String[] sourceUniverseUuidAndConfigName = replicationGroupName.split("_", 2);
+    if (sourceUniverseUuidAndConfigName.length != 2) {
+      log.warn(
+          "Unable to parse XClusterConfig: {}, expected format <sourceUniverseUUID>_<name>",
+          replicationGroupName);
+      return Optional.empty();
+    }
+    UUID sourceUniverseUUID;
+    try {
+      sourceUniverseUUID = UUID.fromString(sourceUniverseUuidAndConfigName[0]);
+    } catch (Exception e) {
+      log.warn(
+          "Unable to parse {} as valid UUID for replication group name: {}",
+          sourceUniverseUuidAndConfigName[0],
+          replicationGroupName);
+      return Optional.empty();
+    }
+    return Optional.of(new Pair<>(sourceUniverseUUID, sourceUniverseUuidAndConfigName[1]));
+  }
+
   protected void waitForXClusterOperation(IPollForXClusterOperation p) {
     XClusterConfig xClusterConfig = taskParams().xClusterConfig;
-
     try {
       IsSetupUniverseReplicationDoneResponse doneResponse = null;
       int numAttempts = 1;
@@ -264,7 +296,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       transferParams.azUuid = node.azUuid;
       transferParams.rootCertPath = certificate;
       transferParams.action = TransferXClusterCerts.Params.Action.COPY;
-      transferParams.replicationConfigName = configName;
+      transferParams.replicationGroupName = configName;
       if (producerCertsDir != null) {
         transferParams.producerCertsDirOnTarget = producerCertsDir;
       }
@@ -292,7 +324,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       transferParams.nodeName = node.nodeName;
       transferParams.azUuid = node.azUuid;
       transferParams.action = TransferXClusterCerts.Params.Action.REMOVE;
-      transferParams.replicationConfigName = configName;
+      transferParams.replicationGroupName = configName;
       if (producerCertsDir != null) {
         transferParams.producerCertsDirOnTarget = producerCertsDir;
       }

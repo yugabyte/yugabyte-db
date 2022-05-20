@@ -91,7 +91,7 @@ Result<size_t> SelectRowsCount(
       session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
       *req->mutable_paging_state() = std::move(paging_state);
     }
-    RETURN_NOT_OK(session->ApplyAndFlush(op));
+    RETURN_NOT_OK(session->TEST_ApplyAndFlush(op));
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
     row_count += rowblock->row_count();
     if (!op->response().has_paging_state()) {
@@ -133,7 +133,7 @@ Status SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& 
   tablet.TEST_db()->GetProperty(rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
   LOG(INFO) << "DB properties: " << properties;
 
-  return catalog_mgr->SplitTablet(tablet_id, true /* is_manual_split */);
+  return catalog_mgr->SplitTablet(tablet_id, master::ManualSplit::kTrue);
 }
 
 Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet) {
@@ -225,9 +225,6 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     TabletSplitITestBase<MiniClusterType>::WriteRows(
         client::TableHandle* table, const uint32_t num_rows,
         const int32_t start_key, const int32_t start_value, client::YBSessionPtr session) {
-  auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
-  auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
-
   LOG(INFO) << "Writing " << num_rows << " rows...";
 
   auto txn = this->CreateTransaction();
@@ -237,22 +234,31 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
   } else {
     session = this->CreateSession(txn);
   }
+
+  vector<client::YBqlWriteOpPtr> ops;
+  ops.reserve(num_rows);
   for (int32_t i = start_key, v = start_value;
        i < start_key + static_cast<int32_t>(num_rows);
        ++i, ++v) {
-    client::YBqlWriteOpPtr op = VERIFY_RESULT(
+    ops.push_back(VERIFY_RESULT(
         client::kv_table_test::WriteRow(table,
                                         session,
                                         i /* key */,
                                         v /* value */,
                                         client::WriteOpType::INSERT,
-                                        client::Flush::kFalse));
+                                        client::Flush::kFalse)));
+    YB_LOG_EVERY_N_SECS(INFO, 10) << "Rows written: " << start_key << "..." << i;
+  }
+  RETURN_NOT_OK(session->TEST_Flush());
+
+  auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
+  auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
+  for (const auto& op : ops) {
     const auto hash_code = op->GetHashCode();
     min_hash_code = std::min(min_hash_code, hash_code);
     max_hash_code = std::max(max_hash_code, hash_code);
-    YB_LOG_EVERY_N_SECS(INFO, 10) << "Rows written: " << start_key << "..." << i;
   }
-  RETURN_NOT_OK(session->Flush());
+
   if (txn) {
     RETURN_NOT_OK(txn->CommitFuture().get());
     LOG(INFO) << "Committed: " << txn->id();
@@ -434,7 +440,7 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
     return num_peers_running == num_replicas_online * expected_total_tablets &&
            num_peers_split == num_replicas_online * expected_split_tablets &&
            num_peers_leader_ready == expected_total_tablets;
-  }, split_completion_timeout_, "Wait for tablet split to be completed");
+  }, split_completion_timeout_sec_, "Wait for tablet split to be completed");
   if (!s.ok()) {
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet();

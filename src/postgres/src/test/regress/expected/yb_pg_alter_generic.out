@@ -531,6 +531,7 @@ SELECT nspname, prsname
 ---
 --- Cleanup resources
 ---
+RESET SESSION AUTHORIZATION;
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA alt_nsp1 CASCADE;
 NOTICE:  drop cascades to 23 other objects
@@ -539,3 +540,4 @@ NOTICE:  drop cascades to 5 other objects
 DROP USER regress_alter_generic_user1;
 DROP USER regress_alter_generic_user2;
 DROP USER regress_alter_generic_user3;
+

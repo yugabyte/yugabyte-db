@@ -1,7 +1,7 @@
 ---
 title: Configure the Kubernetes cloud provider
 headerTitle: Configure the Kubernetes cloud provider
-linkTitle: Configure the cloud provider
+linkTitle: Configure cloud providers
 description: Configure the Kubernetes cloud provider
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/kubernetes
@@ -65,11 +65,11 @@ showAsideToc: true
 
 </ul>
 
-This document describes how to configure the Kubernetes provider for YugabyteDB universes using Yugabyte Platform. If no cloud providers are configured in the Yugabyte Platform console yet, the main Dashboard page prompts you to configure at least one cloud provider.
+This document describes how to configure the Kubernetes provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured in YugabyteDB Anywhere yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
-To run YugabyteDB universes on Kubernetes, all you need to provide in the Yugabyte Platform console is your Kubernetes provider credentials. Yugabyte Platform uses those credentials to automatically provision and de-provision the pods that run YugabyteDB.
+To run YugabyteDB universes on Kubernetes, all you need to provide in YugabyteDB Anywhere is your Kubernetes provider credentials. YugabyteDB Anywhere uses those credentials to automatically provision and de-provision the pods that run YugabyteDB.
 
 Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
@@ -78,7 +78,7 @@ Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
 ### Service account
 
-The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by Yugabyte Platform. *namespace* in the service account creation command can be replaced with the desired namespace in which to install YugabyteDB.
+The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by YugabyteDB Anywhere. *namespace* in the service account creation command can be replaced with the desired namespace in which to install YugabyteDB.
 
 Run the following `kubectl` command to apply the YAML file:
 
@@ -120,9 +120,9 @@ The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
-    --as yugabyte-platform-universe-management \
-    {get|create|delete|list} \
-    {namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+--as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
+{get|create|delete|list} \ 
+{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 **Namespace Admin** can grant namespace-level admin access by using the following command:
@@ -138,15 +138,15 @@ If you have multiple target namespaces, then you have to apply the YAML in all o
 The following command can be used to validate the service account:
 
 ```sh
-kubectl auth can-i \
-    --as yugabyte-platform-universe-management \
-    {get|create|delete|list|patch} \
-    {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+kubectl auth can-i \ 
+--as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \ 
+{get|create|delete|list|patch} \ 
+{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 **Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
 
-For example, if your goal is to allow the platform software to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces, as follows:
+For example, if your goal is to allow YugabyteDB Anywhere to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces, as follows:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
@@ -158,10 +158,10 @@ The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
-    --as yugabyte-platform-universe-management \
-    --namespace {namespace} \
-    {get|delete|list} \
-    {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+--as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
+--namespace {namespace} \
+{get|delete|list} \
+{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 ### `kubeconfig` file
@@ -180,17 +180,17 @@ You can create a `kubeconfig` file for the previously created `yugabyte-platform
     python generate_kubeconfig.py -s yugabyte-platform-universe-management -n <namespace>
     ```
 
-    <br>The following output should appear:
+    <br>Expect the following output:
 
     ```output
     Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
     ```
 
-3. Use this generated `kubeconfig` file as the `kubeconfig` in the Yugabyte Platform Kubernetes provider configuration.
+3. Use this generated `kubeconfig` file as the `kubeconfig` in the YugabyteDB Anywhere Kubernetes provider configuration.
 
 ## Select the Kubernetes service
 
-In the Yugabyte Platform UI, navigate to **Configs > Cloud Provider Configuration > Managed Kubernetes Service** and select one of the Kubernetes service providers using the **Type** field, as per the following illustration:<br>
+In the YugabyteDB Anywhere UI, navigate to **Configs > Cloud Provider Configuration > Managed Kubernetes Service** and select one of the Kubernetes service providers using the **Type** field, as per the following illustration:<br>
 
 ![Kubernetes config](/images/ee/k8s-setup/k8s-configure-empty.png)
 
@@ -222,7 +222,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
   ![Add new region](/images/ee/k8s-setup/k8s-az-kubeconfig.png)<br><br>
 
-- Complete the **Overrides** field using one of the provided options. If you do not specify anything, Yugabyte Platform would use defaults specified inside the Helm chart. The following overrides are available:
+- Complete the **Overrides** field using one of the provided options. If you do not specify anything, YugabyteDB Anywhere would use defaults specified inside the Helm chart. The following overrides are available:
 
   - Overrides to add service-level annotations:
 
@@ -342,6 +342,20 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
           tcp-yedis-port: "6379"
           tcp-ysql-port: "5433"
     ```
+    
+  - Overrides to run YugabyteDB as a non-root user:
+  
+    ```yml
+    podSecurityContext:
+      enabled: true
+      ## Set to false to stop the non-root user validation
+      runAsNonRoot: true
+      fsGroup: 10001
+      runAsUser: 10001
+      runAsGroup: 10001
+    ```
+  
+    <br>Note that you cannot change users during the Helm upgrades.
 
 Continue configuring your Kubernetes provider by clicking **Add Zone**, as per the following illustration:
 

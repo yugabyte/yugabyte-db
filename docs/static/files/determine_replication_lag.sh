@@ -104,7 +104,7 @@ function cleanup()
 
 function showhelp()
 {
-echo "determine_repl_latency.sh -m MASTER_IP1:PORT,MASTER_IP2:PORT,MASTER_IP3:PORT [ -c PATH_TO_SSL_CERTIFICATE ] (-k KEYSPACE -t TABLENAME | -a) [ -p PORT ] [ -r report ] [ -o output ] [ -u units ]"
+echo "determine_replication_lag.sh -m MASTER_IP1:PORT,MASTER_IP2:PORT,MASTER_IP3:PORT [ -c PATH_TO_SSL_CERTIFICATE ] (-k KEYSPACE -t TABLENAME | -a) [ -p PORT ] [ -r report ] [ -o output ] [ -u units ]"
 echo "Options:"
 echo "  -m | --master_addresses       Comma separated list of master_server ip addresses with optional port numbers [default 7100]"
 echo "  -c | --certs_dir_name         Path to directory containing SSL certificates if TLS node-to-node encryption is enabled"
@@ -119,7 +119,7 @@ echo "  -h | --help                   This message"
 }
 if [[ ! $@ =~ ^\-.+ ]]
 then
-   echo "Use determine_repl_latency.sh -h | --help to get help with this script."
+   echo "Use determine_replication_lag.sh -h | --help to get help with this script."
    exit 2
 fi
 set -o errexit -o pipefail -o noclobber -o nounset

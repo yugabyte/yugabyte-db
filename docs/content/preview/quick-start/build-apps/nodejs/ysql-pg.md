@@ -39,9 +39,9 @@ showAsideToc: true
   </li>
 </ul>
 
-{{< tip title="Yugabyte Cloud requires SSL" >}}
+{{< tip title="YugabyteDB Managed requires SSL" >}}
 
-Are you using Yugabyte Cloud? Install the [prerequisites](#prerequisites), then go to the [Use Node.js with SSL](#use-node-js-with-ssl) section.
+Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites), then go to the [Use Node.js with SSL](#use-node-js-with-ssl) section.
 
 {{</ tip >}}
 

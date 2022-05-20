@@ -59,6 +59,7 @@
 
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
+#include "yb/util/string_util.h"
 #include "yb/util/tsan_util.h"
 
 using std::multimap;
@@ -379,7 +380,7 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
       }
     }
     ASSERT_FALSE(ns_id.empty());
-    parent_table_id = ns_id + master::kColocatedParentTableIdSuffix;
+    parent_table_id = master::GetColocatedDbParentTableId(ns_id);
   }
 
   {
@@ -429,7 +430,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TablegroupRemoteBootstrapTest))
   vector<string> ts_flags;
   vector<string> master_flags;
   string namespace_name = "tablegroup_test_namespace_name";
-  TablegroupId tablegroup_id = "tablegroup_test_id00000000000000";
+  TablegroupId tablegroup_id = "11223344556677889900aabbccddeeff";
   TablespaceId tablespace_id = "";
   string namespace_id;
 
@@ -450,7 +451,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TablegroupRemoteBootstrapTest))
         break;
       }
     }
-    ASSERT_FALSE(namespace_id.empty());
+    ASSERT_TRUE(IsIdLikeUuid(namespace_id));
   }
 
   // Since this is just for testing purposes, we do not bother generating a valid PgsqlTablegroupId
@@ -460,7 +461,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TablegroupRemoteBootstrapTest))
   // Now want to ensure that the newly created tablegroup shows up in the list.
   auto exists = ASSERT_RESULT(client_->TablegroupExists(namespace_name, tablegroup_id));
   ASSERT_TRUE(exists);
-  parent_table_id = tablegroup_id + master::kTablegroupParentTableIdSuffix;
+  parent_table_id = master::GetTablegroupParentTableId(tablegroup_id);
 
   {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;

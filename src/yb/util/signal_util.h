@@ -15,7 +15,10 @@
 #ifndef YB_UTIL_SIGNAL_UTIL_H
 #define YB_UTIL_SIGNAL_UTIL_H
 
+#include <signal.h>
+
 #include <vector>
+#include <type_traits>
 
 #include <glog/logging.h>
 
@@ -35,7 +38,7 @@ Result<sigset_t> ThreadSignalMaskBlock(const std::vector<int>& signals_to_block)
 
 // Restore previous signal mask on the current thread.
 // Unblocking signals lets the blocked signals be delivered if they had been raised in the meantime.
-CHECKED_STATUS ThreadSignalMaskRestore(sigset_t old_mask);
+Status ThreadSignalMaskRestore(sigset_t old_mask);
 
 //
 // Specific functions
@@ -51,7 +54,7 @@ Result<sigset_t> ThreadYsqlSignalMaskBlock();
 // Will attempt to revert a mask even if execution fails.
 // In case both execution and mask restoration fail, execution error status will be returned.
 template<typename Functor>
-typename std::result_of<Functor()>::type WithMaskedYsqlSignals(Functor callback) {
+typename std::invoke_result<Functor>::type WithMaskedYsqlSignals(Functor callback) {
   sigset_t old_mask = VERIFY_RESULT(ThreadYsqlSignalMaskBlock());
   auto&& callback_status = callback();
   Status restore_status = yb::ThreadSignalMaskRestore(old_mask);

@@ -37,6 +37,9 @@ enum SortingType : uint8_t {
   kDescendingNullsLast // DESC, NULLS LAST
 };
 
+static const char* const kObsoleteShortPrimaryTableId = "sys.catalog.uuid";
+
+
 } // namespace yb
 
 #endif  // YB_COMMON_CONSTANTS_H

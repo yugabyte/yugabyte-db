@@ -14,46 +14,41 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Transaction isolation is foundational to handling concurrent transactions in databases. The [SQL-92 standard](https://en.wikipedia.org/wiki/SQL-92) defines four levels of transaction isolation, `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED` and `READ UNCOMMITTED` in decreasing order of strictness.
+Transaction isolation is foundational to handling concurrent transactions in databases. The [SQL-92 standard](https://en.wikipedia.org/wiki/SQL-92) defines four levels of transaction isolation. These are, in decreasing order of strictness: SERIALIZABLE, REPEATABLE READ, READ COMMITTED, and READ UNCOMMITTED.
 
-YugabyteDB supports three transaction isolation levels - Read Committed, Serializable (both map to the SQL isolation level of the same name) and Snapshot (which maps to the SQL isolation level `REPEATABLE READ`). Thus, YugabyteDB supports the three strictest of the above four isolation levels. These isolation levels are described below:
+YugabyteDB supports the three strictest transaction isolation levels: Read Committed, Serializable (both map to the SQL isolation level of the same name) and Snapshot (which maps to the SQL Repeatable Read isolation level). Thus, YugabyteDB supports the three strictest of the four SQL isolation levels:
 
-- [Snapshot Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) guarantees that all reads made in a transaction will see a consistent snapshot of the database, and the transaction itself will successfully commit only if no updates it has made conflict with any concurrent updates made by transactions that committed since that snapshot.
-- [Read Committed Isolation](https://en.wikipedia.org/wiki/Isolation_(database_systems)#Read_committed) guarantees that each statement will see all data that has been committed before it is issued (note that this implicitly also means that the statement will see a consistent snapshot). Also, this isolation level internally handles read restart and conflict errors. In other words, the client doesn't see read restart and conflict errors (barring an exception). Details are in the [READ COMMITTED isolation level](../read-committed) section.
-- [Serializable Isolation](https://en.wikipedia.org/wiki/Isolation_(database_systems)#Serializable) guarantees that transactions run in a way equivalent to a serial (sequential) schedule.
+- [Serializable isolation](https://en.wikipedia.org/wiki/Isolation_(database_systems)#Serializable) guarantees that transactions run in a way equivalent to a serial (sequential) schedule.
+
+- [Snapshot isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) guarantees that all reads made in a transaction will see a consistent snapshot of the database, and the transaction itself will successfully commit only if no updates it has made conflict with any concurrent updates made by transactions that committed after that snapshot. This maps to SQL's Repeatable Read isolation level.
+
+- [Read Committed isolation](https://en.wikipedia.org/wiki/Isolation_(database_systems)#Read_committed) guarantees that each statement will see all data that has been committed before it is issued (note that this implicitly also means that the statement will see a consistent snapshot). Also, this isolation level internally handles read restart and conflict errors. In other words, the client doesn't see read restart and conflict errors (barring an exception). Details on YugabyteDB's implementation are on the [Read Committed isolation level](../read-committed) page.
 
 Note that transaction isolation level support differs between the YSQL and YCQL APIs.
 
-- [YSQL](../../../api/ysql/) supports Serializable, Snapshot and Read Committed<sup>$</sup> isolation levels (the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ` and `READ COMMITTED` map to these three respectively).
-- [YCQL](../../../api/ycql//dml_transaction/) supports only Snapshot Isolation using the `BEGIN TRANSACTION` syntax.
+- [YSQL](../../../api/ysql/) supports Serializable, Snapshot, and Read Committed<sup>$</sup> isolation levels (the PostgreSQL isolation level syntax of Serializable, Repeatable Read, and Read Committed map to these three, respectively).
+- [YCQL](../../../api/ycql//dml_transaction/) supports only Snapshot isolation using the `BEGIN TRANSACTION` syntax.
 
-<sup>$</sup> Read Committed Isolation is supported only if the gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed Isolation is supported only if the gflag `yb_enable_read_committed_isolation` is set to true. By default this gflag is false and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot isolation (in which case YSQL's Read Committed and Read Uncommitted also in turn use Snapshot isolation).
 
 {{< note title="Note" >}}
 
-The default isolation level for the YSQL API is essentially Snapshot (i.e., same as PostgreSQL's `REPEATABLE READ`) because `READ COMMITTED`, which is the YSQL API's (and also PostgreSQL's) syntactic default, maps to Snapshot Isolation (unless `yb_enable_read_committed_isolation` is set to `true`). We believe this is a good default for a distributed SQL database.
+The default isolation level for the YSQL API is essentially Snapshot (the same as PostgreSQL's Repeatable Read) because Read Committed, which is the YSQL API's (and PostgreSQL's) syntactic default, maps to Snapshot isolation (unless `yb_enable_read_committed_isolation` is set to true). We believe this is a good default for a distributed SQL database.
 
 {{</note >}}
-
 
 ## Internal locking in DocDB
 
 In order to support these three isolation levels, the lock manager internally supports three types
 of locks:
 
-### Snapshot isolation write lock
+- **Snapshot isolation write lock** is taken by a snapshot (and also read committed) isolation transaction on values that it modifies.
 
-This type of a lock is taken by a snapshot (and also read committed) isolation transaction on values that it modifies.
+- **Serializable read lock** is taken by serializable read-modify-write transactions on values that they read in order to guarantee they are not modified until the transaction commits.
 
-### Serializable read lock
+- **Serializable write lock** is taken by serializable transactions on values they write, as well as by pure-write snapshot isolation transactions. Multiple snapshot-isolation transactions writing the same item can thus proceed in parallel.
 
-This type of a lock is taken by serializable read-modify-write transactions on values that they read in order to guarantee they are not modified until the transaction commits.
-
-### Serializable write lock
-
-This type of a lock is taken by serializable transactions on values they write, as well as by pure-write snapshot isolation transactions. Multiple snapshot-isolation transactions writing the same item can thus proceed in parallel.
-
-The following matrix shows conflicts between locks of different types at a high level.
+The following matrix shows conflicts between locks of different types at a high level:
 
 <table>
   <tbody>

@@ -182,8 +182,13 @@ extern Bitmapset *YBGetTablePrimaryKeyBms(Relation rel);
  */
 extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 
-extern bool YBIsDatabaseColocated(Oid dbId);
-extern bool YBIsTableColocated(Oid dbId, Oid relationId);
+extern bool YbIsDatabaseColocated(Oid dbid);
+
+/*
+ * Whether non-system table is colocated (via database or a tablegroup).
+ * Returns false for nonexistent tables.
+ */
+extern bool YbIsUserTableColocated(Oid dbid, Oid relid);
 
 /*
  * Check if a relation has row triggers that may reference the old row.
@@ -598,5 +603,10 @@ void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntr
  * Register system table for prefetching.
  */
 void YbRegisterSysTableForPrefetching(int sys_table_id);
+
+/*
+ * Returns true if the relation is a non-system relation in the same region.
+ */
+bool YBCIsRegionLocal(Relation rel);
 
 #endif /* PG_YB_UTILS_H */

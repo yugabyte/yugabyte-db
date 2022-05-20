@@ -14,7 +14,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
@@ -71,19 +72,20 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
@@ -93,6 +95,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -103,8 +106,6 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -129,30 +130,14 @@ import play.libs.Json;
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
 
+  enum VersionCheckMode {
+    NEVER,
+    ALWAYS,
+    HA_ONLY
+  }
+
   // Flag to indicate if we have locked the universe.
   private boolean universeLocked = false;
-
-  // This is a map from task classes names to the task types.
-  private static Map<String, TaskType> taskClassnameToTaskTypeMap;
-
-  static {
-    // Initialize the map which holds task class names to their task types.
-    Map<String, TaskType> typeMap = new HashMap<String, TaskType>();
-
-    for (TaskType taskType : TaskType.filteredValues()) {
-      String className = "com.yugabyte.yw.commissioner.tasks." + taskType.toString();
-      try {
-        if (Class.forName(className).asSubclass(ITask.class) != null) {
-          typeMap.put(className, taskType);
-        }
-        log.debug("Found class {} for task type {}", className, taskType);
-      } catch (ClassNotFoundException e) {
-        log.error("Could not find class for task type " + taskType, e);
-      }
-    }
-    taskClassnameToTaskTypeMap = Collections.unmodifiableMap(typeMap);
-    log.debug("Done preparing tasks types map.");
-  }
 
   @Inject
   protected UniverseTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -218,7 +203,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean isForceUpdate,
       boolean isResumeOrDelete,
       Consumer<Universe> callback) {
-    TaskType owner = taskClassnameToTaskTypeMap.get(this.getClass().getCanonicalName());
+    TaskType owner = TaskExecutor.getTaskType(getClass());
     if (owner == null) {
       log.trace("TaskType not found for class " + this.getClass().getCanonicalName());
     }
@@ -862,7 +847,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes set of nodes to be updated.
    * @param nodeState State into which these nodes will be transitioned.
-   * @return
    */
   public SubTaskGroup createSetNodeStateTasks(
       Collection<NodeDetails> nodes, NodeDetails.NodeState nodeState) {
@@ -996,6 +980,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.sleepAfterCmdMills = sleepAfterCmdMillis;
     // Set the InstanceType
     params.instanceType = node.cloudInfo.instance_type;
+    params.checkVolumesAttached = processType == ServerType.TSERVER && command.equals("start");
     // Create the Ansible task to get the server info.
     AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
     task.initialize(params);
@@ -1072,11 +1057,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Create a task to create a table.
    *
+   * @param tableType type of the table.
    * @param tableName name of the table.
    * @param tableDetails table options and related details.
+   * @param ifNotExist create only if it does not exist.
+   * @return
    */
   public SubTaskGroup createTableTask(
-      TableType tableType, String tableName, TableDetails tableDetails) {
+      TableType tableType, String tableName, TableDetails tableDetails, boolean ifNotExist) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateTable", executor);
     CreateTable task = createTask(CreateTable.class);
     CreateTable.Params params = new CreateTable.Params();
@@ -1084,6 +1072,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.tableType = tableType;
     params.tableName = tableName;
     params.tableDetails = tableDetails;
+    params.ifNotExist = ifNotExist;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1420,7 +1409,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Creates a task list to stop the masters of the cluster and adds it to the task queue.
    *
    * @param nodes set of nodes to be stopped as master
-   * @return
    */
   public SubTaskGroup createStopMasterTasks(Collection<NodeDetails> nodes) {
     return createStopServerTasks(nodes, "master", false);
@@ -1430,7 +1418,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Creates a task list to stop the tservers of the cluster and adds it to the task queue.
    *
    * @param nodes set of nodes to be stopped as master
-   * @return
    */
   public SubTaskGroup createStopServerTasks(
       Collection<NodeDetails> nodes, String serverType, boolean isForceDelete) {
@@ -1506,6 +1493,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createDeleteBackupYbTasks(List<Backup> backups, UUID customerUUID) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("DeleteBackupYb", executor);
+    for (Backup backup : backups) {
+      DeleteBackupYb.Params params = new DeleteBackupYb.Params();
+      params.backupUUID = backup.backupUUID;
+      params.customerUUID = customerUUID;
+      DeleteBackupYb task = createTask(DeleteBackupYb.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public SubTaskGroup createEncryptedUniverseKeyBackupTask() {
     return createEncryptedUniverseKeyBackupTask((BackupTableParams) taskParams());
   }
@@ -1541,6 +1542,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * It updates the source master addresses on the target universe cluster config for all xCluster
+   * configs on the source universe.
+   */
+  public void createXClusterConfigUpdateMasterAddressesTask() {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterConfigUpdateMasterAddresses", executor);
+    List<XClusterConfig> xClusterConfigs =
+        XClusterConfig.getBySourceUniverseUUID(taskParams().universeUUID);
+    Set<UUID> updatedTargetUniverses = new HashSet<>();
+    for (XClusterConfig config : xClusterConfigs) {
+      UUID targetUniverseUUID = config.targetUniverseUUID;
+      // Each target universe needs to be updated only once, even though there could be several
+      // xCluster configs between each source and target universe pair.
+      if (updatedTargetUniverses.contains(targetUniverseUUID)) {
+        continue;
+      }
+      updatedTargetUniverses.add(targetUniverseUUID);
+
+      XClusterConfigUpdateMasterAddresses.Params params =
+          new XClusterConfigUpdateMasterAddresses.Params();
+      // Set the target universe UUID to be told the new master addresses.
+      params.universeUUID = targetUniverseUUID;
+      // Set the source universe UUID to get the new master addresses.
+      params.sourceUniverseUuid = taskParams().universeUUID;
+
+      XClusterConfigUpdateMasterAddresses task =
+          createTask(XClusterConfigUpdateMasterAddresses.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      // Add it to the task list.
+      subTaskGroup.addSubTask(task);
+    }
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
   }
 
   /**
@@ -1596,7 +1635,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.universeUUID = taskParams().universeUUID;
     // Set the blacklist nodes if any are passed in.
     if (blacklistNodes != null && !blacklistNodes.isEmpty()) {
-      Set<String> blacklistNodeNames = new HashSet<String>();
+      Set<String> blacklistNodeNames = new HashSet<>();
       for (NodeDetails node : blacklistNodes) {
         blacklistNodeNames.add(node.nodeName);
       }
@@ -1708,7 +1747,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param addNodes The nodes that have to be added to the blacklist.
    * @param removeNodes The nodes that have to be removed from the blacklist.
    * @param isLeaderBlacklist true if we are leader blacklisting the node
-   * @return
    */
   public SubTaskGroup createModifyBlackListTask(
       Collection<NodeDetails> addNodes,
@@ -1776,9 +1814,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public Optional<Boolean> instanceExists(
       NodeTaskParams taskParams, Map<String, String> expectedTags) {
     NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
-    ShellResponse response = nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams);
-    processShellResponse(response);
-    if (response == null || Strings.isNullOrEmpty(response.message)) {
+    ShellResponse response =
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams).processErrors();
+    if (Strings.isNullOrEmpty(response.message)) {
       // Instance does not exist.
       return Optional.empty();
     }
@@ -1818,6 +1856,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     NodeTaskParams preflightTaskParams = new NodeTaskParams();
     UserIntent userIntent = cluster.userIntent;
     preflightTaskParams.nodeName = currentNode.nodeName;
+    preflightTaskParams.nodeUuid = currentNode.nodeUuid;
     preflightTaskParams.deviceInfo = userIntent.deviceInfo;
     preflightTaskParams.azUuid = currentNode.azUuid;
     preflightTaskParams.universeUUID = taskParams().universeUUID;
@@ -1967,7 +2006,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected boolean shouldIncrementVersion() {
 
-    if (!HighAvailabilityConfig.get().isPresent()) {
+    final VersionCheckMode mode =
+        runtimeConfigFactory
+            .forUniverse(getUniverse())
+            .getEnum(VersionCheckMode.class, "yb.universe_version_check_mode");
+    if (mode == VersionCheckMode.NEVER) {
+      return false;
+    }
+
+    if (mode == VersionCheckMode.HA_ONLY && !HighAvailabilityConfig.get().isPresent()) {
       return false;
     }
 
@@ -2047,9 +2094,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *     this case for now. When we get to a point where manual yb-admin operations are never
    *     needed, we can consider flagging this case. For now, we will let the universe version on
    *     Platform and the cluster config version on the master diverge.
+   * @param mode
    */
-  private static void checkUniverseVersion(UUID universeUUID) {
-    if (!HighAvailabilityConfig.get().isPresent()) {
+  private static void checkUniverseVersion(UUID universeUUID, VersionCheckMode mode) {
+    if (mode == VersionCheckMode.NEVER) {
+      return;
+    }
+
+    if (mode == VersionCheckMode.HA_ONLY && !HighAvailabilityConfig.get().isPresent()) {
       log.debug("Skipping cluster config version check for universe {}", universeUUID);
       return;
     }
@@ -2060,7 +2112,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void checkUniverseVersion() {
-    UniverseTaskBase.checkUniverseVersion(taskParams().universeUUID);
+    UniverseTaskBase.checkUniverseVersion(
+        taskParams().universeUUID,
+        runtimeConfigFactory
+            .forUniverse(getUniverse())
+            .getEnum(VersionCheckMode.class, "yb.universe_version_check_mode"));
   }
 
   /** Increment the cluster config version */

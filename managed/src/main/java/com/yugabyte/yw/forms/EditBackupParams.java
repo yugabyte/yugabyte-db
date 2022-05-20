@@ -1,5 +1,6 @@
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.UUID;
@@ -12,4 +13,7 @@ public class EditBackupParams {
 
   @ApiModelProperty(value = "New backup Storage config")
   public UUID storageConfigUUID = null;
+
+  @ApiModelProperty(value = "Time unit for backup expiry")
+  public TimeUnit expiryTimeUnit;
 }

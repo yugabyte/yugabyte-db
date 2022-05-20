@@ -119,7 +119,11 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
 
       // Create a simple redis table.
       if (taskParams().getPrimaryCluster().userIntent.enableYEDIS) {
-        createTableTask(TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
+        createTableTask(
+                TableType.REDIS_TABLE_TYPE,
+                YBClient.REDIS_DEFAULT_TABLE_NAME,
+                null /* table details */,
+                true /* ifNotExist */)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 

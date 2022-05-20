@@ -117,6 +117,20 @@ message UpdateCDCStreamResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message IsBootstrapRequiredRequestPB {
+  repeated string table_ids = 1;
+  repeated string stream_ids = 2;
+}
+
+message IsBootstrapRequiredResponsePB {
+  message TableResult {
+    optional bytes table_id = 1;
+    optional bool bootstrap_required = 2;
+  }
+  optional MasterErrorPB error = 1;
+  repeated TableResult results = 2;
+}
+
 message SetupUniverseReplicationRequestPB {
   optional string producer_id = 1;
   repeated HostPortPB producer_master_addresses = 2;
@@ -212,6 +226,7 @@ message UpdateConsumerOnProducerSplitResponsePB {
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
+  // Tablet-level Replication.
   rpc ValidateReplicationInfo(ValidateReplicationInfoRequestPB)
       returns (ValidateReplicationInfoResponsePB);
 
@@ -221,9 +236,10 @@ service MasterReplication {
   rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
   rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
   rpc GetCDCDBStreamInfo(GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
-  rpc UpdateCDCStream (UpdateCDCStreamRequestPB)
-      returns (UpdateCDCStreamResponsePB);
+  rpc UpdateCDCStream (UpdateCDCStreamRequestPB) returns (UpdateCDCStreamResponsePB);
+  rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
 
+  // Cluster-level Replication.
   rpc SetupUniverseReplication(SetupUniverseReplicationRequestPB)
       returns (SetupUniverseReplicationResponsePB);
   rpc DeleteUniverseReplication(DeleteUniverseReplicationRequestPB)
@@ -236,6 +252,7 @@ service MasterReplication {
       returns (GetUniverseReplicationResponsePB);
   rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)
       returns (IsSetupUniverseReplicationDoneResponsePB);
+
   rpc UpdateConsumerOnProducerSplit(UpdateConsumerOnProducerSplitRequestPB)
       returns (UpdateConsumerOnProducerSplitResponsePB);
 

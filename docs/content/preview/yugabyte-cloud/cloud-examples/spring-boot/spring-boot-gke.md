@@ -2,7 +2,7 @@
 title: Deploy a Spring application on GKE
 headerTitle: Deploy a Spring application on GKE
 linkTitle: Deploy on GKE
-description: Deploy a Spring application connected to Yugabyte Cloud on Google Kubernetes Engine (GKE).
+description: Deploy a Spring application connected to YugabyteDB Managed on Google Kubernetes Engine (GKE).
 menu:
   preview:
     parent: spring-boot
@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 -->
 
-Deploy a Spring application connected to Yugabyte Cloud on Google Kubernetes Engine (GKE) by following the steps below.
+Deploy a Spring application connected to YugabyteDB Managed on Google Kubernetes Engine (GKE) by following the steps below.
 
-This example uses the PetClinic application, connected to Yugabyte Cloud and containerized using Docker; refer to [Connect a Spring Boot application](../../../cloud-basics/connect-application/).
+This example uses the PetClinic application, connected to YugabyteDB Managed and containerized using Docker; refer to [Connect a Spring Boot application](../../../cloud-basics/connect-application/).
 
 ## Prerequisites
 
@@ -130,7 +130,7 @@ In GCP, do the following:
     -Dspring.datasource.initialization-mode=never
     ```
 
-    Replace `[host]` and `[port]` with the host and port number of your Yugabyte Cloud cluster. To obtain your cluster connection parameters, sign in to Yugabyte Cloud, select your cluster and navigate to [Settings](../../../cloud-clusters/configure-clusters).
+    Replace `[host]` and `[port]` with the host and port number of your YugabyteDB Managed cluster. To obtain your cluster connection parameters, sign in to YugabyteDB Managed, select your cluster and navigate to [Settings](../../../cloud-clusters/configure-clusters).
 
 1. Click **Continue**.
 
@@ -144,4 +144,4 @@ In GCP, do the following:
 
 1. Click the **External Endpoints** link (http://34.105.123.45/) to navigate to the PetClinic application.
 
-The PetClinic sample application is now connected to your Yugabyte Cloud cluster and running on Kubernetes on GKE.
+The PetClinic sample application is now connected to your YugabyteDB Managed cluster and running on Kubernetes on GKE.

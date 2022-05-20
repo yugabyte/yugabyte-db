@@ -157,47 +157,20 @@ void MasterPathHandlers::ZoneTabletCounts::operator+=(const ZoneTabletCounts& ot
 }
 
 // Retrieve the specified URL response from the leader master
-void MasterPathHandlers::RedirectToLeader(const Webserver::WebRequest& req,
-                                          Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-  vector<ServerEntryPB> masters;
-  Status s = master_->ListMasters(&masters);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend("Unable to list masters during web request handling");
+void MasterPathHandlers::RedirectToLeader(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  auto redirect_result = GetLeaderAddress(req);
+  if (!redirect_result) {
+    auto s = redirect_result.status();
     LOG(WARNING) << s.ToString();
     *output << "<h2>" << s.ToString() << "</h2>\n";
     return;
   }
-
-  string redirect;
-  for (const ServerEntryPB& master : masters) {
-    if (master.has_error()) {
-      continue;
-    }
-
-    if (master.role() == PeerRole::LEADER) {
-      // URI already starts with a /, so none is needed between $1 and $2.
-      if (master.registration().http_addresses().size() > 0) {
-        redirect = Substitute(
-            "http://$0$1$2",
-            HostPortPBToString(master.registration().http_addresses(0)),
-            req.redirect_uri,
-            req.query_string.empty() ? "?raw" : "?" + req.query_string + "&raw");
-      }
-      break;
-    }
-  }
-
-  if (redirect.empty()) {
-    string error = "Unable to locate leader master to redirect this request: " + redirect;
-    LOG(WARNING) << error;
-    *output << error << "<br>";
-    return;
-  }
-
+  std::string redirect = *redirect_result;
   EasyCurl curl;
   faststring buf;
-  s = curl.FetchURL(redirect, &buf, kCurlTimeoutSec);
+  auto s = curl.FetchURL(redirect, &buf, kCurlTimeoutSec);
   if (!s.ok()) {
     LOG(WARNING) << "Error retrieving leader master URL: " << redirect
                  << ", error :" << s.ToString();
@@ -205,8 +178,43 @@ void MasterPathHandlers::RedirectToLeader(const Webserver::WebRequest& req,
             << "\">" + redirect + "</a><br> Error: " << s.ToString() << ".<br>";
     return;
   }
-
   *output << buf.ToString();
+}
+
+Result<std::string> MasterPathHandlers::GetLeaderAddress(const Webserver::WebRequest& req) {
+  vector<ServerEntryPB> masters;
+  Status s = master_->ListMasters(&masters);
+  if (!s.ok()) {
+    s = s.CloneAndPrepend("Unable to list masters during web request handling");
+    return s;
+  }
+  ServerRegistrationPB local_reg;
+  s = master_->GetMasterRegistration(&local_reg);
+  if (!s.ok()) {
+    s = s.CloneAndPrepend("Unable to get local registration during web request handling");
+    return s;
+  }
+  const auto leader = std::find_if(masters.begin(), masters.end(), [](const auto& master) {
+    return !master.has_error() && master.role() == PeerRole::LEADER;
+  });
+  if (leader == masters.end() || leader->registration().http_addresses().empty()) {
+    return STATUS(
+        NotFound, "Unable to locate leader master to redirect this request: " + req.redirect_uri);
+  }
+  auto& reg = leader->registration();
+  auto http_broadcast_addresses = reg.broadcast_addresses();
+  for (HostPortPB& host_port : http_broadcast_addresses) {
+    host_port.set_port(reg.http_addresses(0).port());
+  }
+  return Substitute(
+      "http://$0$1$2",
+      HostPortPBToString(DesiredHostPort(
+          http_broadcast_addresses,
+          reg.http_addresses(),
+          reg.cloud_info(),
+          local_reg.cloud_info())),
+      req.redirect_uri,
+      req.query_string.empty() ? "?raw" : "?" + req.query_string + "&raw");
 }
 
 void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
@@ -346,6 +354,19 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
   // Copy vector to avoid changes to the reference descs passed
   std::vector<std::shared_ptr<TSDescriptor>> local_descs(*descs);
 
+  auto blacklist_result = master_->catalog_manager()->BlacklistSetFromPB();
+  BlacklistSet blacklist = blacklist_result.ok() ? *blacklist_result : BlacklistSet();
+  auto leader_blacklist_result =
+      master_->catalog_manager()->BlacklistSetFromPB(true);  // leader_blacklist
+  BlacklistSet leader_blacklist =
+      leader_blacklist_result.ok() ? *leader_blacklist_result : BlacklistSet();
+  vector<AffinitizedZonesSet> affinitized_zones;
+  auto status = master_->catalog_manager()->GetAllAffinitizedZones(&affinitized_zones);
+  if (!status.ok()) {
+    status = status.CloneAndPrepend("Unable to get preferred zone list");
+    LOG(WARNING) << status.ToString();
+  }
+
   // Comparator orders by cloud, region, zone and uuid fields.
   std::sort(local_descs.begin(), local_descs.end(), &TabletServerComparator);
 
@@ -359,14 +380,40 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       string host_port = GetHttpHostPortFromServerRegistration(reg.common());
       *output << "  <tr>\n";
       *output << "  <td>" << RegistrationToHtml(reg.common(), host_port) << "</br>";
-      *output << "  " << desc->permanent_uuid() << "</td>";
-      *output << "<td>" << time_since_hb << "</td>";
-      if (desc->IsLive()) {
-        *output << "    <td style=\"color:Green\">" << kTserverAlive << ":" <<
-                UptimeString(desc->uptime_seconds()) << "</td>";
-      } else {
-        *output << "    <td style=\"color:Red\">" << kTserverDead << "</td>";
+      *output << "  " << desc->permanent_uuid();
+
+      if (viewType == TServersViewType::kTServersDefaultView) {
+        auto ci = reg.common().cloud_info();
+        for (size_t i = 0; i < affinitized_zones.size(); i++) {
+          if (affinitized_zones[i].find(ci) != affinitized_zones[i].end()) {
+            *output << "</br>  Leader preference priority: " << i + 1;
+            break;
+          }
+        }
       }
+
+      *output << "</td><td>" << time_since_hb << "</td>";
+
+      string status;
+      string color = "Green";
+      if (desc->IsLive()) {
+        status = Substitute("$0:$1", kTserverAlive, UptimeString(desc->uptime_seconds()));
+      } else {
+        color = "Red";
+        status = kTserverDead;
+      }
+      if (viewType == TServersViewType::kTServersDefaultView) {
+        if (desc->IsBlacklisted(blacklist)) {
+          color = color == "Green" ? kYBOrange : color;
+          status += "</br>Blacklisted";
+        }
+        if (desc->IsBlacklisted(leader_blacklist)) {
+          color = color == "Green" ? kYBOrange : color;
+          status += "</br>Leader Blacklisted";
+        }
+      }
+
+      *output << Substitute("    <td style=\"color:$0\">$1</td>", color, status);
 
       auto tserver = tablet_map->find(desc->permanent_uuid());
       bool no_tablets = tserver == tablet_map->end();
@@ -588,6 +635,26 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     TServerTable(output, viewType);
     TServerDisplay(read_replica_uuid, &descs, &tablet_map, output,
                    hide_dead_node_threshold_override, viewType);
+  }
+
+  if (viewType == TServersViewType::kTServersDefaultView) {
+    *output << "<p>  *Placement policy, Preferred zones, and Node Blacklist will affect the Peer "
+               "and Leader distribution.</p>";
+
+    if (master_->catalog_manager()->IsLoadBalancerEnabled()) {
+      IsLoadBalancedRequestPB req;
+      IsLoadBalancedResponsePB resp;
+      Status load_balanced = master_->catalog_manager()->IsLoadBalanced(&req, &resp);
+      if (load_balanced.ok()) {
+        *output << "<h4 style=\"color:Green\"><i class='fa fa-tasks yb-dashboard-icon' "
+                   "aria-hidden='true'></i>Cluster Load is Balanced</h4>\n";
+      } else {
+        *output
+            << "<h4 style=\"color:" << kYBOrange
+            << "\"><i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>Cluster Load "
+               "is not Balanced</h4>\n";
+      }
+    }
   }
 
   ZoneTabletCounts::CloudTree counts_tree = CalculateTabletCountsTree(descs, tablet_map);
@@ -864,7 +931,7 @@ void MasterPathHandlers::HandleHealthCheck(
     // TODO: Add these health checks in a subsequent diff
     //
     // 4. is the load balancer busy moving tablets/leaders around
-    /* Use: CHECKED_STATUS IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
+    /* Use: Status IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
                                               IsLoadBalancerIdleResponsePB* resp);
      */
     // 5. do any of the TS have tablets they were not able to start up
@@ -874,7 +941,7 @@ void MasterPathHandlers::HandleHealthCheck(
 
 string MasterPathHandlers::GetParentTableOid(scoped_refptr<TableInfo> parent_table) {
   TableId t_id = parent_table->id();;
-  if (parent_table->IsColocatedParentTable()) {
+  if (parent_table->IsColocatedDbParentTable()) {
     // No YSQL parent id for colocated database parent table
     return "";
   }
@@ -939,7 +1006,7 @@ void MasterPathHandlers::HandleCatalogManager(
       table_cat = kUserIndex;
     } else if (master_->catalog_manager()->IsUserTable(*table)) {
       table_cat = kUserTable;
-    } else if (table->IsTablegroupParentTable() || table->IsColocatedParentTable()) {
+    } else if (table->IsColocationParentTable()) {
       table_cat = kParentTable;
     } else {
       table_cat = kSystemTable;
@@ -1197,11 +1264,17 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
                 << GetPgsqlTablespaceOid(tablespace_id)
                 << "  </td></tr>\n";
       }
-      auto replication_info = CHECK_RESULT(master_->catalog_manager()->GetTableReplicationInfo(
-            l->pb.replication_info(), tablespace_id));
-      *output << "  <tr><td>Replication Info:</td><td>"
-              << "    <pre class=\"prettyprint\">" << replication_info.DebugString() << "</pre>"
-              << "  </td></tr>\n </table>\n";
+      *output << "  <tr><td>Replication Info:</td><td>";
+      auto replication_info = master_->catalog_manager()->GetTableReplicationInfo(
+          l->pb.replication_info(), tablespace_id);
+      if (replication_info.ok()) {
+        *output << "    <pre class=\"prettyprint\">" << replication_info->DebugString() << "</pre>";
+      } else {
+        LOG(WARNING) << replication_info.status().CloneAndPrepend(
+            "Unable to determine Tablespace information.");
+        *output << "  Unable to determine Tablespace information.";
+      }
+      *output << "  </td></tr>\n </table>\n";
     } else {
       // The table was associated with a tablespace, but that tablespace was not found.
       *output << "  <tr><td>Replication Info:</td><td>";
@@ -1481,7 +1554,7 @@ void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebReq
 
 void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
                                      Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
+  std::stringstream* output = &resp->output;
   // First check if we are the master leader. If not, make a curl call to the master leader and
   // return that as the UI payload.
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
@@ -2318,8 +2391,7 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       auto replication_locations = tablet->GetReplicaLocations();
 
       for (const auto& replica : *replication_locations) {
-        if (is_user_table || table->IsColocatedParentTable()
-                          || table->IsTablegroupParentTable()) {
+        if (is_user_table || table->IsColocationParentTable()) {
           if (replica.second.role == PeerRole::LEADER) {
             (*tablet_map)[replica.first].user_tablet_leaders++;
           } else {

@@ -79,7 +79,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
     rpcs_->Abort({&write_handle_});
   }
 
-  CHECKED_STATUS ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
+  Status ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
 
   void WriteCDCRecordDone(const Status& status, const WriteResponsePB& response);
 
@@ -88,23 +88,23 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   // Process all records in twodc_resp_copy_ starting from the start index. If we find a ddl
   // record, then we process the current changes first, wait for those to complete, then process
   // the ddl + other changes after.
-  CHECKED_STATUS ProcessChangesStartingFromIndex(int start);
+  Status ProcessChangesStartingFromIndex(int start);
 
-  CHECKED_STATUS ProcessRecordForTablet(
+  Status ProcessRecordForTablet(
       const int record_idx, const Result<client::internal::RemoteTabletPtr>& tablet);
 
-  CHECKED_STATUS ProcessRecordForLocalTablet(const int record_idx);
+  Status ProcessRecordForLocalTablet(const int record_idx);
 
-  CHECKED_STATUS ProcessRecordForTabletRange(
+  Status ProcessRecordForTabletRange(
       const int record_idx,
       const std::string partition_key_start,
       const std::string partition_key_end,
       const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets);
 
-  CHECKED_STATUS ProcessSplitOp(const cdc::CDCRecordPB& record);
+  Status ProcessSplitOp(const cdc::CDCRecordPB& record);
 
   // Processes the Record and sends the CDCWrite for it.
-  CHECKED_STATUS ProcessRecord(
+  Status ProcessRecord(
       const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record);
 
   void SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request);
@@ -301,6 +301,10 @@ Status TwoDCOutputClient::ProcessRecordForTabletRange(
   RETURN_NOT_OK(filtered_tablets_result);
 
   auto filtered_tablets = *filtered_tablets_result;
+  if (filtered_tablets.empty()) {
+    table_->MarkPartitionsAsStale();
+    return STATUS(TryAgain, "No tablets found for key range, refreshing partitions to try again.");
+  }
   auto tablet_ids = std::vector<std::string>(filtered_tablets.size());
   std::transform(filtered_tablets.begin(), filtered_tablets.end(), tablet_ids.begin(),
                  [&](const auto& tablet_ptr) {

@@ -13,8 +13,7 @@
 
 #include "yb/tserver/pg_client_service.h"
 
-#include <shared_mutex>
-
+#include <mutex>
 #include <queue>
 
 #include <boost/multi_index/hashed_index.hpp>
@@ -66,6 +65,44 @@ void Respond(const Status& status, Resp* resp, rpc::RpcContext* context) {
   }
   context->RespondSuccess();
 }
+
+template<class T>
+class Locker;
+
+template<class T>
+class Lockable : public T {
+ public:
+  template <class... Args>
+  explicit Lockable(Args&&... args)
+      : T(std::forward<Args>(args)...) {
+  }
+
+ private:
+  friend class Locker<T>;
+  std::mutex mutex_;
+};
+
+template<class T>
+class Locker {
+ public:
+  using LockablePtr = std::shared_ptr<Lockable<T>>;
+
+  explicit Locker(const LockablePtr& lockable)
+      : lockable_(lockable), lock_(lockable->mutex_) {
+  }
+
+  T* operator->() const {
+    return lockable_.get();
+  }
+
+ private:
+  LockablePtr lockable_;
+  std::unique_lock<std::mutex> lock_;
+};
+
+using LockablePgClientSession = Lockable<PgClientSession>;
+using PgClientSessionLocker = Locker<PgClientSession>;
+using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
 
 } // namespace
 
@@ -140,14 +177,14 @@ class PgClientServiceImpl::Impl {
     check_expired_sessions_.Shutdown();
   }
 
-  CHECKED_STATUS Heartbeat(
+  Status Heartbeat(
       const PgHeartbeatRequestPB& req, PgHeartbeatResponsePB* resp, rpc::RpcContext* context) {
     if (req.session_id()) {
       return ResultToStatus(DoGetSession(req.session_id()));
     }
 
     auto session_id = ++session_serial_no_;
-    auto session = std::make_shared<PgClientSession>(
+    auto session = std::make_shared<LockablePgClientSession>(
             &client(), clock_, transaction_pool_provider_, &table_cache_, session_id);
     resp->set_session_id(session_id);
 
@@ -158,7 +195,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS OpenTable(
+  Status OpenTable(
       const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext* context) {
     if (req.invalidate_cache_time_us()) {
       table_cache_.InvalidateAll(CoarseTimePoint() + req.invalidate_cache_time_us() * 1us);
@@ -171,7 +208,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS GetDatabaseInfo(
+  Status GetDatabaseInfo(
       const PgGetDatabaseInfoRequestPB& req, PgGetDatabaseInfoResponsePB* resp,
       rpc::RpcContext* context) {
     RETURN_NOT_OK(client().GetNamespaceInfo(
@@ -181,7 +218,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS IsInitDbDone(
+  Status IsInitDbDone(
       const PgIsInitDbDoneRequestPB& req, PgIsInitDbDoneResponsePB* resp,
       rpc::RpcContext* context) {
     HostPort master_leader_host_port = client().GetMasterLeaderAddress();
@@ -208,7 +245,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS ReserveOids(
+  Status ReserveOids(
       const PgReserveOidsRequestPB& req, PgReserveOidsResponsePB* resp, rpc::RpcContext* context) {
     uint32_t begin_oid, end_oid;
     RETURN_NOT_OK(client().ReservePgsqlOids(
@@ -220,7 +257,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS GetCatalogMasterVersion(
+  Status GetCatalogMasterVersion(
       const PgGetCatalogMasterVersionRequestPB& req,
       PgGetCatalogMasterVersionResponsePB* resp,
       rpc::RpcContext* context) {
@@ -230,14 +267,14 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS CreateSequencesDataTable(
+  Status CreateSequencesDataTable(
       const PgCreateSequencesDataTableRequestPB& req,
       PgCreateSequencesDataTableResponsePB* resp,
       rpc::RpcContext* context) {
     return tserver::CreateSequencesDataTable(&client(), context->GetClientDeadline());
   }
 
-  CHECKED_STATUS TabletServerCount(
+  Status TabletServerCount(
       const PgTabletServerCountRequestPB& req, PgTabletServerCountResponsePB* resp,
       rpc::RpcContext* context) {
     int result = 0;
@@ -246,7 +283,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS ListLiveTabletServers(
+  Status ListLiveTabletServers(
       const PgListLiveTabletServersRequestPB& req, PgListLiveTabletServersResponsePB* resp,
       rpc::RpcContext* context) {
     auto tablet_servers = VERIFY_RESULT(client().ListLiveTabletServers(req.primary_only()));
@@ -256,7 +293,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS ValidatePlacement(
+  Status ValidatePlacement(
       const PgValidatePlacementRequestPB& req, PgValidatePlacementResponsePB* resp,
       rpc::RpcContext* context) {
     master::ReplicationInfoPB replication_info;
@@ -268,6 +305,26 @@ class PgClientServiceImpl::Impl {
       pb->mutable_cloud_info()->set_placement_region(block.region());
       pb->mutable_cloud_info()->set_placement_zone(block.zone());
       pb->set_min_num_replicas(block.min_num_replicas());
+
+      if (block.leader_preference() < 0) {
+        return STATUS(InvalidArgument, "leader_preference cannot be negative");
+      } else if (block.leader_preference() > req.placement_infos_size()) {
+        return STATUS(
+            InvalidArgument,
+            "Priority value cannot be more than the number of zones in the preferred list since "
+            "each priority should be associated with at least one zone from the list");
+      } else if (block.leader_preference() > 0) {
+        while (replication_info.multi_affinitized_leaders_size() < block.leader_preference()) {
+          replication_info.add_multi_affinitized_leaders();
+        }
+
+        auto zone_set =
+            replication_info.mutable_multi_affinitized_leaders(block.leader_preference() - 1);
+        auto ci = zone_set->add_zones();
+        ci->set_placement_cloud(block.cloud());
+        ci->set_placement_region(block.region());
+        ci->set_placement_zone(block.zone());
+      }
     }
     live_replicas->set_num_replicas(req.num_replicas());
 
@@ -283,7 +340,7 @@ class PgClientServiceImpl::Impl {
   }
 
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
-  CHECKED_STATUS method( \
+  Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
       BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
       rpc::RpcContext* context) { \
@@ -300,7 +357,7 @@ class PgClientServiceImpl::Impl {
     return GetSession(req.session_id());
   }
 
-  Result<PgClientSession&> DoGetSession(uint64_t session_id) {
+  Result<LockablePgClientSessionPtr> DoGetSession(uint64_t session_id) {
     SharedLock<rw_spinlock> lock(mutex_);
     DCHECK_NE(session_id, 0);
     auto it = sessions_.find(session_id);
@@ -308,11 +365,11 @@ class PgClientServiceImpl::Impl {
       return STATUS_FORMAT(InvalidArgument, "Unknown session: $0", session_id);
     }
     const_cast<SessionsEntry&>(*it).Touch();
-    return *it->value();
+    return it->value();
   }
 
   Result<PgClientSessionLocker> GetSession(uint64_t session_id) {
-    return PgClientSessionLocker(&VERIFY_RESULT_REF(DoGetSession(session_id)));
+    return PgClientSessionLocker(VERIFY_RESULT(DoGetSession(session_id)));
   }
 
   void ScheduleCheckExpiredSessions(CoarseTimePoint now) REQUIRES(mutex_) {
@@ -350,7 +407,7 @@ class PgClientServiceImpl::Impl {
     ScheduleCheckExpiredSessions(now);
   }
 
-  CHECKED_STATUS DoPerform(
+  Status DoPerform(
       const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
     return VERIFY_RESULT(GetSession(req))->Perform(req, resp, context);
   }
@@ -363,7 +420,7 @@ class PgClientServiceImpl::Impl {
 
   class ExpirationTag;
 
-  using SessionsEntry = Expirable<std::shared_ptr<PgClientSession>>;
+  using SessionsEntry = Expirable<LockablePgClientSessionPtr>;
   boost::multi_index_container<
       SessionsEntry,
       boost::multi_index::indexed_by<

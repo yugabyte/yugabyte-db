@@ -45,8 +45,6 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 ## Semantics
 
-`CONCURRENTLY`, `COLLATE`, and `TABLESPACE` options are not yet supported.
-
 When an index is created on a populated table, YugabyteDB automatically backfills the existing data into the index.
 In most cases, this uses an online schema migration.
 The following table explains some of the differences between creating an index online and not online.
@@ -57,7 +55,10 @@ The following table explains some of the differences between creating an index o
 | Keeps other transactions alive during `CREATE INDEX`? | mostly | no |
 | Parallelizes index loading? | yes | no |
 
+`CREATE INDEX CONCURRENTLY` is supported, though online index backfill is enabled by default. Some restrictions apply (see [CONCURRENTLY](#concurrently)).
+
 To disable online schema migration for YSQL `CREATE INDEX`, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** master and tserver.
+
 To disable online schema migration for one `CREATE INDEX`, use `CREATE INDEX NONCONCURRENTLY`.
 
 {{< note title="Note" >}}
@@ -68,15 +69,31 @@ For details on how online index backfill works, refer to [Online Index Backfill]
 
 Regarding colocation, indexes follow their table. If the table is colocated, its index is also colocated; if the table is not colocated, its index is also not colocated.
 
+### Partitioned Indexes
+
+Creating an index on a partitioned table automatically creates a corresponding index for every partition in the default tablespace. It's also possible to create an index on each partition individually, which you should do in the following cases:
+
+* Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
+* [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
+* `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)).
+
 ### UNIQUE
 
 Enforce that duplicate values in a table are not allowed.
+
+### CONCURRENTLY
+Enable online schema migration (see [Semantics](#semantics) for details), with some restrictions:
+* When creating an index on a temporary table, online schema migration is disabled.
+* `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables.
+* `CREATE INDEX CONCURRENTLY` is not supported inside a transaction block.
 
 ### NONCONCURRENTLY
 
 Disable online schema migration (see [Semantics](#semantics) for details).
 
-Concurrent is the default, but the grammar does not yet support `CONCURRENTLY`.
+### ONLY
+
+Indicates not to recurse creating indexes on partitions, if the table is partitioned. The default is to recurse.
 
 ### *access_method_name*
 
@@ -87,6 +104,10 @@ By default, `lsm` is used for YugabyteDB tables and `btree` is used otherwise (f
 ### INCLUDE clause
 
 Specify a list of columns which will be included in the index as non-key columns.
+
+### TABLESPACE clause
+
+Specify the name of the [tablespace](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
 
 ### WHERE clause
 

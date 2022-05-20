@@ -1,4 +1,4 @@
-```
+```ebnf
 select ::= [ WITH [ RECURSIVE ] { common_table_expression [ , ... ] } ] 
             SELECT [ ALL | 
                      DISTINCT [ ON { ( expression [ , ... ] ) } ] ] 

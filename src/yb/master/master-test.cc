@@ -1,3 +1,4 @@
+// Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
 // regarding copyright ownership.  The ASF licenses this file
@@ -602,6 +603,7 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
 
 TEST_F(MasterTest, TestTablegroups) {
   TablegroupId kTablegroupId = GetPgsqlTablegroupId(12345, 67890);
+  TableId      kTableId = GetPgsqlTableId(123455, 67891);
   const char*  kTableName = "test_table";
   const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
   const NamespaceName ns_name = "test_tablegroup_ns";
@@ -662,14 +664,13 @@ TEST_F(MasterTest, TestTablegroups) {
   }
 
   // Now ensure that a table can be created in the tablegroup.
-  TableId table_id;
-  ASSERT_OK(CreateTablegroupTable(ns_id, kTableName, kTablegroupId, kTableSchema, &table_id));
+  ASSERT_OK(CreateTablegroupTable(ns_id, kTableId, kTableName, kTablegroupId, kTableSchema));
 
   // Delete the table to clean up tablegroup.
-  ASSERT_OK(DeleteTableById(table_id));
+  ASSERT_OK(DeleteTableById(kTableId));
 
   // Delete the tablegroup.
-  ASSERT_OK(DeleteTablegroup(kTablegroupId, ns_id));
+  ASSERT_OK(DeleteTablegroup(kTablegroupId));
 }
 
 // Regression test for KUDU-253/KUDU-592: crash if the schema passed to CreateTable
@@ -1937,6 +1938,36 @@ TEST_F(MasterTest, TestNetworkErrorOnFirstRun) {
   FLAGS_TEST_simulate_port_conflict_error = false;
   // Restarting master should succeed.
   ASSERT_OK(mini_master_->Start());
+}
+
+TEST_F(MasterTest, TestMasterAddressInBroadcastAddress) {
+  // Test the scenario where master_address exists in broadcast_addresses
+  // but not in rpc_bind_addresses.
+  std::vector<std::string> master_addresses = {"127.0.0.51"};
+  std::vector<std::string> rpc_bind_addresses = {"127.0.0.52"};
+  std::vector<std::string> broadcast_addresses = {"127.0.0.51"};
+
+  TearDown();
+  mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master-test"),
+                                    AllocateFreePort(), AllocateFreePort(), 0));
+  mini_master_->SetCustomAddresses(
+      master_addresses, rpc_bind_addresses, broadcast_addresses);
+  ASSERT_OK(mini_master_->Start());
+}
+
+TEST_F(MasterTest, TestMasterAddressNotInRpcAndBroadcastAddress) {
+  // Test the scenario where master_address does not exist in either
+  // broadcast_addresses or rpc_bind_addresses.
+  std::vector<std::string> master_addresses = {"127.0.0.51"};
+  std::vector<std::string> rpc_bind_addresses = {"127.0.0.52"};
+  std::vector<std::string> broadcast_addresses = {"127.0.0.53"};
+
+  TearDown();
+  mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master-test"),
+                                    AllocateFreePort(), AllocateFreePort(), 0));
+  mini_master_->SetCustomAddresses(
+      master_addresses, rpc_bind_addresses, broadcast_addresses);
+  ASSERT_NOK(mini_master_->Start());
 }
 
 namespace {

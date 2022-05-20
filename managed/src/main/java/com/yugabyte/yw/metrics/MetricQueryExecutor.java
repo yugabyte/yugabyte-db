@@ -3,23 +3,29 @@
 package com.yugabyte.yw.metrics;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.MetricConfig;
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.concurrent.Callable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
+import net.logstash.logback.encoder.org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
+@Slf4j
 public class MetricQueryExecutor implements Callable<JsonNode> {
-  public static final Logger LOG = LoggerFactory.getLogger(MetricQueryExecutor.class);
+
+  public static final String EXPORTED_INSTANCE = "exported_instance";
   public static final String DATE_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss";
   private ApiHelper apiHelper;
   private play.Configuration appConfig;
@@ -29,6 +35,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   private Map<String, String> additionalFilters = new HashMap<>();
   private String queryUrl;
   private int queryRangeSecs = 0;
+  private MetricSettings metricSettings;
 
   private boolean isRecharts;
 
@@ -38,7 +45,14 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       Map<String, String> queryParam,
       Map<String, String> additionalFilters,
       YBMetricQueryComponent ybMetricQueryComponent) {
-    this(appConfig, apiHelper, queryParam, additionalFilters, ybMetricQueryComponent, false);
+    this(
+        appConfig,
+        apiHelper,
+        queryParam,
+        additionalFilters,
+        ybMetricQueryComponent,
+        MetricSettings.defaultSettings(queryParam.get("queryKey")),
+        false);
   }
 
   public MetricQueryExecutor(
@@ -47,31 +61,19 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       Map<String, String> queryParam,
       Map<String, String> additionalFilters,
       YBMetricQueryComponent ybMetricQueryComponent,
+      MetricSettings metricSettings,
       boolean isRecharts) {
     this.apiHelper = apiHelper;
     this.appConfig = appConfig;
     this.queryParam.putAll(queryParam);
     this.additionalFilters.putAll(additionalFilters);
     this.ybMetricQueryComponent = ybMetricQueryComponent;
+    this.metricSettings = metricSettings;
     this.isRecharts = isRecharts;
-    int scrapeIntervalSecs = appConfig.getInt("yb.metrics.scrape_interval_secs", 10);
     if (queryParam.containsKey("step")) {
-      // Rate queries like rate(rpc_latency_count[rate_interval]) are performed over multiple
-      // windows of size "step" in the query range (start, end). We set rate_interval to the step
-      // size so that the rate is computed over all points in the 'step' window.
-      //
-      // One minor issue here is that this approach does not include changes that happen at the
-      // boundary of the step windows, so we add in 2 scrape intervals to calculate rate
-      // including the boundary. This makes the rate smoother but also slightly inaccurate.
-      // We use 2 scrape intervals instead of 1 because with the current low
-      // scrape interval of 10s it could be that we don't have scrapes in the exact 10s interval.
-      try {
-        this.queryRangeSecs = Integer.parseInt(queryParam.get("step")) + 2 * scrapeIntervalSecs;
-      } catch (NumberFormatException ex) {
-        LOG.warn("Invalid value for step parameter, ignoring: " + queryParam.get("step"));
-      }
+      this.queryRangeSecs = Integer.parseInt(queryParam.get("step"));
     } else {
-      LOG.warn(
+      log.warn(
           "Missing step size in query parameters, this is unexpected. "
               + "Queries over longer time windows like 6h/1d will be inaccurate.");
     }
@@ -92,6 +94,10 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   }
 
   private JsonNode getMetrics() {
+    return getMetrics(this.queryParam);
+  }
+
+  private JsonNode getMetrics(Map<String, String> queryParam) {
     boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative", false);
     if (useNativeMetrics) {
       return ybMetricQueryComponent.query(queryParam);
@@ -102,7 +108,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
         this.queryUrl = this.getMetricsUrl() + "/query";
       }
 
-      LOG.trace("Executing metric query {}: {}", queryUrl, queryParam);
+      log.trace("Executing metric query {}: {}", queryUrl, queryParam);
       return apiHelper.getRequest(queryUrl, new HashMap<>(), queryParam);
     }
   }
@@ -135,25 +141,46 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
 
   @Override
   public JsonNode call() {
-    MetricConfig config = MetricConfig.get(queryParam.get("queryKey"));
+    String metricName = queryParam.get("queryKey");
+    MetricConfig config = MetricConfig.get(metricName);
     ObjectNode responseJson = Json.newObject();
-    responseJson.put("queryKey", queryParam.get("queryKey"));
+    responseJson.put("queryKey", metricName);
 
     if (config == null) {
       responseJson.put("error", "Invalid Query Key");
     } else {
-      Map<String, String> queries = config.getQueries(additionalFilters, this.queryRangeSecs);
+      Map<String, List<MetricLabelFilters>> topNodeFilters;
+      try {
+        topNodeFilters = getTopNodesFilters(config, responseJson);
+      } catch (Exception e) {
+        log.error("Error occurred getting top nodes list for metric" + metricName, e);
+        responseJson.put("error", e.getMessage());
+        return responseJson;
+      }
+
+      MetricQueryContext context =
+          MetricQueryContext.builder()
+              .queryRangeSecs(queryRangeSecs)
+              .additionalFilters(additionalFilters)
+              .metricOrFilters(topNodeFilters)
+              .additionalGroupBy(
+                  metricSettings.splitTopNodes > 0
+                      ? ImmutableSet.of(EXPORTED_INSTANCE)
+                      : Collections.emptySet())
+              .build();
+      Map<String, String> queries = config.getQueries(this.metricSettings, context);
       responseJson.set("layout", Json.toJson(config.getLayout()));
       MetricRechartsGraphData rechartsOutput = new MetricRechartsGraphData();
       List<MetricGraphData> output = new ArrayList<>();
+      ArrayNode directURLs = responseJson.putArray("directURLs");
       for (Map.Entry<String, String> e : queries.entrySet()) {
         String metric = e.getKey();
         String queryExpr = e.getValue();
         queryParam.put("query", queryExpr);
         try {
-          responseJson.put("directURL", getDirectURL(queryExpr));
+          directURLs.add(getDirectURL(queryExpr));
         } catch (Exception de) {
-          LOG.trace("Error getting direct url", de);
+          log.trace("Error getting direct url", de);
         }
         JsonNode queryResponseJson = getMetrics();
         if (queryResponseJson == null) {
@@ -178,5 +205,68 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     }
 
     return responseJson;
+  }
+
+  private Map<String, List<MetricLabelFilters>> getTopNodesFilters(
+      MetricConfig config, ObjectNode responseJson) {
+    if (metricSettings.getSplitTopNodes() <= 0) {
+      return Collections.emptyMap();
+    }
+    int range = Integer.parseInt(queryParam.get("range"));
+    MetricQueryContext context =
+        MetricQueryContext.builder()
+            .topKQuery(true)
+            .queryRangeSecs(range)
+            .additionalFilters(additionalFilters)
+            .additionalGroupBy(ImmutableSet.of(EXPORTED_INSTANCE))
+            .build();
+    Map<String, String> queries = config.getQueries(this.metricSettings, context);
+    Map<String, String> topKQueryParams = new HashMap<>(queryParam);
+    String endTime = topKQueryParams.remove("end");
+    if (StringUtils.isNotBlank(endTime)) {
+      // 'time' param for top K query is equal to metric query period end.
+      topKQueryParams.put("time", endTime);
+    }
+    Map<String, List<MetricLabelFilters>> results = new HashMap<>();
+    ArrayNode topNodesQueryURLs = responseJson.putArray("topNodesQueryURLs");
+    for (Map.Entry<String, String> e : queries.entrySet()) {
+      String metric = e.getKey();
+      String queryExpr = e.getValue();
+      topKQueryParams.put("query", queryExpr);
+
+      JsonNode queryResponseJson = getMetrics(topKQueryParams);
+      MetricQueryResponse queryResponse =
+          Json.fromJson(queryResponseJson, MetricQueryResponse.class);
+
+      try {
+        topNodesQueryURLs.add(getDirectURL(queryExpr));
+      } catch (Exception de) {
+        log.trace("Error getting direct url", de);
+      }
+
+      if (queryResponse.error != null) {
+        throw new RuntimeException("Failed to get top nodes: " + queryResponse.error);
+      }
+      List<MetricLabelFilters> metricLabelFilters =
+          queryResponse
+              .getValues()
+              .stream()
+              .map(
+                  entry ->
+                      MetricLabelFilters.builder()
+                          .filters(
+                              entry
+                                  .labels
+                                  .entrySet()
+                                  .stream()
+                                  .map(
+                                      label ->
+                                          new MetricLabelFilter(label.getKey(), label.getValue()))
+                                  .collect(Collectors.toList()))
+                          .build())
+              .collect(Collectors.toList());
+      results.put(metric, metricLabelFilters);
+    }
+    return results;
   }
 }

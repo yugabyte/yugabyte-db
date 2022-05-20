@@ -14,9 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte uses PostgreSQL’s `pg_stat_activity` view to analyze live queries.
-This view returns analytic and diagnostic information about active Yugabyte server processes and queries.
-The pg_stat_activity view returns one row per server process, and displays information related to the current status of the database connection.
+Yugabyte uses the PostgreSQL `pg_stat_activity` view to analyze live queries. This view returns analytic and diagnostic information about active Yugabyte server processes and queries. The view returns one row per server process, and displays information related to the current status of the database connection.
 
 ## Supported fields
 
@@ -80,16 +78,14 @@ In this listing:
 
 ### Identify and terminate an open transaction
 
-Often enough, you may need to identify long-running queries, because these queries could indicate deeper problems. The pg_stat_activity view can help identify these issues. In this example, you create an open transaction, identify it, and terminate it.
+Often enough, you may need to identify long-running queries, because these queries could indicate deeper problems. The pg_stat_activity view can help identify these issues. In this example, you create an open transaction, identify it, and terminate it. The example uses the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
 
 #### Create an open transaction
-
-1. Follow the steps on [this page](https://download.yugabyte.com/#macos) to load the `yb_demo` sample dataset.
 
 1. Use the following query to return a row from the users table.
 
     ```sql
-    yugabyte=# SELECT id, name, state
+    yb_demo=# SELECT id, name, state
         FROM users
         WHERE id = 212;
     ```
@@ -104,7 +100,7 @@ Often enough, you may need to identify long-running queries, because these queri
 1. Update the state column value of this role with a transaction. The query is deliberately missing the `END;` statement to close the transaction.
 
     ```sql
-    yugabyte=# BEGIN TRANSACTION;
+    yb_demo=# BEGIN TRANSACTION;
         UPDATE users
             SET state = 'IA'
             WHERE id = 212;
@@ -117,7 +113,7 @@ Often enough, you may need to identify long-running queries, because these queri
 
 #### Find the open transaction
 
-Since the transaction never ends, it wastes resources as an open process.
+Because the transaction never ends, it wastes resources as an open process.
 
 1. Check the state of the transaction by opening another `ysqlsh` instance and finding information about this idle transaction with pg_stat_activity.
 
@@ -139,10 +135,10 @@ Since the transaction never ends, it wastes resources as an open process.
 
 #### Terminate the open transaction
 
-1. Terminate the idle transaction.
+1. Terminate the idle transaction. Replace `<pid>` with the PID of the process to terminate.
 
     ```sql
-    yugabyte=# SELECT pg_terminate_backend(10033);
+    yugabyte=# SELECT pg_terminate_backend(<pid>);
     ```
 
     ```output
@@ -169,7 +165,7 @@ Since the transaction never ends, it wastes resources as an open process.
 
 ### Other time-related queries
 
-You can run some time-related queries to help you identify long-running transactions. These are particularly useful when there are a lot of open connections on that node.
+You can run some time-related queries to help you identify long-running transactions. These are particularly helpful when there are a lot of open connections on that node.
 
 **Get a list of processes ordered by current `txn_duration`**:
 

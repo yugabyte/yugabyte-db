@@ -223,7 +223,7 @@ YBCStatus YBCPgNewCreateDatabase(const char *database_name,
                                  const YBCPgOid database_oid,
                                  const YBCPgOid source_database_oid,
                                  const YBCPgOid next_oid,
-                                 const bool colocated,
+                                 bool colocated,
                                  YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateDatabase(
       database_name, database_oid, source_database_oid, next_oid, colocated, handle));
@@ -368,7 +368,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool is_shared_table,
                               bool if_not_exist,
                               bool add_primary_key,
-                              const bool colocated,
+                              bool is_colocated_via_database,
                               const YBCPgOid tablegroup_oid,
                               const YBCPgOid colocation_id,
                               const YBCPgOid tablespace_oid,
@@ -380,8 +380,8 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
   const PgObjectId matview_pg_table_id(database_oid, matview_pg_table_oid);
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
-      if_not_exist, add_primary_key, colocated, tablegroup_id, colocation_id, tablespace_id,
-      matview_pg_table_id, handle));
+      if_not_exist, add_primary_key, is_colocated_via_database, tablegroup_id, colocation_id,
+      tablespace_id, matview_pg_table_id, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -478,9 +478,9 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecTruncateTable(handle));
 }
 
-YBCStatus YBCPgIsTableColocated(const YBCPgOid database_oid,
-                                const YBCPgOid table_oid,
-                                bool *colocated) {
+YBCStatus YbPgIsUserTableColocated(const YBCPgOid database_oid,
+                                   const YBCPgOid table_oid,
+                                   bool *colocated) {
   const PgObjectId table_id(database_oid, table_oid);
   PgTableDescPtr table_desc;
   YBCStatus status = ExtractValueFromResult(pgapi->LoadTable(table_id), &table_desc);
@@ -687,10 +687,11 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *
 
 YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
-                         const int targrows,
+                         int targrows,
+                         bool is_region_local,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewSample(table_id, targrows, handle));
+  return ToYBCStatus(pgapi->NewSample(table_id, targrows, is_region_local, handle));
 }
 
 YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state) {
@@ -712,10 +713,11 @@ YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, dou
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
-                         const bool is_single_row_txn,
+                         bool is_single_row_txn,
+                         bool is_region_local,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewInsert(table_id, is_single_row_txn, handle));
+  return ToYBCStatus(pgapi->NewInsert(table_id, is_single_row_txn, is_region_local, handle));
 }
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
@@ -744,9 +746,10 @@ YBCStatus YBCPgInsertStmtSetIsBackfill(YBCPgStatement handle, const bool is_back
 YBCStatus YBCPgNewUpdate(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
                          bool is_single_row_txn,
+                         bool is_region_local,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewUpdate(table_id, is_single_row_txn, handle));
+  return ToYBCStatus(pgapi->NewUpdate(table_id, is_single_row_txn, is_region_local, handle));
 }
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
@@ -757,9 +760,10 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
 YBCStatus YBCPgNewDelete(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
                          bool is_single_row_txn,
+                         bool is_region_local,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewDelete(table_id, is_single_row_txn, handle));
+  return ToYBCStatus(pgapi->NewDelete(table_id, is_single_row_txn, is_region_local, handle));
 }
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
@@ -774,9 +778,11 @@ YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is
 YBCStatus YBCPgNewTruncateColocated(const YBCPgOid database_oid,
                                     const YBCPgOid table_oid,
                                     bool is_single_row_txn,
+                                    bool is_region_local,
                                     YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewTruncateColocated(table_id, is_single_row_txn, handle));
+  return ToYBCStatus(pgapi->NewTruncateColocated(
+      table_id, is_single_row_txn, is_region_local, handle));
 }
 
 YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle) {
@@ -787,11 +793,12 @@ YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle) {
 YBCStatus YBCPgNewSelect(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
                          const YBCPgPrepareParameters *prepare_params,
+                         bool is_region_local,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
   const PgObjectId index_id(database_oid,
                             prepare_params ? prepare_params->index_oid : kInvalidOid);
-  return ToYBCStatus(pgapi->NewSelect(table_id, index_id, prepare_params, handle));
+  return ToYBCStatus(pgapi->NewSelect(table_id, index_id, prepare_params, is_region_local, handle));
 }
 
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
@@ -975,6 +982,10 @@ YBCStatus YBCPgEnterSeparateDdlTxnMode() {
   return ToYBCStatus(pgapi->EnterSeparateDdlTxnMode());
 }
 
+bool YBCPgHasWriteOperationsInDdlTxnMode() {
+  return pgapi->HasWriteOperationsInDdlTxnMode();
+}
+
 YBCStatus YBCPgExitSeparateDdlTxnMode() {
   return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode());
 }
@@ -1021,9 +1032,10 @@ YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor *source, b
   });
 }
 
-YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor *source) {
-  return ProcessYbctid(*source, [](auto table_id, const auto& ybctid) {
-    pgapi->AddForeignKeyReferenceIntent(table_id, ybctid);
+YBCStatus YBCAddForeignKeyReferenceIntent(
+    const YBCPgYBTupleIdDescriptor *source, bool relation_is_region_local) {
+  return ProcessYbctid(*source, [relation_is_region_local](auto table_id, const auto& ybctid) {
+    pgapi->AddForeignKeyReferenceIntent(table_id, relation_is_region_local, ybctid);
     return Status::OK();
   });
 }

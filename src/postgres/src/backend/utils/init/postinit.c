@@ -1078,8 +1078,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 */
 	if (IsYugaByteEnabled() && !IsBootstrapProcessingMode())
 	{
-		HandleYBStatus(YBCPgIsDatabaseColocated(MyDatabaseId,
-												&MyDatabaseColocated));
+		MyDatabaseColocated = YbIsDatabaseColocated(MyDatabaseId);
 	}
 
 	/* set up ACL framework (so CheckMyDatabase can check permissions) */

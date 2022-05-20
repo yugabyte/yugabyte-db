@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -143,7 +144,7 @@ public class AccessManager extends DevopsBase {
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
     // Removing paths from keyCode.
-    keyCode = Util.getFileName(keyCode);
+    keyCode = FileUtils.getFileName(keyCode);
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
     if (accessKey != null) {
       // This means the key must have been created before, so nothing to do.
@@ -443,6 +444,7 @@ public class AccessManager extends DevopsBase {
     if (deleteRemote) {
       commandArgs.add("--delete_remote");
     }
+    commandArgs.add("--ignore_auth_failure");
     JsonNode response = execAndParseCommandRegion(regionUUID, "delete-key", commandArgs);
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
@@ -474,7 +476,7 @@ public class AccessManager extends DevopsBase {
       throw new RuntimeException("Missing KUBECONFIG_CONTENT data in the provider config.");
     }
     String configFilePath = getOrCreateKeyFilePath(path);
-    Path configFile = Paths.get(configFilePath, Util.getFileName(configFileName));
+    Path configFile = Paths.get(configFilePath, FileUtils.getFileName(configFileName));
     if (!edit && Files.exists(configFile)) {
       throw new RuntimeException("File " + configFile.getFileName() + " already exists.");
     }
@@ -496,7 +498,7 @@ public class AccessManager extends DevopsBase {
           "Missing KUBECONFIG_PULL_SECRET_CONTENT data in the provider config.");
     }
     String pullSecretFilePath = getOrCreateKeyFilePath(providerUUID);
-    Path pullSecretFile = Paths.get(pullSecretFilePath, Util.getFileName(pullSecretFileName));
+    Path pullSecretFile = Paths.get(pullSecretFilePath, FileUtils.getFileName(pullSecretFileName));
     if (!edit && Files.exists(pullSecretFile)) {
       throw new RuntimeException("File " + pullSecretFile.getFileName() + " already exists.");
     }

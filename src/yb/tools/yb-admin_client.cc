@@ -357,7 +357,7 @@ class TableNameResolver::Impl {
     return false;
   }
 
-  CHECKED_STATUS ProcessNamespace(const Slice& prefix, const Slice& value) {
+  Status ProcessNamespace(const Slice& prefix, const Slice& value) {
     DCHECK(!current_namespace_);
     const auto ns = VERIFY_RESULT(ResolveNamespaceName(prefix, value));
     const auto i = namespaces_.find(NamespaceKey(ns.db_type, ns.name));
@@ -370,7 +370,7 @@ class TableNameResolver::Impl {
         ns.name, DatabasePrefix(ns.db_type));
   }
 
-  CHECKED_STATUS ProcessTableId(const Slice& table_id) {
+  Status ProcessTableId(const Slice& table_id) {
     const auto& idx = tables_.get<TableIdTag>();
     const auto i = idx.find(table_id);
     if (i == idx.end()) {
@@ -385,7 +385,7 @@ class TableNameResolver::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS ProcessTableName(const Slice& table_name) {
+  Status ProcessTableName(const Slice& table_name) {
     DCHECK(current_namespace_);
     const auto& idx = tables_.get<TableNameTag>();
     const auto key = boost::make_tuple(Slice(current_namespace_->id()), table_name);
@@ -588,7 +588,7 @@ Status ClusterAdminClient::MasterLeaderStepDown(
       new_leader_uuid, &master_proxy);
 }
 
-CHECKED_STATUS ClusterAdminClient::LeaderStepDownWithNewLeader(
+Status ClusterAdminClient::LeaderStepDownWithNewLeader(
     const std::string& tablet_id,
     const std::string& dest_ts_uuid) {
   return LeaderStepDown(
@@ -669,7 +669,7 @@ Status ClusterAdminClient::SetTabletPeerInfo(
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::SetWalRetentionSecs(
+Status ClusterAdminClient::SetWalRetentionSecs(
   const YBTableName& table_name,
   const uint32_t wal_ret_secs) {
   auto alterer = yb_client_->NewTableAlterer(table_name);
@@ -679,7 +679,7 @@ CHECKED_STATUS ClusterAdminClient::SetWalRetentionSecs(
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
+Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
   const auto info = VERIFY_RESULT(yb_client_->GetYBTableInfo(table_name));
   if (!info.wal_retention_secs) {
     cout << "WAL retention time not set for table " << table_name.table_name() << endl;
@@ -1667,7 +1667,7 @@ Status ClusterAdminClient::AddReadReplicaPlacementInfo(
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::ModifyReadReplicaPlacementInfo(
+Status ClusterAdminClient::ModifyReadReplicaPlacementInfo(
     const std::string& placement_uuid, const std::string& placement_info, int replication_factor) {
   RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
 
@@ -1709,7 +1709,7 @@ CHECKED_STATUS ClusterAdminClient::ModifyReadReplicaPlacementInfo(
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
+Status ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
   RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
 
   auto master_resp = VERIFY_RESULT(GetMasterClusterConfig());
@@ -2097,7 +2097,7 @@ Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterCl
                    "MasterServiceImpl::GetMasterClusterConfig call failed.");
 }
 
-CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
+Status ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
   const auto resp = VERIFY_RESULT(InvokeRpc(
@@ -2106,7 +2106,7 @@ CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::DisableTabletSplitting(int64_t disable_duration_ms) {
+Status ClusterAdminClient::DisableTabletSplitting(int64_t disable_duration_ms) {
   master::DisableTabletSplittingRequestPB req;
   req.set_disable_duration_ms(disable_duration_ms);
   const auto resp = VERIFY_RESULT(
@@ -2115,7 +2115,7 @@ CHECKED_STATUS ClusterAdminClient::DisableTabletSplitting(int64_t disable_durati
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::IsTabletSplittingComplete() {
+Status ClusterAdminClient::IsTabletSplittingComplete() {
   master::IsTabletSplittingCompleteRequestPB req;
   const auto resp = VERIFY_RESULT(
       InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req));

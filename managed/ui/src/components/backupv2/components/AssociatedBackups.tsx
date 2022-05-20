@@ -47,7 +47,13 @@ export const AssociatedBackups: FC<AssociatedBackupsProps> = ({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const { data: backupsList, isLoading } = useQuery(
-    ['associated_backups', (page - 1) * sizePerPage, sizePerPage, searchText],
+    [
+      'associated_backups',
+      (page - 1) * sizePerPage,
+      sizePerPage,
+      searchText,
+      storageConfigData.configUUID
+    ],
     () =>
       getBackupsList(
         (page - 1) * sizePerPage,
@@ -57,6 +63,7 @@ export const AssociatedBackups: FC<AssociatedBackupsProps> = ({
         [],
         DEFAULT_SORT_COLUMN,
         DEFAULT_SORT_DIRECTION,
+        undefined,
         undefined,
         storageConfigData.configUUID
       ),

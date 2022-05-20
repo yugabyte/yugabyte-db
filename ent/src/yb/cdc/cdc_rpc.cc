@@ -19,7 +19,9 @@
 #include "yb/cdc/cdc_service.proxy.h"
 
 #include "yb/client/client.h"
+#include "yb/client/client_error.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/table.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/tablet_rpc.h"
 
@@ -45,7 +47,7 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
  public:
   CDCWriteRpc(CoarseTimePoint deadline,
               client::internal::RemoteTablet *tablet,
-              const std::shared_ptr<const client::YBTable>& table,
+              const std::shared_ptr<client::YBTable>& table,
               client::YBClient *client,
               WriteRequestPB *req,
               WriteCDCRecordCallback callback,
@@ -61,7 +63,8 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
                  table,
                  mutable_retrier(),
                  trace_.get()),
-        callback_(std::move(callback)) {
+        callback_(std::move(callback)),
+        table_(table) {
     req_.Swap(req);
   }
 
@@ -76,6 +79,15 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   void Finished(const Status &status) override {
     Status new_status = status;
     if (invoker_.Done(&new_status)) {
+      // Check for any errors due to consumer side tablet splitting. If so, then mark partitions
+      // as stale so that when we retry the ApplyChanges call, we will refresh the partitions and
+      // apply changes to the proper tablets.
+      if (new_status.IsNotFound() ||
+          client::internal::ErrorCode(response_error())
+              == tserver::TabletServerErrorPB::TABLET_SPLIT ||
+          client::ClientError(new_status) == client::ClientErrorCode::kTablePartitionListIsStale) {
+        table_->MarkPartitionsAsStale();
+      }
       InvokeCallback(new_status);
     }
   }
@@ -127,12 +139,13 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   WriteResponsePB resp_;
   WriteCDCRecordCallback callback_;
   bool called_ = false;
+  const std::shared_ptr<client::YBTable>& table_;
 };
 
 rpc::RpcCommandPtr CreateCDCWriteRpc(
     CoarseTimePoint deadline,
     client::internal::RemoteTablet* tablet,
-    const std::shared_ptr<const client::YBTable>& table,
+    const std::shared_ptr<client::YBTable>& table,
     client::YBClient* client,
     WriteRequestPB* req,
     WriteCDCRecordCallback callback,

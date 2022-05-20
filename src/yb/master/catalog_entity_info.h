@@ -267,7 +267,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void GetLeaderStepDownFailureTimes(MonoTime forget_failures_before,
                                      LeaderStepDownFailureTimes* dest);
 
-  CHECKED_STATUS CheckRunning() const;
+  Status CheckRunning() const;
 
   bool InitiateElection() {
     bool expected = false;
@@ -282,7 +282,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   ~TabletInfo();
   TSDescriptor* GetLeaderUnlocked() const REQUIRES_SHARED(lock_);
-  CHECKED_STATUS GetLeaderNotFoundStatus() const REQUIRES_SHARED(lock_);
+  Status GetLeaderNotFoundStatus() const REQUIRES_SHARED(lock_);
 
   const TabletId tablet_id_;
   const scoped_refptr<TableInfo> table_;
@@ -401,8 +401,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   const NamespaceId namespace_id() const;
   const NamespaceName namespace_name() const;
 
-  const CHECKED_STATUS GetSchema(Schema* schema) const;
+  const Status GetSchema(Schema* schema) const;
 
+  // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   bool colocated() const;
 
   // Return the table's ID. Does not require synchronization.
@@ -498,7 +499,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return is_backfilling_;
   }
 
-  CHECKED_STATUS SetIsBackfilling();
+  Status SetIsBackfilling();
 
   void ClearIsBackfilling() {
     std::lock_guard<decltype(lock_)> l(lock_);
@@ -512,7 +513,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void SetCreateTableErrorStatus(const Status& status);
 
   // Get the Status of the last error from the current CreateTable.
-  CHECKED_STATUS GetCreateTableErrorStatus() const;
+  Status GetCreateTableErrorStatus() const;
 
   std::size_t NumLBTasks() const;
   std::size_t NumTasks() const;
@@ -534,7 +535,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // for placement.
   bool UsesTablespacesForPlacement() const;
 
-  bool IsColocatedParentTable() const;
+  bool IsColocationParentTable() const;
+  bool IsColocatedDbParentTable() const;
   bool IsTablegroupParentTable() const;
   bool IsColocatedUserTable() const;
 
@@ -681,48 +683,6 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   const NamespaceId namespace_id_;
 
   DISALLOW_COPY_AND_ASSIGN(NamespaceInfo);
-};
-
-// The information about a tablegroup.
-class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
- public:
-  explicit TablegroupInfo(TablegroupId tablegroup_id,
-                          NamespaceId namespace_id);
-
-  const std::string& id() const { return tablegroup_id_; }
-  const std::string& namespace_id() const { return namespace_id_; }
-
-  // TODO(alex): Make this stuff return Status/Result
-
-  // Operations to track table_map_ information (what tables belong to the tablegroup)
-
-  void AddChildTable(const TableId& table_id, ColocationId colocation_id);
-
-  void DeleteChildTable(const TableId& table_id);
-
-  bool HasChildTables() const;
-
-  bool HasChildTable(ColocationId colocation_id) const;
-
-  std::size_t NumChildTables() const;
-  std::unordered_set<TableId> ChildTables() const;
-
- private:
-  typedef boost::bimap<TableId, ColocationId> TableMap;
-
-  friend class RefCountedThreadSafe<TablegroupInfo>;
-  ~TablegroupInfo() = default;
-
-  // The tablegroup ID is used in the catalog manager maps to look up the proper
-  // tablet to add user tables to.
-  const TablegroupId tablegroup_id_;
-  const NamespaceId namespace_id_;
-
-  // Protects table_map_.
-  mutable simple_spinlock lock_;
-  TableMap table_map_ GUARDED_BY(lock_);
-
-  DISALLOW_COPY_AND_ASSIGN(TablegroupInfo);
 };
 
 // The data related to a User-Defined Type which is persisted on disk.

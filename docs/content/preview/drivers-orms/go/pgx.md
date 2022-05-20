@@ -82,7 +82,7 @@ conn, err := pgx.Connect(context.Background(), url)
 
 #### Use SSL
 
-For a Yugabyte Cloud cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side.
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side.
 
 ```sh
 $ export PGSSLMODE=verify-ca

@@ -1,13 +1,16 @@
 @import '../../../_style/colors.scss';
 
 .restore-choose-universe {
+  .row {
+    margin-top: 24px;
+  }
+
   .backup-info {
     background: #f7f7f7;
     padding: 10px 16px;
     border: 1px solid #e5e5e9;
     border-radius: 8px;
-    margin-top: 16px;
-    margin-bottom: 32px;
+    margin-top: 0px;
 
     .title {
       font-weight: 600;
@@ -21,12 +24,30 @@
       display: inline;
     }
   }
+
+  .should-rename-keyspace {
+    margin-left: 6px;
+
+    label {
+      font-weight: 400;
+      font-size: 13px;
+    }
+
+    .disable-keyspace-subtext {
+      font-size: 12px;
+      line-height: 14px;
+      color: $YB_DARKER_GRAY;
+      margin-top: 8px;
+    }
+  }
 }
 
 .rename-keyspace-step {
   .help-text {
     margin-bottom: 24px;
     margin-top: 24px;
+    font-weight: 600;
+    font-size: 13px;
   }
 
   .keyspaces-input {
@@ -35,11 +56,6 @@
 
   .yb-field-group {
     padding-bottom: 0 !important;
-  }
-
-  .err-msg {
-    color: $YB_ERROR_TEXT_COLOR;
-    margin-bottom: 5px;
   }
 }
 
@@ -51,4 +67,12 @@
   .restore-wth-rename-but {
     height: 46px;
   }
+  .err-msg {
+    color: $YB_ERROR_TEXT_COLOR;
+    margin-bottom: 5px;
+  }
+}
+
+.Toastify__toast-container {
+  z-index: 100000;
 }

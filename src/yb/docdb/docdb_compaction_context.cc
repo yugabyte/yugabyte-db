@@ -27,10 +27,12 @@
 #include "yb/rocksdb/compaction_filter.h"
 
 #include "yb/util/fast_varint.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
+using namespace std::literals;
 using std::shared_ptr;
 using std::unique_ptr;
 using std::unordered_set;
@@ -41,20 +43,309 @@ namespace docdb {
 
 namespace {
 
-class DocDBCompactionFeed : public rocksdb::CompactionFeed {
+struct OverwriteData {
+  DocHybridTime doc_ht;
+  Expiration expiration;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(doc_ht, expiration);
+  }
+};
+
+Result<SchemaVersion> ParseValueHeader(Slice* value) {
+  value->consume_byte(); // TODO(packed_row) control_fields
+  return narrow_cast<SchemaVersion>(VERIFY_RESULT(util::FastDecodeUnsignedVarInt(value)));
+}
+
+// Interface to pass packed rows to underlying key value feed.
+class PackedRowFeed {
+ public:
+  virtual Status FeedPackedRow(const Slice& key, const Slice& value, size_t doc_key_serial) = 0;
+
+  virtual ~PackedRowFeed() = default;
+};
+
+struct PackedRowData {
+  PackedRowFeed& feed;
+  SchemaPackingProvider* schema_packing_provider; // Owned externally.
+
+  ValueControlFields control_fields;
+  size_t doc_key_serial;
+  KeyBuffer key;
+  DocHybridTime ht;
+  uint64_t last_internal_component;
+
+  // All old_ fields are releated to original row packing.
+  // I.e. row state that had place before the compaction.
+  ValueBuffer old_value;
+  Slice old_value_slice;
+  SchemaVersion old_schema_version;
+  CompactionSchemaInfo old_packing;
+
+  bool repacking; // Whether we have started repacking the row.
+
+  // Use fake coprefix as default value.
+  // So we will trigger table change on the first record.
+  ByteBuffer<1 + kUuidSize> active_coprefix{"FAKE_PREFIX"s};
+
+  // True if the active coprefix is for a dropped table.
+  bool active_coprefix_dropped = false;
+
+  CompactionSchemaInfo new_packing;
+  boost::optional<RowPacker> packer;
+
+  HybridTime history_cutoff;
+
+  using UsedSchemaVersionsMap =
+      std::unordered_map<Uuid, std::pair<SchemaVersion, SchemaVersion>, UuidHash>;
+
+  // Schema version ranges for each found table.
+  // That could be a surprise, but when we are talking about range and use pair to represent range
+  // first usually means min value of the range, while second means max value of the range.
+  UsedSchemaVersionsMap used_schema_versions;
+
+  // Iterator into used_schema_versions for the active coprefix.
+  UsedSchemaVersionsMap::iterator used_schema_versions_it = used_schema_versions.end();
+
+  PackedRowData(PackedRowFeed* feed_, SchemaPackingProvider* provider,
+                HybridTime history_cutoff_)
+      : feed(*feed_), schema_packing_provider(provider), history_cutoff(history_cutoff_) {
+  }
+
+  bool active() const {
+    return !key.empty();
+  }
+
+  Status UpdateMeta(rocksdb::FileMetaData* meta) {
+    if (!meta->smallest.user_frontier || !meta->largest.user_frontier) {
+      // Relevant in tests only.
+      return Status::OK();
+    }
+    auto& smallest = down_cast<ConsensusFrontier&>(*meta->smallest.user_frontier);
+    smallest.ResetSchemaVersion();
+    auto& largest = down_cast<ConsensusFrontier&>(*meta->largest.user_frontier);
+    largest.ResetSchemaVersion();
+    for (const auto& p : used_schema_versions) {
+      smallest.AddSchemaVersion(p.first, p.second.first);
+      largest.AddSchemaVersion(p.first, p.second.second);
+    }
+    return Status::OK();
+  }
+
+  // Handle packed row that was forwarded to underlying feed w/o changes.
+  Status ProcessForwardedPackedRow(Slice value) {
+    UsedSchemaVersion(VERIFY_RESULT(ParseValueHeader(&value)));
+    return Status::OK();
+  }
+
+  Status ProcessPackedRow(
+      const Slice& internal_key, size_t coprefix_len, size_t doc_key_size,
+      const ValueControlFields& row_control_fields, const Slice& value,
+      const DocHybridTime& row_doc_ht, size_t new_doc_key_serial) {
+    VLOG_WITH_FUNC(4) << "Key: " << internal_key.ToDebugHexString() << ", coprefix_len: "
+                      << coprefix_len << ", value: " << value.ToDebugHexString() << ", row_doc_ht: "
+                      << row_doc_ht;
+    UsedSchemaVersion(kLatestSchemaVersion);
+
+    doc_key_serial = new_doc_key_serial;
+    control_fields = row_control_fields;
+    key.Assign(internal_key.cdata(), doc_key_size);
+    ht = row_doc_ht;
+    memcpy(
+        &last_internal_component, internal_key.end() - rocksdb::kLastInternalComponentSize,
+        sizeof(last_internal_component));
+    old_value.Assign(value);
+    old_value_slice = old_value.AsSlice();
+    old_schema_version = VERIFY_RESULT(ParseValueHeader(&old_value_slice));
+    if (old_schema_version != new_packing.schema_version) {
+      return StartRepacking();
+    }
+    repacking = false;
+    return Status::OK();
+  }
+
+  Status ProcessColumn(ColumnId column_id, const Slice& value, const DocHybridTime& column_doc_ht) {
+    if (!repacking) {
+      RETURN_NOT_OK(StartRepacking());
+    }
+    auto next_column_id = packer->NextColumnId();
+    VLOG(4) << "Next column id: " << next_column_id << ", current column id: " << column_id;
+    while (next_column_id < column_id) {
+      RETURN_NOT_OK(PackOldValue(next_column_id));
+      next_column_id = packer->NextColumnId();
+    }
+    if (next_column_id > column_id) {
+      VLOG(4) << "Deleted column from schema: " << next_column_id << ", " << column_id;
+      // Column was deleted.
+      return Status::OK();
+    }
+    // TODO(packed_row) update control fields
+    VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString();
+    RETURN_NOT_OK(packer->AddValue(column_id, value));
+    if (column_doc_ht > ht) {
+      ht = column_doc_ht;
+    }
+    return Status::OK();
+  }
+
+  Status StartRepacking() {
+    if (old_schema_version != old_packing.schema_version) {
+      old_packing = VERIFY_RESULT(schema_packing_provider->CotablePacking(
+          new_packing.cotable_id, old_schema_version, history_cutoff));
+    }
+    repacking = true;
+    if (!packer) {
+      packer.emplace(new_packing.schema_version, *new_packing.schema_packing);
+    } else {
+      packer->Restart();
+    }
+    return Status::OK();
+  }
+
+  Status Flush() {
+    if (!active()) {
+      return Status::OK();
+    }
+    key.PushBack(KeyEntryTypeAsChar::kHybridTime);
+    ht.AppendEncodedInDocDbFormat(&key);
+    key.Append(
+        pointer_cast<const char*>(&last_internal_component), sizeof(last_internal_component));
+
+    Slice value_slice;
+
+    VLOG_WITH_FUNC(4)
+        << "Has packer: " << (packer && !packer->Empty()) << ", repacking: " << repacking;
+    if (repacking) {
+      // TODO(packed_row) control_fields
+      while (!packer->Finished()) {
+        RETURN_NOT_OK(PackOldValue(packer->NextColumnId()));
+      }
+      value_slice = VERIFY_RESULT(packer->Complete());
+    } else {
+      value_slice = old_value.AsSlice();
+    }
+    VLOG_WITH_FUNC(4)
+        << key.AsSlice().ToDebugHexString() << " => " << value_slice.ToDebugHexString();
+    RETURN_NOT_OK(feed.FeedPackedRow(key.AsSlice(), value_slice, doc_key_serial));
+    key.Clear();
+    return Status::OK();
+  }
+
+  Status PackOldValue(ColumnId column_id) {
+    auto column_value = old_packing.schema_packing->GetValue(column_id, old_value_slice);
+    if (!column_value) {
+      const ColumnPackingData& column_data = VERIFY_RESULT(packer->NextColumnData());
+      RSTATUS_DCHECK(column_data.varlen(), Corruption, Format(
+          "Don't have value for fixed size column: $0, in $1, schema_version: $2",
+          column_id, old_value_slice.ToDebugHexString(), old_packing.schema_version));
+      column_value = Slice();
+    }
+    VLOG(4) << "Keep value: " << column_value->ToDebugHexString();
+    return packer->AddValue(column_id, *column_value);
+  }
+
+  void UsedSchemaVersion(SchemaVersion version) {
+    if (used_schema_versions_it == used_schema_versions.end()) {
+      used_schema_versions_it =
+          used_schema_versions.emplace(
+              new_packing.cotable_id, std::make_pair(version, version)).first;
+    } else {
+      used_schema_versions_it->second.first = std::min(
+          used_schema_versions_it->second.first, version);
+      used_schema_versions_it->second.second = std::max(
+          used_schema_versions_it->second.second, version);
+    }
+    old_packing.schema_version = kLatestSchemaVersion;
+    packer.reset();
+  }
+
+  // Updates current coprefix. Coprefix is located at start of the key and identifies cotable or
+  // colocation.
+  Status UpdateCoprefix(const Slice& coprefix) {
+    if (!schema_packing_provider) {
+      return Status::OK();
+    }
+    if (coprefix == active_coprefix.AsSlice()) {
+      return Status::OK();
+    }
+    RETURN_NOT_OK(Flush());
+
+    auto packing = GetCompactionSchemaInfo(coprefix);
+    if (!packing.ok()) {
+      if (packing.status().IsNotFound()) {
+        active_coprefix = coprefix;
+        active_coprefix_dropped = true;
+        return Status::OK();
+      }
+      return packing.status();
+    }
+    active_coprefix = coprefix;
+    active_coprefix_dropped = false;
+    new_packing = *packing;
+    used_schema_versions_it = used_schema_versions.find(new_packing.cotable_id);
+    return Status::OK();
+  }
+
+  Result<CompactionSchemaInfo> GetCompactionSchemaInfo(Slice coprefix) {
+    if (coprefix.empty()) {
+      return schema_packing_provider->CotablePacking(
+          Uuid::Nil(), kLatestSchemaVersion, history_cutoff);
+    } else if (coprefix.TryConsumeByte(KeyEntryTypeAsChar::kColocationId)) {
+      if (coprefix.size() != sizeof(ColocationId)) {
+        return STATUS_FORMAT(Corruption, "Wrong colocation size: $0", coprefix.ToDebugHexString());
+      }
+      uint32_t colocation_id = BigEndian::Load32(coprefix.data());
+      return schema_packing_provider->ColocationPacking(
+          colocation_id, kLatestSchemaVersion, history_cutoff);
+    } else if (coprefix.TryConsumeByte(KeyEntryTypeAsChar::kTableId)) {
+      auto cotable_id = VERIFY_RESULT(Uuid::FromComparable(coprefix));
+      return schema_packing_provider->CotablePacking(
+          cotable_id, kLatestSchemaVersion, history_cutoff);
+    } else {
+      return STATUS_FORMAT(Corruption, "Wrong coprefix: $0", coprefix.ToDebugHexString());
+    }
+  }
+};
+
+class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed {
  public:
   DocDBCompactionFeed(
       rocksdb::CompactionFeed* next_feed,
       HistoryRetentionDirective retention,
-      IsMajorCompaction is_major_compaction,
-      const KeyBounds* key_bounds)
+      HybridTime min_input_hybrid_time,
+      HybridTime delete_marker_retention_time,
+      rocksdb::BoundaryValuesExtractor* boundary_extractor,
+      const KeyBounds* key_bounds,
+      SchemaPackingProvider* schema_packing_provider)
       : next_feed_(*next_feed), retention_(std::move(retention)), key_bounds_(key_bounds),
-        is_major_compaction_(is_major_compaction) {
+        delete_marker_retention_time_(retention_.retain_delete_markers_in_major_compaction
+            ? HybridTime::kMin : delete_marker_retention_time),
+        could_drop_delete_markers_(CanDropDeleteMarker(min_input_hybrid_time)),
+        boundary_extractor_(boundary_extractor),
+        packed_row_(this, schema_packing_provider, retention_.history_cutoff) {
   }
 
-  Status Feed(const Slice& full_key, const Slice& value) override;
+  Status Feed(const Slice& internal_key, const Slice& value) override;
+
+  Status UpdateMeta(rocksdb::FileMetaData* meta) {
+    if (could_drop_delete_markers_) {
+      meta->smallest.user_values = smallest_;
+      meta->largest.user_values = largest_;
+    }
+    return packed_row_.UpdateMeta(meta);
+  }
+
+  Status ForwardToNextFeed(const Slice& key, const Slice& value) {
+    RETURN_NOT_OK(packed_row_.Flush());
+    return PassToNextFeed(key, value, doc_key_serial_);
+  }
+
+  Status FeedPackedRow(const Slice& key, const Slice& value, size_t doc_key_serial) override {
+    return PassToNextFeed(key, value, doc_key_serial);
+  }
 
   Status Flush() override {
+    RETURN_NOT_OK(packed_row_.Flush());
     return next_feed_.Flush();
   }
 
@@ -63,16 +354,50 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed {
   // sub_key_ends_ and same_bytes are reused.
   void AssignPrevSubDocKey(const char* data, size_t same_bytes);
 
+  Status PassToNextFeed(const Slice& key, const Slice& value, size_t doc_key_serial) {
+    if (last_passed_doc_key_serial_ != doc_key_serial) {
+      RSTATUS_DCHECK_GT(doc_key_serial, last_passed_doc_key_serial_, InternalError,
+                        Format("Doc key serial stream failure for key $0", key.ToDebugHexString()));
+      RETURN_NOT_OK(UpdateBoundaryValues(key));
+      last_passed_doc_key_serial_ = doc_key_serial;
+    }
+    return next_feed_.Feed(key, value);
+  }
+
+  Status UpdateBoundaryValues(const Slice& key) {
+    if (!could_drop_delete_markers_) {
+      return Status::OK();
+    }
+    user_values_.clear();
+    RETURN_NOT_OK(boundary_extractor_->Extract(rocksdb::ExtractUserKey(key), &user_values_));
+    rocksdb::UpdateUserValues(user_values_, rocksdb::UpdateUserValueType::kSmallest, &smallest_);
+    rocksdb::UpdateUserValues(user_values_, rocksdb::UpdateUserValueType::kLargest, &largest_);
+    return Status::OK();
+  }
+
+  bool CanDropDeleteMarker(HybridTime ht) const {
+    return ht < delete_marker_retention_time_;
+  }
+
   rocksdb::CompactionFeed& next_feed_;
   const HistoryRetentionDirective retention_;
   const KeyBounds* key_bounds_;
-  const IsMajorCompaction is_major_compaction_;
+  const HybridTime delete_marker_retention_time_;
+  const bool could_drop_delete_markers_;
+  rocksdb::BoundaryValuesExtractor* boundary_extractor_;
   ValueBuffer new_value_buffer_;
 
   std::vector<char> prev_subdoc_key_;
 
   // Result of DecodeDocKeyAndSubKeyEnds for prev_subdoc_key_.
   boost::container::small_vector<size_t, 16> sub_key_ends_;
+
+  size_t last_passed_doc_key_serial_ = 0;
+  // Serial number of doc key in processed key stream.
+  size_t doc_key_serial_ = 0;
+  boost::container::small_vector<rocksdb::UserBoundaryValueRef, 0x10> user_values_;
+  boost::container::small_vector<rocksdb::UserBoundaryValue, 0x10> smallest_;
+  boost::container::small_vector<rocksdb::UserBoundaryValue, 0x10> largest_;
 
   // A stack of highest hybrid_times lower than or equal to history_cutoff_ at which parent
   // subdocuments of the key that has just been processed, or the subdocument / primitive value
@@ -110,34 +435,32 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed {
   // doc_key1 subkey1 HT(21) -> "value2"  | [20, 23]      | 21 < 23, deleting the entry
   // doc_key1 subkey1 HT(15) -> "value1"  | [20, 23]      | 15 < 23, deleting the entry
 
-  struct OverwriteData {
-    DocHybridTime doc_ht;
-    Expiration expiration;
-  };
-
   std::vector<OverwriteData> overwrite_;
 
   // We use this to only log a message that the feed is being used once on the first call to
   // the Filter function.
   bool feed_usage_logged_ = false;
   bool within_merge_block_ = false;
+
+  PackedRowData packed_row_;
 };
 
 // ------------------------------------------------------------------------------------------------
 
-Status DocDBCompactionFeed::Feed(const Slice& full_key, const Slice& value) {
+Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) {
   const HybridTime history_cutoff = retention_.history_cutoff;
 
   if (!feed_usage_logged_) {
     // TODO: switch this to VLOG if it becomes too chatty.
-    LOG(INFO) << "DocDB compaction feed is being used for a "
-              << (is_major_compaction_ ? "major" : "minor") << " compaction"
-              << ", history_cutoff=" << history_cutoff
-              << ", deleted columns: " << AsString(*retention_.deleted_cols);
+    LOG(INFO) << "DocDB compaction feed, delete_marker_retention_time: "
+              << delete_marker_retention_time_
+              << ", history_cutoff=" << history_cutoff;
     feed_usage_logged_ = true;
   }
 
-  auto key = full_key.WithoutSuffix(rocksdb::kLastInternalComponentSize);
+  VLOG(4) << "Feed: " << internal_key.ToDebugHexString() << " => " << value.ToDebugHexString();
+
+  auto key = internal_key.WithoutSuffix(rocksdb::kLastInternalComponentSize);
   if (!IsWithinBounds(key_bounds_, key) &&
       DecodeKeyEntryType(key) != KeyEntryType::kTransactionApplyState) {
     // If we reach this point, then we're processing a record which should have been excluded by
@@ -158,16 +481,41 @@ Status DocDBCompactionFeed::Feed(const Slice& full_key, const Slice& value) {
   auto same_bytes = strings::MemoryDifferencePos(
       key.data(), prev_subdoc_key_.data(), std::min(key.size(), prev_subdoc_key_.size()));
 
-  // The number of initial components (including document key and subkeys) that this
+  // The number of initial components (including cotable_id, document key and subkeys) that this
   // SubDocKey shares with previous one. This does not care about the hybrid_time field.
-  size_t num_shared_components = sub_key_ends_.size();
-  while (num_shared_components > 0 && sub_key_ends_[num_shared_components - 1] > same_bytes) {
-    --num_shared_components;
+  size_t num_shared_components;
+  if (!same_bytes) {
+    // There is special case, when we move from key w/o cotable to key with cotable.
+    // sub_key_ends_[0] will be 0, and logic below would never update it.
+    num_shared_components = 0;
+  } else {
+    num_shared_components = sub_key_ends_.size();
+    VLOG_WITH_FUNC(4) << "Old sub_key_ends: " << AsString(sub_key_ends_) << ", same bytes: "
+                      << same_bytes;
+    while (num_shared_components > 0 && sub_key_ends_[num_shared_components - 1] > same_bytes) {
+      --num_shared_components;
+    }
+  }
+
+  VLOG_WITH_FUNC(4) << "num_shared_components: " << num_shared_components << ", overwrite: "
+                    << AsString(overwrite_);
+  // First component is cotable and second component doc_key, so num_shared_components <= 1 means
+  // new row.
+  if (num_shared_components <= 1) {
+    VLOG_WITH_FUNC(4) << "Flush on num_shared_components: " << num_shared_components;
+    RETURN_NOT_OK(packed_row_.Flush());
+    ++doc_key_serial_;
   }
 
   sub_key_ends_.resize(num_shared_components);
 
   RETURN_NOT_OK(SubDocKey::DecodeDocKeyAndSubKeyEnds(key, &sub_key_ends_));
+  RETURN_NOT_OK(packed_row_.UpdateCoprefix(key.Prefix(sub_key_ends_[0])));
+
+  if (packed_row_.active_coprefix_dropped) {
+    return Status::OK();
+  }
+
   const size_t new_stack_size = sub_key_ends_.size();
 
   // Remove overwrite hybrid_times for components that are no longer relevant for the current
@@ -216,6 +564,7 @@ Status DocDBCompactionFeed::Feed(const Slice& full_key, const Slice& value) {
   //
   // TODO: When more merge records are supported, isTtlRow should be redefined appropriately.
   bool is_ttl_row = IsMergeRecord(value);
+  VLOG_WITH_FUNC(4) << "Ht: " << ht << ", prev_overwrite_ht: " << prev_overwrite_ht;
   if (ht < prev_overwrite_ht && !is_ttl_row) {
     return Status::OK();
   }
@@ -247,25 +596,42 @@ Status DocDBCompactionFeed::Feed(const Slice& full_key, const Slice& value) {
   if (ht.hybrid_time() > history_cutoff) {
     AssignPrevSubDocKey(key.cdata(), same_bytes);
     overwrite_.push_back({prev_overwrite_ht, prev_exp});
-    return next_feed_.Feed(full_key, value);
+    VLOG_WITH_FUNC(4)
+        << "Feed to next because of history cutoff: " << ht.hybrid_time() << ", " << history_cutoff;
+    auto value_slice = value;
+    RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
+    if (DecodeValueEntryType(value_slice) == ValueEntryType::kPackedRow) {
+      // Check packed row version for rows left untouched.
+      RETURN_NOT_OK(packed_row_.ProcessForwardedPackedRow(value_slice));
+    }
+    return ForwardToNextFeed(internal_key, value);
   }
 
-  // Check for CQL columns deleted from the schema. This is done regardless of whether this is a
+  // Check for columns deleted from the schema. This is done regardless of whether this is a
   // major or minor compaction.
   //
   // TODO: could there be a case when there is still a read request running that uses an old schema,
   //       and we end up removing some data that the client expects to see?
+  VLOG(4) << "Sub key ends: " << AsString(sub_key_ends_);
   if (sub_key_ends_.size() > 1) {
     // 0 - end of cotable id section.
     // 1 - end of doc key section.
-    // Column ID is the first subkey in every CQL row.
+    // Column ID is the first subkey in every row.
+    VLOG(4) << "First subkey type: " << DecodeKeyEntryType(key[sub_key_ends_[1]]);
     if (key[sub_key_ends_[1]] == KeyEntryTypeAsChar::kColumnId) {
       Slice column_id_slice = key.WithoutPrefix(sub_key_ends_[1] + 1);
       auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&column_id_slice));
       ColumnId column_id;
       RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
-      if (retention_.deleted_cols->count(column_id) != 0) {
+
+      if (packed_row_.new_packing.deleted_cols.count(column_id)) {
         return Status::OK();
+      }
+
+      VLOG(4) << "Packed row active: " << packed_row_.active();
+      // TODO(packed_row) remove control fields from value
+      if (packed_row_.active()) {
+        return packed_row_.ProcessColumn(column_id, value, ht);
       }
     }
   }
@@ -314,9 +680,18 @@ Status DocDBCompactionFeed::Feed(const Slice& full_key, const Slice& value) {
   // compactions. However, we do need to update the overwrite hybrid time stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier hybrid times.
-  if (value_type == ValueEntryType::kTombstone && is_major_compaction_ &&
-      !retention_.retain_delete_markers_in_major_compaction) {
+  if (value_type == ValueEntryType::kTombstone && CanDropDeleteMarker(ht.hybrid_time())) {
     return Status::OK();
+  }
+
+  // TODO(packed_row) combine non packed columns into packed row
+  if (value_type == ValueEntryType::kPackedRow) {
+    RSTATUS_DCHECK(!packed_row_.active(), Corruption, Format(
+        "Double packed rows: $0, $1", packed_row_.key.AsSlice().ToDebugHexString(),
+        internal_key.ToDebugHexString()));
+    return packed_row_.ProcessPackedRow(
+        internal_key, sub_key_ends_[0], sub_key_ends_.back(), control_fields, value_slice, ht,
+        doc_key_serial_);
   }
 
   // If the entry has the TTL flag, delete the entry.
@@ -340,7 +715,7 @@ Status DocDBCompactionFeed::Feed(const Slice& full_key, const Slice& value) {
   if (has_expired) {
     // This is consistent with the condition we're testing for deletes at the bottom of the function
     // because ht_at_or_below_cutoff is implied by has_expired.
-    if (is_major_compaction_ && !retention_.retain_delete_markers_in_major_compaction) {
+    if (CanDropDeleteMarker(ht.hybrid_time())) {
       return Status::OK();
     }
 
@@ -375,7 +750,8 @@ Status DocDBCompactionFeed::Feed(const Slice& full_key, const Slice& value) {
     new_value = new_value_buffer_.AsSlice();
   }
 
-  return next_feed_.Feed(full_key, new_value);
+  VLOG_WITH_FUNC(4) << "Feed next at the end";
+  return ForwardToNextFeed(internal_key, new_value);
 }
 
 void DocDBCompactionFeed::AssignPrevSubDocKey(
@@ -385,17 +761,65 @@ void DocDBCompactionFeed::AssignPrevSubDocKey(
   memcpy(prev_subdoc_key_.data() + same_bytes, data + same_bytes, size - same_bytes);
 }
 
-} // namespace
+// DocDB compaction feed. A new instance of this class is created for every compaction.
+class DocDBCompactionContext : public rocksdb::CompactionContext {
+ public:
+  DocDBCompactionContext(
+      rocksdb::CompactionFeed* next_feed,
+      HistoryRetentionDirective retention,
+      HybridTime min_input_hybrid_time,
+      HybridTime delete_marker_retention_time,
+      rocksdb::BoundaryValuesExtractor* boundary_extractor,
+      const KeyBounds* key_bounds,
+      SchemaPackingProvider* schema_packing_provider);
+
+  ~DocDBCompactionContext() = default;
+
+  rocksdb::CompactionFeed* Feed() override {
+    return feed_.get();
+  }
+
+  // This indicates we don't have a cached TTL. We need this to be different from kMaxTtl
+  // and kResetTtl because a PERSIST call would lead to a cached TTL of kMaxTtl, and kResetTtl
+  // indicates no TTL in Cassandra.
+  const MonoDelta kNoTtl = MonoDelta::FromNanoseconds(-1);
+
+  // This is used to provide the history_cutoff timestamp to the compaction as a field in the
+  // ConsensusFrontier, so that it can be persisted in RocksDB metadata and recovered on bootstrap.
+  rocksdb::UserFrontierPtr GetLargestUserFrontier() const override;
+
+  // Returns an empty list when key_ranges_ is not set, denoting that the whole key range of the
+  // tablet should be considered live.
+  //
+  // When key_ranges_ is set, returns two live ranges:
+  // (1) A range covering any ApplyTransactionState records which may have been written
+  // (2) A range covering all valid keys in key_ranges_, i.e. all user data this tablet is
+  //     responsible for.
+  std::vector<std::pair<Slice, Slice>> GetLiveRanges() const override;
+
+  Status UpdateMeta(rocksdb::FileMetaData* meta) override {
+    return feed_->UpdateMeta(meta);
+  }
+
+ private:
+  HybridTime history_cutoff_;
+  const KeyBounds* key_bounds_;
+  std::unique_ptr<DocDBCompactionFeed> feed_;
+};
 
 DocDBCompactionContext::DocDBCompactionContext(
     rocksdb::CompactionFeed* next_feed,
     HistoryRetentionDirective retention,
-    IsMajorCompaction is_major_compaction,
-    const KeyBounds* key_bounds)
+    HybridTime min_input_hybrid_time,
+    HybridTime delete_marker_retention_time,
+    rocksdb::BoundaryValuesExtractor* boundary_extractor,
+    const KeyBounds* key_bounds,
+    SchemaPackingProvider* schema_packing_provider)
     : history_cutoff_(retention.history_cutoff),
       key_bounds_(key_bounds),
       feed_(std::make_unique<DocDBCompactionFeed>(
-          next_feed, std::move(retention), is_major_compaction, key_bounds)) {
+          next_feed, std::move(retention), min_input_hybrid_time, delete_marker_retention_time,
+          boundary_extractor, key_bounds, schema_packing_provider)) {
 }
 
 rocksdb::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const {
@@ -420,37 +844,54 @@ std::vector<std::pair<Slice, Slice>> DocDBCompactionContext::GetLiveRanges() con
   return {first_range, second_range};
 }
 
+HybridTime MinHybridTime(const std::vector<rocksdb::FileMetaData*>& inputs) {
+  auto result = HybridTime::kMax;
+  for (const auto& file : inputs) {
+    if (!file->smallest.user_frontier) {
+      continue;
+    }
+    auto smallest = down_cast<ConsensusFrontier&>(*file->smallest.user_frontier);
+    // Hybrid time is defined by Raft hybrid time and commit hybrid time of all records.
+    result = std::min(result, smallest.hybrid_time());
+  }
+  return result;
+}
+
+} // namespace
+
 // ------------------------------------------------------------------------------------------------
 
 std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
-    const KeyBounds* key_bounds) {
-  return std::make_shared<rocksdb::CompactionContextFactory>([retention_policy, key_bounds](
+    const KeyBounds* key_bounds,
+    const DeleteMarkerRetentionTimeProvider& delete_marker_retention_provider,
+    SchemaPackingProvider* schema_packing_provider) {
+  return std::make_shared<rocksdb::CompactionContextFactory>(
+      [retention_policy, key_bounds, delete_marker_retention_provider, schema_packing_provider](
       rocksdb::CompactionFeed* next_feed, const rocksdb::CompactionContextOptions& options) {
     return std::make_unique<DocDBCompactionContext>(
         next_feed,
         retention_policy->GetRetentionDirective(),
-        IsMajorCompaction(options.is_full_compaction),
-        key_bounds);
+        MinHybridTime(options.level0_inputs),
+        delete_marker_retention_provider
+            ? delete_marker_retention_provider(options.level0_inputs)
+            : HybridTime::kMax,
+        options.boundary_extractor,
+        key_bounds,
+        schema_packing_provider);
   });
 }
 
 // ------------------------------------------------------------------------------------------------
 
 HistoryRetentionDirective ManualHistoryRetentionPolicy::GetRetentionDirective() {
-  std::lock_guard<std::mutex> lock(deleted_cols_mtx_);
   return {history_cutoff_.load(std::memory_order_acquire),
-          std::make_shared<ColumnIds>(deleted_cols_), table_ttl_.load(std::memory_order_acquire),
+          table_ttl_.load(std::memory_order_acquire),
           ShouldRetainDeleteMarkersInMajorCompaction::kFalse};
 }
 
 void ManualHistoryRetentionPolicy::SetHistoryCutoff(HybridTime history_cutoff) {
   history_cutoff_.store(history_cutoff, std::memory_order_release);
-}
-
-void ManualHistoryRetentionPolicy::AddDeletedColumn(ColumnId col) {
-  std::lock_guard<std::mutex> lock(deleted_cols_mtx_);
-  deleted_cols_.insert(col);
 }
 
 void ManualHistoryRetentionPolicy::SetTableTTLForTests(MonoDelta ttl) {

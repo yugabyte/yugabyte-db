@@ -533,7 +533,6 @@ public class TestAllDatatypes extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber("testdefault", getMasterAddresses());
       testSubscriber.createStream("proto");
-
       assertEquals(1, statement.executeUpdate("insert into testdefault values (1);"));
 
       List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();

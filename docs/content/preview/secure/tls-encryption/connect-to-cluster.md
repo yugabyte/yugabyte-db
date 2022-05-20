@@ -1,7 +1,7 @@
 ---
 title: Connect clients to YugabyteDB clusters
-headerTitle: Connect to Clusters
-linkTitle: Connect to Clusters
+headerTitle: Connect to clusters
+linkTitle: Connect to clusters
 description: Connect clients to remote YugabyteDB clusters that have client-to-server encryption enabled.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 aliases:

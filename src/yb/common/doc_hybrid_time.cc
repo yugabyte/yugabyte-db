@@ -213,7 +213,7 @@ int DocHybridTime::GetEncodedSize(const Slice& encoded_key) {
       : static_cast<uint8_t>(encoded_key.end()[-1]) & kHybridTimeSizeMask;
 }
 
-CHECKED_STATUS DocHybridTime::CheckAndGetEncodedSize(
+Status DocHybridTime::CheckAndGetEncodedSize(
     const Slice& encoded_key, size_t* encoded_ht_size) {
   *encoded_ht_size = GetEncodedSize(encoded_key);
   return CheckEncodedSize(*encoded_ht_size, encoded_key.size());

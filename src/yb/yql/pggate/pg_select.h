@@ -27,14 +27,15 @@ namespace pggate {
 class PgSelect : public PgDmlRead {
  public:
   PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
-           const PgObjectId& index_id, const PgPrepareParameters *prepare_params);
+           const PgObjectId& index_id, const PgPrepareParameters *prepare_params,
+           bool is_region_local);
   virtual ~PgSelect();
 
   // Prepare query before execution.
-  CHECKED_STATUS Prepare() override;
+  Status Prepare() override;
 
   // Prepare secondary index if that index is used by this query.
-  CHECKED_STATUS PrepareSecondaryIndex();
+  Status PrepareSecondaryIndex();
 
   virtual Result<PgTableDescPtr> LoadTable();
 

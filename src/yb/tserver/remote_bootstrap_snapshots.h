@@ -27,8 +27,8 @@ class RemoteBootstrapSnapshotsComponent : public RemoteBootstrapComponent {
   RemoteBootstrapSnapshotsComponent(RemoteBootstrapFileDownloader* downloader,
                                     tablet::RaftGroupReplicaSuperBlockPB* new_superblock);
 
-  CHECKED_STATUS CreateDirectories(const string& db_dir, FsManager* fs) override;
-  CHECKED_STATUS Download() override;
+  Status CreateDirectories(const string& db_dir, FsManager* fs) override;
+  Status Download() override;
 
  private:
   FsManager& fs_manager() const {
@@ -49,11 +49,11 @@ class RemoteBootstrapSnapshotsSource : public RemoteBootstrapSource {
     return DataIdPB::SNAPSHOT_FILE;
   }
 
-  CHECKED_STATUS Init() override;
+  Status Init() override;
 
-  CHECKED_STATUS ValidateDataId(const DataIdPB& data_id) override;
+  Status ValidateDataId(const DataIdPB& data_id) override;
 
-  CHECKED_STATUS GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info) override;
+  Status GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info) override;
 
  private:
   tablet::TabletPeerPtr tablet_peer_;

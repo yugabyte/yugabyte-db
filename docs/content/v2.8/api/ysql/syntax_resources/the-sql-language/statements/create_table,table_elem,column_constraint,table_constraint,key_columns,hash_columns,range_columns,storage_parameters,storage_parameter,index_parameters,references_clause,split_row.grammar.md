@@ -1,9 +1,9 @@
-```
+```ebnf
 create_table ::= CREATE [ TEMPORARY | TEMP ] TABLE [ IF NOT EXISTS ] 
                  table_name ( [ table_elem [ , ... ] ] ) 
                  [ WITH ( { COLOCATED = { 'true' | 'false' }
                             | storage_parameters } )
-                   | WITHOUT OIDS ] 
+                   | WITHOUT OIDS ]  [ TABLESPACE tablespace_name ]  
                  [ SPLIT { INTO integer TABLETS
                            | AT VALUES ( split_row [ , ... ] ) } ]
 
@@ -41,7 +41,8 @@ storage_parameters ::= storage_parameter [ , ... ]
 storage_parameter ::= param_name [ = param_value ]
 
 index_parameters ::= [ INCLUDE ( column_names ) ] 
-                     [ WITH ( storage_parameters ) ]
+                     [ WITH ( storage_parameters ) ] 
+                     [ USING INDEX TABLESPACE tablespace_name ]
 
 references_clause ::= REFERENCES table_name [ column_name [ , ... ] ] 
                       [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ]  

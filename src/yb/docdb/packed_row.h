@@ -129,27 +129,59 @@ class SchemaPacking {
 class SchemaPackingStorage {
  public:
   SchemaPackingStorage();
+  explicit SchemaPackingStorage(const SchemaPackingStorage& rhs, SchemaVersion min_schema_version);
 
-  const SchemaPacking* Get(uint32_t version) const;
+  Result<const SchemaPacking&> GetPacking(SchemaVersion schema_version) const;
+  Result<const SchemaPacking&> GetPacking(Slice* packed_row) const;
 
-  void AddSchema(uint32_t version, const Schema& schema);
+  void AddSchema(SchemaVersion version, const Schema& schema);
 
-  CHECKED_STATUS LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
-  void ToPB(uint32_t skip_schema_version, google::protobuf::RepeatedPtrField<SchemaPackingPB>* out);
+  Status LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
+
+  // Copy all schema packings except schema_version_to_skip to out.
+  void ToPB(
+      SchemaVersion schema_version_to_skip,
+      google::protobuf::RepeatedPtrField<SchemaPackingPB>* out);
+
+  size_t SchemaCount() const {
+    return version_to_schema_packing_.size();
+  }
+
+  bool HasVersionBelow(SchemaVersion version) const;
 
  private:
-  std::unordered_map<uint32_t, SchemaPacking> version_to_schema_packing_;
+  std::unordered_map<SchemaVersion, SchemaPacking> version_to_schema_packing_;
 };
 
 class RowPacker {
  public:
-  RowPacker(uint32_t version, std::reference_wrapper<const SchemaPacking> packing);
+  RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing);
+  explicit RowPacker(const std::pair<SchemaVersion, const SchemaPacking&>& pair)
+      : RowPacker(pair.first, pair.second) {
+  }
 
-  CHECKED_STATUS AddValue(ColumnId column, const QLValuePB& value);
+  bool Empty() const {
+    return idx_ == 0;
+  }
+
+  bool Finished() const {
+    return idx_ == packing_.columns();
+  }
+
+  void Restart();
+
+  ColumnId NextColumnId() const;
+  Result<const ColumnPackingData&> NextColumnData() const;
+
+  Status AddValue(ColumnId column, const QLValuePB& value);
+  Status AddValue(ColumnId column, const Slice& value);
 
   Result<Slice> Complete();
 
  private:
+  template <class Value>
+  Status DoAddValue(ColumnId column, const Value& value);
+
   const SchemaPacking& packing_;
   size_t idx_ = 0;
   size_t prefix_end_;

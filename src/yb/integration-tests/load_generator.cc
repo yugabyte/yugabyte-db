@@ -408,7 +408,7 @@ bool YBSingleThreadedWriter::Write(
   // submit a the put to apply.
   // If successful, add to inserted
   session_->Apply(insert);
-  const auto flush_status = session_->FlushAndGetOpsErrors();
+  const auto flush_status = session_->TEST_FlushAndGetOpsErrors();
   const auto& status = flush_status.status;
   if (!status.ok()) {
     for (const auto& error : flush_status.errors) {
@@ -589,7 +589,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
     auto read_op = table_->NewReadOp();
     QLAddStringHashValue(read_op->mutable_request(), key_str);
     table_->AddColumns({"k", "v"}, read_op->mutable_request());
-    auto status = session_->ApplyAndFlush(read_op);
+    auto status = session_->TEST_ApplyAndFlush(read_op);
     boost::optional<QLRowBlock> row_block;
     if (status.ok()) {
       auto result = read_op->MakeRowBlock();

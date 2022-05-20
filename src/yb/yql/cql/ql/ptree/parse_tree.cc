@@ -49,7 +49,7 @@ ParseTree::~ParseTree() {
   root_ = nullptr;
 }
 
-CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
+Status ParseTree::Analyze(SemContext *sem_context) {
   if (root_ == nullptr) {
     LOG(INFO) << "Parse tree is NULL";
     return Status::OK();

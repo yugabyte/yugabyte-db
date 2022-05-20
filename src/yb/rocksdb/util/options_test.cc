@@ -1937,6 +1937,7 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, block_based_table_mem_tracker),
       BLACKLIST_ENTRY(DBOptions, iterator_replacer),
       BLACKLIST_ENTRY(DBOptions, compaction_file_filter_factory),
+      BLACKLIST_ENTRY(DBOptions, disk_group_no),
   };
 
   TestAllFieldsSettable<DBOptions>(kDBOptionsBlacklist);

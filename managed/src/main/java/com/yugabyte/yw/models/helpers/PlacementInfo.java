@@ -2,12 +2,14 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * The placement info is a tree. The first level contains a list of clouds. Every cloud contains a
@@ -94,6 +96,14 @@ public class PlacementInfo {
 
   // The list of clouds to place data in.
   public List<PlacementCloud> cloudList = new ArrayList<PlacementCloud>();
+
+  @JsonIgnore
+  public Stream<PlacementAZ> azStream() {
+    return cloudList
+        .stream()
+        .flatMap(cloud -> cloud.regionList.stream())
+        .flatMap(region -> region.azList.stream());
+  }
 
   @Override
   public String toString() {

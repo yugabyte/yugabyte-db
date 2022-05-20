@@ -115,7 +115,7 @@ class PrimitiveValue {
 
   // Decodes a primitive value from the given slice representing a RocksDB value in our value
   // encoding format. Expects the entire slice to be consumed and returns an error otherwise.
-  CHECKED_STATUS DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
+  Status DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
 
   static PrimitiveValue Double(double v);
   static PrimitiveValue Float(float v);
@@ -140,6 +140,8 @@ class PrimitiveValue {
   // indicates an empty data structure of a certain type (object, array), or a tombstone. This
   // method can tell whether what's stored here is an actual primitive value.
   bool IsPrimitive() const;
+
+  bool IsTombstone() const;
 
   bool IsTombstoneOrPrimitive() const;
 
@@ -347,9 +349,10 @@ class KeyEntryValue {
 
   // Decodes a primitive value from the given slice representing a RocksDB key in our key encoding
   // format and consumes a prefix of the slice.
-  static CHECKED_STATUS DecodeKey(Slice* slice, KeyEntryValue* out);
+  static Status DecodeKey(Slice* slice, KeyEntryValue* out);
 
-  CHECKED_STATUS DecodeFromKey(Slice* slice);
+  Status DecodeFromKey(Slice* slice);
+  static Result<KeyEntryValue> FullyDecodeFromKey(const Slice& slice);
 
   void ToQLValuePB(const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_val) const;
 
@@ -387,7 +390,9 @@ class KeyEntryValue {
   static KeyEntryValue NullValue(SortingType sorting_type);
 
   static KeyEntryValue FromQLValuePB(const QLValuePB& value, SortingType sorting_type);
+  static KeyEntryValue FromQLValuePBForKey(const QLValuePB& value, SortingType sorting_type);
   static KeyEntryValue FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type);
+  static KeyEntryValue FromQLValuePBForKey(const LWQLValuePB& value, SortingType sorting_type);
 
   static KeyEntryValue Double(double d, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue Float(float f, SortOrder sort_order = SortOrder::kAscending);

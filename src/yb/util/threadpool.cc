@@ -687,7 +687,7 @@ void ThreadPool::CheckNotPoolThreadUnlocked() {
   }
 }
 
-CHECKED_STATUS TaskRunner::Init(int concurrency) {
+Status TaskRunner::Init(int concurrency) {
   ThreadPoolBuilder builder("Task Runner");
   if (concurrency > 0) {
     builder.set_max_threads(concurrency);
@@ -695,7 +695,7 @@ CHECKED_STATUS TaskRunner::Init(int concurrency) {
   return builder.Build(&thread_pool_);
 }
 
-CHECKED_STATUS TaskRunner::Wait() {
+Status TaskRunner::Wait() {
   std::unique_lock<std::mutex> lock(mutex_);
   cond_.wait(lock, [this] { return running_tasks_ == 0; });
   return first_failure_;

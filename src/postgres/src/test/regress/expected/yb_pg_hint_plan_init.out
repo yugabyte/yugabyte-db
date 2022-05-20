@@ -37,7 +37,6 @@ CREATE INDEX p2_val_idx2 ON p2 (val COLLATE "ja_JP");
 ERROR:  collation "ja_JP" for encoding "UTF8" does not exist
 CREATE INDEX p2_val_idx3 ON p2 (val varchar_ops);
 CREATE INDEX p2_val_idx4 ON p2 (val DESC NULLS LAST);
-CREATE INDEX p2_val_idx5 ON p2 (val NULLS FIRST);
 CREATE INDEX p2_expr ON p2 ((val < '120'));
 CREATE INDEX p2_expr2 ON p2 ((id * 2 < 120));
 CREATE INDEX p2_val_idx6 ON p2 (val) WHERE val >= '50' AND val < '51';

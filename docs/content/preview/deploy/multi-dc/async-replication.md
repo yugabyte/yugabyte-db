@@ -271,7 +271,7 @@ CREATE TABLE transactions_us
     127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     000033e1000030008000000000004007,000033e100003000800000000000400d,000033e1000030008000000000004013
     ```
-3. Observe replication setup(`xClusterSetup1`) in Platform UI (At Replication tab in source universe and target universe)
+3. Observe replication setup(`xClusterSetup1`) in the YugabyteDB Anywhere UI (At Replication tab in source universe and target universe)
 
 ## xCluster Setup in K8s ( pod to pod connectivity )
 
@@ -435,4 +435,4 @@ In the event you cannot stop incoming user traffic, then the recommended approac
 - [Setup replication](../../../admin/yb-admin/#setup-universe-replication) again, for all of the relevant tables.
   - Make sure to pass in the `bootstrap_ids`, as described above.
 
-### For users of Yugabyte Platform (2.11+), please visit the [async-replication-platform](../../../yugabyte-platform/create-deployments/async-replication-platform/#using-the-yugabyte-platform-ui) to configure replication.
+### For users of YugabyteDB Anywhere (2.11+), please visit the [async-replication-platform](../../../yugabyte-platform/create-deployments/async-replication-platform/#using-the-yugabyte-platform-ui) to configure replication.

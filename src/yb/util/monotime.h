@@ -263,12 +263,16 @@ inline bool operator!=(const MonoTime& lhs, const MonoTime& rhs) { return !(lhs 
 // MonoDelta duration.
 void SleepFor(const MonoDelta& delta);
 
+void SleepUntil(const MonoTime& deadline);
+
 class CoarseMonoClock {
  public:
   typedef std::chrono::nanoseconds duration;
   typedef duration Duration;
   typedef std::chrono::time_point<CoarseMonoClock> time_point;
   typedef time_point TimePoint;
+  typedef time_point::period period;
+  typedef time_point::rep rep;
 
   static constexpr bool is_steady = true;
 

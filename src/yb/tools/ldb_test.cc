@@ -100,7 +100,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 
  protected:
 
-  CHECKED_STATUS WriteData() {
+  Status WriteData() {
     auto session = client_->NewSession();
     session->SetTimeout(5s);
 
@@ -109,7 +109,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
     GenerateDataForRow(table_->schema(), 17 /* record_id */, &random_, req);
 
     session->Apply(insert);
-    RETURN_NOT_OK(session->Flush());
+    RETURN_NOT_OK(session->TEST_Flush());
     return Status::OK();
   }
 

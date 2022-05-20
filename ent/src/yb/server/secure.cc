@@ -61,20 +61,27 @@ DEFINE_bool(enable_stream_compression, true, "Whether it is allowed to use strea
 
 namespace yb {
 namespace server {
+
 namespace {
 
-string DefaultCertsDir(const string& root_dir) {
-  return JoinPathSegments(root_dir, "certs");
+string CertsDir(const std::string& root_dir, SecureContextType type) {
+  string certs_dir;
+  if (type == SecureContextType::kExternal) {
+    certs_dir = FLAGS_certs_for_client_dir;
+  }
+  if (certs_dir.empty()) {
+    certs_dir = FLAGS_certs_dir;
+  }
+  if (certs_dir.empty()) {
+    certs_dir = FsManager::GetCertsDir(root_dir);
+  }
+  return certs_dir;
 }
 
 } // namespace
 
-string DefaultRootDir(const FsManager& fs_manager) {
-  return DirName(fs_manager.GetRaftGroupMetadataDir());
-}
-
 string DefaultCertsDir(const FsManager& fs_manager) {
-  return DefaultCertsDir(DefaultRootDir(fs_manager));
+  return fs_manager.GetCertsDir(fs_manager.GetDefaultRootDir());
 }
 
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
@@ -84,7 +91,7 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
   RETURN_NOT_OK(HostPort::ParseStrings(hosts, 0, &host_ports));
 
   return server::SetupSecureContext(
-      DefaultRootDir(fs_manager), host_ports[0].host(), type, builder);
+      fs_manager.GetDefaultRootDir(), host_ports[0].host(), type, builder);
 }
 
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
@@ -118,18 +125,7 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     return nullptr;
   }
 
-  std::string dir;
-  if (!cert_dir.empty()) {
-    dir = cert_dir;
-  } else if (type == SecureContextType::kExternal) {
-    dir = FLAGS_certs_for_client_dir;
-  }
-  if (dir.empty()) {
-    dir = FLAGS_certs_dir;
-  }
-  if (dir.empty()) {
-    dir = DefaultCertsDir(root_dir);
-  }
+  std::string dir = cert_dir.empty() ? CertsDir(root_dir, type) : cert_dir;
 
   UseClientCerts use_client_certs = UseClientCerts::kFalse;
   std::string required_uid;
@@ -146,32 +142,57 @@ Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
     const std::string& certs_dir, UseClientCerts use_client_certs, const std::string& node_name,
     const std::string& required_uid) {
 
-  LOG(INFO) << "Certs directory: " << certs_dir << ", node name: " << node_name;
+  auto result = std::make_unique<rpc::SecureContext>(
+      rpc::RequireClientCertificate(use_client_certs), rpc::UseClientCertificate(use_client_certs),
+      required_uid);
 
-  auto result = std::make_unique<rpc::SecureContext>();
-  faststring data;
-  RETURN_NOT_OK(result->AddCertificateAuthorityFile(JoinPathSegments(certs_dir, "ca.crt")));
-
-  if (!node_name.empty()) {
-    RETURN_NOT_OK(ReadFileToString(
-        Env::Default(), JoinPathSegments(certs_dir, Format(FLAGS_key_file_pattern, node_name)),
-        &data));
-    RETURN_NOT_OK(result->UsePrivateKey(data));
-
-    RETURN_NOT_OK(ReadFileToString(
-        Env::Default(), JoinPathSegments(certs_dir, Format(FLAGS_cert_file_pattern, node_name)),
-        &data));
-    RETURN_NOT_OK(result->UseCertificate(data));
-  }
-
-  if (use_client_certs) {
-    result->set_require_client_certificate(true);
-    result->set_use_client_certificate(true);
-  }
-
-  result->set_required_uid(required_uid);
+  RETURN_NOT_OK(ReloadSecureContextKeysAndCertificates(result.get(), certs_dir, node_name));
 
   return result;
+}
+
+Status ReloadSecureContextKeysAndCertificates(
+    rpc::SecureContext* context, const std::string& root_dir, SecureContextType type,
+    const std::string& hosts) {
+  std::string node_name = FLAGS_cert_node_filename;
+
+  if (node_name.empty()) {
+    std::vector<HostPort> host_ports;
+    RETURN_NOT_OK(HostPort::ParseStrings(hosts, 0, &host_ports));
+    node_name = host_ports[0].host();
+  }
+
+  return ReloadSecureContextKeysAndCertificates(context, node_name, root_dir, type);
+}
+
+Status ReloadSecureContextKeysAndCertificates(
+    rpc::SecureContext* context, const std::string& node_name, const std::string& root_dir,
+    SecureContextType type) {
+  std::string certs_dir = CertsDir(root_dir, type);
+  return ReloadSecureContextKeysAndCertificates(context, certs_dir, node_name);
+}
+
+Status ReloadSecureContextKeysAndCertificates(
+    rpc::SecureContext* context, const std::string& certs_dir, const std::string& node_name) {
+
+  LOG(INFO) << "Certs directory: " << certs_dir << ", node name: " << node_name;
+
+  auto ca_cert_file = JoinPathSegments(certs_dir, "ca.crt");
+  if (!node_name.empty()) {
+    faststring cert_data, pkey_data;
+    RETURN_NOT_OK(ReadFileToString(
+        Env::Default(), JoinPathSegments(certs_dir, Format(FLAGS_cert_file_pattern, node_name)),
+        &cert_data));
+    RETURN_NOT_OK(ReadFileToString(
+        Env::Default(), JoinPathSegments(certs_dir, Format(FLAGS_key_file_pattern, node_name)),
+        &pkey_data));
+
+    RETURN_NOT_OK(context->UseCertificates(ca_cert_file, cert_data, pkey_data));
+  } else {
+    RETURN_NOT_OK(context->AddCertificateAuthorityFile(ca_cert_file));
+  }
+
+  return Status::OK();
 }
 
 void ApplySecureContext(const rpc::SecureContext* context, rpc::MessengerBuilder* builder) {

@@ -1,7 +1,7 @@
 ---
-title: Create YSQL extensions in Yugabyte Cloud
+title: Create YSQL extensions in YugabyteDB Managed
 linkTitle: Create extensions
-description: Add extensions to a Yugabyte Cloud cluster.
+description: Add extensions to a YugabyteDB Managed cluster.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -25,7 +25,7 @@ CREATE EXTENSION fuzzystrmatch;
 
 ## Required privileges
 
-In Yugabyte Cloud, extensions can only be loaded by users that are a member of the `yb_extension` role. All `yb_superuser` users, including the default admin user, are members of `yb_extension`.
+In YugabyteDB Managed, extensions can only be loaded by users that are a member of the `yb_extension` role. All `yb_superuser` users, including the default admin user, are members of `yb_extension`.
 
 Use the `GRANT` statement to assign the role to users. For example, to grant the `yb_extension` role to `user`, use the following command:
 
@@ -33,16 +33,16 @@ Use the `GRANT` statement to assign the role to users. For example, to grant the
 yugabyte=# GRANT yb_extension TO user;
 ```
 
-For more information on roles in Yugabyte Cloud, refer to [Database authorization in Yugabyte Cloud clusters](../../cloud-secure-clusters/cloud-users/).
+For more information on roles in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../cloud-secure-clusters/cloud-users/).
 
 ## Request support for a new extension
 
-You cannot install new extensions in Yugabyte Cloud.
+You cannot install new extensions in YugabyteDB Managed.
 
 If you need a database extension that is not bundled with YugabyteDB added to a cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or [reach out on Slack](https://yugabyte-db.slack.com/).
 
 ## Learn more
 
 - [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/)
-- [Database authorization in Yugabyte Cloud clusters](../../cloud-secure-clusters/cloud-users/)
+- [Database authorization in YugabyteDB Managed clusters](../../cloud-secure-clusters/cloud-users/)
 - [Manage Users and Roles in YSQL](../../../secure/authorization/create-roles/)

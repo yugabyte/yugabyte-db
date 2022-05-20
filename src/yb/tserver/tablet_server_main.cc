@@ -247,7 +247,7 @@ int TabletServerMain(int argc, char** argv) {
     LOG(INFO) << "Starting PostgreSQL server listening on "
               << pg_process_conf.listen_addresses << ", port " << pg_process_conf.pg_port;
 
-    pg_supervisor = std::make_unique<PgSupervisor>(pg_process_conf);
+    pg_supervisor = std::make_unique<PgSupervisor>(pg_process_conf, server.get());
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
   }
 

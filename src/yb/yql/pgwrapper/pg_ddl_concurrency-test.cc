@@ -20,7 +20,7 @@ namespace yb {
 namespace pgwrapper {
 namespace {
 
-CHECKED_STATUS AllowedStatus(const Status& s) {
+Status AllowedStatus(const Status& s) {
   if (!s.ok()) {
     static const std::initializer_list<std::string> retryable_markers = {
         STATUS(TryAgain, "").CodeAsString(),
@@ -36,7 +36,7 @@ CHECKED_STATUS AllowedStatus(const Status& s) {
   return s;
 }
 
-CHECKED_STATUS RunIndexCreationQueries(PGConn* conn, const std::string table_name) {
+Status RunIndexCreationQueries(PGConn* conn, const std::string table_name) {
   static const std::initializer_list<std::string> queries = {
       "DROP TABLE IF EXISTS $0",
       "CREATE TABLE IF NOT EXISTS $0(k int PRIMARY KEY, v int)",

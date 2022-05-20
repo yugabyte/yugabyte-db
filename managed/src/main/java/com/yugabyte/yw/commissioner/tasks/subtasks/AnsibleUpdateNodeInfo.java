@@ -41,8 +41,9 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
   public void run() {
     // Create the process to fetch information about the node from the cloud provider.
     ShellResponse response =
-        getNodeManager().nodeCommand(NodeManager.NodeCommandType.List, taskParams());
-    processShellResponse(response);
+        getNodeManager()
+            .nodeCommand(NodeManager.NodeCommandType.List, taskParams())
+            .processErrors();
 
     NodeTaskParams taskParams = taskParams();
     log.info(
@@ -54,7 +55,7 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
     if (Strings.isNullOrEmpty(response.message)) {
       String msg =
           String.format(
-              "Node % in universe %s is not found.", taskParams.nodeName, taskParams.universeUUID);
+              "Node %s in universe %s is not found.", taskParams.nodeName, taskParams.universeUUID);
       log.error(msg);
       throw new RuntimeException(msg);
     }

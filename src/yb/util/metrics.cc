@@ -116,8 +116,6 @@ const char* MetricUnit::Name(Type unit) {
       return "messages";
     case kContextSwitches:
       return "context switches";
-    case kFiles:
-      return "files";
     default:
       return "UNKNOWN UNIT";
   }
@@ -209,12 +207,12 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
-CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
+Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
                                                   const MetricPrometheusOptions& opts) const {
   return WriteForPrometheus(writer, {""}, opts);  // Include all metrics.
 }
 
-CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
+Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
                                                   const vector<string>& requested_metrics,
                                                   const MetricPrometheusOptions& opts) const {
   EntityMap entities;
@@ -376,7 +374,7 @@ void StringGauge::WriteValue(JsonWriter* writer) const {
   writer->String(value());
 }
 
-CHECKED_STATUS StringGauge::WriteForPrometheus(
+Status StringGauge::WriteForPrometheus(
     PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
     const MetricPrometheusOptions& opts) const {
   if (prototype_->level() < opts.level) {
@@ -433,7 +431,7 @@ Status Counter::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
-CHECKED_STATUS Counter::WriteForPrometheus(
+Status Counter::WriteForPrometheus(
     PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
     const MetricPrometheusOptions& opts) const {
   if (prototype_->level() < opts.level) {
@@ -571,7 +569,7 @@ Status Histogram::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
-CHECKED_STATUS Histogram::WriteForPrometheus(
+Status Histogram::WriteForPrometheus(
     PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
     const MetricPrometheusOptions& opts) const {
   if (prototype_->level() < opts.level) {

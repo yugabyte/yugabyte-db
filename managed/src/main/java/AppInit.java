@@ -1,5 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
+import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
+
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
@@ -22,6 +24,7 @@ import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
@@ -100,7 +103,8 @@ public class AppInit {
       }
 
       // temporarily revert due to PLAT-2434
-      // LogUtil.updateLoggingFromConfig(sConfigFactory, config);
+      // LogUtil.updateApplicationLoggingFromConfig(sConfigFactory, config);
+      // LogUtil.updateAuditLoggingFromConfig(sConfigFactory, config);
 
       // Initialize AWS if any of its instance types have an empty volumeDetailsList
       List<Provider> providerList = Provider.find.query().where().findList();
@@ -120,7 +124,7 @@ public class AppInit {
 
       // Load metrics configurations.
       Map<String, Object> configs =
-          yaml.load(environment.resourceAsStream("metrics.yml"), application.classloader());
+          yaml.load(environment.resourceAsStream(METRICS_CONFIG_PATH), application.classloader());
       MetricConfig.loadConfig(configs);
 
       // Enter all the configuration data. This is the first thing that should be

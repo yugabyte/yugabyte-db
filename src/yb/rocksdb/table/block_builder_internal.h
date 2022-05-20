@@ -52,7 +52,7 @@ struct ComponentSizes {
         VERIFY_RESULT(SafeAdd(non_shared_1_size, shared_middle_size)), non_shared_2_size);
   }
 
-  inline CHECKED_STATUS DebugVerify(const Slice& prev_key_part, const Slice& cur_key_part) const {
+  inline Status DebugVerify(const Slice& prev_key_part, const Slice& cur_key_part) const {
     SCHECK_EQ(
         VERIFY_RESULT(DebugGetPrevKeyPartSize()), prev_key_part.size(), InternalError,
         "Prev key part size doesn't match");

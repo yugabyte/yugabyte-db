@@ -686,9 +686,7 @@ public class Universe extends Model {
     for (NodeDetails node : serverNodes) {
       // Only get secondary if dual net legacy is false.
       boolean shouldGetSecondary =
-          this.getConfig().getOrDefault(DUAL_NET_LEGACY, "true").equals("false")
-              ? getSecondary
-              : false;
+          this.getConfig().getOrDefault(DUAL_NET_LEGACY, "true").equals("false") && getSecondary;
       String nodeIp =
           shouldGetSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
       // In case the secondary IP is null, just re-assign to primary.

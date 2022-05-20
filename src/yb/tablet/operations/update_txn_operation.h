@@ -36,9 +36,9 @@ class UpdateTxnOperation
 
  private:
   TransactionCoordinator& transaction_coordinator() const;
-  CHECKED_STATUS Prepare() override;
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
+  Status Prepare() override;
+  Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+  Status DoAborted(const Status& status) override;
 };
 
 } // namespace tablet

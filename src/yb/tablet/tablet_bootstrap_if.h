@@ -172,7 +172,7 @@ struct BootstrapTabletData {
 //
 // This is a synchronous method, but is typically called within a thread pool by
 // TSTabletManager.
-CHECKED_STATUS BootstrapTablet(
+Status BootstrapTablet(
     const BootstrapTabletData& data,
     TabletPtr* rebuilt_tablet,
     log::LogPtr* rebuilt_log,

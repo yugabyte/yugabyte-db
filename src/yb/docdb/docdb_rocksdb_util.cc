@@ -179,7 +179,7 @@ namespace docdb {
 
   Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
     const std::string& flag_value) {
-    for (const auto& encoding_format : rocksdb::kKeyValueEncodingFormatList) {
+    for (const auto& encoding_format : rocksdb::KeyValueEncodingFormatList()) {
       if (flag_value == KeyValueEncodingFormatToString(encoding_format)) {
         return encoding_format;
       }
@@ -509,10 +509,9 @@ void AddSupportedFilterPolicy(
   table_options->supported_filter_policies->emplace(filter_policy->Name(), filter_policy);
 }
 
-PriorityThreadPool* GetGlobalPriorityThreadPool
-  (const scoped_refptr<MetricEntity>& metric_entity = nullptr) {
+PriorityThreadPool* GetGlobalPriorityThreadPool() {
     static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
-      GetGlobalRocksDBPriorityThreadPoolSize(), metric_entity);
+      GetGlobalRocksDBPriorityThreadPoolSize());
     return &priority_thread_pool_for_compactions_and_flushes;
 }
 
@@ -573,7 +572,8 @@ void InitRocksDBOptions(
     rocksdb::Options* options, const string& log_prefix,
     const shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
-    rocksdb::BlockBasedTableOptions table_options) {
+    rocksdb::BlockBasedTableOptions table_options,
+    const uint64_t group_no) {
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
   options->create_if_missing = true;
@@ -584,6 +584,7 @@ void InitRocksDBOptions(
   options->boundary_extractor = DocBoundaryValuesExtractorInstance();
   options->compaction_measure_io_stats = FLAGS_rocksdb_compaction_measure_io_stats;
   options->memory_monitor = tablet_options.memory_monitor;
+  options->disk_group_no = group_no;
   if (FLAGS_db_write_buffer_size != -1) {
     options->write_buffer_size = FLAGS_db_write_buffer_size;
   } else {
@@ -591,10 +592,7 @@ void InitRocksDBOptions(
   }
   options->env = tablet_options.rocksdb_env;
   options->checkpoint_env = rocksdb::Env::Default();
-  options->priority_thread_pool_for_compactions_and_flushes =
-    (tablet_options.ServerMetricEntity) ?
-    GetGlobalPriorityThreadPool(tablet_options.ServerMetricEntity) :
-    GetGlobalPriorityThreadPool();
+  options->priority_thread_pool_for_compactions_and_flushes = GetGlobalPriorityThreadPool();
 
   if (FLAGS_num_reserved_small_compaction_threads != -1) {
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;
@@ -721,7 +719,7 @@ class RocksDBPatcherHelper {
     return *add_edit_;
   }
 
-  CHECKED_STATUS Apply(
+  Status Apply(
       const rocksdb::Options& options, const rocksdb::ImmutableCFOptions& imm_cf_options) {
     if (!delete_edit_.modified() && !add_edit_.modified()) {
       return Status::OK();
@@ -752,7 +750,7 @@ class RocksDBPatcherHelper {
   }
 
   template <class F>
-  CHECKED_STATUS IterateFilesHelper(const F& f, Status*) {
+  Status IterateFilesHelper(const F& f, Status*) {
     for (int level = 0; level < Levels(); ++level) {
       for (const auto* file : LevelFiles(level)) {
         RETURN_NOT_OK(f(level, *file));
@@ -808,13 +806,13 @@ class RocksDBPatcher::Impl {
     cf_options_.comparator = comparator_.user_comparator();
   }
 
-  CHECKED_STATUS Load() {
+  Status Load() {
     std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
     column_families.emplace_back("default", cf_options_);
     return version_set_.Recover(column_families);
   }
 
-  CHECKED_STATUS SetHybridTimeFilter(HybridTime value) {
+  Status SetHybridTimeFilter(HybridTime value) {
     RocksDBPatcherHelper helper(&version_set_);
 
     helper.IterateFiles([&helper, value](int level, const rocksdb::FileMetaData& file) {
@@ -834,7 +832,7 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
-  CHECKED_STATUS ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
+  Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
     RocksDBPatcherHelper helper(&version_set_);
 
     docdb::ConsensusFrontier final_frontier = frontier;
@@ -877,7 +875,7 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
-  CHECKED_STATUS UpdateFileSizes() {
+  Status UpdateFileSizes() {
     RocksDBPatcherHelper helper(&version_set_);
 
     RETURN_NOT_OK(helper.IterateFiles(
@@ -936,10 +934,12 @@ Status RocksDBPatcher::UpdateFileSizes() {
   return impl_->UpdateFileSizes();
 }
 
-Status ForceRocksDBCompact(rocksdb::DB* db) {
+Status ForceRocksDBCompact(rocksdb::DB* db, SkipFlush skip_flush) {
+  rocksdb::CompactRangeOptions options;
+  options.skip_flush = skip_flush;
   RETURN_NOT_OK_PREPEND(
-      db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
-      "Compact range failed:");
+      db->CompactRange(options, /* begin = */ nullptr, /* end = */ nullptr),
+      "Compact range failed");
   return Status::OK();
 }
 

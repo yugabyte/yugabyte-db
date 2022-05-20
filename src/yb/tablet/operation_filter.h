@@ -30,7 +30,7 @@ namespace tablet {
 // doesn't care about scenarios that use this class.
 class OperationFilter : public boost::intrusive::list_base_hook<> {
  public:
-  virtual CHECKED_STATUS CheckOperationAllowed(
+  virtual Status CheckOperationAllowed(
       const OpId& id, consensus::OperationType op_type) const = 0;
 
   virtual ~OperationFilter() = default;
@@ -41,7 +41,7 @@ class FunctorOperationFilter : public OperationFilter {
  public:
   explicit FunctorOperationFilter(const F& f) : f_(f) {}
 
-  CHECKED_STATUS CheckOperationAllowed(
+  Status CheckOperationAllowed(
       const OpId& id, consensus::OperationType op_type) const override {
     return f_(id, op_type);
   }

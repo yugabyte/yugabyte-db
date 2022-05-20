@@ -55,6 +55,7 @@ message ReplicationInfoPB {
   optional PlacementInfoPB live_replicas = 1;
   repeated PlacementInfoPB read_replicas = 2;
   repeated CloudInfoPB affinitized_leaders = 3;
+  repeated CloudInfoListPB multi_affinitized_leaders = 4;
 }
 
 message BackfillJobPB {
@@ -502,6 +503,8 @@ message SysUniverseReplicationEntryPB {
     // been deleted but there is still some uncleaned up state - for example, there may be left over
     // CDC streams.
     DELETED_ERROR = 5;
+    // Unfinished Delete
+    DELETING = 7;
   }
 
   optional string producer_id = 1;

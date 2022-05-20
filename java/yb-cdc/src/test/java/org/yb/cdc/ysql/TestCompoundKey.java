@@ -15,7 +15,7 @@ package org.yb.cdc.ysql;
 
 import org.apache.log4j.Logger;
 
-import static org.yb.AssertionWrappers.*;;
+import static org.yb.AssertionWrappers.*;
 import org.junit.Before;
 import org.junit.Test;
 

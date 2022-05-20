@@ -1,7 +1,7 @@
 ---
 title: Configure the on-premises cloud provider
 headerTitle: Configure the on-premises cloud provider
-linkTitle: Configure the cloud provider
+linkTitle: Configure cloud providers
 description: Configure the on-premises cloud provider.
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/onprem
@@ -65,65 +65,51 @@ showAsideToc: true
 
 </ul>
 
-You can configure the on-premises cloud provider for YugabyteDB using the Yugabyte Platform console. If no cloud providers are configured, the main Dashboard prompts you to configure at least one cloud provider, as per the following illustration:
-
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-0.png)
+You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
 
 ## Configure the on-premises provider
 
-Configuring the on-premises provided consists of a number of steps.
+Configuring the on-premises provider consists of a number of steps.
 
-### Complete the provider information {#on-premise-provider-info}
+### Complete the provider information
+
+You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, click either **Add Configuration** or **Edit Provider**, and then complete the fields of the **Provider Info** form shown in the following illustration:
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-1.png)
 
-#### Provider Name
+- In the **Provider Name** field, supply the provider name, which is an internal tag that helps with organizing your providers, so you know where you want to deploy your YugabyteDB universes.
 
-Supply the provider name, which is an internal tag that helps with organizing your providers, so you know where you want to deploy your YugabyteDB universes.
+- In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
 
-#### SSH User
+  If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually provision nodes](#manually-provision-nodes).
 
-To provision on-premises nodes with YugabyteDB, Yugabyte Platform requires SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
+- In the **SSH Port** field, provide the port number of SSH client connections.
 
-If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually Provision Nodes](#manually-provision-nodes).
+- Enable the **Manually Provision Nodes** field if you choose to manually set up your database nodes. Otherwise, YugabyteDB Anywhere will use the sudo user to set up YugabyteDB nodes. For manual provisioning, you would be prompted to run a Python script at a later stage or to run a set of commands on the database nodes.
 
-#### SSH Port
+  If any of the following statements are applicable to your use case, you need to [provision the nodes manually](#provision-nodes-manually):
 
-Provide the port number of SSH client connections.
+  - Preprovisioned `yugabyte:yugabyte` user and group.
+  - Sudo user requires a password.
+  - The SSH user is not a sudo user.
 
-#### Manually Provision Nodes
+- Use the **SSH Key** field to enter the full content of the private key available to the SSH user for gaining access via SSH into your instances. 
 
-Enable this option if you choose to manually set up your database nodes. Otherwise, Yugabyte Platform will use the sudo user to set up YugabyteDB nodes. For manual provisioning, you would be prompted to run a Python script at a later stage or to run a set of commands on the database nodes.
+  Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`. 
 
-If any of the following statements are applicable to your use case, you need to [provision the nodes manually](#provision-nodes-manually):
+- Enable the **Air Gap Install** field if you want the installation to run in an air-gapped mode without expecting any internet access.
 
-* Pre-provisioned `yugabyte:yugabyte` user and group.
-* Sudo user requires a password.
-* The SSH user is not a sudo user.
+- Optionally, you may enable **Advanced** and complete the following: 
 
-#### SSH Key
+  - Use the **Desired Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
+  - Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
+  - Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
+  - The **Node Exporter User** field allows you to override the default Prometheus user. This is useful when the user is preprovisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
+  
+- **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
 
-Ensure that the SSH key is pasted correctly (the supported format is RSA).
-
-#### Air Gap Install
-
-Enable this option if you want the installation to run in an air-gapped mode without expecting any internet access.
-
-#### Desired Home Directory
-
-Optionally, specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
-
-#### Node Exporter Port
-
-Specify the port number for the Node Exporter. The default value is 9300.
-
-#### Install Node Exporter
-
-Enable this option if you want the Node Exporter installed. You can skip this step if you have Node Exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
-
-#### Node Exporter User
-
-Override the default Prometheus user. This is useful when the user is pre-provisioned on nodes (in case user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
+  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers. 
+  - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ### Configure hardware for YugabyteDB nodes
 
@@ -131,31 +117,19 @@ Complete the **Instance Types** fields, as per the following illustration, to pr
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-2.png)
 
-#### Machine Type
-
-Define a value to be used internally as an identifier in the **Instance Type** universe field.
-
-#### Num Cores
-
-Define the number of cores to be assigned to a node.
-
-#### Mem Size GB
-
-Define the memory allocation of a node.
-
-#### Vol size GB
-
-Define the disk volume of a node.
-
-#### Mount Paths
-
-Define a mount point with enough space to contain your node density. Use `/data`. If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
+- Use the **Machine Type** field to define a value to be used internally as an identifier in the **Instance Type** universe field.
+- Use the **Num Cores** field to define the number of cores to be assigned to a node.
+- Use the **Mem Size GB** field to define the memory allocation of a node.
+- Use the **Vol Size GB** field to define the disk volume of a node.
+- Use the **Mount Paths** field to define a mount point with enough space to contain your node density. Use `/data`. If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
 
 ### Define regions and zones
 
-Complete the **Regions and Zones** fields, as per in the following illustration, to provide the location of YugabyteDB nodes. Yugabyte Platform will use these values during the universe creation:
+Complete the **Regions and Zones** fields, as per the following illustration, to provide the location of YugabyteDB nodes:
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-3.png)
+
+<br><br>YugabyteDB Anywhere will use these values during the universe creation.
 
 ## Add YugabyteDB nodes
 
@@ -173,16 +147,16 @@ For each node you want to add, click **Add Instances** to add a YugabyteDB node.
 
 To provision your nodes manually, you have the following two options:
 
-1. If the SSH user you provided has sudo privileges but requires a password, you can [run the pre-provisioning script](#running-the-pre-provisioning-script).
+1. If the SSH user you provided has sudo privileges but requires a password, you can [run the preprovisioning script](#running-the-preprovisioning-script).
 2. If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](#setting-up-database-nodes-manually).
 
-#### Running the pre-provisioning script
+#### Running the preprovisioning script
 
 This step is only required if you set **Manually Provision Nodes** to true and the SSH user has sudo privileges which require a password; otherwise you skip this step.
 
-You can manually provision each node using the pre-provisioning Python script, as follows:
+You can manually provision each node using the preprovisioning Python script, as follows:
 
-1. Login to Yugabyte Platform virtual machine via SSH.
+1. Login to YugabyteDB Anywhere virtual machine via SSH.
 
 1. Access the docker `yugaware` container, as follows:
 
@@ -220,10 +194,11 @@ For each node, perform the following:
 
 * [Set up time synchronization](#set-up-time-synchronization)
 * [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
-* [Pre-provision the node](#pre-provision-nodes-manually)
+* [Preprovision the node](#preprovision-nodes-manually)
 * [Install Prometheus node exporter](#install-prometheus-node-exporter)
 * [Install backup utilities](#install-backup-utilities)
 * [Set crontab permissions](#set-crontab-permissions)
+* [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
 
 ##### Set up time synchronization
 
@@ -233,7 +208,7 @@ Ensure an NTP-compatible time service client is installed in the node OS (chrony
 
 ##### Open incoming TCP/IP ports
 
-Database servers need incoming TCP/IP access enabled to the following ports, for communications between themselves and Yugabyte Platform:
+Database servers need incoming TCP/IP access enabled to the following ports, for communications between themselves and YugabyteDB Anywhere:
 
 | Protocol | Port | Description |
 | :------- | :--- | :---------- |
@@ -252,9 +227,9 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 
 The preceding table is based on the information on the [default ports page](/preview/reference/configuration/default-ports/).
 
-##### Pre-provision nodes manually
+##### Preprovision nodes manually
 
-This process carries out all provisioning tasks on the database nodes which require elevated privileges. Once the database nodes have been prepared in this way, the universe creation process from Yugabyte Platform will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
+This process carries out all provisioning tasks on the database nodes which require elevated privileges. Once the database nodes have been prepared in this way, the universe creation process from YugabyteDB Anywhere will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
 
 Physical nodes (or cloud instances) are installed with a standard Centos 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
 
@@ -285,7 +260,7 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 1. Copy the SSH public key to each DB node.
 
     \
-    This public key should correspond to the private key entered into the Yugabyte Platform provider.
+    This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
 
 1. Run the following commands as the `yugabyte` user, after copying the SSH public key file to the user home directory:
 
@@ -373,13 +348,13 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 ##### Install Prometheus node exporter
 
-For Yugabyte Platform versions 2.8 and later, download the 1.3.1 version of the Prometheus node exporter, as follows:
+For YugabyteDB Anywhere versions 2.8 and later, download the 1.3.1 version of the Prometheus node exporter, as follows:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
 ```
 
-For Yugabyte Platform versions prior to 2.8, download the 0.13.0 version of the exporter, as follows:
+For YugabyteDB Anywhere versions prior to 2.8, download the 0.13.0 version of the exporter, as follows:
 
 ```sh
 $ wget https://github.com/prometheus/node_exporter/releases/download/v0.13.0/node_exporter-0.13.0.linux-amd64.tar.gz
@@ -465,20 +440,20 @@ On each node, perform the following as a user with sudo access:
 
 ##### Install backup utilities
 
-Yugabyte Platform supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud Storage, and NFS.
+YugabyteDB Anywhere supports backing up YugabyteDB to Amazon S3, Azure Storage, Google Cloud Storage, and Network File System (NFS). For more information, see [Configure backup storage](../../../back-up-restore-universes/configure-backup-storage/).
 
-You can install the backup utility for the backup storage you plan to use as follows:
+You can install the backup utility for the backup storage you plan to use, as follows:
 
-- NFS - Install rsync. Yugabyte Platform uses rsync to do NFS backups which you installed in an earlier step.
+- NFS: Install rsync, which YugabyteDB Anywhere uses to perform NFS backups installed during one of the previous steps.
 
-- AWS S3 - Install s3cmd. Yugabyte Platform relies on s3cmd to support copying backups to AWS S3. You have the following installation options:
+- Amazon S3: Install s3cmd, on which YugabyteDB Anywhere relies to support copying backups to Amazon S3. You have the following installation options:
   - For a regular installation, execute the following:
 
       ```sh
       sudo yum install s3cmd
       ```
 
-  - For an airgapped installation, copy `/opt/third-party/s3cmd-2.0.1.tar.gz` from the Yugabyte Platform node to the database node, and then extract it into the `/usr/local` directory on the database node, as follows:
+  - For an airgapped installation, copy `/opt/third-party/s3cmd-2.0.1.tar.gz` from the YugabyteDB Anywhere node to the database node, and then extract it into the `/usr/local` directory on the database node, as follows:
 
       ```sh
       cd /usr/local
@@ -486,28 +461,28 @@ You can install the backup utility for the backup storage you plan to use as fol
       sudo ln -s /usr/local/s3cmd-2.0.1/s3cmd /usr/local/bin/s3cmd
       ```
 
-- Azure Storage - Install azcopy using one of the following options:
+- Azure Storage: Install azcopy using one of the following options:
   - Download `azcopy_linux_amd64_10.13.0.tar.gz` using the following command:
 
       ```sh
-      wget https://azcopyvnext.azureedge.net/release20200410/azcopy_linux_amd64_10.13.0.tar.gz
+      wget https://azcopyvnext.azureedge.net/release20211027/azcopy_linux_amd64_10.13.0.tar.gz
       ```
 
-  - For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the Yugabyte Platform node, as follows:
+  - For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the YugabyteDB Anywhere node, as follows:
 
       ```sh
       cd /usr/local
       sudo tar xfz path-to-azcopy_linux_amd64_10.13.0.tar.gz -C /usr/local/bin azcopy_linux_amd64_10.13.0/azcopy --strip-components 1
       ```
 
-- Google Cloud Storage - Install gsutil using one of the following options:
+- Google Cloud Storage: Install gsutil using one of the following options:
   - Download `gsutil_4.60.tar.gz` using the following command:
 
       ```sh
       wget https://storage.googleapis.com/pub/gsutil_4.60.tar.gz
       ```
 
-  - For airgapped installs, copy `/opt/third-party/gsutil_4.60.tar.gz` from the Yugabyte Platform node, as follows:
+  - For airgapped installations, copy `/opt/third-party/gsutil_4.60.tar.gz` from the YugabyteDB Anywhere node, as follows:
 
       ```sh
       cd /usr/local
@@ -517,11 +492,11 @@ You can install the backup utility for the backup storage you plan to use as fol
 
 ##### Set crontab permissions
 
-Yugabyte Platform supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs.
+YugabyteDB Anywhere supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs.
 
 Note that sudo is required to set up this service.
 
-If Yugabyte Platform will be using cron jobs, ensure that the `yugabyte` user is allowed to run crontab:
+If YugabyteDB Anywhere will be using cron jobs, ensure that the `yugabyte` user is allowed to run crontab:
 
 * If you are using the `cron.allow` file to manage crontab access, add the `yugabyte` user to this file.
 * If you are using the `cron.deny` file, remove the `yugabyte` user from this file.
@@ -532,24 +507,274 @@ If you are not using either file, no changes are required.
 
 ##### Manage liveness checks, logs, and cores
 
-Yugabyte Platform supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs or systemd services.
+YugabyteDB Anywhere supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs or systemd services.
 
-**Sudo is required to set up these services!**
+**Sudo is required to set up these services**
 
-If Platform will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab. If you're using the cron.allow file to manage crontab access, add the yugabyte user to this file. If you're using the cron.deny file, remove the yugabyte user from this file.
+If YugabyteDB Anywhere will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab. If you're using the cron.allow file to manage crontab access, add the yugabyte user to this file. If you're using the cron.deny file, remove the yugabyte user from this file.
 
-If you plan to have Platform use **systemd services** to perform the monitoring operations mentioned above, then make sure ...
+YugabyteDB Anywhere **systemd services** to perform the monitoring operations mentioned above, then make sure ...
 -->
 
-You have finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/), or [Create deployments](../../../create-deployments/).
+You have finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
+
+##### Install systemd-related database service unit files
+
+As an alternative to setting crontab permissions, you can install systemd-specific database service unit files, as follows:
+
+1. Enable the `yugabyte` user to run the following commands as sudo or root:
+
+   ```sh
+   yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start yb-master, \
+   /bin/systemctl stop yb-master, \
+   /bin/systemctl restart yb-master, \
+   /bin/systemctl enable yb-master, \
+   /bin/systemctl disable yb-master, \
+   /bin/systemctl start yb-tserver, \
+   /bin/systemctl stop yb-tserver, \
+   /bin/systemctl restart yb-tserver, \
+   /bin/systemctl enable yb-tserver, \
+   /bin/systemctl disable yb-tserver, \
+   /bin/systemctl start yb-zip_purge_yb_logs.timer, \
+   /bin/systemctl stop yb-zip_purge_yb_logs.timer, \
+   /bin/systemctl restart yb-zip_purge_yb_logs.timer, \
+   /bin/systemctl enable yb-zip_purge_yb_logs.timer, \
+   /bin/systemctl disable yb-zip_purge_yb_logs.timer, \
+   /bin/systemctl start yb-clean_cores.timer, \
+   /bin/systemctl stop yb-clean_cores.timer, \
+   /bin/systemctl restart yb-clean_cores.timer, \
+   /bin/systemctl enable yb-clean_cores.timer, \
+   /bin/systemctl disable yb-clean_cores.timer, \
+   /bin/systemctl start yb-collect_metrics.timer, \
+   /bin/systemctl stop yb-collect_metrics.timer, \
+   /bin/systemctl restart yb-collect_metrics.timer, \
+   /bin/systemctl enable yb-collect_metrics.timer, \
+   /bin/systemctl disable yb-collect_metrics.timer, \
+   /bin/systemctl start yb-zip_purge_yb_logs, \
+   /bin/systemctl stop yb-zip_purge_yb_logs, \
+   /bin/systemctl restart yb-zip_purge_yb_logs, \
+   /bin/systemctl enable yb-zip_purge_yb_logs, \
+   /bin/systemctl disable yb-zip_purge_yb_logs, \
+   /bin/systemctl start yb-clean_cores, \
+   /bin/systemctl stop yb-clean_cores, \
+   /bin/systemctl restart yb-clean_cores, \
+   /bin/systemctl enable yb-clean_cores, \
+   /bin/systemctl disable yb-clean_cores, \
+   /bin/systemctl start yb-collect_metrics, \
+   /bin/systemctl stop yb-collect_metrics, \
+   /bin/systemctl restart yb-collect_metrics, \
+   /bin/systemctl enable yb-collect_metrics, \
+   /bin/systemctl disable yb-collect_metrics, \
+   /bin/systemctl daemon-reload
+   ```
+
+2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):<br><br>
+
+   `yb-master.service`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte master service
+   Requires=network-online.target
+   After=network.target network-online.target multi-user.target
+   StartLimitInterval=100
+   StartLimitBurst=10
+   
+   [Path]
+   PathExists=/home/yugabyte/master/bin/yb-master
+   PathExists=/home/yugabyte/master/conf/server.conf
+   
+   [Service]
+   User=yugabyte
+   Group=yugabyte
+   # Start
+   ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
+   Restart=on-failure
+   RestartSec=5
+   # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+   KillMode=process
+   TimeoutStopFailureMode=terminate
+   KillSignal=SIGTERM
+   TimeoutStopSec=10
+   FinalKillSignal=SIGKILL
+   # Logs
+   StandardOutput=syslog
+   StandardError=syslog
+   # ulimit
+   LimitCORE=infinity
+   LimitNOFILE=1048576
+   LimitNPROC=12000
+   
+   [Install]
+   WantedBy=default.target
+   ```
+
+   <br><br>
+
+   `yb-tserver.service`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte tserver service
+   Requires=network-online.target
+   After=network.target network-online.target multi-user.target
+   StartLimitInterval=100
+   StartLimitBurst=10
+   
+   [Path]
+   PathExists=/home/yugabyte/tserver/bin/yb-tserver
+   PathExists=/home/yugabyte/tserver/conf/server.conf
+   
+   [Service]
+   User=yugabyte
+   Group=yugabyte
+   # Start
+   ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
+   Restart=on-failure
+   RestartSec=5
+   # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+   KillMode=process
+   TimeoutStopFailureMode=terminate
+   KillSignal=SIGTERM
+   TimeoutStopSec=10
+   FinalKillSignal=SIGKILL
+   # Logs
+   StandardOutput=syslog
+   StandardError=syslog
+   # ulimit
+   LimitCORE=infinity
+   LimitNOFILE=1048576
+   LimitNPROC=12000
+   
+   [Install]
+   WantedBy=default.target
+   ```
+
+   <br><br>`yb-zip_purge_yb_logs.service`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte logs
+   Wants=yb-zip_purge_yb_logs.timer
+   
+   [Service]
+   User=yugabyte
+   Group=yugabyte
+   Type=oneshot
+   WorkingDirectory=/home/yugabyte/bin
+   ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
+   
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+   <br><br>
+
+   `yb-zip_purge_yb_logs.timer`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte logs
+   Requires=yb-zip_purge_yb_logs.service
+   
+   [Timer]
+   User=yugabyte
+   Group=yugabyte
+   Unit=yb-zip_purge_yb_logs.service
+   # Run hourly at minute 0 (beginning) of every hour
+   OnCalendar=00/1:00
+   
+   [Install]
+   WantedBy=timers.target
+   ```
+
+   <br><br>
+
+   `yb-clean_cores.service`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte clean cores
+   Wants=yb-clean_cores.timer
+   
+   [Service]
+   User=yugabyte
+   Group=yugabyte
+   Type=oneshot
+   WorkingDirectory=/home/yugabyte/bin
+   ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
+   
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+   <br><br>
+
+   `yb-clean_cores.timer`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte clean cores
+   Requires=yb-clean_cores.service
+   
+   [Timer]
+   User=yugabyte
+   Group=yugabyte
+   Unit=yb-clean_cores.service
+   # Run every 10 minutes offset by 5 (5, 15, 25...)
+   OnCalendar=*:0/10:30
+   
+   [Install]
+   WantedBy=timers.target
+   ```
+
+   <br><br>
+
+   `yb-collect_metrics.service`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte collect metrics
+   Wants=yb-collect_metrics.timer
+   
+   [Service]
+   User=yugabyte
+   Group=yugabyte
+   Type=oneshot
+   WorkingDirectory=/home/yugabyte/bin
+   ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
+   
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+   <br><br>
+
+   `yb-collect_metrics.timer`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte collect metrics
+   Requires=yb-collect_metrics.service
+   
+   [Timer]
+   User=yugabyte
+   Group=yugabyte
+   Unit=yb-collect_metrics.service
+   # Run every 1 minute
+   OnCalendar=*:0/1:0
+   
+   [Install]
+   WantedBy=timers.target
+   ```
 
 ## Remove YugabyteDB components from the server
 
-As described in [Eliminate an unresponsive node](../../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with Yugabyte Platform clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
+As described in [Eliminate an unresponsive node](../../../create-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
 
-You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not Yugaware Platform is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
+You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
 
-In order to completely eliminate all traces of Yugabyte Platform and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).
+In order to completely eliminate all traces of YugabyteDB Anywhere and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).
 
 ### Delete database server nodes
 
@@ -569,7 +794,7 @@ You can remove YugabyteDB components and configuration from the database server 
 
 {{< note title="Note" >}}
 
-If you cannot find the `bin` directory, it means Yugabyte Platform already cleared it during a successful deletion of the universe.
+If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
 
 {{< /note >}}
 
@@ -601,9 +826,9 @@ sudo rm -rf /opt/prometheus
 
 You may now choose to reverse the system settings that you configured in [Provision nodes manually](#provision-nodes-manually).
 
-### Delete Yugabyte Platform from the server
+### Delete YugabyteDB Anywhere from the server
 
-To remove Yugabyte Platform and Replicated components from the host server, execute the following commands as the `root` user (or prepend `sudo` to each command) :
+To remove YugabyteDB Anywhere and Replicated components from the host server, execute the following commands as the `root` user (or prepend `sudo` to each command) :
 
 ```sh
 systemctl stop replicated replicated-ui replicated-operator
@@ -640,4 +865,3 @@ yum remove docker-ce
 rpm -qa | grep -i docker
 yum remove docker-ce-cli
 ```
-

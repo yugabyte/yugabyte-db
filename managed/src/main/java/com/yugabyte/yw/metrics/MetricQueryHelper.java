@@ -62,14 +62,16 @@ public class MetricQueryHelper {
    */
   public JsonNode query(List<String> metricKeys, Map<String, String> params) {
     HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
-    return query(metricKeys, params, filterOverrides, false);
+    List<MetricSettings> metricSettings = MetricSettings.defaultSettings(metricKeys);
+    return query(metricSettings, params, filterOverrides, false);
   }
 
   public JsonNode query(
       List<String> metricKeys,
       Map<String, String> params,
       Map<String, Map<String, String>> filterOverrides) {
-    return query(metricKeys, params, filterOverrides, false);
+    List<MetricSettings> metricSettings = MetricSettings.defaultSettings(metricKeys);
+    return query(metricSettings, params, filterOverrides, false);
   }
 
   /**
@@ -80,12 +82,12 @@ public class MetricQueryHelper {
    * @return MetricQueryResponse Object
    */
   public JsonNode query(
-      List<String> metricKeys,
+      List<MetricSettings> metricsWithSettings,
       Map<String, String> params,
       Map<String, Map<String, String>> filterOverrides,
       boolean isRecharts) {
-    if (metricKeys.isEmpty()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Empty metricKeys data provided.");
+    if (metricsWithSettings.isEmpty()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Empty metricsWithSettings data provided.");
     }
 
     long timeDifference;
@@ -98,6 +100,8 @@ public class MetricQueryHelper {
       params.put("_", Integer.toString(endTime));
       timeDifference = endTime - Long.parseLong(startTime);
     }
+
+    params.put("range", Long.toString(timeDifference));
 
     String step = params.get("step");
     if (step == null) {
@@ -148,11 +152,12 @@ public class MetricQueryHelper {
 
     ExecutorService threadPool = Executors.newFixedThreadPool(QUERY_EXECUTOR_THREAD_POOL);
     Set<Future<JsonNode>> futures = new HashSet<Future<JsonNode>>();
-    for (String metricKey : metricKeys) {
+    for (MetricSettings metricSettings : metricsWithSettings) {
       Map<String, String> queryParams = params;
-      queryParams.put("queryKey", metricKey);
+      queryParams.put("queryKey", metricSettings.getMetric());
 
-      Map<String, String> specificFilters = filterOverrides.getOrDefault(metricKey, null);
+      Map<String, String> specificFilters =
+          filterOverrides.getOrDefault(metricSettings.getMetric(), null);
       if (specificFilters != null) {
         additionalFilters.putAll(specificFilters);
       }
@@ -164,6 +169,7 @@ public class MetricQueryHelper {
               queryParams,
               additionalFilters,
               ybMetricQueryComponent,
+              metricSettings,
               isRecharts);
       Future<JsonNode> future = threadPool.submit(callable);
       futures.add(future);

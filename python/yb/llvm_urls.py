@@ -37,6 +37,9 @@ COMPILER_TYPE_TO_ARCH_TO_OS_TYPE_TO_LLVM_URL = {
             'centos7': _llvm_url_for_tag('v12.0.1-yb-1-1633099823-bdb147e6-centos7-x86_64'),
             'almalinux8': _llvm_url_for_tag('v12.0.1-yb-1-1633143152-bdb147e6-almalinux8-x86_64'),
         },
+        'aarch64': {
+            'almalinux8': _llvm_url_for_tag('v12.0.1-yb-1-1648458260-bdb147e6-almalinux8-aarch64'),
+        },
     }
 }
 

@@ -461,10 +461,10 @@ SELECT nspname, prsname
   FROM pg_ts_parser t, pg_namespace n
   WHERE t.prsnamespace = n.oid AND nspname like 'alt_nsp%'
   ORDER BY nspname, prsname;
-
 ---
 --- Cleanup resources
 ---
+RESET SESSION AUTHORIZATION;
 \set VERBOSITY terse \\ -- suppress cascade details
 
 DROP SCHEMA alt_nsp1 CASCADE;
@@ -473,3 +473,4 @@ DROP SCHEMA alt_nsp2 CASCADE;
 DROP USER regress_alter_generic_user1;
 DROP USER regress_alter_generic_user2;
 DROP USER regress_alter_generic_user3;
+

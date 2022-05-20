@@ -14,7 +14,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -56,14 +55,14 @@ public class ManipulateDnsRecordTask extends UniverseTaskBase {
       String nodeIpCsv =
           tserverNodes.stream().map(nd -> nd.cloudInfo.private_ip).collect(Collectors.joining(","));
       // Create the process to fetch information about the node from the cloud provider.
-      ShellResponse response =
-          dnsManager.manipulateDnsRecord(
+      dnsManager
+          .manipulateDnsRecord(
               taskParams().type,
               taskParams().providerUUID,
               taskParams().hostedZoneId,
               taskParams().domainNamePrefix,
-              nodeIpCsv);
-      processShellResponse(response);
+              nodeIpCsv)
+          .processErrors();
     } catch (Exception e) {
       if (taskParams().type != DnsManager.DnsCommandType.Delete || !taskParams().isForceDelete) {
         throw e;

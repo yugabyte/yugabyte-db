@@ -43,10 +43,10 @@ class Preparer {
   explicit Preparer(consensus::Consensus* consensus, ThreadPool* tablet_prepare_pool);
   ~Preparer();
 
-  CHECKED_STATUS Start();
+  Status Start();
   void Stop();
 
-  CHECKED_STATUS Submit(OperationDriver* txn_driver);
+  Status Submit(OperationDriver* txn_driver);
   ThreadPoolToken* PoolToken();
 
  private:

@@ -2,7 +2,7 @@
 title: Back up data universe YSQL data
 headerTitle: Back up universe YSQL data
 linkTitle: Back up universe data
-description: Use Yugabyte Platform to back up data in YSQL tables.
+description: Use YugabyteDB Anywhere to back up data in YSQL tables.
 aliases:
   - /preview/manage/enterprise-edition/backup-restore
   - /preview/manage/enterprise-edition/back-up-restore-data
@@ -35,15 +35,15 @@ showAsideToc: true
 
 </ul>
 
-Use Yugabyte Platform to back up your YugabyteDB universe YSQL data.
+You can use YugabyteDB Anywhere to back up your YugabyteDB universe YSQL data.
 
-To schedule backups for a later time, or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql/).
+To schedule backups for a later time or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql/).
 
 To immediately back up your YugabyteDB universe YSQL data, perform the following:
 
-1. Open your universe and select the **Backups** tab.
+1. Open your universe and select **Backups**.
 
-1. Click **Create Backup** to open the **Create Backup** dialog.
+1. Click **Create Backup** to open the **Create Backup** dialog shown in the following illustration:
 
     <br/><br/>
 
@@ -55,11 +55,11 @@ To immediately back up your YugabyteDB universe YSQL data, perform the following
 
 1. Click **OK**.
 
-If the universe has [encryption at rest enabled](../../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file, containing key references, is also backed up. To allow Yugabyte Platform to back up your data with the user authentication enabled, follow the instructions provided in [Edit configuration flags](../../../manage-deployments/edit-config-flags) to add the `ysql_enable_auth=true` and `ysql_hba_conf_csv="local all all trust"` YB-TServer flags.
+If the universe has [encryption at rest enabled](../../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file, containing key references, is also backed up. To allow YugabyteDB Anywhere to back up your data with the user authentication enabled, follow the instructions provided in [Edit configuration flags](../../../manage-deployments/edit-config-flags) to add the `ysql_enable_auth=true` and `ysql_hba_conf_csv="local all all trust"` YB-TServer flags.
 
 {{< note title="Note" >}}
 
-Versions of Yugabyte Platform prior to 2.11.2.0 do not support backups of YSQL databases that use `enum` types. To mitigate the issue, it is recommended that you use the `ysql_dump` utility in combination with the `/COPY` action as a workaround.
+Versions of YugabyteDB Anywhere prior to 2.11.2.0 do not support backups of YSQL databases that use `enum` types. To mitigate the issue, it is recommended that you use the `ysql_dump` utility in combination with the `/COPY` action as a workaround.
 
 {{< /note >}}
 <!-- The preceding note should say 2.11.2.0. Careful with search and replace on version numbers! -->

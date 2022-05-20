@@ -208,7 +208,7 @@ void MiniTabletServer::Shutdown() {
 
 namespace {
 
-CHECKED_STATUS ForAllTablets(
+Status ForAllTablets(
     MiniTabletServer* mts,
     std::function<Status(TabletPeer* tablet_peer)> action) {
   if (!mts->server()) {
@@ -235,13 +235,13 @@ Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags
   });
 }
 
-Status MiniTabletServer::CompactTablets() {
+Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
   if (!server_) {
     return Status::OK();
   }
-  return ForAllTablets(this, [](TabletPeer* tablet_peer) {
+  return ForAllTablets(this, [skip_flush](TabletPeer* tablet_peer) {
     if (tablet_peer->tablet()) {
-      tablet_peer->tablet()->ForceRocksDBCompactInTest();
+      tablet_peer->tablet()->TEST_ForceRocksDBCompact(skip_flush);
     }
     return Status::OK();
   });
@@ -305,7 +305,7 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
   pair<PartitionSchema, Partition> partition = tablet::CreateDefaultPartition(schema_with_ids);
 
   auto table_info = std::make_shared<tablet::TableInfo>(
-      table_id, ns_id, table_id, table_type, schema_with_ids, IndexMap(),
+      tablet::Primary::kTrue, table_id, ns_id, table_id, table_type, schema_with_ids, IndexMap(),
       boost::none /* index_info */, 0 /* schema_version */, partition.first);
 
   return ResultToStatus(server_->tablet_manager()->CreateNewTablet(

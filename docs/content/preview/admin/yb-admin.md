@@ -41,7 +41,7 @@ yb-admin \
 To display the online help, run `yb-admin --help` from the YugabyteDB home directory.
 
 ```sh
-$ ./bin/yb-admin --help
+./bin/yb-admin --help
 ```
 
 ## Commands
@@ -166,7 +166,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_tablets ydb test_tb 0
 ```
@@ -183,7 +183,7 @@ Lists all tablet servers.
 
 **Syntax**
 
-```output
+```sh
 yb-admin \
     -master_addresses <master-addresses> \
     list_all_tablet_servers
@@ -208,7 +208,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses node7:7100,node8:7100,node9:7100 \
     list_all_masters
 ```
@@ -341,7 +341,7 @@ yb-admin \
 **Example**
 
 ```sh
-yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     ysql_catalog_version
 ```
@@ -399,7 +399,7 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_tables
 ```
@@ -448,7 +448,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     compact_table ycql.kong test
 ```
@@ -493,7 +493,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     modify_table_placement_info  testdatabase testtable \
     aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
@@ -529,7 +529,7 @@ The transaction status table will be created as `system.<table_name>`.
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     create_transaction_table \
     transactions_us_east
@@ -540,7 +540,7 @@ Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:700
 Next, set the placement on the newly created transactions table:
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     modify_table_placement_info system transactions_us_east \
     aws.us-east.us-east-1a,aws.us-east.us-east-1b,aws.us-east.us-east-1c 3
@@ -555,7 +555,6 @@ After the load balancer runs, all tablets of `system.transactions_us_east` shoul
 The preferred way to create transaction status tables with YSQL is to create a tablespace with the appropriate placement. YugabyteDB automatically creates a transaction table using the tablespace's placement when you create the first table using the new tablespace.
 
 {{< /note >}}
-
 
 ### Backup and snapshot commands
 
@@ -594,7 +593,7 @@ When this command runs, a `snapshot_id` is generated and printed.
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_database_snapshot
 ```
@@ -621,7 +620,7 @@ When this command runs, a `snapshot_id` is generated and printed.
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_keyspace_snapshot
 ```
@@ -685,7 +684,7 @@ When `show_details` is included, the `list_snapshot` command prints the followin
 In this example, the optional `show_details` flag is added to generate the snapshot details.
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_snapshots show_details
 ```
@@ -739,7 +738,7 @@ When this command runs, a `snapshot_id` is generated and printed.
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_snapshot ydb test_tb
 ```
@@ -773,7 +772,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin restore_snapshot 72ad2eb1-65a2-4e88-a448-7ef4418bc469
+./bin/yb-admin restore_snapshot 72ad2eb1-65a2-4e88-a448-7ef4418bc469
 ```
 
 When the restore starts, the `snapshot_id` and the generated `restoration_id` are displayed.
@@ -786,7 +785,7 @@ Restoration id: 5a9bc559-2155-4c38-ac8b-b6d0f7aa1af6
 To see if the snapshot was successfully restored, you can run the [`yb-admin list_snapshots`](#list-snapshots) command.
 
 ```sh
-$ ./bin/yb-admin list_snapshots
+./bin/yb-admin list_snapshots
 ```
 
 For the example above, the restore failed, so the following displays:
@@ -815,7 +814,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     export_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 \
     test_tb.snapshot
@@ -853,7 +852,7 @@ The *keyspace* and the *table* can be different from the exported one.
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     import_snapshot test_tb.snapshot ydb test_tb
 ```
@@ -913,7 +912,7 @@ The filter expression is a list of acceptable objects, which can be either raw t
 Take a snapshot of the `ysql.yugabyte` database once per minute, and retain each snapshot for 10 minutes:
 
 ```sh
-yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
+./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
 ```
 
 ```output.json
@@ -951,7 +950,7 @@ Where _schedule-id_ is the snapshot schedule's unique identifier. The ID is opti
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
@@ -1016,7 +1015,7 @@ Relative times can be in any of the following formats (again, note that you can 
 Restore from an absolute timestamp:
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
     1617670679185100
 ```
@@ -1024,7 +1023,7 @@ $ ./bin/yb-admin \
 Restore from a relative time:
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
     minus 60s
 ```
@@ -1055,7 +1054,7 @@ Where _schedule-id_ is the snapshot schedule's unique identifier.
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
@@ -1094,7 +1093,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     modify_placement_info  \
     aws.us-west.us-west-2a:2,aws.us-west.us-west-2b:2,aws.us-west.us-west-2c 5
@@ -1109,21 +1108,26 @@ This will place a minimum of:
 You can verify the new placement information by running the following `curl` command:
 
 ```sh
-$ curl -s http://<any-master-ip>:7000/cluster-config
+curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
 #### set_preferred_zones
 
-Sets the preferred availability zones (AZs) and regions.
+Sets the preferred availability zones (AZs) and regions. Tablet leaders are placed in alive and healthy nodes of AZs in order of preference. When no healthy node is available in the most preferred AZs (preference value 1), then alive and healthy nodes from the next preferred AZs are picked. AZs with no preference are equally eligible to host tablet leaders.
 
 {{< note title="Note" >}}
 
 * Make sure you've already run [`modify_placement_info`](#modify-placement-info) command beforehand.
 
-* When nodes in the "preferred" availability zones and regions are alive and healthy, the tablet leaders are placed on nodes in those zones and regions.
-By default, all nodes are eligible to have tablet leaders. Having all tablet leaders reside in a single region will reduce the number of network hops for the database to write transactions and thus increase performance and lowering latency.
+* Having all tablet leaders reside in a single region reduces the number of network hops for the database to write transactions, which increases performance and reduces latency.
 
-* By default, the transaction tablet leaders will not respect these preferred zones and will be balanced across all nodes. In the transaction path, there is a roundtrip from the user to the transaction status tablet serving the transaction - if the leader closest to the user is used rather than forcing a roundtrip to the preferred zone, then there will be efficiency improvements.
+* By default, the transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction - using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
+
+* Leader blacklisted nodes don't host any leaders irrespective of their preference.
+
+* Cluster configuration stores preferred zones in either affinitized_leaders or multi_affinitized_leaders object.
+
+* Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
 {{< /note >}}
 
@@ -1132,17 +1136,20 @@ By default, all nodes are eligible to have tablet leaders. Having all tablet lea
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    set_preferred_zones <cloud.region.zone> \
-    [<cloud.region.zone>]...
+    set_preferred_zones <cloud.region.zone>[:preference] \
+    [<cloud.region.zone>[:preference]]...
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *cloud.region.zone*: Specifies the cloud, region, and zone. Default value is `cloud1.datacenter1.rack1`.
+* *preference*: Specifies the leader preference for a zone. Values have to be contiguous non-zero integers. Multiple zones can have the same value. Default value is 1.
 
-Suppose you have a deployment in the following regions: `gcp.us-east4.us-east4-b`, `gcp.asia-northeast1.asia-northeast1-c`, and `gcp.us-west1.us-west1-c`. Looking at the cluster configuration:
+**Example**
+
+Suppose you have a deployment in the following regions: `gcp.us-west1.us-west1-a`, `gcp.us-west1.us-west1-b`, `gcp.asia-northeast1.asia-northeast1-a`, and `gcp.us-east4.us-east4-a`. Looking at the cluster configuration:
 
 ```sh
-$ curl -s http://<any-master-ip>:7000/cluster-config
+curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
 Here is a sample configuration:
@@ -1150,12 +1157,20 @@ Here is a sample configuration:
 ```output
 replication_info {
   live_replicas {
-    num_replicas: 3
+    num_replicas: 5
     placement_blocks {
       cloud_info {
         placement_cloud: "gcp"
         placement_region: "us-west1"
-        placement_zone: "us-west1-c"
+        placement_zone: "us-west1-a"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "gcp"
+        placement_region: "us-west1"
+        placement_zone: "us-west1-b"
       }
       min_num_replicas: 1
     }
@@ -1163,15 +1178,15 @@ replication_info {
       cloud_info {
         placement_cloud: "gcp"
         placement_region: "us-east4"
-        placement_zone: "us-east4-b"
+        placement_zone: "us-east4-a"
       }
-      min_num_replicas: 1
+      min_num_replicas: 2
     }
     placement_blocks {
       cloud_info {
         placement_cloud: "gcp"
         placement_region: "us-asia-northeast1"
-        placement_zone: "us-asia-northeast1-c"
+        placement_zone: "us-asia-northeast1-a"
       }
       min_num_replicas: 1
     }
@@ -1179,32 +1194,42 @@ replication_info {
 }
 ```
 
-The following command sets the preferred zone to `gcp.us-west1.us-west1-c`:
+The following command sets the preferred region to `gcp.us-west1` and the fallback to zone `gcp.us-east4.us-east4-a`:
 
 ```sh
 ssh -i $PEM $ADMIN_USER@$MASTER1 \
    ~/master/bin/yb-admin --master_addresses $MASTER_RPC_ADDRS \
     set_preferred_zones \
-    gcp.us-west1.us-west1-c
+    gcp.us-west1.us-west1-a:1 \
+    gcp.us-west1.us-west1-b:1 \
+    gcp.us-east4.us-east4-a:2
 ```
 
 Verify by running the following.
 
 ```sh
-$ curl -s http://<any-master-ip>:7000/cluster-config
+curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-Looking again at the cluster configuration you should see `affinitized_leaders` added:
+Looking again at the cluster configuration you should see `multi_affinitized_leaders` added:
 
 ```output
 replication_info {
   live_replicas {
-    num_replicas: 3
+    num_replicas: 5
     placement_blocks {
       cloud_info {
         placement_cloud: "gcp"
         placement_region: "us-west1"
-        placement_zone: "us-west1-c"
+        placement_zone: "us-west1-a"
+      }
+      min_num_replicas: 1
+    }
+    placement_blocks {
+      cloud_info {
+        placement_cloud: "gcp"
+        placement_region: "us-west1"
+        placement_zone: "us-west1-b"
       }
       min_num_replicas: 1
     }
@@ -1212,23 +1237,37 @@ replication_info {
       cloud_info {
         placement_cloud: "gcp"
         placement_region: "us-east4"
-        placement_zone: "us-east4-b"
+        placement_zone: "us-east4-a"
       }
-      min_num_replicas: 1
+      min_num_replicas: 2
     }
     placement_blocks {
       cloud_info {
         placement_cloud: "gcp"
         placement_region: "us-asia-northeast1"
-        placement_zone: "us-asia-northeast1-c"
+        placement_zone: "us-asia-northeast1-a"
       }
       min_num_replicas: 1
     }
   }
-  affinitized_leaders {
-    placement_cloud: "gcp"
-    placement_region: "us-west1"
-    placement_zone: "us-west1-c"
+  multi_affinitized_leaders {
+    zones {
+      placement_cloud: "gcp"
+      placement_region: "us-west1"
+      placement_zone: "us-west1-a"
+    }
+    zones {
+      placement_cloud: "gcp"
+      placement_region: "us-west1"
+      placement_zone: "us-west1-b"
+    }
+  }
+  multi_affinitized_leaders {
+    zones {
+      placement_cloud: "gcp"
+      placement_region: "us-east4"
+      placement_zone: "us-east4-a"
+    }
   }
 }
 ```
@@ -1468,6 +1507,8 @@ The [`all_masters_have_universe_key_in_memory`](#all-masters-have-universe-key-i
 
 {{< /note >}}
 
+**Syntax**
+
 ```sh
 yb-admin \
     -master_addresses <master-addresses> rotate_universe_key_in_memory <key_id>
@@ -1541,7 +1582,7 @@ yb-admin \
 For example:
 
 ```sh
-yb-admin \
+./bin/yb-admin \
     -master_addresses 127.0.0.1:7100 \
     create_change_data_stream ysql.yugabyte
 ```
@@ -1570,7 +1611,7 @@ yb-admin \
 **Example:**
 
 ```sh
-yb-admin \
+./bin/yb-admin \
     -master_addresses 127.0.0.1:7100 \
     list_change_data_streams
 ```
@@ -1627,7 +1668,7 @@ yb-admin \
 **Example:**
 
 ```sh
-yb-admin \
+./bin/yb-admin \
     -master_addresses 127.0.0.1:7100 \
     get_change_data_stream_info d540f5e4890c4d3b812933cbfd703ed3
 ```
@@ -1661,7 +1702,7 @@ yb-admin \
 **Example:**
 
 ```sh
-yb-admin \
+./bin/yb-admin \
     -master_addresses 127.0.0.1:7100 \
     delete_change_data_stream d540f5e4890c4d3b812933cbfd703ed3
 ```
@@ -1796,7 +1837,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_leader_blacklist_completion
 ```
@@ -1823,7 +1864,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     change_blacklist \
       ADD node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
@@ -1910,6 +1951,8 @@ yb-admin \
 
 Returns the cluster load balancer state.
 
+**Syntax**
+
 ```sh
 yb-admin \
     -master_addresses <master-addresses> get_load_balancer_state
@@ -1951,7 +1994,7 @@ For an example of performing a data move and the use of this command, refer to [
 In the following example, the data move is `66.6` percent done.
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_load_move_completion
 ```
@@ -2014,7 +2057,7 @@ YSQL successfully upgraded to the latest version
 In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
       -timeout_ms 180000 \
       upgrade_ysql
 ```

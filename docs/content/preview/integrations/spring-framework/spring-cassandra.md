@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: spring-cassandra
     parent: spring-framework
-    weight: 579
+    weight: 580
 isTocNested: true
 showAsideToc: true
 ---

@@ -274,7 +274,7 @@ class InMemoryEnv : public EnvWrapper {
     return file_map_.find(fname) != file_map_.end();
   }
 
-  CHECKED_STATUS GetChildren(const std::string& dir,
+  Status GetChildren(const std::string& dir,
                              ExcludeDots exclude_dots,
                              vector<std::string>* result) override {
     MutexLock lock(mutex_);

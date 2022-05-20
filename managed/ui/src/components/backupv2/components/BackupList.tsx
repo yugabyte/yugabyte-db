@@ -9,8 +9,8 @@
 
 import moment from 'moment';
 import React, { FC, useMemo, useReducer, useState } from 'react';
-import { Col, DropdownButton, MenuItem, Row } from 'react-bootstrap';
-import { BootstrapTable, RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-table';
+import { DropdownButton, MenuItem, Row } from 'react-bootstrap';
+import { RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-table';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import Select, { OptionTypeBase } from 'react-select';
@@ -21,7 +21,6 @@ import { YBLoading } from '../../common/indicators';
 import { BackupDetails } from './BackupDetails';
 import {
   BACKUP_STATUS_OPTIONS,
-  calculateDuration,
   CALDENDAR_ICON,
   convertArrayToMap,
   DATE_FORMAT,
@@ -34,6 +33,14 @@ import { BackupRestoreModal } from './BackupRestoreModal';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { BackupCreateModal } from './BackupCreateModal';
 import { useSearchParam } from 'react-use';
+import { AssignBackupStorageConfig } from './AssignBackupStorageConfig';
+import { formatBytes } from '../../xcluster/ReplicationUtils';
+import { BackupAdvancedRestore } from './BackupAdvancedRestore';
+import clsx from 'clsx';
+import { AccountLevelBackupEmpty, UniverseLevelBackupEmpty } from './BackupEmpty';
+import { YBTable } from '../../common/YBTable';
+import { find } from 'lodash';
+import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -84,6 +91,22 @@ const TIME_RANGE_OPTIONS = [
   }
 ];
 
+const MORE_FILTER_OPTIONS = [
+  {
+    label: 'Filter by:',
+    options: [
+      {
+        label: 'Backups with deleted source universe',
+        value: 'onlyShowDeletedUniverses'
+      },
+      {
+        label: 'Backups with deleted config file',
+        value: 'onlyShowDeletedConfigs'
+      }
+    ]
+  }
+];
+
 const DEFAULT_TIME_STATE: TIME_RANGE_STATE = {
   startTime: null,
   endTime: null,
@@ -106,8 +129,12 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showBackupCreateModal, setShowBackupCreateModal] = useState(false);
+  const [showAssignConfigModal, setShowAssignConfigModal] = useState(false);
+  const [showAdvancedRestore, setShowAdvancedRestore] = useState(false);
+
   const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
-  const [status, setStatus] = useState<any[]>([]);
+  const [status, setStatus] = useState<any[]>([BACKUP_STATUS_OPTIONS[0]]);
+  const [moreFilters, setMoreFilters] = useState<any>([]);
 
   const timeReducer = (_state: TIME_RANGE_STATE, action: OptionTypeBase) => {
     if (action.label === 'Custom') {
@@ -138,6 +165,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
       status,
       DEFAULT_SORT_COLUMN,
       sortDirection,
+      moreFilters,
       universeUUID,
       storage_config_uuid
     ],
@@ -150,11 +178,22 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         status,
         DEFAULT_SORT_COLUMN,
         sortDirection,
+        moreFilters,
         universeUUID,
         storage_config_uuid
       ),
     {
       refetchInterval: 1000 * 20
+    }
+  );
+
+  const { data: tablesInUniverse, isLoading: isTableListLoading } = useQuery(
+    [universeUUID, 'tables'],
+    () => {
+      return fetchTablesInUniverse(universeUUID!);
+    },
+    {
+      enabled: allowTakingBackup !== undefined && universeUUID !== undefined
     }
   );
 
@@ -167,6 +206,16 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
     () => convertArrayToMap(storageConfigs?.data ?? [], 'configUUID', 'configName'),
     [storageConfigs]
   );
+
+  const isFilterApplied = () => {
+    return (
+      searchText.length !== 0 ||
+      status[0].value !== null ||
+      timeRange.startTime ||
+      timeRange.endTime ||
+      moreFilters.length > 0
+    );
+  };
 
   const getActions = (row: IBackup) => {
     if (row.state === Backup_States.DELETED) {
@@ -194,10 +243,10 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         onClick={(e) => e.stopPropagation()}
       >
         <MenuItem
-          disabled={row.state !== Backup_States.COMPLETED}
+          disabled={row.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent}
           onClick={(e) => {
             e.stopPropagation();
-            if (row.state !== Backup_States.COMPLETED) {
+            if (row.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent) {
               return;
             }
             setRestoreDetails(row);
@@ -209,9 +258,11 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         <MenuItem
           onClick={(e) => {
             e.stopPropagation();
+            if (!row.isStorageConfigPresent) return;
             setSelectedBackups([row]);
             setShowDeleteModal(true);
           }}
+          disabled={!row.isStorageConfigPresent}
           className="action-danger"
         >
           Delete Backup
@@ -221,38 +272,72 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   };
 
   const backups: IBackup[] = backupsList?.data.entities;
+
+  if (!isFilterApplied() && backups?.length === 0) {
+    return allowTakingBackup ? (
+      <>
+        <UniverseLevelBackupEmpty
+          onActionButtonClick={() => {
+            setShowBackupCreateModal(true);
+          }}
+          disabled={tablesInUniverse?.data.length === 0}
+        />
+        <BackupCreateModal
+          visible={showBackupCreateModal}
+          onHide={() => {
+            setShowBackupCreateModal(false);
+          }}
+          currentUniverseUUID={universeUUID}
+        />
+      </>
+    ) : (
+      <AccountLevelBackupEmpty />
+    );
+  }
+
   return (
     <Row className="backup-v2">
-      <Row className="backup-actions">
-        <Col lg={5} className="no-padding">
-          <Row>
-            <Col lg={6} className="no-padding">
-              <YBSearchInput
-                placeHolder="Search universe name, Storage Config, Database/Keyspace name"
-                onEnterPressed={(val: string) => setSearchText(val)}
-              />
-            </Col>
-            <Col lg={4}>
-              <YBMultiSelectRedesiged
-                className="backup-status-filter"
-                name="statuses"
-                placeholder=""
-                isMulti={false}
-                options={BACKUP_STATUS_OPTIONS}
-                onChange={(value: any) => {
-                  setStatus(value ? [value] : []);
-                }}
-              />
-            </Col>
-          </Row>
-        </Col>
-        <Col lg={7} className="actions-delete-filters no-padding">
-          <YBButton
-            btnText="Delete"
-            btnIcon="fa fa-trash-o"
-            onClick={() => setShowDeleteModal(true)}
-            disabled={selectedBackups.length === 0}
-          />
+      <div className="backup-actions">
+        <div className="search-and-filter">
+          {!allowTakingBackup && (
+            <>
+              <div className="search-placeholder">
+                <YBSearchInput
+                  placeHolder="Search universe name"
+                  onEnterPressed={(val: string) => setSearchText(val)}
+                />
+              </div>
+              <span className="flex-divider" />
+            </>
+          )}
+          <div className="status-filters">
+            <YBMultiSelectRedesiged
+              className="backup-status-filter"
+              name="statuses"
+              customLabel="Status:"
+              placeholder="Status"
+              isMulti={false}
+              options={BACKUP_STATUS_OPTIONS}
+              value={status}
+              onChange={(value: any) => {
+                setStatus(value ? [value] : []);
+              }}
+            />
+            <YBMultiSelectRedesiged
+              className="backup-status-more-filter"
+              name="more-filters"
+              placeholder="More Filters"
+              customLabel="Filter by:"
+              isMulti={false}
+              options={MORE_FILTER_OPTIONS}
+              isClearable={true}
+              onChange={(value: any) => {
+                setMoreFilters(value ? [value] : []);
+              }}
+            />
+          </div>
+        </div>
+        <div className="actions-delete-filters no-padding">
           {timeRange.label === 'Custom' && (
             <div className="custom-date-picker">
               <DateTimePicker
@@ -308,21 +393,53 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             defaultValue={TIME_RANGE_OPTIONS.find((t) => t.label === 'All time')}
             maxMenuHeight={300}
           ></Select>
+          <YBButton
+            btnText="Delete"
+            btnIcon="fa fa-trash-o"
+            onClick={() => setShowDeleteModal(true)}
+            disabled={selectedBackups.length === 0}
+          />
           {allowTakingBackup && (
-            <YBButton
-              btnText="Backup now"
-              onClick={() => {
-                setShowBackupCreateModal(true);
-              }}
-              btnClass="btn btn-orange backup-now-button"
-              btnIcon="fa fa-upload"
-            />
+            <>
+              <YBButton
+                loading={isTableListLoading}
+                btnText="Backup now"
+                onClick={() => {
+                  setShowBackupCreateModal(true);
+                }}
+                btnClass="btn btn-orange backup-now-button"
+                btnIcon="fa fa-upload"
+                disabled={tablesInUniverse?.data.length === 0}
+              />
+              <DropdownButton
+                className="actions-btn"
+                title="•••"
+                id="advanced-backup-dropdown"
+                noCaret
+                pullRight
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowAdvancedRestore(true);
+                  }}
+                >
+                  Advanced Restore
+                </MenuItem>
+              </DropdownButton>
+            </>
           )}
-        </Col>
-      </Row>
-      <Row className="backup-list-table">
+        </div>
+      </div>
+      <Row
+        className={clsx('backup-list-table', {
+          'account-level-view': !allowTakingBackup,
+          'universe-level-view': allowTakingBackup
+        })}
+      >
         {isLoading && <YBLoading />}
-        <BootstrapTable
+        <YBTable
           data={backups}
           options={{
             sizePerPage,
@@ -353,9 +470,8 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             }
           }}
           trClassName={(row) =>
-            `table-row ${showDetails?.backupUUID === row.backupUUID ? 'selected-row' : ''}`
+            `${find(selectedBackups, { backupUUID: row.backupUUID }) ? 'selected-row' : ''}`
           }
-          tableHeaderClass="backup-list-header"
           pagination={true}
           remote={(remoteObj: RemoteObjSpec) => {
             return {
@@ -402,13 +518,13 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             Expiration
           </TableHeaderColumn>
           <TableHeaderColumn
-            dataField="duration"
+            dataField="totalBackupSizeInBytes"
             dataFormat={(_, row) => {
-              return calculateDuration(row.createTime, row.updateTime);
+              return row.totalBackupSizeInBytes ? formatBytes(row.totalBackupSizeInBytes) : '-';
             }}
             width="20%"
           >
-            Duration
+            Size
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="storageConfigUUID"
@@ -433,7 +549,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             columnClassName="yb-actions-cell no-border"
             width="10%"
           />
-        </BootstrapTable>
+        </YBTable>
       </Row>
       <BackupDetails
         backup_details={showDetails}
@@ -448,6 +564,9 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setShowRestoreModal(true);
         }}
         storageConfigs={storageConfigs}
+        onAssignStorageConfig={() => {
+          setShowAssignConfigModal(true);
+        }}
       />
       <BackupDeleteModal
         backupsList={selectedBackups}
@@ -473,6 +592,22 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         }}
         currentUniverseUUID={universeUUID}
       />
+      <AssignBackupStorageConfig
+        visible={showAssignConfigModal}
+        backup={showDetails}
+        onHide={() => {
+          setShowAssignConfigModal(false);
+        }}
+      />
+      {allowTakingBackup && (
+        <BackupAdvancedRestore
+          onHide={() => {
+            setShowAdvancedRestore(false);
+          }}
+          visible={showAdvancedRestore}
+          currentUniverseUUID={universeUUID}
+        />
+      )}
     </Row>
   );
 };

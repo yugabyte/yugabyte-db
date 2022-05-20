@@ -23,6 +23,7 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/kv_debug.h"
+#include "yb/docdb/packed_row.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value_type.h"
 #include "yb/rocksdb/db.h"
@@ -197,7 +198,7 @@ Status AppendToKeySafely(
 
 }  // namespace
 
-CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
+Status DocWriteBatch::SetPrimitiveInternal(
     const DocPath& doc_path,
     const ValueControlFields& control_fields,
     const ValueRef& value,
@@ -723,7 +724,7 @@ Status DocWriteBatch::ReplaceCqlInList(
   }
 }
 
-CHECKED_STATUS DocWriteBatch::DeleteSubDoc(
+Status DocWriteBatch::DeleteSubDoc(
     const DocPath& doc_path,
     const ReadHybridTime& read_ht,
     const CoarseTimePoint deadline,
@@ -789,7 +790,8 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
 
   std::string FormatValue(const Slice& key, const Slice& value) override {
     auto key_type = GetKeyType(key, storage_db_type_);
-    const auto value_result = DocDBValueToDebugStr(key_type, key, value);
+    const auto value_result = DocDBValueToDebugStr(
+        key_type, key, value, SchemaPackingStorage());
     if (value_result.ok()) {
       return *value_result;
     }

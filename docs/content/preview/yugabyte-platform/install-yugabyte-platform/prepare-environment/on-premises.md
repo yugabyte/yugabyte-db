@@ -2,7 +2,7 @@
 title: Prepare the private cloud (on-premise) environment
 headerTitle: Prepare the private cloud (on-premise) environment
 linkTitle: Prepare the environment
-description: Prepare the private cloud (on-premise) environment for Yugabyte Platform.
+description: Prepare the private cloud (on-premise) environment for YugabyteDB Anywhere.
 menu:
   preview:
     identifier: prepare-environment-5-private-cloud
@@ -58,23 +58,23 @@ showAsideToc: true
 
 </ul>
 
-To run a Yugabyte universe on a private cloud, you need to prepare one computer to run the Yugabyte Platform, which is in turn used to install and manage the nodes that will make up the universe.
+To run a YugabyteDB universe on a private cloud, you need to prepare one computer to run YugabyteDB Anywhere, which is in turn used to install and manage the nodes included in the universe.
 
-The platform node has the following requirements:
+A YugabyteDB Anywhere node has the following requirements:
 
-* Hardware requirements
+* Hardware requirements:
   * Nodes: 1 Virtual Machine
   * Cores: 8 Cores
   * RAM: 16 GB
 * Storage Disk:  100GB (minimum) (confirm SSD)
-* Docker Engine: supported version 19.03.n. If not installed, see Installing Docker in [airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
-* The following ports should be open on the Yugabyte Platform host:
-  * 8800 – HTTP access to the Replicated UI
-  * 80 – HTTP access to the Yugabyte Platform console
-  * 443 - HTTPs access to the Yugabyte Platform console
+* Docker Engine: supported version 19.03.n. If not installed, see [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
+* The following ports should be open on the YugabyteDB Anywhere host:
+  * 8800 – HTTP access to the Replicated UI.
+  * 80 – HTTP access to the YugabyteDB Anywhere UI.
+  * 443 - HTTPs access to the YugabyteDB Anywhere UI.
   * 22 – SSH
   * 9090 - Prometheus metrics
 
   For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
-* Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes.
+* Ability to connect from the YugabyteDB Anywhere host to all YugabyteDB data nodes.

@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.BiMap;
+import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -119,7 +121,7 @@ import play.inject.ApplicationLifecycle;
 public class TaskExecutor {
 
   // This is a map from the task types to the classes.
-  private static final Map<TaskType, Class<? extends ITask>> TASK_TYPE_TO_CLASS_MAP;
+  private static final BiMap<TaskType, Class<? extends ITask>> TASK_TYPE_TO_CLASS_MAP;
 
   // Task futures are waited for this long before checking abort status.
   private static final long TASK_SPIN_WAIT_INTERVAL_MS = 2000;
@@ -179,9 +181,10 @@ public class TaskExecutor {
         log.debug("Found task: {}", className);
       } catch (ClassNotFoundException e) {
         log.error("Could not find task for task type " + taskType, e);
+        throw new RuntimeException(e);
       }
     }
-    TASK_TYPE_TO_CLASS_MAP = Collections.unmodifiableMap(typeMap);
+    TASK_TYPE_TO_CLASS_MAP = ImmutableBiMap.copyOf(typeMap);
     log.debug("Done loading tasks.");
   }
 
@@ -237,6 +240,17 @@ public class TaskExecutor {
       return optional.get().enabled();
     }
     return false;
+  }
+
+  /**
+   * Returns the task type for the given task class.
+   *
+   * @param taskClass the given task class.
+   * @return task type for the task class.
+   */
+  public static TaskType getTaskType(Class<? extends ITask> taskClass) {
+    checkNotNull(taskClass, "Task class must be non-null");
+    return TASK_TYPE_TO_CLASS_MAP.inverse().get(taskClass);
   }
 
   @Inject
@@ -777,6 +791,7 @@ public class TaskExecutor {
         updateTaskDetailsOnError(TaskInfo.State.Failure, e);
         Throwables.propagate(e);
       } finally {
+        log.debug("Completed task {}", task.getName());
         taskCompletionTime = Instant.now();
         writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
         publishAfterTask(t);
@@ -1039,7 +1054,7 @@ public class TaskExecutor {
               log.error("Ignoring error for " + subTaskGroup.toString(), e);
             } else {
               // Postpone throwing this error later when all the subgroups are done.
-              throw new RuntimeException(subTaskGroup.toString() + " failed.");
+              throw new RuntimeException(subTaskGroup.toString() + " failed.", e);
             }
             anyRe = e;
           }
@@ -1049,7 +1064,7 @@ public class TaskExecutor {
         subTaskGroups.clear();
       }
       if (anyRe != null) {
-        throw new RuntimeException("One or more SubTaskGroups failed while running.");
+        throw new RuntimeException("One or more SubTaskGroups failed while running.", anyRe);
       }
     }
 

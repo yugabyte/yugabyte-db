@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -38,6 +39,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
@@ -178,6 +180,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     try {
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      when(mockClient.waitForMaster(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())
           .thenReturn(HostAndPort.fromString("10.0.0.2").withDefaultPort(11));
@@ -189,6 +192,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           .when(mockClient.getLeaderBlacklistCompletion())
           .thenReturn(mockGetLoadMovePercentResponse);
     } catch (Exception ignored) {
+      fail();
     }
 
     // Create dummy shell response
@@ -249,20 +253,13 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     return taskType;
   }
 
-  protected void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
-    /*
-     * Leader blacklisting may add ModifyBlackList task to subTasks.
-     * Task details for ModifyBlacklist task do not contain the required
-     * keys being asserted here. So, remove task types of ModifyBlackList
-     * from subTasks before asserting for required keys.
-     */
-    subTasks =
-        subTasks
-            .stream()
-            .filter(t -> t.getTaskType() != TaskType.ModifyBlackList)
-            .collect(Collectors.toList());
-    ;
+  protected TaskType assertTaskType(List<TaskInfo> tasks, TaskType expectedTaskType, int position) {
+    TaskType taskType = tasks.get(0).getTaskType();
+    assertEquals("at position " + position, expectedTaskType, taskType);
+    return taskType;
+  }
 
+  protected void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
     List<String> nodeNames =
         subTasks
             .stream()
@@ -290,7 +287,9 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
                               PROPERTY_KEYS.contains(expectedKey)
                                   ? t.get("properties").get(expectedKey)
                                   : t.get(expectedKey);
-                          return data.isObject() ? data : data.textValue();
+                          return data.isObject()
+                              ? data
+                              : (data.isBoolean() ? data.booleanValue() : data.textValue());
                         })
                     .collect(Collectors.toList());
             values.forEach(
@@ -299,5 +298,17 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
                         "Unexpected value for key " + expectedKey, expectedValue, actualValue));
           }
         });
+  }
+
+  protected void assertCommonTasks(
+      Map<Integer, List<TaskInfo>> subTasksByPosition, int startPosition) {
+    int position = startPosition;
+    List<TaskType> commonNodeTasks =
+        new ArrayList<>(
+            ImmutableList.of(TaskType.LoadBalancerStateChange, TaskType.UniverseUpdateSucceeded));
+    for (TaskType commonNodeTask : commonNodeTasks) {
+      assertTaskType(subTasksByPosition.get(position), commonNodeTask, position);
+      position++;
+    }
   }
 }

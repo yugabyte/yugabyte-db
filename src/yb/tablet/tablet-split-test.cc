@@ -22,6 +22,7 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb_debug.h"
+#include "yb/docdb/packed_row.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -126,7 +127,8 @@ TEST_F(TabletSplitTest, SplitTablet) {
   }
 
   VLOG(1) << "Source tablet:" << std::endl
-          << docdb::DocDBDebugDumpToStr(tablet()->doc_db(), docdb::IncludeBinary::kTrue);
+          << docdb::DocDBDebugDumpToStr(tablet()->doc_db(), docdb::SchemaPackingStorage(),
+                                        docdb::IncludeBinary::kTrue);
   const auto source_docdb_dump_str = tablet()->TEST_DocDBDumpStr(IncludeIntents::kTrue);
   std::unordered_set<std::string> source_docdb_dump;
   tablet()->TEST_DocDBDumpToContainer(IncludeIntents::kTrue, &source_docdb_dump);
@@ -196,7 +198,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
       ASSERT_EQ(source_rows.erase(row.ToString()), 1);
     }
 
-    split_tablet->ForceRocksDBCompactInTest();
+    split_tablet->TEST_ForceRocksDBCompact();
 
     VLOG(1) << split_tablet->tablet_id() << " compacted:" << std::endl
             << split_tablet->TEST_DocDBDumpStr(IncludeIntents::kTrue);

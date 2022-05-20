@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.config.impl;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
@@ -53,10 +54,14 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   }
 
   // app config
-  private static final Map<String, String> staticConfigMap =
+  private static final Map<String, Object> staticConfigMap =
       ImmutableMap.of(
-          YB_STATIC_ONLY_KEY, Scope.STATIC.toString(),
-          YB_OVERRIDDEN_KEY, Scope.STATIC.toString());
+          SettableRuntimeConfigFactory.RUNTIME_CONFIG_INCLUDED_OBJECTS,
+          ImmutableList.of("yb.external_script"),
+          YB_STATIC_ONLY_KEY,
+          Scope.STATIC.toString(),
+          YB_OVERRIDDEN_KEY,
+          Scope.STATIC.toString());
 
   // overrides in global scope:
   private static final Set<String> globalConfigSet =
@@ -131,8 +136,8 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public void testTwoCustomers() {
     Customer customer1 = ModelFactory.testCustomer();
     Customer customer2 = ModelFactory.testCustomer();
-    configFactory.forCustomer(customer1).setValue(TASK_GC_FREQUENCY, "1 day");
-    configFactory.forCustomer(customer2).setValue(TASK_GC_FREQUENCY, "2 days");
+    configFactory.forCustomer(customer1).setValue(TASK_GC_FREQUENCY, "1 day", false);
+    configFactory.forCustomer(customer2).setValue(TASK_GC_FREQUENCY, "2 days", false);
 
     assertEquals(1L, configFactory.forCustomer(customer1).getDuration(TASK_GC_FREQUENCY).toDays());
     assertEquals(2L, configFactory.forCustomer(customer2).getDuration(TASK_GC_FREQUENCY).toDays());
@@ -165,8 +170,8 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public void testTwoProviders() {
     Provider awsProvider = ModelFactory.awsProvider(defaultCustomer);
     Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
-    configFactory.forProvider(awsProvider).setValue(TASK_GC_FREQUENCY, "1 day");
-    configFactory.forProvider(gcpProvider).setValue(TASK_GC_FREQUENCY, "2 days");
+    configFactory.forProvider(awsProvider).setValue(TASK_GC_FREQUENCY, "1 day", false);
+    configFactory.forProvider(gcpProvider).setValue(TASK_GC_FREQUENCY, "2 days", false);
 
     assertEquals(
         1L, configFactory.forProvider(awsProvider).getDuration(TASK_GC_FREQUENCY).toDays());
@@ -201,8 +206,8 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public void testTwoUniverses() {
     Universe universe1 = ModelFactory.createUniverse("USA", defaultCustomer.getCustomerId());
     Universe universe2 = ModelFactory.createUniverse("Asia", defaultCustomer.getCustomerId());
-    configFactory.forUniverse(universe1).setValue(TASK_GC_FREQUENCY, "1 day");
-    configFactory.forUniverse(universe2).setValue(TASK_GC_FREQUENCY, "2 days");
+    configFactory.forUniverse(universe1).setValue(TASK_GC_FREQUENCY, "1 day", false);
+    configFactory.forUniverse(universe2).setValue(TASK_GC_FREQUENCY, "2 days", false);
 
     assertEquals(1L, configFactory.forUniverse(universe1).getDuration(TASK_GC_FREQUENCY).toDays());
     assertEquals(2L, configFactory.forUniverse(universe2).getDuration(TASK_GC_FREQUENCY).toDays());
@@ -210,28 +215,28 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
 
   private RuntimeConfig<Model> setupGlobalConfig() {
     RuntimeConfig<Model> runtimeConfig = configFactory.globalRuntimeConf();
-    globalConfigSet.forEach(s -> runtimeConfig.setValue(s, Scope.GLOBAL.name()));
+    globalConfigSet.forEach(s -> runtimeConfig.setValue(s, Scope.GLOBAL.name(), false));
     return runtimeConfig;
   }
 
   private RuntimeConfig<Customer> setupCustomerConfig() {
     setupGlobalConfig();
     RuntimeConfig<Customer> customerConfig = configFactory.forCustomer(defaultCustomer);
-    customerConfigSet.forEach(s -> customerConfig.setValue(s, Scope.CUSTOMER.name()));
+    customerConfigSet.forEach(s -> customerConfig.setValue(s, Scope.CUSTOMER.name(), false));
     return customerConfig;
   }
 
   private RuntimeConfig<Provider> setupProviderConfig() {
     setupCustomerConfig();
     RuntimeConfig<Provider> providerConfig = configFactory.forProvider(defaultProvider);
-    providerConfigSet.forEach(s -> providerConfig.setValue(s, Scope.PROVIDER.name()));
+    providerConfigSet.forEach(s -> providerConfig.setValue(s, Scope.PROVIDER.name(), false));
     return providerConfig;
   }
 
   private RuntimeConfig<Universe> setupUniverseConfig() {
     setupCustomerConfig();
     RuntimeConfig<Universe> universeConfig = configFactory.forUniverse(defaultUniverse);
-    universeConfigSet.forEach(s -> universeConfig.setValue(s, Scope.UNIVERSE.name()));
+    universeConfigSet.forEach(s -> universeConfig.setValue(s, Scope.UNIVERSE.name(), false));
     return universeConfig;
   }
 

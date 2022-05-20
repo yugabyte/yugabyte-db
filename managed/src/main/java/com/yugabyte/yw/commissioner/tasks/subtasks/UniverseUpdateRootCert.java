@@ -105,17 +105,30 @@ public class UniverseUpdateRootCert extends UniverseTaskBase {
             FileUtils.write(multiCertFile, newRootCertContent, Charset.defaultCharset());
             FileUtils.write(multiCertFile, oldRootCertContent, Charset.defaultCharset(), true);
 
-            File newCertKeyFile = new File(newRootCert.privateKey);
-            String newCertKeyContent =
-                FileUtils.readFileToString(newCertKeyFile, Charset.defaultCharset());
-            File tempCertKeyFile =
-                new File(
-                    oldRootCertFile.getParent()
-                        + File.separator
-                        + String.format(MULTI_ROOT_CERT_KEY, universeDetails.rootCA));
-            FileUtils.write(tempCertKeyFile, newCertKeyContent, Charset.defaultCharset());
+            if (newRootCert.privateKey != null) {
+              File newCertKeyFile = new File(newRootCert.privateKey);
+              String newCertKeyContent =
+                  FileUtils.readFileToString(newCertKeyFile, Charset.defaultCharset());
+              File tempCertKeyFile =
+                  new File(
+                      oldRootCertFile.getParent()
+                          + File.separator
+                          + String.format(MULTI_ROOT_CERT_KEY, universeDetails.rootCA));
+              FileUtils.write(tempCertKeyFile, newCertKeyContent, Charset.defaultCharset());
+              multiCert.privateKey = tempCertKeyFile.getAbsolutePath();
+            } else {
+              multiCert.privateKey = null;
+            }
 
-            multiCert.privateKey = tempCertKeyFile.getAbsolutePath();
+            // If certs rotation happening between different cert types:
+            // SelfSigned -> HCVault or HCVault -> SelfSigned or HCVault -> HCVault
+            // We should also update certConfigType and customCertInfo of multiCert
+            // such that appropriate server certs are generated
+            if (oldRootCert.customCertInfo != null || newRootCert.customCertInfo != null) {
+              multiCert.certType = newRootCert.certType;
+              multiCert.customCertInfo = newRootCert.customCertInfo;
+            }
+
             multiCert.update();
           }
         }

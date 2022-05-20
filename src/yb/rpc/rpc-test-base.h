@@ -132,7 +132,6 @@ class GenericCalculatorService : public ServiceIf {
 };
 
 struct MessengerOptions {
-  MessengerOptions() = delete;
   int n_reactors;
   std::chrono::milliseconds keep_alive_timeout;
   int num_connections_to_server = -1;
@@ -162,9 +161,9 @@ class TestServer {
   Messenger* messenger() const { return messenger_.get(); }
   ServicePool& service_pool() const { return *service_pool_; }
 
-  CHECKED_STATUS Start();
+  Status Start();
 
-  CHECKED_STATUS RegisterService(std::unique_ptr<ServiceIf> service);
+  Status RegisterService(std::unique_ptr<ServiceIf> service);
 
  private:
   std::unique_ptr<Messenger> messenger_;
@@ -191,7 +190,7 @@ class RpcTestBase : public YBTest {
       const string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
 
-  CHECKED_STATUS DoTestSyncCall(Proxy* proxy, const RemoteMethod *method);
+  Status DoTestSyncCall(Proxy* proxy, const RemoteMethod *method);
 
   void DoTestSidecar(Proxy* proxy,
                      std::vector<size_t> sizes,
@@ -215,7 +214,7 @@ class RpcTestBase : public YBTest {
 
   // Start a simple socket listening on a local port, returning the address.
   // This isn't an RPC server -- just a plain socket which can be helpful for testing.
-  CHECKED_STATUS StartFakeServer(Socket *listen_sock, HostPort* listen_hostport);
+  Status StartFakeServer(Socket *listen_sock, HostPort* listen_hostport);
 
   Messenger* server_messenger() const { return server_->messenger(); }
   TestServer& server() const { return *server_; }

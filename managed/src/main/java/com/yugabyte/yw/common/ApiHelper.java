@@ -50,13 +50,13 @@ public class ApiHelper {
 
   public JsonNode postRequest(String url, JsonNode data, Map<String, String> headers) {
     WSRequest request = requestWithHeaders(url, headers);
-    CompletionStage<JsonNode> jsonPromise = request.post(data).thenApply(WSResponse::asJson);
+    CompletionStage<String> jsonPromise = request.post(data).thenApply(WSResponse::getBody);
     return handleJSONPromise(jsonPromise);
   }
 
   public JsonNode putRequest(String url, JsonNode data, Map<String, String> headers) {
     WSRequest request = requestWithHeaders(url, headers);
-    CompletionStage<JsonNode> jsonPromise = request.put(data).thenApply(WSResponse::asJson);
+    CompletionStage<String> jsonPromise = request.put(data).thenApply(WSResponse::getBody);
     return handleJSONPromise(jsonPromise);
   }
 
@@ -115,13 +115,14 @@ public class ApiHelper {
         request.setQueryParameter(entry.getKey(), entry.getValue());
       }
     }
-    CompletionStage<JsonNode> jsonPromise = request.get().thenApply(WSResponse::asJson);
+    CompletionStage<String> jsonPromise = request.get().thenApply(WSResponse::getBody);
     return handleJSONPromise(jsonPromise);
   }
 
-  private JsonNode handleJSONPromise(CompletionStage<JsonNode> jsonPromise) {
+  private JsonNode handleJSONPromise(CompletionStage<String> jsonPromise) {
     try {
-      return jsonPromise.toCompletableFuture().get();
+      String jsonString = jsonPromise.toCompletableFuture().get();
+      return Json.parse(jsonString);
     } catch (InterruptedException | ExecutionException e) {
       return ApiResponse.errorJSON(e.getMessage());
     }
@@ -172,8 +173,8 @@ public class ApiHelper {
       List<Http.MultipartFormData.Part<Source<ByteString, ?>>> partsList) {
     WSRequest request = wsClient.url(url);
     headers.forEach(request::addHeader);
-    CompletionStage<JsonNode> post =
-        request.post(Source.from(partsList)).thenApply(WSResponse::asJson);
+    CompletionStage<String> post =
+        request.post(Source.from(partsList)).thenApply(WSResponse::getBody);
     return handleJSONPromise(post);
   }
 }

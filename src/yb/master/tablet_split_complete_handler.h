@@ -19,7 +19,7 @@
 
 #include "yb/common/entity_ids.h"
 
-#include "yb/master/catalog_entity_info.h"
+#include "yb/master/tablet_split_fwd.h"
 
 namespace yb {
 namespace master {
@@ -27,8 +27,7 @@ namespace master {
 class TabletSplitCompleteHandlerIf {
  public:
   virtual ~TabletSplitCompleteHandlerIf() {}
-  virtual void ProcessSplitTabletResult(const Status& status,
-                                        const TableId& consumer_table_id,
+  virtual void ProcessSplitTabletResult(const TableId& consumer_table_id,
                                         const SplitTabletIds& split_tablet_ids) = 0;
 };
 

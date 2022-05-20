@@ -2,14 +2,13 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 
-import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -21,9 +20,11 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import play.libs.Json;
 
@@ -43,7 +44,7 @@ public class RestoreManagerYb extends DevopsBase {
     Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
-    UniverseDefinitionTaskParams.UserIntent userIntent = primaryCluster.userIntent;
+    UserIntent userIntent = primaryCluster.userIntent;
     Provider provider = Provider.get(region.provider.uuid);
 
     String accessKeyCode = userIntent.accessKeyCode;
@@ -52,6 +53,7 @@ public class RestoreManagerYb extends DevopsBase {
     Map<String, String> extraVars = region.provider.getUnmaskedConfig();
     Map<String, String> namespaceToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
+    Map<String, String> ipToSshKeyPath = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
     if (region.provider.code.equals("kubernetes")) {
@@ -59,6 +61,20 @@ public class RestoreManagerYb extends DevopsBase {
       namespaceToConfig =
           PlacementInfoUtil.getConfigPerNamespace(
               pi, universe.getUniverseDetails().nodePrefix, provider);
+    } else {
+      // Populate the map so that we use the correct SSH Keys for the different
+      // nodes in different clusters.
+      for (Cluster cluster : universe.getUniverseDetails().clusters) {
+        UserIntent clusterUserIntent = cluster.userIntent;
+        Provider clusterProvider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+        AccessKey accessKeyForCluster =
+            AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
+        Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
+        for (NodeDetails nodeInCluster : nodesInCluster) {
+          ipToSshKeyPath.put(
+              nodeInCluster.cloudInfo.private_ip, accessKeyForCluster.getKeyInfo().privateKey);
+        }
+      }
     }
 
     List<NodeDetails> tservers = universe.getTServers();
@@ -161,6 +177,7 @@ public class RestoreManagerYb extends DevopsBase {
         provider,
         namespaceToConfig,
         nodeToNodeTlsEnabled,
+        ipToSshKeyPath,
         commandArgs);
     // Update env vars with customer config data after provider config to make sure the correct
     // credentials are used.
@@ -215,6 +232,7 @@ public class RestoreManagerYb extends DevopsBase {
       Provider provider,
       Map<String, String> namespaceToConfig,
       boolean nodeToNodeTlsEnabled,
+      Map<String, String> ipToSshKeyPath,
       List<String> commandArgs) {
 
     BackupStorageInfo backupStorageInfo = restoreBackupParams.backupStorageInfoList.get(0);
@@ -226,6 +244,10 @@ public class RestoreManagerYb extends DevopsBase {
       commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
       commandArgs.add("--ssh_key_path");
       commandArgs.add(accessKey.getKeyInfo().privateKey);
+      if (!ipToSshKeyPath.isEmpty()) {
+        commandArgs.add("--ip_to_ssh_key_path");
+        commandArgs.add(Json.stringify(Json.toJson(ipToSshKeyPath)));
+      }
     }
     commandArgs.add("--backup_location");
     commandArgs.add(backupStorageInfo.storageLocation);
@@ -243,6 +265,12 @@ public class RestoreManagerYb extends DevopsBase {
     commandArgs.add(restoreBackupParams.actionType.name().toLowerCase());
     if (restoreBackupParams.enableVerboseLogs) {
       commandArgs.add("--verbose");
+    }
+    if (restoreBackupParams.useTablespaces) {
+      commandArgs.add("--use_tablespaces");
+    }
+    if (restoreBackupParams.disableChecksum) {
+      commandArgs.add("--disable_checksums");
     }
   }
 

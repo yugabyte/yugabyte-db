@@ -1,7 +1,7 @@
 ---
-title: Enable Yugabyte Platform authentication via LDAP
-headerTitle: Enable Yugabyte Platform authentication via LDAP
-description: Use LDAP to enable login to Yugabyte Platform.
+title: Enable YugabyteDB Anywhere authentication via LDAP
+headerTitle: Enable YugabyteDB Anywhere authentication via LDAP
+description: Use LDAP to enable login to YugabyteDB Anywhere.
 linkTitle: Authenticate with LDAP
 menu:
   preview:
@@ -16,15 +16,15 @@ LDAP provides means for querying directory services. A directory typically store
 
 LDAP authentication is similar to a direct password authentication, except that it employs the LDAP protocol to verify the password. This means that only users who already exist in the database and have appropriate permissions can be authenticated via LDAP.
 
-Yugabyte Platform's integration with LDAP enables you to use your LDAP server for authentication purposes instead of having to create user accounts on Yugabyte Platform.
+YugabyteDB Anywhere's integration with LDAP enables you to use your LDAP server for authentication purposes instead of having to create user accounts on YugabyteDB Anywhere.
 
-Since Yugabyte Platform and the LDAP server are synchronized during login, Yugabyte Platform always uses the up-to-date credentials and roles information, such as role and password changes, as well as removal of users deleted in the LDAP server.
+Since YugabyteDB Anywhere and the LDAP server are synchronized during login, YugabyteDB Anywhere always uses the up-to-date credentials and roles information, such as role and password changes, as well as removal of users deleted in the LDAP server.
 
-If configured by the LDAP server, Yugabyte Platform can prevent the user from being able to change their password.
+If configured by the LDAP server, YugabyteDB Anywhere can prevent the user from being able to change their password.
 
-## Use the Yugabyte Platform UI Console
+## Use the YugabyteDB Anywhere UI
 
-You can use the Yugabyte Platform UI console to enable LDAP authentication for Yugabyte Platform login, as follows:
+You can use the YugabyteDB Anywhere UI to enable LDAP authentication for YugabyteDB Anywhere login, as follows:
 
 - Navigate to **Admin > User Management > User Authentication**.
 
@@ -32,12 +32,12 @@ You can use the Yugabyte Platform UI console to enable LDAP authentication for Y
 
   ![LDAP authentication](/images/yp/ldap-auth-1.png)<br><br>
 
-  With the exception of **LDAP URL**, the description of the preceding settings is provided in [Use the Yugabyte Platform API](#use-the-yugabyte-platform-ui). The **LDAP URL** field value represents a combination of the `ldap_url` and `ldap_port` values separated by a colon, as per the following example:<br>
+  With the exception of **LDAP URL**, the description of the preceding settings is provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api). The **LDAP URL** field value represents a combination of the `ldap_url` and `ldap_port` values separated by a colon, as per the following example:<br>
   `0.0.0.0:9000`
 
-## Use the Yugabyte Platform API
+## Use the YugabyteDB Anywhere API
 
-To enable LDAP authentication for Yugabyte Platform login, you can perform a number of runtime configurations to specify the following:
+To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a number of runtime configurations to specify the following:
 
 - LDAP usage `yb.security.ldap.use_ldap`, set to `true`, as follows:
 
@@ -96,7 +96,7 @@ To enable LDAP authentication for Yugabyte Platform login, you can perform a num
 
   `CN=`
 
-  <br>Note that Yugabyte Platform combines `ldap_basedn` and `ldap_dn_prefix` with the username provided during login to query the LDAP server. `ldap_basedn` and `ldap_dn_prefix` should be set accordingly.
+  <br>Note that YugabyteDB Anywhere combines `ldap_basedn` and `ldap_dn_prefix` with the username provided during login to query the LDAP server. `ldap_basedn` and `ldap_dn_prefix` should be set accordingly.
 
 - The universally unique identifier (UUID) `yb.security.ldap.ldap_customeruuid`, if you have a multi-tenant setup, as follows:
 
@@ -110,7 +110,7 @@ To enable LDAP authentication for Yugabyte Platform login, you can perform a num
 
   <br>Replace `[UUID]` with the actual value.<br>
 
-  If the UUID is not specified, then single-tenant is assumed by Yugabyte Platform.
+  If the UUID is not specified, then single-tenant is assumed by YugabyteDB Anywhere.
 
 - SSL usage with LDAP `yb.security.ldap.enable_ldaps`, set to `true` or `false` (default), as follows:
 
@@ -122,7 +122,7 @@ To enable LDAP authentication for Yugabyte Platform login, you can perform a num
   --data-raw 'true'
   ```
 
-  <br>If the port is configured for an SSL connection, then you can enable SSL when you configure the LDAP server on Yugabyte Platform.
+  <br>If the port is configured for an SSL connection, then you can enable SSL when you configure the LDAP server on YugabyteDB Anywhere.
 
 - TLS usage with LDAP `yb.security.ldap.enable_ldap_start_tls`, set to `true` or `false` (default), as follows:
 
@@ -134,15 +134,15 @@ To enable LDAP authentication for Yugabyte Platform login, you can perform a num
   --data-raw 'true'
   ```
 
-  <br>If the port is configured for a TLS connection, then you can enable StartTLS when you configure the LDAP server on Yugabyte Platform.
+  <br>If the port is configured for a TLS connection, then you can enable StartTLS when you configure the LDAP server on YugabyteDB Anywhere.
 
   By default, if neither `ldap.enable_ldaps` or `ldap.enable_ldap_start_tls` is enabled, the connection will be unsecured.
 
-When configured, Yugabyte Platform users are able to login by specifying the common name of the user and the password to bind to the LDAP server.
+When configured, YugabyteDB Anywhere users are able to login by specifying the common name of the user and the password to bind to the LDAP server.
 
 For more information, see [Update a configuration key](https://yugabyte.stoplight.io/docs/yugabyte-platform/b3A6MTg5NDc2OTY-update-a-configuration-key).
 
-In addition to the preceding parameters, you may choose to specify parameters for the service account credentials. This would be helpful in certain scenarios. For example, the Windows Active Directory (AD) server does not typically provide regular users with query permissions for the LDAP server. Setting service account credentials would enable these users to query the LDAP server ([the `yugabytePlatformRole` attribute](#define-the-yugabyte-platform-role) would be read and set accordingly). The service account should have enough permissions to query the LDAP server, find users, and read the user attributes.
+In addition to the preceding parameters, you may choose to specify parameters for the service account credentials. This would be helpful in certain scenarios. For example, the Windows Active Directory (AD) server does not typically provide regular users with query permissions for the LDAP server. Setting service account credentials would enable these users to query the LDAP server ([the `yugabytePlatformRole` attribute](#define-the-yugabytedb-anywhere-role) would be read and set accordingly). The service account should have enough permissions to query the LDAP server, find users, and read the user attributes.
 
 The following are the runtime configurations to specify:
 
@@ -170,10 +170,10 @@ The following are the runtime configurations to specify:
 
   <br>Replace `[SERVICE ACCOUNT PASSWORD]` with the actual value.<br>
 
-## Define the Yugabyte Platform Role
+## Define the YugabyteDB Anywhere role
 
-You need to define a Yugabyte Platform-specific role for each user on your LDAP server by setting the `yugabytePlatformRole` annotation. The value set for this annotation is read during the Yugabyte Platform login. Note that if the value is modified on the LDAP server, the change is propagated to Yugabyte Platform and automatically updated during login. Password updates are also automatically handled.
+You need to define a YugabyteDB Anywhere-specific role for each user on your LDAP server by setting the `yugabytePlatformRole` annotation. The value set for this annotation is read during the YugabyteDB Anywhere login. Note that if the value is modified on the LDAP server, the change is propagated to YugabyteDB Anywhere and automatically updated during login. Password updates are also automatically handled.
 
 If the role is not specified, users are created with ReadOnly privileges by default, which can be modified by the local super admin.
 
-When LDAP is set up on a Windows Active Directory (AD) server, the user is expected to have permissions to query the user's properties from that server. If the permissions have not been granted, Yugabyte Platform defaults its role to ReadOnly, which can later be modified by the local super admin.
+When LDAP is set up on a Windows Active Directory (AD) server, the user is expected to have permissions to query the user's properties from that server. If the permissions have not been granted, YugabyteDB Anywhere defaults its role to ReadOnly, which can later be modified by the local super admin.

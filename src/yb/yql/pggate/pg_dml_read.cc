@@ -58,7 +58,7 @@ auto Find(const boost::unordered_map<Key, Value>& map, const CompatibleKey& key)
 
 class DocKeyBuilder {
  public:
-  CHECKED_STATUS Prepare(
+  Status Prepare(
       const std::vector<docdb::KeyEntryValue>& hashed_components,
       const LWQLValuePB*const* hashed_values,
       const PartitionSchema& partition_schema) {
@@ -96,8 +96,9 @@ using std::make_shared;
 //--------------------------------------------------------------------------------------------------
 
 PgDmlRead::PgDmlRead(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
-                     const PgObjectId& index_id, const PgPrepareParameters *prepare_params)
-    : PgDml(std::move(pg_session), table_id, index_id, prepare_params) {
+                     const PgObjectId& index_id, const PgPrepareParameters *prepare_params,
+                     bool is_region_local)
+    : PgDml(std::move(pg_session), table_id, index_id, prepare_params, is_region_local) {
 }
 
 PgDmlRead::~PgDmlRead() {
@@ -595,16 +596,14 @@ Status PgDmlRead::AddRowLowerBound(YBCPgStatement handle,
 
 Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params) {
   const auto ybctids = VERIFY_RESULT(BuildYbctidsFromPrimaryBinds());
-  std::vector<Slice> ybctids_as_slice;
-  ybctids_as_slice.reserve(ybctids.size());
-  for (const auto& ybctid : ybctids) {
-    ybctids_as_slice.emplace_back(ybctid);
-  }
   expr_binds_.clear();
   read_req_->mutable_partition_column_values()->clear();
   read_req_->mutable_range_column_values()->clear();
   RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
-  return doc_op_->PopulateDmlByYbctidOps(ybctids_as_slice);
+  auto i = ybctids.begin();
+  return doc_op_->PopulateDmlByYbctidOps(make_lw_function([&i, end = ybctids.end()] {
+    return i != end ? Slice(*i++) : Slice();
+  }));
 }
 
 // Function builds vector of ybctids from primary key binds.
