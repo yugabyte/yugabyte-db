@@ -9,7 +9,7 @@ script_name="filtered_logs.sh"
 script_name_regex="filtered_logs"
 grep_regex_file="$output_file-regex"
 temp_file="$output_file-temp"
-log_line_start_pat="YW [0-9]{4}-[0-9]{2}-[0-9]{2} "
+log_line_start_pat="YW [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z "
 
 # temporary files to stores log lines
 echo "$script_name - log_dir: $log_dir"
