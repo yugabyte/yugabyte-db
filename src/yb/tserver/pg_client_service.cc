@@ -177,7 +177,7 @@ class PgClientServiceImpl::Impl {
     check_expired_sessions_.Shutdown();
   }
 
-  CHECKED_STATUS Heartbeat(
+  Status Heartbeat(
       const PgHeartbeatRequestPB& req, PgHeartbeatResponsePB* resp, rpc::RpcContext* context) {
     if (req.session_id()) {
       return ResultToStatus(DoGetSession(req.session_id()));
@@ -195,7 +195,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS OpenTable(
+  Status OpenTable(
       const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext* context) {
     if (req.invalidate_cache_time_us()) {
       table_cache_.InvalidateAll(CoarseTimePoint() + req.invalidate_cache_time_us() * 1us);
@@ -208,7 +208,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS GetDatabaseInfo(
+  Status GetDatabaseInfo(
       const PgGetDatabaseInfoRequestPB& req, PgGetDatabaseInfoResponsePB* resp,
       rpc::RpcContext* context) {
     RETURN_NOT_OK(client().GetNamespaceInfo(
@@ -218,7 +218,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS IsInitDbDone(
+  Status IsInitDbDone(
       const PgIsInitDbDoneRequestPB& req, PgIsInitDbDoneResponsePB* resp,
       rpc::RpcContext* context) {
     HostPort master_leader_host_port = client().GetMasterLeaderAddress();
@@ -245,7 +245,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS ReserveOids(
+  Status ReserveOids(
       const PgReserveOidsRequestPB& req, PgReserveOidsResponsePB* resp, rpc::RpcContext* context) {
     uint32_t begin_oid, end_oid;
     RETURN_NOT_OK(client().ReservePgsqlOids(
@@ -257,7 +257,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS GetCatalogMasterVersion(
+  Status GetCatalogMasterVersion(
       const PgGetCatalogMasterVersionRequestPB& req,
       PgGetCatalogMasterVersionResponsePB* resp,
       rpc::RpcContext* context) {
@@ -267,14 +267,14 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS CreateSequencesDataTable(
+  Status CreateSequencesDataTable(
       const PgCreateSequencesDataTableRequestPB& req,
       PgCreateSequencesDataTableResponsePB* resp,
       rpc::RpcContext* context) {
     return tserver::CreateSequencesDataTable(&client(), context->GetClientDeadline());
   }
 
-  CHECKED_STATUS TabletServerCount(
+  Status TabletServerCount(
       const PgTabletServerCountRequestPB& req, PgTabletServerCountResponsePB* resp,
       rpc::RpcContext* context) {
     int result = 0;
@@ -283,7 +283,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS ListLiveTabletServers(
+  Status ListLiveTabletServers(
       const PgListLiveTabletServersRequestPB& req, PgListLiveTabletServersResponsePB* resp,
       rpc::RpcContext* context) {
     auto tablet_servers = VERIFY_RESULT(client().ListLiveTabletServers(req.primary_only()));
@@ -293,7 +293,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS ValidatePlacement(
+  Status ValidatePlacement(
       const PgValidatePlacementRequestPB& req, PgValidatePlacementResponsePB* resp,
       rpc::RpcContext* context) {
     master::ReplicationInfoPB replication_info;
@@ -340,7 +340,7 @@ class PgClientServiceImpl::Impl {
   }
 
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
-  CHECKED_STATUS method( \
+  Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
       BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
       rpc::RpcContext* context) { \
@@ -407,7 +407,7 @@ class PgClientServiceImpl::Impl {
     ScheduleCheckExpiredSessions(now);
   }
 
-  CHECKED_STATUS DoPerform(
+  Status DoPerform(
       const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
     return VERIFY_RESULT(GetSession(req))->Perform(req, resp, context);
   }

@@ -83,15 +83,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Removing)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
-      boolean instanceAlive = false;
-      try {
-        instanceAlive = instanceExists(taskParams());
-      } catch (Exception e) {
-        log.info(
-            "Instance {} in universe {} not found, assuming dead",
-            taskParams().nodeName,
-            universe.name);
-      }
+      boolean instanceAlive = instanceExists(taskParams());
 
       if (instanceAlive) {
         // Remove the master on this node from master quorum and update its state from YW DB,

@@ -429,7 +429,7 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
                       SortingType(pb.sorting_type()), pb.pg_type_oid());
 }
 
-CHECKED_STATUS ColumnPBsToColumnTuple(
+Status ColumnPBsToColumnTuple(
     const RepeatedPtrField<ColumnSchemaPB>& column_pbs,
     vector<ColumnSchema>* columns , vector<ColumnId>* column_ids, int* num_key_columns) {
   columns->reserve(column_pbs.size());

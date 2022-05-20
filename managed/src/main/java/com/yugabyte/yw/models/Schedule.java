@@ -210,7 +210,7 @@ public class Schedule extends Model {
     this.cronExpression = cronExpression;
   }
 
-  public void setCronExperssionandTaskParams(String cronExpression, ITaskParams params) {
+  public void setCronExpressionAndTaskParams(String cronExpression, ITaskParams params) {
     this.cronExpression = cronExpression;
     this.taskParams = Json.toJson(params);
     save();
@@ -412,9 +412,11 @@ public class Schedule extends Model {
     ExpressionList<Schedule> query =
         find.query().setPersistenceContextScope(PersistenceContextScope.QUERY).where();
     query.eq("customer_uuid", filter.getCustomerUUID());
-
     appendInClause(query, "status", filter.getStatus());
     appendInClause(query, "task_type", filter.getTaskTypes());
+    if (!CollectionUtils.isEmpty(filter.getUniverseUUIDList())) {
+      appendInClause(query, "owner_uuid", filter.getUniverseUUIDList());
+    }
     return query;
   }
 
@@ -457,7 +459,7 @@ public class Schedule extends Model {
             .frequencyTimeUnit(schedule.frequencyTimeUnit)
             .taskType(schedule.taskType)
             .status(schedule.status)
-            .cronExperssion(schedule.cronExpression)
+            .cronExpression(schedule.cronExpression)
             .runningState(schedule.runningState)
             .failureCount(schedule.failureCount);
 
@@ -537,13 +539,11 @@ public class Schedule extends Model {
     }
     BackupInfo backupInfo =
         BackupInfo.builder()
-            .kmsConfigUUID(params.kmsConfigUUID)
             .universeUUID(params.universeUUID)
             .keyspaceList(keySpaceResponseList)
             .storageConfigUUID(params.storageConfigUUID)
             .backupType(params.backupType)
             .timeBeforeDelete(params.timeBeforeDelete)
-            .encryptionAtRestConfig(params.encryptionAtRestConfig)
             .fullBackup(CollectionUtils.isEmpty(params.keyspaceTableList))
             .useTablespaces(params.useTablespaces)
             .expiryTimeUnit(params.expiryTimeUnit)
@@ -570,14 +570,12 @@ public class Schedule extends Model {
     }
     BackupInfo backupInfo =
         BackupInfo.builder()
-            .kmsConfigUUID(params.kmsConfigUUID)
             .universeUUID(params.universeUUID)
             .keyspaceList(keySpaceResponseList)
             .storageConfigUUID(params.storageConfigUUID)
             .backupType(params.backupType)
             .timeBeforeDelete(params.timeBeforeDelete)
             .expiryTimeUnit(params.expiryTimeUnit)
-            .encryptionAtRestConfig(params.encryptionAtRestConfig)
             .fullBackup(StringUtils.isEmpty(params.getKeyspace()))
             .useTablespaces(params.useTablespaces)
             .build();

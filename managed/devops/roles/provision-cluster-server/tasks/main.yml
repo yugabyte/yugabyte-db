@@ -77,9 +77,8 @@
   with_items: "{{ mount_points.split(',') }}"
 
 - include_tasks: "setup-cgroup.yml"
-  # setting up cgroup on YB DB nodes requires installing additional packages from external repos.
+  # Setting up cgroup on YB DB nodes requires installing additional packages from external repos.
   when: not air_gap and pg_max_mem_mb > 0
-  tags: yb-prebuilt-ami
 
 # Give yugabyte user sudo access to start/stop/restart master and tserver
 - name: Add yugabyte sudo user without password for metric collection operations

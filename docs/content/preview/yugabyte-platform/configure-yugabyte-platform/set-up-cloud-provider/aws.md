@@ -75,13 +75,13 @@ To run YugabyteDB nodes on AWS, you need to supply your cloud provider credentia
 
 ## Configure AWS
 
-Configuring YugabyteDB Anywhere to deploy universes in AWS provides several options that you can customize, as per the following illustration:
+You configure AWS by completing the fields of the page shown in the following illustration:
 
 ![AWS Empty Provider](/images/ee/aws-setup/aws_provider_empty.png)
 
 ### Provider name
 
-Provider name is an internal tag used for organizing your providers, so you know where you want to deploy your YugabyteDB universes.
+Provider name is an internal tag used for organizing cloud providers.
 
 ### Credentials
 
@@ -90,7 +90,7 @@ In order to deploy YugabyteDB nodes in your AWS account, YugabyteDB Anywhere req
 - Directly provide your [AWS Access Key ID and Secret Key](http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html).
 - Attach an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YugabyteDB Anywhere VM in the **EC2** tab. For more information, see [Deploy the YugabyteDB universe using an IAM role](../../../install-yugabyte-platform/prepare-environment/aws/#deploy-the-yugabytedb-universe-using-an-iam-role).
 
-### SSH Key Pairs
+### SSH key pairs
 
 In order to be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YugabyteDB Anywhere requires SSH access. The following are two ways to provide SSH access:
 
@@ -102,6 +102,18 @@ If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy mu
 ### Hosted zones
 
 Integrating with hosted zones can make YugabyteDB universes easily discoverable. YugabyteDB Anywhere can integrate with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, which will be updated as you change the set of nodes to include all relevant ones for each of your universes.
+
+### VPC setup
+
+You can customize your network, including the virtual network. YugabyteDB Anywhere allows you to create a new or select an existing VPC.
+
+### NTP setup
+
+You can customize the Network Time Protocol server, as follows:
+
+- Select **Use provider’s NTP server** to enable cluster nodes to connect to the AWS internal time servers. For more information, consult the AWS documentation such as [Keeping time with Amazon time sync service](https://aws.amazon.com/blogs/aws/keeping-time-with-amazon-time-sync-service/). 
+- Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers. 
+- Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image. Note that **Use AWS Time Sync** must be disabled during the universe creation; otherwise **Don’t set up NTP** will be overridden.
 
 ## Global deployment
 
@@ -149,13 +161,15 @@ In addition to CentOS, YugabyteDB Anywhere allows you to bring up universes on t
 
 ## Marketplace acceptance
 
-If you did not provide your own custom AMI IDs, before you can proceed to creating a universe, verify that you can actually spin up EC2 instances with the default AMIs in YugabyteDB Anywhere. The reference AMIs come from a [Marketplace CentOS 7 Product](https://aws.amazon.com/marketplace/pp/B00O7WM7QW/). While logged into your AWS account, navigate to that link and click **Continue to Subscribe**.
+If you did not provide your own custom AMI IDs, before you can proceed to creating a universe, verify that you can actually spin up EC2 instances with the default AMIs in YugabyteDB Anywhere.
 
-If you are not already subscribed and have not accepted the Terms and Conditions, then you should see the following message:
+While logged into your AWS account, navigate to the AWS site [Marketplace CentOS 7 product](https://aws.amazon.com/marketplace/pp/B00O7WM7QW/) and click **Continue to Subscribe**.
+
+If you are not already subscribed and have not accepted the **Terms and Conditions**, then you should see the following message:
 
 ![Marketplace accept](/images/ee/aws-setup/marketplace-accept.png)
 
-If so, click **Accept Terms** and wait for the page to switch to a successful state. Once the operation completes, or if you previously subscribed and accepted the terms, you should see the following:
+If that is the case, click **Accept Terms** and wait for the page to switch to a successful state. Once the operation completes, or if you previously subscribed and accepted the terms, you should see the following:
 
 ![Marketplace success](/images/ee/aws-setup/marketplace-success.png)
 

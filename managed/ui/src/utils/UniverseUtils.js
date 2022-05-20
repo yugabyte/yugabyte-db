@@ -2,6 +2,7 @@
 
 import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from './ObjectUtils';
 import { PROVIDER_TYPES, IN_DEVELOPMENT_MODE } from '../config';
+import _ from 'lodash';
 
 export function isNodeRemovable(nodeState) {
   return nodeState === 'To Be Added';
@@ -140,6 +141,19 @@ export function isKubernetesUniverse(currentUniverse) {
   );
 }
 
+/**
+ * Returns an array of unique regions in the universe
+ */
+export const getUniverseRegions = (clusters) => {
+  const primaryCluster = getPrimaryCluster(clusters);
+  const readOnlyCluster = getReadOnlyCluster(clusters);
+
+  const universeRegions = getPlacementRegions(primaryCluster).concat(
+    getPlacementRegions(readOnlyCluster)
+  );
+  return _.uniqBy(universeRegions, 'uuid');
+};
+
 export const isUniverseType = (universe, type) => {
   const cluster = getPrimaryCluster(universe?.universeDetails?.clusters);
   return cluster?.userIntent?.providerType === type;
@@ -150,7 +164,7 @@ export const isOnpremUniverse = (universe) => {
 };
 
 export const isPausableUniverse = (universe) => {
-  return isUniverseType(universe, 'aws') ||  isUniverseType(universe, 'gcp');
+  return isUniverseType(universe, 'aws') || isUniverseType(universe, 'gcp');
 };
 
 // Reads file and passes content into Promise.resolve

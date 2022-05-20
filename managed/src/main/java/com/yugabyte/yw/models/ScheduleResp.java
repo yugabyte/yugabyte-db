@@ -1,7 +1,6 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -21,7 +20,7 @@ public class ScheduleResp {
   int failureCount;
   TaskType taskType;
   State status;
-  String cronExperssion;
+  String cronExpression;
   String scheduleName;
   Date prevCompletedTask;
   Date nextExpectedTask;
@@ -34,12 +33,10 @@ public class ScheduleResp {
   @Value
   @Builder
   public static class BackupInfo {
-    EncryptionAtRestConfig encryptionAtRestConfig;
     boolean fullBackup;
     List<KeyspaceTablesList> keyspaceList;
     TableType backupType;
     UUID universeUUID;
-    UUID kmsConfigUUID;
     UUID storageConfigUUID;
     long timeBeforeDelete;
     boolean useTablespaces;

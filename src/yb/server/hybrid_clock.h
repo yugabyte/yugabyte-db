@@ -93,7 +93,7 @@ class HybridClock : public Clock {
   explicit HybridClock(PhysicalClockPtr clock);
   explicit HybridClock(const std::string& time_source);
 
-  CHECKED_STATUS Init() override;
+  Status Init() override;
 
   HybridTimeRange NowRange() override;
 

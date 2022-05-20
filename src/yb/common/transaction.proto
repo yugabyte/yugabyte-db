@@ -33,6 +33,8 @@ enum TransactionStatus {
 
   ABORTED = 8;
 
+  PROMOTED = 9;
+
   // All following entries are not used in RAFT, but as events between status tablet and involved
   // tablets:
   APPLYING = 20;

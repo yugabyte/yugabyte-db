@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -29,6 +30,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -216,11 +218,19 @@ public class NodeInstance extends Model {
   // TODO: this is a temporary hack until we manage to plumb through the node UUID through the task
   // framework.
   public static NodeInstance getByName(String name) {
+    return maybeGetByName(name)
+        .orElseThrow(() -> new RuntimeException("Expecting to find a node with name: " + name));
+  }
+
+  public static Optional<NodeInstance> maybeGetByName(String name) {
     List<NodeInstance> nodes = NodeInstance.find.query().where().eq("node_name", name).findList();
-    if (nodes == null || nodes.size() != 1) {
+    if (CollectionUtils.isEmpty(nodes)) {
+      return Optional.empty();
+    }
+    if (nodes.size() > 1) {
       throw new RuntimeException("Expecting to find a single node with name: " + name);
     }
-    return nodes.get(0);
+    return Optional.of(nodes.get(0));
   }
 
   public static NodeInstance create(UUID zoneUuid, NodeInstanceData formData) {

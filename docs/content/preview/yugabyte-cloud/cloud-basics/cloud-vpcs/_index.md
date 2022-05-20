@@ -49,13 +49,25 @@ VPC peering is not supported in free clusters.
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="./cloud-add-vpc-aws/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
+        <div class="title">Create a VPC network</div>
+      </div>
+      <div class="body">
+        Create a VPC network on AWS and GCP.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./cloud-add-vpc/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
         <div class="title">VPCs</div>
       </div>
       <div class="body">
-        Create and manage VPCs for your clusters.
+        Manage VPCs for your clusters.
       </div>
     </a>
   </div>
@@ -67,19 +79,7 @@ VPC peering is not supported in free clusters.
         <div class="title">Peering Connections</div>
       </div>
       <div class="body">
-        Create and manage peering connections to application VPCs.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./cloud-configure-provider/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="title">Configure cloud provider</div>
-      </div>
-      <div class="body">
-        Confirm pending peering connections in AWS and GCP.
+        Manage peering connections to application VPCs.
       </div>
     </a>
   </div>

@@ -183,6 +183,18 @@ public class TaskInfo extends Model {
     return details;
   }
 
+  @JsonIgnore
+  public String getErrorMessage() {
+    if (details == null || taskState == State.Success) {
+      return null;
+    }
+    JsonNode node = details.get("errorString");
+    if (node == null || node.isNull()) {
+      return null;
+    }
+    return node.asText();
+  }
+
   public State getTaskState() {
     return taskState;
   }

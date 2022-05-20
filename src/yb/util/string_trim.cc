@@ -13,9 +13,10 @@
 
 #include "yb/util/string_trim.h"
 
+#include <limits>
+#include <regex>
 #include <sstream> // for istringstream
 #include <string>
-#include <regex>
 
 using std::string;
 using std::vector;

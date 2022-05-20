@@ -24,6 +24,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_PgClientService_Perform);
 DECLARE_uint64(ysql_session_max_batch_size);
 
 namespace yb {
@@ -38,9 +39,13 @@ class PgFKeyTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     PgMiniTestBase::SetUp();
+    const auto& tserver = *cluster_->mini_tablet_server(0)->server();
     read_rpc_watcher_ = std::make_unique<HistogramMetricWatcher>(
-        *cluster_->mini_tablet_server(0)->server(),
+        tserver,
         METRIC_handler_latency_yb_tserver_TabletServerService_Read);
+    perform_rpc_watcher_ = std::make_unique<HistogramMetricWatcher>(
+        tserver,
+        METRIC_handler_latency_yb_tserver_PgClientService_Perform);
   }
 
   size_t NumTabletServers() override {
@@ -48,6 +53,7 @@ class PgFKeyTest : public PgMiniTestBase {
   }
 
   std::unique_ptr<HistogramMetricWatcher> read_rpc_watcher_;
+  std::unique_ptr<HistogramMetricWatcher> perform_rpc_watcher_;
 };
 
 Status InsertItems(
@@ -168,6 +174,62 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(AddFKCorrectness)) {
 TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(AddFKCorrectnessOnTempTables)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(CheckAddFKCorrectness(&conn, true /* temp_tables */));
+}
+
+// Test checks the number of RPC in case of multiple FK on same table.
+TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(MultipleFKConstraintRPCCount)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE p1(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE p2(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE p3(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE child(k INT PRIMARY KEY, " \
+                                            "v1 INT REFERENCES p1(k), " \
+                                            "v2 INT REFERENCES p2(k), " \
+                                            "v3 INT REFERENCES p3(k))"));
+  ASSERT_OK(conn.Execute("INSERT INTO p1 VALUES(11), (12), (13)"));
+  ASSERT_OK(conn.Execute("INSERT INTO p2 VALUES(21), (22), (23)"));
+  ASSERT_OK(conn.Execute("INSERT INTO p3 VALUES(31), (32), (33)"));
+  // Warmup catalog cache to load info related for triggers before estimating RPC count.
+  ASSERT_OK(conn.Execute("INSERT INTO child VALUES(1, 11, 21, 31)"));
+  ASSERT_OK(conn.Execute("TRUNCATE child"));
+  const auto insert_fk_rpc_count = ASSERT_RESULT(perform_rpc_watcher_->Delta([&conn]() {
+    return conn.Execute(
+      "INSERT INTO child VALUES(1, 11, 21, 31), (2, 12, 22, 32), (3, 13, 23, 33)");
+  }));
+  // 2 perform RPC are expected as the first one is used for all write operations and
+  // the second one for all read operations (i.e. all FK checks)
+  ASSERT_EQ(insert_fk_rpc_count, 2);
+}
+
+// Test checks that insertion into table with large number of foreign keys doesn't fail.
+TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(InsertWithLargeNumberOfFK)) {
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr size_t fk_count = 3;
+  constexpr size_t insert_count = 100;
+  const auto parent_table_prefix = kPKTable + "_";
+  std::string fk_keys, insert_fk_columns;
+  fk_keys.reserve(255);
+  insert_fk_columns.reserve(255);
+  for (size_t i = 1; i <= fk_count; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0$1(k INT PRIMARY KEY)", parent_table_prefix, i));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0$1 SELECT s FROM generate_series(1, $2) AS s",
+        parent_table_prefix, i, insert_count));
+    if (!fk_keys.empty()) {
+      fk_keys += ", ";
+      insert_fk_columns += ", ";
+    }
+    fk_keys += Format("fk_$0 INT REFERENCES $1$0(k)", i, parent_table_prefix);
+    insert_fk_columns += "s";
+  }
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT PRIMARY KEY, $1)", kFKTable, fk_keys));
+  for (size_t i = 0; i < 50; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT $1 + s, $2 FROM generate_series(1, $3) AS s",
+      kFKTable, i * insert_count, insert_fk_columns, insert_count));
+  }
 }
 
 } // namespace pgwrapper

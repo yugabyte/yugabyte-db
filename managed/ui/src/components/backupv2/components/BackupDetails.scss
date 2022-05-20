@@ -20,7 +20,7 @@
 
   .side-panel__title {
     font-size: 16px;
-    padding: 20px 20px 20px 15px !important;
+    padding: 20px 20px 20px 30px !important;
     color: #000000 !important;
   }
 
@@ -44,40 +44,45 @@
       display: flex;
       justify-content: space-between;
       padding: 16px;
-      margin-bottom: 20px;
+      margin-bottom: 15px;
     }
 
     .details-rest {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       flex-wrap: wrap;
       margin: -10px 0 0 0;
       border-top: 1px solid $YB_LIGHT_GRAY_BORDER;
-      padding: 0px 16px 16px 16px;
+      padding: 16px;
+      column-gap: 50px;
+      row-gap: 12px;
 
-      div {
-        min-width: 150px;
-        margin-top: 10px;
+      & > div {
+        max-width: 200px;
       }
-
+      .flex-divider {
+        width: 100%;
+      }
       .details-storage-config {
-        flex: 0 0 100%;
+        max-width: fit-content !important;
+      }
+    }
 
-        .assign-config-msg {
-          margin-top: 8px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background: $YB_BANNER_WARNING_BACKGROUND;
-          padding: 5px 8px;
-          font-size: 12px;
-          border-radius: 4px;
-          button {
-            height: 30px;
-            padding: 7px 10px;
-            font-size: 12px;
-          }
-        }
+    .assign-config-msg {
+      margin: 0 16px 16px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: $YB_BANNER_WARNING_BACKGROUND;
+      padding: 5px 8px;
+      font-size: 12px;
+      border: 1px solid rgba(157, 108, 0, 0.3);
+      border-radius: 4px;
+
+      button {
+        height: 30px;
+        padding: 7px 10px;
+        font-size: 12px;
       }
     }
 
@@ -86,7 +91,7 @@
       font-size: 12px;
       line-height: 15px;
       color: #333333;
-      margin-bottom: 5px;
+      margin-bottom: 8px;
     }
   }
 

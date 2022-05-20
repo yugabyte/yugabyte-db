@@ -87,7 +87,7 @@ namespace docdb {
 namespace {
 
 // key should be valid prefix of doc key, ending with some complete pritimive value or group end.
-CHECKED_STATUS ApplyIntent(RefCntPrefix key,
+Status ApplyIntent(RefCntPrefix key,
                            const IntentTypeSet intent_types,
                            LockBatchEntries *keys_locked) {
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
@@ -248,6 +248,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const OperationKind operation_kind,
     const RowMarkType row_mark_type,
     bool transactional_table,
+    bool write_transaction_metadata,
     CoarseTimePoint deadline,
     PartialRangeKeyIntents partial_range_key_intents,
     SharedLockManager *lock_manager) {
@@ -257,7 +258,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
       doc_write_ops, read_pairs, isolation_level, operation_kind, row_mark_type,
       transactional_table, partial_range_key_intents));
   VLOG_WITH_FUNC(4) << "determine_keys_to_lock_result=" << determine_keys_to_lock_result.ToString();
-  if (determine_keys_to_lock_result.lock_batch.empty()) {
+  if (determine_keys_to_lock_result.lock_batch.empty() && !write_transaction_metadata) {
     LOG(ERROR) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
                << ", read pairs: " << yb::ToString(read_pairs);
     return STATUS(Corruption, "Empty lock batch");
@@ -339,13 +340,13 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
 
 namespace {
 
-CHECKED_STATUS NotEnoughBytes(size_t present, size_t required, const Slice& full) {
+Status NotEnoughBytes(size_t present, size_t required, const Slice& full) {
   return STATUS_FORMAT(
       Corruption, "Not enough bytes in external intents $0 while $1 expected, full: $2",
       present, required, full.ToDebugHexString());
 }
 
-CHECKED_STATUS PrepareApplyExternalIntentsBatch(
+Status PrepareApplyExternalIntentsBatch(
     HybridTime commit_ht,
     const Slice& original_input_value,
     rocksdb::WriteBatch* regular_batch,
@@ -388,7 +389,7 @@ CHECKED_STATUS PrepareApplyExternalIntentsBatch(
 
 // Reads all stored external intents for provided transactions and prepares batches that will apply
 // them into regular db and remove from intents db.
-CHECKED_STATUS PrepareApplyExternalIntents(
+Status PrepareApplyExternalIntents(
     ExternalTxnApplyState* apply_external_transactions,
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db,

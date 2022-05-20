@@ -88,10 +88,8 @@ constexpr int64_t kIntKey2 = 789123;
 
 }
 
-CHECKED_STATUS GetKeyEntryValue(const rocksdb::UserBoundaryValues &values,
-                                size_t index,
-                                KeyEntryValue *out);
-CHECKED_STATUS GetDocHybridTime(const rocksdb::UserBoundaryValues &values, DocHybridTime *out);
+Result<KeyEntryValue> TEST_GetKeyEntryValue(
+    const rocksdb::UserBoundaryValues& values, size_t index);
 
 YB_STRONGLY_TYPED_BOOL(InitMarkerExpired);
 YB_STRONGLY_TYPED_BOOL(UseIntermediateFlushes);
@@ -2892,7 +2890,7 @@ class DocDBTestBoundaryValues: public DocDBTestWrapper {
       rocksdb()->GetLiveFilesMetaData(&files);
       ASSERT_EQ(trackers.size(), files.size());
       sort(files.begin(), files.end(), [](const auto &lhs, const auto &rhs) {
-        return lhs.name < rhs.name;
+        return lhs.name_id < rhs.name_id;
       });
 
       for (size_t j = 0; j != trackers.size(); ++j) {
@@ -2900,24 +2898,15 @@ class DocDBTestBoundaryValues: public DocDBTestWrapper {
         const auto &smallest = file.smallest.user_values;
         const auto &largest = file.largest.user_values;
         {
-          auto &times = trackers[j].times;
-          DocHybridTime temp;
-          ASSERT_OK(GetDocHybridTime(smallest, &temp));
-          ASSERT_EQ(times.min, temp.hybrid_time());
-          ASSERT_OK(GetDocHybridTime(largest, &temp));
-          ASSERT_EQ(times.max, temp.hybrid_time());
-        }
-        {
           auto &key_ints = trackers[j].key_ints;
           auto &key_strs = trackers[j].key_strs;
-          KeyEntryValue temp;
-          ASSERT_OK(GetKeyEntryValue(smallest, 0, &temp));
+          KeyEntryValue temp = ASSERT_RESULT(TEST_GetKeyEntryValue(smallest, 0));
           ASSERT_EQ(KeyEntryValue(key_strs.min), temp);
-          ASSERT_OK(GetKeyEntryValue(largest, 0, &temp));
+          temp = ASSERT_RESULT(TEST_GetKeyEntryValue(largest, 0));
           ASSERT_EQ(KeyEntryValue(key_strs.max), temp);
-          ASSERT_OK(GetKeyEntryValue(smallest, 1, &temp));
+          temp = ASSERT_RESULT(TEST_GetKeyEntryValue(smallest, 1));
           ASSERT_EQ(KeyEntryValue::Int64(key_ints.min), temp);
-          ASSERT_OK(GetKeyEntryValue(largest, 1, &temp));
+          temp = ASSERT_RESULT(TEST_GetKeyEntryValue(largest, 1));
           ASSERT_EQ(KeyEntryValue::Int64(key_ints.max), temp);
         }
       }
@@ -3388,7 +3377,7 @@ SubDocKey(DocKey([], ["k1"]), ["s3", "s5"; HT{ physical: 10000 w: 1 }]) -> "v1";
       )#");
 }
 
-CHECKED_STATUS InsertToWriteBatchWithTTL(DocWriteBatch* dwb, const MonoDelta ttl) {
+Status InsertToWriteBatchWithTTL(DocWriteBatch* dwb, const MonoDelta ttl) {
   const DocKey doc_key(KeyEntryValues("k1"));
   KeyBytes encoded_doc_key(doc_key.Encode());
   QLValuePB subdoc;

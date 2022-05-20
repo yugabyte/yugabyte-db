@@ -36,12 +36,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.TimeZone;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import lombok.Getter;
 import org.apache.commons.codec.binary.Hex;
 import org.slf4j.Logger;
@@ -455,7 +454,7 @@ public class Util {
       RuntimeConfig<Universe> config, Map<String, String> configKeysMap) {
     configKeysMap.forEach(
         (key, value) -> {
-          config.setValue(key, value);
+          config.setValue(key, value, false);
         });
   }
 

@@ -1,3 +1,4 @@
+// Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
 // regarding copyright ownership.  The ASF licenses this file
@@ -1937,6 +1938,36 @@ TEST_F(MasterTest, TestNetworkErrorOnFirstRun) {
   FLAGS_TEST_simulate_port_conflict_error = false;
   // Restarting master should succeed.
   ASSERT_OK(mini_master_->Start());
+}
+
+TEST_F(MasterTest, TestMasterAddressInBroadcastAddress) {
+  // Test the scenario where master_address exists in broadcast_addresses
+  // but not in rpc_bind_addresses.
+  std::vector<std::string> master_addresses = {"127.0.0.51"};
+  std::vector<std::string> rpc_bind_addresses = {"127.0.0.52"};
+  std::vector<std::string> broadcast_addresses = {"127.0.0.51"};
+
+  TearDown();
+  mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master-test"),
+                                    AllocateFreePort(), AllocateFreePort(), 0));
+  mini_master_->SetCustomAddresses(
+      master_addresses, rpc_bind_addresses, broadcast_addresses);
+  ASSERT_OK(mini_master_->Start());
+}
+
+TEST_F(MasterTest, TestMasterAddressNotInRpcAndBroadcastAddress) {
+  // Test the scenario where master_address does not exist in either
+  // broadcast_addresses or rpc_bind_addresses.
+  std::vector<std::string> master_addresses = {"127.0.0.51"};
+  std::vector<std::string> rpc_bind_addresses = {"127.0.0.52"};
+  std::vector<std::string> broadcast_addresses = {"127.0.0.53"};
+
+  TearDown();
+  mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master-test"),
+                                    AllocateFreePort(), AllocateFreePort(), 0));
+  mini_master_->SetCustomAddresses(
+      master_addresses, rpc_bind_addresses, broadcast_addresses);
+  ASSERT_NOK(mini_master_->Start());
 }
 
 namespace {

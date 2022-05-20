@@ -45,24 +45,24 @@ class SystemTablet : public tablet::AbstractTablet {
     return nullptr;
   }
 
-  CHECKED_STATUS HandleRedisReadRequest(CoarseTimePoint deadline,
+  Status HandleRedisReadRequest(CoarseTimePoint deadline,
                                         const ReadHybridTime& read_time,
                                         const RedisReadRequestPB& redis_read_request,
                                         RedisResponsePB* response) override {
     return STATUS(NotSupported, "RedisReadRequest is not supported for system tablets!");
   }
 
-  CHECKED_STATUS HandleQLReadRequest(CoarseTimePoint deadline,
+  Status HandleQLReadRequest(CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      const QLReadRequestPB& ql_read_request,
                                      const TransactionMetadataPB& transaction_metadata,
                                      tablet::QLReadRequestResult* result) override;
 
-  CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+  Status CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                           const size_t row_count,
                                           QLResponsePB* response) const override;
 
-  CHECKED_STATUS HandlePgsqlReadRequest(CoarseTimePoint deadline,
+  Status HandlePgsqlReadRequest(CoarseTimePoint deadline,
                                         const ReadHybridTime& read_time,
                                         bool is_explicit_request_read_time,
                                         const PgsqlReadRequestPB& pgsql_read_request,
@@ -73,7 +73,7 @@ class SystemTablet : public tablet::AbstractTablet {
     return STATUS(NotSupported, "Postgres system table is not yet supported");
   }
 
-  CHECKED_STATUS CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
+  Status CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
                                           const size_t row_count,
                                           PgsqlResponsePB* response) const override {
     return STATUS(NotSupported, "Postgres system table is not yet supported");

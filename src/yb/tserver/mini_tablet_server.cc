@@ -208,7 +208,7 @@ void MiniTabletServer::Shutdown() {
 
 namespace {
 
-CHECKED_STATUS ForAllTablets(
+Status ForAllTablets(
     MiniTabletServer* mts,
     std::function<Status(TabletPeer* tablet_peer)> action) {
   if (!mts->server()) {
@@ -235,13 +235,13 @@ Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags
   });
 }
 
-Status MiniTabletServer::CompactTablets() {
+Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
   if (!server_) {
     return Status::OK();
   }
-  return ForAllTablets(this, [](TabletPeer* tablet_peer) {
+  return ForAllTablets(this, [skip_flush](TabletPeer* tablet_peer) {
     if (tablet_peer->tablet()) {
-      tablet_peer->tablet()->TEST_ForceRocksDBCompact();
+      tablet_peer->tablet()->TEST_ForceRocksDBCompact(skip_flush);
     }
     return Status::OK();
   });

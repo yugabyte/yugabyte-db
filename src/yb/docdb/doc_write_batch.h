@@ -186,13 +186,13 @@ class DocWriteBatch {
 
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
-  CHECKED_STATUS SetPrimitive(
+  Status SetPrimitive(
       const DocPath& doc_path,
       const ValueControlFields& control_fields,
       const ValueRef& value,
       LazyIterator* doc_iter);
 
-  CHECKED_STATUS SetPrimitive(
+  Status SetPrimitive(
       const DocPath& doc_path,
       const ValueControlFields& control_fields,
       const ValueRef& value,
@@ -200,7 +200,7 @@ class DocWriteBatch {
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId);
 
-  CHECKED_STATUS SetPrimitive(
+  Status SetPrimitive(
       const DocPath& doc_path,
       const ValueControlFields& control_fields,
       const ValueRef& value,
@@ -210,7 +210,7 @@ class DocWriteBatch {
   }
 
 
-  CHECKED_STATUS SetPrimitive(
+  Status SetPrimitive(
       const DocPath& doc_path,
       const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
@@ -226,7 +226,7 @@ class DocWriteBatch {
   // TODO(akashnil): 03/20/17 ENG-1107
   // In each SetPrimitive call, some common work is repeated. It may be made more
   // efficient by not calling SetPrimitive internally.
-  CHECKED_STATUS ExtendSubDocument(
+  Status ExtendSubDocument(
       const DocPath& doc_path,
       const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
@@ -235,7 +235,7 @@ class DocWriteBatch {
       MonoDelta ttl = ValueControlFields::kMaxTtl,
       UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
 
-  CHECKED_STATUS InsertSubDocument(
+  Status InsertSubDocument(
       const DocPath& doc_path,
       const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
@@ -245,7 +245,7 @@ class DocWriteBatch {
       UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp,
       bool init_marker_ttl = true);
 
-  CHECKED_STATUS ExtendList(
+  Status ExtendList(
       const DocPath& doc_path,
       const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
@@ -255,7 +255,7 @@ class DocWriteBatch {
       UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
 
   // 'indices' must be sorted. List indexes are not zero indexed, the first element is list[1].
-  CHECKED_STATUS ReplaceRedisInList(
+  Status ReplaceRedisInList(
       const DocPath& doc_path,
       int64_t index,
       const ValueRef& value,
@@ -268,7 +268,7 @@ class DocWriteBatch {
       MonoDelta default_ttl = ValueControlFields::kMaxTtl,
       MonoDelta write_ttl = ValueControlFields::kMaxTtl);
 
-  CHECKED_STATUS ReplaceCqlInList(
+  Status ReplaceCqlInList(
       const DocPath &doc_path,
       const int index,
       const ValueRef& value,
@@ -278,7 +278,7 @@ class DocWriteBatch {
       MonoDelta default_ttl = ValueControlFields::kMaxTtl,
       MonoDelta write_ttl = ValueControlFields::kMaxTtl);
 
-  CHECKED_STATUS DeleteSubDoc(
+  Status DeleteSubDoc(
       const DocPath& doc_path,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
@@ -330,7 +330,7 @@ class DocWriteBatch {
   // docpath assuming the appropriate operations have been taken care of for subkeys with index <
   // subkey_index. This method assumes responsibility of ensuring the proper DocDB structure
   // (e.g: init markers) is maintained for subdocuments starting at the given subkey_index.
-  CHECKED_STATUS SetPrimitiveInternal(
+  Status SetPrimitiveInternal(
       const DocPath& doc_path,
       const ValueControlFields& control_fields,
       const ValueRef& value,

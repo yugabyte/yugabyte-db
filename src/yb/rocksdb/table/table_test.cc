@@ -69,6 +69,8 @@
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 
+using namespace std::literals;
+
 DECLARE_double(cache_single_touch_ratio);
 
 namespace rocksdb {
@@ -998,7 +1000,7 @@ TEST_F(TablePropertyTest, PrefixScanTest) {
                                 {"num.555.3", "3"}, };
 
   // prefixes that exist
-  for (const std::string& prefix : {"num.111", "num.333", "num.555"}) {
+  for (auto prefix : {"num.111"s, "num.333"s, "num.555"s}) {
     int num = 0;
     for (auto pos = props.lower_bound(prefix);
          pos != props.end() &&
@@ -1013,8 +1015,7 @@ TEST_F(TablePropertyTest, PrefixScanTest) {
   }
 
   // prefixes that don't exist
-  for (const std::string& prefix :
-       {"num.000", "num.222", "num.444", "num.666"}) {
+  for (auto prefix : {"num.000"s, "num.222"s, "num.444"s, "num.666"s}) {
     auto pos = props.lower_bound(prefix);
     ASSERT_TRUE(pos == props.end() ||
                 pos->first.compare(0, prefix.size(), prefix) != 0);

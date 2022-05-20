@@ -157,47 +157,20 @@ void MasterPathHandlers::ZoneTabletCounts::operator+=(const ZoneTabletCounts& ot
 }
 
 // Retrieve the specified URL response from the leader master
-void MasterPathHandlers::RedirectToLeader(const Webserver::WebRequest& req,
-                                          Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-  vector<ServerEntryPB> masters;
-  Status s = master_->ListMasters(&masters);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend("Unable to list masters during web request handling");
+void MasterPathHandlers::RedirectToLeader(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  auto redirect_result = GetLeaderAddress(req);
+  if (!redirect_result) {
+    auto s = redirect_result.status();
     LOG(WARNING) << s.ToString();
     *output << "<h2>" << s.ToString() << "</h2>\n";
     return;
   }
-
-  string redirect;
-  for (const ServerEntryPB& master : masters) {
-    if (master.has_error()) {
-      continue;
-    }
-
-    if (master.role() == PeerRole::LEADER) {
-      // URI already starts with a /, so none is needed between $1 and $2.
-      if (master.registration().http_addresses().size() > 0) {
-        redirect = Substitute(
-            "http://$0$1$2",
-            HostPortPBToString(master.registration().http_addresses(0)),
-            req.redirect_uri,
-            req.query_string.empty() ? "?raw" : "?" + req.query_string + "&raw");
-      }
-      break;
-    }
-  }
-
-  if (redirect.empty()) {
-    string error = "Unable to locate leader master to redirect this request: " + redirect;
-    LOG(WARNING) << error;
-    *output << error << "<br>";
-    return;
-  }
-
+  std::string redirect = *redirect_result;
   EasyCurl curl;
   faststring buf;
-  s = curl.FetchURL(redirect, &buf, kCurlTimeoutSec);
+  auto s = curl.FetchURL(redirect, &buf, kCurlTimeoutSec);
   if (!s.ok()) {
     LOG(WARNING) << "Error retrieving leader master URL: " << redirect
                  << ", error :" << s.ToString();
@@ -205,8 +178,43 @@ void MasterPathHandlers::RedirectToLeader(const Webserver::WebRequest& req,
             << "\">" + redirect + "</a><br> Error: " << s.ToString() << ".<br>";
     return;
   }
-
   *output << buf.ToString();
+}
+
+Result<std::string> MasterPathHandlers::GetLeaderAddress(const Webserver::WebRequest& req) {
+  vector<ServerEntryPB> masters;
+  Status s = master_->ListMasters(&masters);
+  if (!s.ok()) {
+    s = s.CloneAndPrepend("Unable to list masters during web request handling");
+    return s;
+  }
+  ServerRegistrationPB local_reg;
+  s = master_->GetMasterRegistration(&local_reg);
+  if (!s.ok()) {
+    s = s.CloneAndPrepend("Unable to get local registration during web request handling");
+    return s;
+  }
+  const auto leader = std::find_if(masters.begin(), masters.end(), [](const auto& master) {
+    return !master.has_error() && master.role() == PeerRole::LEADER;
+  });
+  if (leader == masters.end() || leader->registration().http_addresses().empty()) {
+    return STATUS(
+        NotFound, "Unable to locate leader master to redirect this request: " + req.redirect_uri);
+  }
+  auto& reg = leader->registration();
+  auto http_broadcast_addresses = reg.broadcast_addresses();
+  for (HostPortPB& host_port : http_broadcast_addresses) {
+    host_port.set_port(reg.http_addresses(0).port());
+  }
+  return Substitute(
+      "http://$0$1$2",
+      HostPortPBToString(DesiredHostPort(
+          http_broadcast_addresses,
+          reg.http_addresses(),
+          reg.cloud_info(),
+          local_reg.cloud_info())),
+      req.redirect_uri,
+      req.query_string.empty() ? "?raw" : "?" + req.query_string + "&raw");
 }
 
 void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
@@ -923,7 +931,7 @@ void MasterPathHandlers::HandleHealthCheck(
     // TODO: Add these health checks in a subsequent diff
     //
     // 4. is the load balancer busy moving tablets/leaders around
-    /* Use: CHECKED_STATUS IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
+    /* Use: Status IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
                                               IsLoadBalancerIdleResponsePB* resp);
      */
     // 5. do any of the TS have tablets they were not able to start up
@@ -1546,7 +1554,7 @@ void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebReq
 
 void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
                                      Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
+  std::stringstream* output = &resp->output;
   // First check if we are the master leader. If not, make a curl call to the master leader and
   // return that as the UI payload.
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());

@@ -24,11 +24,11 @@ class QLValuePB;
 
 namespace common {
 
-CHECKED_STATUS ConvertQLValuePBToRapidJson(const QLValuePB& value_pb,
+Status ConvertQLValuePBToRapidJson(const QLValuePB& value_pb,
                                            rapidjson::Value* value,
                                            rapidjson::Document::AllocatorType* alloc);
 
-inline CHECKED_STATUS ConvertQLValuePBToRapidJson(const QLValuePB& value_pb,
+inline Status ConvertQLValuePBToRapidJson(const QLValuePB& value_pb,
                                                   rapidjson::Document* document) {
   return ConvertQLValuePBToRapidJson(value_pb, document, &document->GetAllocator());
 }

@@ -144,7 +144,7 @@ void TabletInfo::SetReplicaLocations(
   replica_locations_ = replica_locations;
 }
 
-CHECKED_STATUS TabletInfo::CheckRunning() const {
+Status TabletInfo::CheckRunning() const {
   if (!table()->is_running()) {
     return STATUS_EC_FORMAT(Expired, MasterError(MasterErrorPB::TABLE_NOT_RUNNING),
                             "Table is not running: $0", table()->ToStringWithState());
@@ -153,7 +153,7 @@ CHECKED_STATUS TabletInfo::CheckRunning() const {
   return Status::OK();
 }
 
-CHECKED_STATUS TabletInfo::GetLeaderNotFoundStatus() const {
+Status TabletInfo::GetLeaderNotFoundStatus() const {
   RETURN_NOT_OK(CheckRunning());
 
   return STATUS_FORMAT(

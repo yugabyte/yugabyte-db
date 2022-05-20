@@ -56,7 +56,7 @@ class MiniClusterTestWithClient : public YBMiniClusterTestBase<T> {
   virtual client::YBSessionPtr NewSession();
 
  protected:
-  virtual CHECKED_STATUS CreateClient();
+  virtual Status CreateClient();
   void DoTearDown() override;
 
   std::unique_ptr<client::YBClient> client_;

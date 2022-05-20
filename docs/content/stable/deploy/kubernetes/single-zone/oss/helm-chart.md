@@ -99,8 +99,8 @@ $ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" 
 Expect output similar to the following:
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.12.2           2.12.2.0-b58    YugabyteDB is the high-performance distributed ...
+NAME                 CHART VERSION  APP VERSION   DESCRIPTION
+yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -235,7 +235,7 @@ Expect output similar to the following:
 
 ```output
 REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
-1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.12.2  2.12.2.0-b58  Install complete
+1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-{{<yb-version version="stable" format="short">}}  {{<yb-version version="stable" format="build">}}  Install complete
 ```
 
 ## Connect using YugabyteDB shells
@@ -361,7 +361,7 @@ serviceEndpoints:
 
 You apply the override by executing the following Helm command:
 
-```
+```sh
 helm install yb-demo ./yugabyte -f values-overrides.yaml
 ```
 

@@ -751,6 +751,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         super(ConfigureInstancesMethod, self).prepare()
 
         self.parser.add_argument('--package', default=None)
+        self.parser.add_argument('--num_releases_to_keep', type=int,
+                                 help="Number of releases to keep after upgrade.")
         self.parser.add_argument('--yb_process_type', default=None,
                                  choices=self.VALID_PROCESS_TYPES)
         self.parser.add_argument('--extra_gflags', default=None)
@@ -852,6 +854,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         if args.package is not None:
             self.extra_vars["package"] = args.package
+
+        if args.num_releases_to_keep is not None:
+            self.extra_vars["num_releases_to_keep"] = args.num_releases_to_keep
 
         if args.extra_gflags is not None:
             self.extra_vars["extra_gflags"] = json.loads(args.extra_gflags)

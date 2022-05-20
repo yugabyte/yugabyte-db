@@ -52,25 +52,25 @@ class SnapshotOperation :
 
   static bool ShouldAllowOpDuringRestore(consensus::OperationType op_type);
 
-  static CHECKED_STATUS RejectionStatus(OpId rejected_op_id, consensus::OperationType op_type);
+  static Status RejectionStatus(OpId rejected_op_id, consensus::OperationType op_type);
 
-  CHECKED_STATUS Prepare() override;
+  Status Prepare() override;
 
  private:
   // Starts the TabletSnapshotOp operation by assigning it a timestamp.
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
-  CHECKED_STATUS Apply(int64_t leader_term, Status* complete_status);
+  Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+  Status DoAborted(const Status& status) override;
+  Status Apply(int64_t leader_term, Status* complete_status);
 
   void AddedAsPending() override;
   void RemovedFromPending() override;
 
   bool NeedOperationFilter() const;
 
-  CHECKED_STATUS CheckOperationAllowed(
+  Status CheckOperationAllowed(
       const OpId& id, consensus::OperationType op_type) const override;
 
-  CHECKED_STATUS DoCheckOperationRequirements();
+  Status DoCheckOperationRequirements();
 };
 
 }  // namespace tablet

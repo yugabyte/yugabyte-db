@@ -519,6 +519,35 @@ TEST(TestCatalogManager, TestSetPreferredZones) {
 
     ASSERT_NOK(CatalogManagerUtil::SetPreferredZones(&req, &replication_info));
   }
+
+  {
+    LOG(INFO) << "Invalid leader zone";
+    ReplicationInfoPB replication_info;
+    SetupClusterConfig({z2, z3}, &replication_info);
+    *replication_info.add_multi_affinitized_leaders()->add_zones() = ci1;
+
+    ASSERT_NOK(CatalogManagerUtil::CheckValidLeaderAffinity(replication_info));
+  }
+
+  {
+    LOG(INFO) << "Duplicate leader zone";
+    ReplicationInfoPB replication_info = replication_default;
+    *replication_info.add_multi_affinitized_leaders()->add_zones() = ci1;
+    *replication_info.add_multi_affinitized_leaders()->add_zones() = ci1;
+
+    ASSERT_NOK(CatalogManagerUtil::CheckValidLeaderAffinity(replication_info));
+  }
+
+  {
+    LOG(INFO) << "Valid leader zone";
+    ReplicationInfoPB replication_info = replication_default;
+    auto first_zone_set = replication_info.add_multi_affinitized_leaders();
+    *first_zone_set->add_zones() = ci1;
+    *first_zone_set->add_zones() = ci2;
+    *replication_info.add_multi_affinitized_leaders()->add_zones() = ci3;
+
+    ASSERT_OK(CatalogManagerUtil::CheckValidLeaderAffinity(replication_info));
+  }
 }
 }  // namespace master
 } // namespace yb
