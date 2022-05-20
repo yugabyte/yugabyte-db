@@ -1,8 +1,8 @@
 ---
-title: Backup and restore data
+title: Back up and restore data
 headerTitle: Backup and restore
 linkTitle: Backup and restore
-description: Backup and restore YugabyteDB.
+description: Back up and restore YugabyteDB
 image: /images/section_icons/manage/enterprise.png
 headcontent: Create backups and restore your data.
 aliases:
@@ -14,7 +14,7 @@ menu:
     weight: 702
 ---
 
-Backup and restore is the process of creating and storing copies of your data for protection against data loss. With a proper backup strategy, you can always restore your data to a most-recent known working state and minimize application downtime. This in turn guarantees business and application continuity.
+Backup and restoration is the process of creating and storing copies of your data for protection against data loss. With a proper backup strategy, you can always restore your data to a most-recent known working state and minimize application downtime. This in turn guarantees business and application continuity.
 
 Unlike traditional single-instance databases, YugabyteDB is designed for fault tolerance. By maintaining at least three copies of your data across multiple data regions or multiple clouds, it makes sure no losses occur if a single node or single data region becomes unavailable. Thus, with YugabyteDB, you would mainly use backups to:
 
@@ -27,7 +27,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
     <a class="section-link icon-offset" href="export-import-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/export_import.png" aria-hidden="true" />
-        <div class="title">Export and Import</div>
+        <div class="title">Export and import</div>
       </div>
       <div class="body">
         Export and import data into and from SQL/CQL scripts.
@@ -41,7 +41,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
         <div class="title">Distributed Snapshots</div>
       </div>
       <div class="body">
-        Backup and restore data using distributed snapshots.
+        Back up and restore data using distributed snapshots.
       </div>
     </a>
   </div>
@@ -51,7 +51,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
     <a class="section-link icon-offset" href="point-in-time-recovery/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/pitr.png" aria-hidden="true" />
-        <div class="title">Point-In-Time Recovery</div>
+        <div class="title">Point-in-time recovery</div>
       </div>
       <div class="body">
         Restore data to a particular point in time.
