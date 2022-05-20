@@ -49,10 +49,10 @@ class Compressor {
   virtual std::string ToString() const = 0;
 
   // Initialize compressor, required since we don't use exceptions to return error from ctor.
-  virtual CHECKED_STATUS Init() = 0;
+  virtual Status Init() = 0;
 
   // Compress specified vector of input buffers into single output buffer.
-  virtual CHECKED_STATUS Compress(
+  virtual Status Compress(
       const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) = 0;
 
   // Decompress specified input slice to specified output buffer.
@@ -154,7 +154,7 @@ class ZlibCompressor : public Compressor {
     return GetConnectionHeader<ZlibCompressor>();
   }
 
-  CHECKED_STATUS Init() override {
+  Status Init() override {
     memset(&deflate_stream_, 0, sizeof(deflate_stream_));
     int res = deflateInit(&deflate_stream_, /* level= */ Z_DEFAULT_COMPRESSION);
     if (res != Z_OK) {
@@ -176,7 +176,7 @@ class ZlibCompressor : public Compressor {
     return "Zlib";
   }
 
-  CHECKED_STATUS Compress(
+  Status Compress(
       const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) override {
     RefCntBuffer output(deflateBound(&deflate_stream_, TotalLen(input)));
     deflate_stream_.avail_out = static_cast<unsigned int>(output.size());
@@ -389,7 +389,7 @@ class SnappyCompressor : public Compressor {
     return GetConnectionHeader<SnappyCompressor>();
   }
 
-  CHECKED_STATUS Init() override {
+  Status Init() override {
     return Status::OK();
   }
 
@@ -397,7 +397,7 @@ class SnappyCompressor : public Compressor {
     return "Snappy";
   }
 
-  CHECKED_STATUS Compress(
+  Status Compress(
       const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) override {
     RangeSource<SmallRefCntBuffers::const_iterator> source(input.begin(), input.end());
     auto input_size = source.Available();
@@ -595,7 +595,7 @@ class LZ4DecompressState {
   }
 
  private:
-  CHECKED_STATUS DecompressChunk(const Slice& input) {
+  Status DecompressChunk(const Slice& input) {
     int res = LZ4_decompress_safe(
         input.cdata(), static_cast<char*>(out_it_->iov_base), narrow_cast<int>(input.size()),
         narrow_cast<int>(out_it_->iov_len));
@@ -673,7 +673,7 @@ class LZ4Compressor : public Compressor {
     return GetConnectionHeader<LZ4Compressor>();
   }
 
-  CHECKED_STATUS Init() override {
+  Status Init() override {
     return Status::OK();
   }
 
@@ -681,7 +681,7 @@ class LZ4Compressor : public Compressor {
     return "LZ4";
   }
 
-  CHECKED_STATUS Compress(
+  Status Compress(
       const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) override {
     // Increment iterator in loop body to be able to check whether it is last iteration or not.
     for (auto input_it = input.begin(); input_it != input.end();) {
@@ -765,7 +765,7 @@ class CompressedRefiner : public StreamRefiner {
     stream_ = stream;
   }
 
-  CHECKED_STATUS ProcessHeader() override {
+  Status ProcessHeader() override {
     constexpr int kHeaderLen = 3;
 
     auto data = stream_->ReadBuffer().AppendedVecs();
@@ -790,13 +790,13 @@ class CompressedRefiner : public StreamRefiner {
     return stream_->Established(RefinedStreamState::kDisabled);
   }
 
-  CHECKED_STATUS Send(OutboundDataPtr data) override {
+  Status Send(OutboundDataPtr data) override {
     boost::container::small_vector<RefCntBuffer, 10> input;
     data->Serialize(&input);
     return compressor_->Compress(input, stream_, std::move(data));
   }
 
-  CHECKED_STATUS Handshake() override {
+  Status Handshake() override {
     if (stream_->local_side() == LocalSide::kClient) {
       compressor_ = CreateOutboundCompressor(stream_->buffer_tracker());
       if (!compressor_) {

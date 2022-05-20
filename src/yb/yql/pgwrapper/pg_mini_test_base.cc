@@ -65,8 +65,9 @@ void PgMiniTestBase::SetUp() {
       .num_drives = 1,
       .master_env = env_.get()
   };
+  OverrideMiniClusterOptions(&mini_cluster_opt);
   cluster_ = std::make_unique<MiniCluster>(mini_cluster_opt);
-  ASSERT_OK(cluster_->Start());
+  ASSERT_OK(cluster_->Start(ExtraTServerOptions()));
 
   ASSERT_OK(WaitForInitDb(cluster_.get()));
 
@@ -121,6 +122,8 @@ Status PgMiniTestBase::RestartCluster() {
   return pg_supervisor_->Start();
 }
 
+void PgMiniTestBase::OverrideMiniClusterOptions(MiniClusterOptions* options) {}
+
 const std::shared_ptr<tserver::MiniTabletServer> PgMiniTestBase::PickPgTabletServer(
     const MiniCluster::MiniTabletServers& servers) {
   return RandomElement(servers);
@@ -146,6 +149,10 @@ Result<size_t> HistogramMetricWatcher::GetMetricCount() const {
       MetricType::kHistogram, metric.prototype()->type(),
       IllegalState, "Histogram metric is expected");
   return down_cast<const Histogram&>(metric).TotalCount();
+}
+
+std::vector<tserver::TabletServerOptions> PgMiniTestBase::ExtraTServerOptions() {
+  return std::vector<tserver::TabletServerOptions>();
 }
 
 } // namespace pgwrapper

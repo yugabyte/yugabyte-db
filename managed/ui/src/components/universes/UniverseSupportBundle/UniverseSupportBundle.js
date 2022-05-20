@@ -4,7 +4,7 @@ import React, {Fragment, useCallback, useEffect, useState} from 'react';
 import axios from "axios";
 import {connect, useDispatch, useSelector} from "react-redux";
 import {FirstStep} from "./FirstStep/FirstStep";
-import {SecondStep} from "./SecondStep/SecondStep";
+import {SecondStep, updateOptions} from "./SecondStep/SecondStep";
 import {ThirdStep} from "./ThirdStep/ThirdStep";
 import {YBModal, YBButton} from '../../common/forms/fields';
 import {ROOT_URL} from "../../../config";
@@ -18,6 +18,7 @@ import {
 
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseSupportBundle.scss';
+import {filterTypes} from "../../metrics/MetricsComparisonModal/ComparisonFilterContextProvider";
 
 
 const stepsObj = {
@@ -37,7 +38,8 @@ export const UniverseSupportBundle = (props) => {
     modal: {showModal, visibleModal},
   } = props;
   const [steps, setSteps] = useState(stepsObj.firstStep);
-  const [payload, setPayload] = useState({});
+  const defaultOptions = updateOptions(filterTypes[0].value, [true, true, true,true, true, true, true, true], () =>{});
+  const [payload, setPayload] = useState(defaultOptions);
 
   const dispatch = useDispatch();
   const [supportBundles] = useSelector(getSupportBundles);
@@ -77,8 +79,9 @@ export const UniverseSupportBundle = (props) => {
 
   const saveSupportBundle = (universeUUID) => {
     dispatch(crateSupportBundle(universeUUID, payload)).then(() => {
-      handleStepChange(stepsObj.thirdStep)
+      handleStepChange(stepsObj.thirdStep);
       listSupportBundle(universeUUID);
+      setPayload(defaultOptions);
     });
   };
 
@@ -98,10 +101,7 @@ export const UniverseSupportBundle = (props) => {
 
   const isSubmitDisabled = () => {
     if(steps === stepsObj.secondStep) {
-      if(payload.components && payload.components.length === 0) {
-        return true;
-      }
-      return false;
+      return payload && payload.components && payload.components.length === 0;
     }
     return false;
   }

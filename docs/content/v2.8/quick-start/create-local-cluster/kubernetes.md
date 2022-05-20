@@ -54,6 +54,7 @@ Create a YugabyteDB cluster in Minikube using the commands below. Note that for 
 ```sh
 $ kubectl create namespace yb-demo
 $ helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="v2.8" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1 --namespace yb-demo
@@ -63,6 +64,7 @@ Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-serv
 
 ```sh
 $ helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="v2.8" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo

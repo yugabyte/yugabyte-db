@@ -70,16 +70,6 @@
   when: user_existence_check_result.rc != 0
   tags: yb-prebuilt-ami
 
-- name: Cleanup old homedir if custom homedir is used
-  file:
-    state: absent
-    path: "/home/{{ create_user.name }}"
-  ignore_errors: True
-  when: >
-    cloud_type == 'onprem' and
-    create_user.home_dir is not match('/home/{{ create_user.name }}(/.*)?$')
-  tags: yb-prebuilt-ami
-
 - name: Allow AMI building to connect as yugabyte
   copy:
     remote_src: yes

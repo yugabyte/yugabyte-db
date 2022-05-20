@@ -40,7 +40,7 @@ class UnsignedIntSet {
 
   // Set the indexes of this set in [lo, hi] to "on". It is perfectly valid to call SetRange with
   // lo = hi.
-  CHECKED_STATUS SetRange(T lo, T hi) {
+  Status SetRange(T lo, T hi) {
     SCHECK_LE(lo, hi, InvalidArgument, Format("Called SetRange with lo ($0) > hi ($1).", lo, hi));
     interval_set_ += ElementRange::closed(lo, hi);
     return Status::OK();

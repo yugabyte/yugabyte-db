@@ -199,7 +199,7 @@ TransactionalWriter::TransactionalWriter(
 //
 // Where prefix is just a single byte prefix. TxnId, IntentType, HybridTime all prefixed with
 // appropriate value type.
-CHECKED_STATUS TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
+Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   VLOG(4) << "PrepareTransactionWriteBatch(), write_id = " << write_id_;
 
   row_mark_ = GetRowMarkTypeFromPB(put_batch_);
@@ -248,7 +248,7 @@ CHECKED_STATUS TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) 
 }
 
 // Using operator() to pass this object conveniently to EnumerateIntents.
-CHECKED_STATUS TransactionalWriter::operator()(
+Status TransactionalWriter::operator()(
     IntentStrength intent_strength, FullDocKey, Slice value_slice, KeyBytes* key,
     LastKey last_key) {
   if (intent_strength == IntentStrength::kWeak) {
@@ -310,7 +310,7 @@ CHECKED_STATUS TransactionalWriter::operator()(
   return Status::OK();
 }
 
-CHECKED_STATUS TransactionalWriter::Finish() {
+Status TransactionalWriter::Finish() {
   char transaction_id_value_type = ValueEntryTypeAsChar::kTransactionId;
 
   DocHybridTimeBuffer doc_ht_buffer;
@@ -338,7 +338,7 @@ CHECKED_STATUS TransactionalWriter::Finish() {
   return Status::OK();
 }
 
-CHECKED_STATUS TransactionalWriter::AddWeakIntent(
+Status TransactionalWriter::AddWeakIntent(
     const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
     const std::array<Slice, 2>& value,
     DocHybridTimeBuffer* doc_ht_buffer) {
@@ -377,7 +377,7 @@ IntentsWriter::IntentsWriter(const Slice& start_key,
       rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound_);
 }
 
-CHECKED_STATUS IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
+Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   Slice key_prefix = txn_reverse_index_prefix_.AsSlice();
   key_prefix.remove_suffix(1);
 
@@ -452,7 +452,7 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
   apply_state().ToPB(&pb);
   pb.set_commit_ht(commit_ht_.ToUint64());
   faststring encoded_pb;
-  pb_util::SerializeToString(pb, &encoded_pb);
+  RETURN_NOT_OK(pb_util::SerializeToString(pb, &encoded_pb));
   char string_value_type = ValueEntryTypeAsChar::kString;
   std::array<Slice, 2> value_parts = {{
     Slice(&string_value_type, 1),

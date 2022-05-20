@@ -122,7 +122,12 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
 
       // Update master configuration on the node.
       createConfigureServerTasks(
-              nodeAsList, true /* isShell */, true /* updateMasterAddrs */, true /* isMaster */)
+              nodeAsList,
+              params -> {
+                params.isMasterInShellMode = true;
+                params.updateMasterAddrsOnly = true;
+                params.isMaster = true;
+              })
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start a master process.

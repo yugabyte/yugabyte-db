@@ -96,7 +96,7 @@ class ClusterLoadBalancer {
 
   bool CanBalanceGlobalLoad() const;
 
-  CHECKED_STATUS IsIdle() const;
+  Status IsIdle() const;
 
   // Returns the TableInfo of all the tables for whom load balancing is being skipped.
   // As of today, this constitutes all the system tables, colocated user tables
@@ -149,7 +149,7 @@ class ClusterLoadBalancer {
 
   // Increment the provided variables by the number of pending tasks that were found. Do not call
   // more than once for the same table because it also modifies the internal state.
-  virtual CHECKED_STATUS CountPendingTasksUnlocked(const TableId& table_uuid,
+  virtual Status CountPendingTasksUnlocked(const TableId& table_uuid,
                                                    int* pending_add_replica_tasks,
                                                    int* pending_remove_replica_tasks,
                                                    int* pending_stepdown_leader_tasks)
@@ -188,7 +188,7 @@ class ClusterLoadBalancer {
   // Goes over the tablet_map_ and the set of live TSDescriptors to compute the load distribution
   // across the tablets for the given table. Returns an OK status if the method succeeded or an
   // error if there are transient errors in updating the internal state.
-  virtual CHECKED_STATUS AnalyzeTabletsUnlocked(const TableId& table_uuid)
+  virtual Status AnalyzeTabletsUnlocked(const TableId& table_uuid)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Processes any required replica additions, as part of moving load from a highly loaded TS to
@@ -217,7 +217,7 @@ class ClusterLoadBalancer {
   // Method called when initially analyzing tablets, to build up load and usage information.
   // Returns an OK status if the method succeeded or an error if there are transient errors in
   // updating the internal state.
-  CHECKED_STATUS UpdateTabletInfo(TabletInfo* tablet);
+  Status UpdateTabletInfo(TabletInfo* tablet);
 
   // If a tablet is under-replicated, or has certain placements that have less than the minimum
   // required number of replicas, we need to add extra tablets to its peer set.
@@ -292,24 +292,24 @@ class ClusterLoadBalancer {
 
   // Issue the change config and modify the in-memory state for moving a replica from one tablet
   // server to another.
-  CHECKED_STATUS MoveReplica(
+  Status MoveReplica(
       const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Issue the change config and modify the in-memory state for adding a replica on the specified
   // tablet server.
-  CHECKED_STATUS AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts)
+  Status AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Issue the change config and modify the in-memory state for removing a replica on the specified
   // tablet server.
-  CHECKED_STATUS RemoveReplica(
+  Status RemoveReplica(
       const TabletId& tablet_id, const TabletServerId& ts_uuid)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Issue the change config and modify the in-memory state for moving a tablet leader on the
   // specified tablet server to the other specified tablet server.
-  CHECKED_STATUS MoveLeader(const TabletId& tablet_id,
+  Status MoveLeader(const TabletId& tablet_id,
                             const TabletServerId& from_ts,
                             const TabletServerId& to_ts,
                             const std::string& to_ts_path)

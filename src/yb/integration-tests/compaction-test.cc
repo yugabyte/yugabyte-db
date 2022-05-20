@@ -201,7 +201,7 @@ class CompactionTest : public YBTest {
     return workload_->rows_inserted() * kPayloadBytes;
   }
 
-  CHECKED_STATUS WriteAtLeast(size_t size_bytes) {
+  Status WriteAtLeast(size_t size_bytes) {
     workload_->Start();
     RETURN_NOT_OK(LoggedWaitFor(
         [this, size_bytes] { return BytesWritten() >= size_bytes; }, 60s,
@@ -211,7 +211,7 @@ class CompactionTest : public YBTest {
     return Status::OK();
   }
 
-  CHECKED_STATUS WriteAtLeastFilesPerDb(size_t num_files) {
+  Status WriteAtLeastFilesPerDb(size_t num_files) {
     auto dbs = GetAllRocksDbs(cluster_.get());
     workload_->Start();
     RETURN_NOT_OK(LoggedWaitFor(
@@ -230,7 +230,7 @@ class CompactionTest : public YBTest {
     return Status::OK();
   }
 
-  CHECKED_STATUS WaitForNumCompactionsPerDb(size_t num_compactions) {
+  Status WaitForNumCompactionsPerDb(size_t num_compactions) {
     auto dbs = GetAllRocksDbs(cluster_.get());
     RETURN_NOT_OK(LoggedWaitFor(
         [this, &dbs, num_compactions] {
@@ -246,7 +246,7 @@ class CompactionTest : public YBTest {
     return Status::OK();
   }
 
-  CHECKED_STATUS ChangeTableTTL(const client::YBTableName& table_name, int ttl_sec) {
+  Status ChangeTableTTL(const client::YBTableName& table_name, int ttl_sec) {
     RETURN_NOT_OK(client_->TableExists(table_name));
     auto alterer = client_->NewTableAlterer(table_name);
     TableProperties table_properties;
@@ -255,7 +255,7 @@ class CompactionTest : public YBTest {
     return alterer->Alter();
   }
 
-  CHECKED_STATUS ExecuteManualCompaction() {
+  Status ExecuteManualCompaction() {
     constexpr int kCompactionTimeoutSec = 60;
     const auto table_info = VERIFY_RESULT(FindTable(cluster_.get(), workload_->table_name()));
     return workload_->client().FlushTables(

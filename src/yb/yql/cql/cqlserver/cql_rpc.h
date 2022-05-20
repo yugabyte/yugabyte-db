@@ -82,7 +82,7 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
                                                const IoVecs& bytes_to_process,
                                                rpc::ReadBufferFull read_buffer_full) override;
   // Takes ownership of call_data content.
-  CHECKED_STATUS HandleCall(
+  Status HandleCall(
       const rpc::ConnectionPtr& connection, rpc::CallData* call_data) override;
 
   rpc::StreamReadBuffer& ReadBuffer() override {
@@ -112,7 +112,7 @@ class CQLInboundCall : public rpc::InboundCall {
                           ql::QLSession::SharedPtr ql_session);
 
   // Takes ownership of call_data content.
-  CHECKED_STATUS ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallData* call_data);
+  Status ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallData* call_data);
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.

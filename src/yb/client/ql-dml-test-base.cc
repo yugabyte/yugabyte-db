@@ -217,7 +217,7 @@ void BuildSchema(Partitioning partitioning, Schema* schema) {
   FATAL_INVALID_ENUM_VALUE(Partitioning, partitioning);
 }
 
-CHECKED_STATUS CreateTable(
+Status CreateTable(
     const Schema& schema, int num_tablets, YBClient* client,
     TableHandle* table, const YBTableName& table_name) {
   RETURN_NOT_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name(),
@@ -459,7 +459,7 @@ void KeyValueTableTest<MiniClusterType>::CreateTable(Transactional transactional
 }
 
 template <class MiniClusterType>
-CHECKED_STATUS KeyValueTableTest<MiniClusterType>::CreateTable(const Schema& schema) {
+Status KeyValueTableTest<MiniClusterType>::CreateTable(const Schema& schema) {
   return kv_table_test::CreateTable(schema, NumTablets(), client_.get(), &table_);
 }
 

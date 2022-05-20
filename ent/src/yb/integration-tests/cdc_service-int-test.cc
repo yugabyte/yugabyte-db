@@ -167,10 +167,10 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
                   bool* has_error = nullptr, ::yb::cdc::CDCErrorPB_Code* code = nullptr);
   void WriteTestRow(int32_t key, int32_t int_val, const string& string_val,
       const TabletId& tablet_id, const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
-  CHECKED_STATUS WriteToProxyWithRetries(
+  Status WriteToProxyWithRetries(
       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
       const tserver::WriteRequestPB& req, tserver::WriteResponsePB* resp, RpcController* rpc);
-  CHECKED_STATUS GetChangesWithRetries(
+  Status GetChangesWithRetries(
       const GetChangesRequestPB& change_req, GetChangesResponsePB* change_resp,
       int timeout_ms, int max_attempts = 3);
   tserver::MiniTabletServer* GetLeaderForTablet(const std::string& tablet_id);

@@ -121,7 +121,7 @@ set_common_test_paths() {
   mkdir_safe "$YB_TEST_LOG_ROOT_DIR"
 
   # This is needed for tests to find the lsof program.
-  add_path_entry /usr/sbin
+  add_path_entry_last /usr/sbin
 }
 
 validate_relative_test_binary_path() {

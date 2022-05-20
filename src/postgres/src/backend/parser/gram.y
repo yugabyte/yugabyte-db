@@ -4561,6 +4561,9 @@ opt_concurrently_matview:
 					$$ = true;
 				}
 			| NONCONCURRENTLY
+				{
+					$$ = false;
+				}
 			| /*EMPTY*/
 				{
 					$$ = false;

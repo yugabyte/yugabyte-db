@@ -184,9 +184,11 @@ public class NodeManager extends DevopsBase {
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
-      NodeInstance node = NodeInstance.getByName(nodeTaskParam.nodeName);
+      // Instance may not be present if it is deleted from NodeInstance table after a release
+      // action. Node UUID is not available in 2.6.
+      Optional<NodeInstance> node = NodeInstance.maybeGetByName(nodeTaskParam.getNodeName());
       command.add("--node_metadata");
-      command.add(node.getDetailsJson());
+      command.add(node.isPresent() ? node.get().getDetailsJson() : "{}");
     }
     return command;
   }
@@ -269,6 +271,7 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Destroy
             || type == NodeCommandType.Create
             || type == NodeCommandType.Disk_Update
+            || type == NodeCommandType.Update_Mounted_Disks
             || type == NodeCommandType.Transfer_XCluster_Certs)
         && keyInfo.sshUser != null) {
       subCommand.add("--ssh_user");
@@ -320,6 +323,22 @@ public class NodeManager extends DevopsBase {
             subCommand.add("--ntp_server");
             subCommand.add(server);
           }
+        }
+      }
+
+      // Legacy providers should not be allowed to have no NTP set up. See PLAT 4015
+      if (!keyInfo.showSetUpChrony
+          && !keyInfo.airGapInstall
+          && !((AnsibleSetupServer.Params) params).useTimeSync
+          && (providerType.equals(Common.CloudType.aws)
+              || providerType.equals(Common.CloudType.gcp)
+              || providerType.equals(Common.CloudType.azu))) {
+        subCommand.add("--use_chrony");
+        List<String> publicServerList =
+            Arrays.asList("0.pool.ntp.org", "1.pool.ntp.org", "2.pool.ntp.org", "3.pool.ntp.org");
+        for (String server : publicServerList) {
+          subCommand.add("--ntp_server");
+          subCommand.add(server);
         }
       }
     }
@@ -977,6 +996,18 @@ public class NodeManager extends DevopsBase {
         }
         subcommand.add("--package");
         subcommand.add(ybServerPackage);
+        subcommand.add("--num_releases_to_keep");
+        if (config.getBoolean("yb.cloud.enabled")) {
+          subcommand.add(
+              runtimeConfigFactory
+                  .forUniverse(universe)
+                  .getString("yb.releases.num_releases_to_keep_cloud"));
+        } else {
+          subcommand.add(
+              runtimeConfigFactory
+                  .forUniverse(universe)
+                  .getString("yb.releases.num_releases_to_keep_default"));
+        }
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           subcommand.addAll(
               getCertificatePaths(
@@ -1012,6 +1043,18 @@ public class NodeManager extends DevopsBase {
           } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Install.toString())) {
             subcommand.add("--tags");
             subcommand.add("install-software");
+          }
+          subcommand.add("--num_releases_to_keep");
+          if (config.getBoolean("yb.cloud.enabled")) {
+            subcommand.add(
+                runtimeConfigFactory
+                    .forUniverse(universe)
+                    .getString("yb.releases.num_releases_to_keep_cloud"));
+          } else {
+            subcommand.add(
+                runtimeConfigFactory
+                    .forUniverse(universe)
+                    .getString("yb.releases.num_releases_to_keep_default"));
           }
         }
         break;
@@ -1421,6 +1464,7 @@ public class NodeManager extends DevopsBase {
 
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
+    populateNodeUuidFromUniverse(universe, nodeTaskParam);
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     Path bootScriptFile = null;
@@ -1663,7 +1707,6 @@ public class NodeManager extends DevopsBase {
           }
           AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params) nodeTaskParam;
           commandArgs.addAll(getConfigureSubCommand(taskParam));
-
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
             commandArgs.add("--tags");
@@ -2003,11 +2046,8 @@ public class NodeManager extends DevopsBase {
     return lowMemInstanceTypePrefixes.contains(instanceTypePrefix);
   }
 
-  private void addAdditionalInstanceTags(
-      Universe universe, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
-    Customer customer = Customer.get(universe.customerId);
-    tags.put("customer-uuid", customer.uuid.toString());
-    tags.put("universe-uuid", universe.universeUUID.toString());
+  // Set the nodeUuid in nodeTaskParam if it is not set.
+  private void populateNodeUuidFromUniverse(Universe universe, NodeTaskParams nodeTaskParam) {
     if (nodeTaskParam.nodeUuid == null) {
       NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
       if (nodeDetails != null) {
@@ -2015,9 +2055,20 @@ public class NodeManager extends DevopsBase {
       }
     }
     if (nodeTaskParam.nodeUuid == null) {
-      // This is for backward compatibility where node UUID is not set in the Universe.
-      nodeTaskParam.nodeUuid = Util.generateNodeUUID(universe.universeUUID, nodeTaskParam.nodeName);
+      UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
+      if (!Common.CloudType.onprem.equals(userIntent.providerType)) {
+        // This is for backward compatibility where node UUID is not set in the Universe.
+        nodeTaskParam.nodeUuid =
+            Util.generateNodeUUID(universe.universeUUID, nodeTaskParam.nodeName);
+      }
     }
+  }
+
+  private void addAdditionalInstanceTags(
+      Universe universe, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
+    Customer customer = Customer.get(universe.customerId);
+    tags.put("customer-uuid", customer.uuid.toString());
+    tags.put("universe-uuid", universe.universeUUID.toString());
     tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
   }
 

@@ -121,10 +121,10 @@ class PGConn {
       bool simple_query_protocol = false,
       const boost::optional<std::string>& conn_str_for_log = boost::none);
 
-  CHECKED_STATUS Execute(const std::string& command, bool show_query_in_error = true);
+  Status Execute(const std::string& command, bool show_query_in_error = true);
 
   template <class... Args>
-  CHECKED_STATUS ExecuteFormat(const std::string& format, Args&&... args) {
+  Status ExecuteFormat(const std::string& format, Args&&... args) {
     return Execute(Format(format, std::forward<Args>(args)...));
   }
 
@@ -149,14 +149,14 @@ class PGConn {
     return GetValue<T>(res.get(), 0, 0);
   }
 
-  CHECKED_STATUS StartTransaction(IsolationLevel isolation_level);
-  CHECKED_STATUS CommitTransaction();
-  CHECKED_STATUS RollbackTransaction();
+  Status StartTransaction(IsolationLevel isolation_level);
+  Status CommitTransaction();
+  Status RollbackTransaction();
 
   // Would this query use an index [only] scan?
   Result<bool> HasIndexScan(const std::string& query);
 
-  CHECKED_STATUS CopyBegin(const std::string& command);
+  Status CopyBegin(const std::string& command);
   Result<PGResultPtr> CopyEnd();
 
   void CopyStartRow(int16_t columns);

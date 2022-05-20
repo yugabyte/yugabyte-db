@@ -122,6 +122,13 @@ export const SET_ALERTS_CONFIG_RESPONSE = 'SET_ALERTS_CONFIG_RESPONSE';
 export const UPDATE_BACKUP_STATE = 'UPDATE_BACKUP_STATE';
 export const UPDATE_BACKUP_STATE_RESPONSE = 'UPDATE_BACKUP_STATE_RESPONSE';
 
+/**
+ *  Mapping from taskType to api route
+ * */
+const UPGRADE_TASKS = {
+  VMImage: 'vm'
+};
+
 export function createUniverse(formValues) {
   const customerUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes`, formValues);
@@ -373,9 +380,9 @@ export function closeUniverseDialog() {
 export function rollingUpgrade(values, universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
   const taskEndPoint = values.taskType.toLowerCase();
-  
+
   let request;
-  if (values.taskType === "Certs") {
+  if (values.taskType === 'Certs') {
     // This is to enable cert rotation for kubernetes universes
     // For kubernetes universes we fallback to old modal
     // But as we need to call the update_tls API we update the request accordingly
@@ -385,7 +392,9 @@ export function rollingUpgrade(values, universeUUID) {
     );
   } else {
     request = axios.post(
-      `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade/${taskEndPoint}`,
+      `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade/${
+        UPGRADE_TASKS[values.taskType] ?? taskEndPoint
+      }`,
       values
     );
   }

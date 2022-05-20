@@ -10,7 +10,7 @@
     padding: 10px 16px;
     border: 1px solid #e5e5e9;
     border-radius: 8px;
-    margin: 16px 14px 32px 14px;
+    margin-top: 0px;
 
     .title {
       font-weight: 600;
@@ -46,6 +46,8 @@
   .help-text {
     margin-bottom: 24px;
     margin-top: 24px;
+    font-weight: 600;
+    font-size: 13px;
   }
 
   .keyspaces-input {

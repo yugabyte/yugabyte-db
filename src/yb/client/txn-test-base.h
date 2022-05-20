@@ -73,11 +73,11 @@ class TransactionTestBase : public KeyValueTableTest<MiniClusterType> {
   void SetUp() override;
 
   void CreateTable();
-  CHECKED_STATUS CreateTable(const Schema& schema);
+  Status CreateTable(const Schema& schema);
 
   virtual uint64_t log_segment_size_bytes() const;
 
-  CHECKED_STATUS WriteRows(
+  Status WriteRows(
       const YBSessionPtr& session, size_t transaction = 0,
       const WriteOpType op_type = WriteOpType::INSERT,
       Flush flush = Flush::kTrue);

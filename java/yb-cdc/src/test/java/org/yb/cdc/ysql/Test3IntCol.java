@@ -40,8 +40,6 @@ public class Test3IntCol extends CDCBaseClass {
     CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
     testSubscriber.createStream("proto");
 
-    testSubscriber.setCheckpoint(0, 0, true);
-
     if (!sqlScript.isEmpty()) {
       TestUtils.runSqlScript(connection, sqlScript);
     } else {

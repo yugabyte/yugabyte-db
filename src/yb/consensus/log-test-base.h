@@ -94,7 +94,7 @@ YB_STRONGLY_TYPED_BOOL(AppendSync);
 
 // Append a single batch of 'count' NoOps to the log.  If 'size' is not nullptr, increments it by
 // the expected increase in log size.  Increments 'op_id''s index once for each operation logged.
-static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
+static Status AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
                                            Log* log, OpIdPB* op_id,
                                            int count,
                                            ssize_t* size = nullptr) {
@@ -131,7 +131,7 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
   return Status::OK();
 }
 
-static CHECKED_STATUS AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
+static Status AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
                                           Log* log, OpIdPB* op_id,
                                           ssize_t* size = nullptr) {
   return AppendNoOpsToLogSync(clock, log, op_id, 1, size);
@@ -310,21 +310,21 @@ class LogTestBase : public YBTest {
 
   // Append a single NO_OP entry. Increments op_id by one.  If non-nullptr, and if the write is
   // successful, 'size' is incremented by the size of the written operation.
-  CHECKED_STATUS AppendNoOp(OpIdPB* op_id, ssize_t* size = nullptr) {
+  Status AppendNoOp(OpIdPB* op_id, ssize_t* size = nullptr) {
     return AppendNoOpToLogSync(clock_, log_.get(), op_id, size);
   }
 
   // Append a number of no-op entries to the log.  Increments op_id's index by the number of records
   // written.  If non-nullptr, 'size' keeps track of the size of the operations successfully
   // written.
-  CHECKED_STATUS AppendNoOps(OpIdPB* op_id, int num, ssize_t* size = nullptr) {
+  Status AppendNoOps(OpIdPB* op_id, int num, ssize_t* size = nullptr) {
     for (int i = 0; i < num; i++) {
       RETURN_NOT_OK(AppendNoOp(op_id, size));
     }
     return Status::OK();
   }
 
-  CHECKED_STATUS RollLog() {
+  Status RollLog() {
     return log_->AllocateSegmentAndRollOver();
   }
 

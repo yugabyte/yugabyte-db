@@ -1906,6 +1906,28 @@ YBStartTransaction(TransactionState s)
 	}
 }
 
+/*
+ * The isolation level in Postgres code (i.e., XactIsoLevel) maps to a certain
+ * isolation level as seen by pggate. This function returns the mapped isolation
+ * level that pggate layer is supposed to see.
+ */
+int YBGetEffectivePggateIsolationLevel() {
+	int mapped_pg_isolation_level = XactIsoLevel;
+
+	// For the txn manager, logic for XACT_READ_UNCOMMITTED is same as
+	// XACT_READ_COMMITTED.
+	if (mapped_pg_isolation_level == XACT_READ_UNCOMMITTED)
+		mapped_pg_isolation_level = XACT_READ_COMMITTED;
+
+	// If READ COMMITTED mode is not on, XACT_READ_COMMITTED maps to
+	// XACT_REPEATABLE_READ.
+	if ((mapped_pg_isolation_level == XACT_READ_COMMITTED) &&
+			!IsYBReadCommitted())
+		mapped_pg_isolation_level = XACT_REPEATABLE_READ;
+
+	return mapped_pg_isolation_level;
+}
+
 void
 YBInitializeTransaction(void)
 {
@@ -1913,15 +1935,8 @@ YBInitializeTransaction(void)
 	{
 		HandleYBStatus(YBCPgBeginTransaction());
 
-		int	pg_isolation_level = XactIsoLevel;
-
-		if (pg_isolation_level == XACT_READ_UNCOMMITTED)
-			pg_isolation_level = XACT_READ_COMMITTED;
-
-		if ((pg_isolation_level == XACT_READ_COMMITTED) && !IsYBReadCommitted())
-			pg_isolation_level = XACT_REPEATABLE_READ;
-
-		HandleYBStatus(YBCPgSetTransactionIsolationLevel(pg_isolation_level));
+		HandleYBStatus(
+			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
 		HandleYBStatus(YBCPgEnableFollowerReads(YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
 		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));

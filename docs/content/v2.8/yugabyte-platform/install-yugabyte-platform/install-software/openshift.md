@@ -298,12 +298,12 @@ To create a Yugabyte Platform instance, perform the following:
   To search for the available chart version, execute the following command:
 
   ```shell
-  helm search repo yugabytedb/yugaware -l
+  helm search repo yugabytedb/yugaware --version {{<yb-version version="v2.8" format="short">}}
   ```
 
   ```output
   NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-  yugabytedb/yugaware  2.8.5          2.8.5.0-b22  YugaWare is YugaByte Database's Orchestration a...
+  yugabytedb/yugaware {{<yb-version version="v2.8" format="short">}}          {{<yb-version version="v2.8" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
   ```
 
 - Verify the StorageClass setting for your cluster by executing the following command as admin user:
@@ -318,6 +318,7 @@ To create a Yugabyte Platform instance, perform the following:
 
   ```shell
   helm install yw-test yugabytedb/yugaware -n yb-platform \
+     --version {{<yb-version version="v2.8" format="short">}} \
      --set image.repository=quay.io/yugabyte/yugaware-ubi \
      --set ocpCompatibility.enabled=true --set rbac.create=false --wait
   ```

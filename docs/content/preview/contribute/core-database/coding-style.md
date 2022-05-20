@@ -602,7 +602,7 @@ While the two functions have similar syntax, with inline substitution parameters
 
 ### CHECKED_STATUS
 
-Our existing codebase contains a lot of `CHECKED_STATUS` usages. It was a useful macro when our main compiler did not support [[nodiscard]] class attribute.
+Our existing codebase used to contain a lot of `CHECKED_STATUS` usage. You might still encounter it in older release branches. It was a useful macro when our main compiler did not support [[nodiscard]] class attribute.
 After switching to a modern compiler we don't need this macro anymore.
 So all new code should avoid using `CHECKED_STATUS` and use `Status` for function return type.
 

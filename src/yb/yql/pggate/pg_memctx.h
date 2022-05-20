@@ -66,12 +66,12 @@ class PgMemctx {
   static PgMemctx *Create();
 
   // Destroy yugabyte memory context that is owned by Postgres process.
-  static CHECKED_STATUS Destroy(PgMemctx *handle);
+  static Status Destroy(PgMemctx *handle);
 
   // Clear the content of yugabyte memory context that is owned by Postgres process.
   // Postgres has Reset() option where it clears the allocated memory for the current context but
   // keeps all the allocated memory for the child contexts.
-  static CHECKED_STATUS Reset(PgMemctx *handle);
+  static Status Reset(PgMemctx *handle);
 
   void Register(Registrable *obj);
   static void Destroy(Registrable *obj);

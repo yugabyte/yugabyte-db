@@ -29,6 +29,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rocksdb/db.h"
@@ -93,11 +94,11 @@ namespace {
 template<IsolationLevel level>
 class TxnHelper {
  public:
-  static CHECKED_STATUS StartTxn(PGConn* connection) {
+  static Status StartTxn(PGConn* connection) {
     return connection->StartTransaction(level);
   }
 
-  static CHECKED_STATUS ExecuteInTxn(PGConn* connection, const std::string& query) {
+  static Status ExecuteInTxn(PGConn* connection, const std::string& query) {
     const auto guard = CreateTxnGuard(connection);
     return connection->Execute(query);
   }
@@ -1253,11 +1254,11 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     return connection;
   }
 
-  static CHECKED_STATUS StartTxn(PGConn* connection) {
+  static Status StartTxn(PGConn* connection) {
     return TxnHelper<level>::StartTxn(connection);
   }
 
-  static CHECKED_STATUS ExecuteInTxn(PGConn* connection, const std::string& query) {
+  static Status ExecuteInTxn(PGConn* connection, const std::string& query) {
     return TxnHelper<level>::ExecuteInTxn(connection, query);
   }
 
@@ -2598,6 +2599,81 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TestSerializableStrongReadLockNotAbor
       << "fail.\n"
       << "Commit status: " << commit_status << ".\n"
       << "Update status: " << update_status << ".\n";
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ColocatedCompaction)) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+
+  const std::string kDatabaseName = "testdb";
+  const auto kNumTables = 3;
+  constexpr int kKeys = 100;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  for (int i = 0; i < kNumTables; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(R"#(
+        CREATE TABLE test$0 (
+          key INTEGER NOT NULL PRIMARY KEY,
+          value INTEGER,
+          string VARCHAR
+        )
+      )#", i));
+    for (int j = 0; j < kKeys; ++j) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO test$0(key, value, string) VALUES($1, -$1, '$2')", i, j,
+          RandomHumanReadableString(128_KB)));
+    }
+  }
+
+  ASSERT_OK(cluster_->FlushTablets());
+  uint64_t files_size = 0;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+  }
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", kNumTables - 1));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", 0));
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  uint64_t new_files_size = 0;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    new_files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+  }
+
+  LOG(INFO) << "Old files size: " << files_size << ", new files size: " << new_files_size;
+  ASSERT_LE(new_files_size * 2, files_size);
+  ASSERT_GE(new_files_size * 3, files_size);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
+  const std::string kDatabaseName = "testdb";
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto sys_catalog_tablet = catalog_manager.sys_catalog()->tablet_peer()->tablet();
+
+  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+  uint64_t base_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
+  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
+  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
+
+  // Make sure compaction works without error for the hybrid_time > history_cutoff case.
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+
+  uint64_t new_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
+  LOG(INFO) << "Base file size: " << base_file_size << ", new file size: " << new_file_size;
+  ASSERT_LE(new_file_size, base_file_size + 100_KB);
 }
 
 // Use special mode when non leader master times out all rpcs.

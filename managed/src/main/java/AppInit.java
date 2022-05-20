@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
@@ -102,7 +103,8 @@ public class AppInit {
       }
 
       // temporarily revert due to PLAT-2434
-      // LogUtil.updateLoggingFromConfig(sConfigFactory, config);
+      // LogUtil.updateApplicationLoggingFromConfig(sConfigFactory, config);
+      // LogUtil.updateAuditLoggingFromConfig(sConfigFactory, config);
 
       // Initialize AWS if any of its instance types have an empty volumeDetailsList
       List<Provider> providerList = Provider.find.query().where().findList();

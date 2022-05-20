@@ -14,6 +14,7 @@
 #ifndef YB_CLIENT_PERMISSIONS_H
 #define YB_CLIENT_PERMISSIONS_H
 
+#include <condition_variable>
 #include <shared_mutex>
 
 #include <boost/optional.hpp>

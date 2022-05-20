@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <shared_mutex>
+
 #include "yb/master/tasks_tracker.h"
 
 #include "yb/util/atomic.h"
@@ -49,7 +51,7 @@ void TasksTracker::AddTask(std::shared_ptr<server::MonitoredTask> task) {
 }
 
 std::vector<std::shared_ptr<server::MonitoredTask>> TasksTracker::GetTasks() {
-  shared_lock<decltype(lock_)> l(lock_);
+  std::shared_lock<decltype(lock_)> l(lock_);
   std::vector<std::shared_ptr<server::MonitoredTask>> tasks;
   for (const auto& task : tasks_) {
     tasks.push_back(task);
@@ -78,7 +80,7 @@ void TasksTracker::CleanupOldTasks() {
 }
 
 std::string TasksTracker::ToString() {
-  shared_lock<decltype(lock_)> l(lock_);
+  std::shared_lock<decltype(lock_)> l(lock_);
   return Substitute("TasksTracker has $0 tasks in buffer.",
                     tasks_.size());
 }

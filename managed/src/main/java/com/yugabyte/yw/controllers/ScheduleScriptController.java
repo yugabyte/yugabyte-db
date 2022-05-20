@@ -161,8 +161,8 @@ public class ScheduleScriptController extends AuthenticatedController {
     configKeysMap.put(PLT_EXT_SCRIPT_CONTENT, scriptContent);
     configKeysMap.put(PLT_EXT_SCRIPT_PARAM, scriptParam);
 
-    // updating exsisting schedule task params and cronExperssion.
-    schedule.setCronExperssionandTaskParams(cronExpression, taskParams);
+    // updating existing schedule task params and cronExpression.
+    schedule.setCronExpressionAndTaskParams(cronExpression, taskParams);
     // Inserting the set of keys in synchronized way as they are interconnected and the task in
     // execution should not extract partially inserted keys.
     Util.setLockedMultiKeyConfig(config, configKeysMap);

@@ -63,7 +63,7 @@ class TransactionTableState {
     if (PickStatusTabletId(tablets, callback)) {
       return;
     }
-    YB_LOG_EVERY_N_SECS(WARNING, 1) << "No placement local transaction status tablet found";
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << "No local transaction status tablet found";
     callback(RandomElement(tablets));
   }
 

@@ -11,6 +11,8 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
+import com.google.common.collect.Streams;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -36,6 +38,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -51,6 +54,7 @@ public class RuntimeConfController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeConfController.class);
   private final SettableRuntimeConfigFactory settableRuntimeConfigFactory;
   private final Result mutableKeysResult;
+  private final Set<String> mutableObjects;
   private final Set<String> mutableKeys;
   private static final Set<String> sensitiveKeys =
       ImmutableSet.of("yb.security.ldap.ldap_service_account_password", "yb.security.secret");
@@ -58,6 +62,11 @@ public class RuntimeConfController extends AuthenticatedController {
   @Inject
   public RuntimeConfController(SettableRuntimeConfigFactory settableRuntimeConfigFactory) {
     this.settableRuntimeConfigFactory = settableRuntimeConfigFactory;
+    this.mutableObjects =
+        Sets.newLinkedHashSet(
+            settableRuntimeConfigFactory
+                .staticApplicationConf()
+                .getStringList("runtime_config.included_objects"));
     this.mutableKeys = buildMutableKeysSet();
     this.mutableKeysResult = buildCachedResult();
   }
@@ -92,14 +101,16 @@ public class RuntimeConfController extends AuthenticatedController {
     Config config = settableRuntimeConfigFactory.staticApplicationConf();
     List<String> included = config.getStringList("runtime_config.included_paths");
     List<String> excluded = config.getStringList("runtime_config.excluded_paths");
-    return config
-        .entrySet()
-        .stream()
-        .map(Map.Entry::getKey)
-        .filter(
-            key ->
-                included.stream().anyMatch(key::startsWith)
-                    && excluded.stream().noneMatch(key::startsWith))
+    return Streams.concat(
+            mutableObjects.stream(),
+            config
+                .entrySet()
+                .stream()
+                .map(Entry::getKey)
+                .filter(
+                    key ->
+                        included.stream().anyMatch(key::startsWith)
+                            && excluded.stream().noneMatch(key::startsWith)))
         .collect(Collectors.toSet());
   }
 
@@ -143,7 +154,7 @@ public class RuntimeConfController extends AuthenticatedController {
       LOG.trace(
           "key: {} overriddenInScope: {} includeInherited: {}", k, isOverridden, includeInherited);
 
-      String value = fullConfig.getString(k);
+      String value = fullConfig.getValue(k).render();
       if (sensitiveKeys.contains(k)) {
         value = CommonUtils.getMaskedValue(k, value);
       }
@@ -221,7 +232,9 @@ public class RuntimeConfController extends AuthenticatedController {
         scopeUUID,
         (logValue.length() < 50 ? logValue : "[long value hidden]"),
         logValue.length());
-    getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).setValue(path, newValue);
+    boolean isObject = mutableObjects.contains(path);
+    getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID)
+        .setValue(path, newValue, isObject);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),

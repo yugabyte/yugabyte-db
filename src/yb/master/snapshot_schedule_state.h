@@ -90,8 +90,8 @@ class SnapshotScheduleState {
   static Result<docdb::KeyBytes> EncodedKey(
       const SnapshotScheduleId& schedule_id, SnapshotCoordinatorContext* context);
 
-  CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch) const;
-  CHECKED_STATUS ToPB(SnapshotScheduleInfoPB* pb) const;
+  Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch) const;
+  Status ToPB(SnapshotScheduleInfoPB* pb) const;
   std::string ToString() const;
 
   const CreatingSnapshotData& creating_snapshot_data() const {

@@ -38,9 +38,9 @@ class CqlTestBase : public MiniClusterTestWithClient<MiniClusterType> {
 
   void SetUp() override;
 
-  CHECKED_STATUS RestartCluster();
+  Status RestartCluster();
   void ShutdownCluster();
-  CHECKED_STATUS StartCluster();
+  Status StartCluster();
 
  protected:
   void DoTearDown() override;
@@ -53,7 +53,7 @@ class CqlTestBase : public MiniClusterTestWithClient<MiniClusterType> {
 
  private:
   void SetupClusterOpt();
-  CHECKED_STATUS StartCQLServer();
+  Status StartCQLServer();
 
   std::string cql_host_;
   uint16_t cql_port_ = 0;

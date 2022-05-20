@@ -93,6 +93,7 @@ message SplitTabletResponsePB {
 
 message CreateTransactionStatusTableRequestPB {
   required string table_name = 1;
+  optional ReplicationInfoPB replication_info = 2;
 }
 
 message CreateTransactionStatusTableResponsePB {

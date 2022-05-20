@@ -108,6 +108,8 @@ set(LOG_SRCS
 )
 
 add_library(log ${LOG_SRCS})
+add_dependencies(log gen_src_yb_rpc_any_proto)
+
 target_link_libraries(log
   server_common
   gutil
@@ -134,6 +136,7 @@ set(CONSENSUS_SRCS
   retryable_requests.cc)
 
 ADD_YB_LIBRARY(consensus SRCS ${CONSENSUS_SRCS})
+add_dependencies(consensus gen_src_yb_rpc_any_proto)
 
 target_link_libraries(consensus
   consensus_error
@@ -172,8 +175,9 @@ set_source_files_properties(raft_consensus-test.cc PROPERTIES COMPILE_FLAGS
   "-Wno-inconsistent-missing-override")
 ADD_YB_TEST(raft_consensus-test)
 
-#Tools
+# Tools
 add_executable(log-dump log-dump.cc)
 target_link_libraries(log-dump
   log
   ${YB_BASE_LIBS})
+add_dependencies(log-dump gen_src_yb_rpc_any_proto)
