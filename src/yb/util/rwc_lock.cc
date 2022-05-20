@@ -122,6 +122,14 @@ bool RWCLock::HasWriteLock() const {
 #endif
 }
 
+void RWCLock::WriteLockThreadChanged() {
+#ifndef NDEBUG
+  MutexLock l(lock_);
+  DCHECK(write_locked_);
+  last_writer_tid_ = Thread::CurrentThreadId();
+#endif
+}
+
 void RWCLock::WriteLock() {
   MutexLock l(lock_);
   // Wait for any other mutations to finish.
