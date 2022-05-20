@@ -43,7 +43,7 @@ There are no technical limitations on how many snapshots you can create. However
 
 ## Create a snapshot
 
-The distributed snapshots feature allows you to backup a database, and then restore it in case of a software or operational error, with minimal RTO and overhead.
+The distributed snapshots feature allows you to back up a database, and then restore it in case of a software or operational error, with minimal RTO and overhead.
 
 To back up a database, create a snapshot using the [`create_database_snapshot`](../../../admin/yb-admin/#create-database-snapshot) command:
 
@@ -74,7 +74,7 @@ Snapshot UUID                         State
 
 ## Delete a snapshot
 
-Snapshots created using the `create_database_snapshot` never expire and are retained as long as the cluster exists. If you no longer need a snapshot, you can delete it with the [`delete_snapshot`](../../../admin/yb-admin/#delete-snapshot) command:
+Snapshots never expire and are retained as long as the cluster exists. If you no longer need a snapshot, you can delete it with the [`delete_snapshot`](../../../admin/yb-admin/#delete-snapshot) command:
 
 ```sh
 yb-admin delete_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794
@@ -82,7 +82,7 @@ yb-admin delete_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794
 
 ## Restore a snapshot
 
-To restore a database to a previously created snapshot, run the [`restore_snapshot`](../../../admin/yb-admin/#restore-snapshot) command and provide the ID of the snapshot:
+To restore the data backed up in one of the previously created snapshots, run the [`restore_snapshot`](../../../admin/yb-admin/#restore-snapshot) command:
 
 ```sh
 yb-admin restore_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794
