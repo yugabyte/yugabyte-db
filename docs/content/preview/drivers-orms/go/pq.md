@@ -86,7 +86,7 @@ if err != nil {
 
 #### Use SSL
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer [OpenSSL](../../../quick-start/build-apps/go/ysql-pq/#openssl) for the default and supported modes.
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [OpenSSL](../../../quick-start/build-apps/go/ysql-pq/#openssl) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
