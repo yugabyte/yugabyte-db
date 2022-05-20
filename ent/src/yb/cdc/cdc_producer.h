@@ -59,7 +59,7 @@ struct StreamMetadata {
   }
 };
 
-CHECKED_STATUS GetChangesForCDCSDK(const std::string& stream_id,
+Status GetChangesForCDCSDK(const std::string& stream_id,
                                    const std::string& tablet_id,
                                    const CDCSDKCheckpointPB& op_id,
                                    const StreamMetadata& record,
@@ -73,7 +73,7 @@ CHECKED_STATUS GetChangesForCDCSDK(const std::string& stream_id,
                                    int64_t* last_readable_opid_index = nullptr,
                                    const CoarseTimePoint deadline = CoarseTimePoint::max());
 
-CHECKED_STATUS GetChangesForXCluster(const std::string& stream_id,
+Status GetChangesForXCluster(const std::string& stream_id,
                                      const std::string& tablet_id,
                                      const OpId& op_id,
                                      const StreamMetadata& record,

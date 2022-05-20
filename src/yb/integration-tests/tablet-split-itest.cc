@@ -928,7 +928,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
   }
 
  protected:
-  CHECKED_STATUS FlushAllTabletReplicas(const TabletId& tablet_id, const TableId& table_id) {
+  Status FlushAllTabletReplicas(const TabletId& tablet_id, const TableId& table_id) {
     for (const auto& active_peer : ListTableActiveTabletPeers(cluster_.get(), table_id)) {
       if (active_peer->tablet_id() == tablet_id) {
         RETURN_NOT_OK(active_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
@@ -937,7 +937,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     return Status::OK();
   }
 
-  CHECKED_STATUS AutomaticallySplitSingleTablet(
+  Status AutomaticallySplitSingleTablet(
       const string& tablet_id, int num_rows_per_batch,
       uint64_t threshold, int* key) {
     uint64_t current_size = 0;
@@ -971,7 +971,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     return Status::OK();
   }
 
-  CHECKED_STATUS CompactTablet(const string& tablet_id) {
+  Status CompactTablet(const string& tablet_id) {
     auto peers = ListTabletPeers(cluster_.get(), [&tablet_id](auto peer) {
       return peer->tablet_id() == tablet_id;
     });
@@ -1736,7 +1736,7 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
     return peers.at(0);
   }
 
-  CHECKED_STATUS AlterTableSetDefaultTTL(int ttl_sec) {
+  Status AlterTableSetDefaultTTL(int ttl_sec) {
     const auto table_name = table_.name();
     auto alterer = client_->NewTableAlterer(table_name);
     alterer->wait(true);
@@ -2615,7 +2615,7 @@ class TabletSplitSystemRecordsITest :
         std::numeric_limits<int32>::max();
   }
 
-  CHECKED_STATUS VerifySplitKeyError(yb::tablet::TabletPtr tablet) {
+  Status VerifySplitKeyError(yb::tablet::TabletPtr tablet) {
     SCHECK_NOTNULL(tablet.get());
 
     // Get middle key directly from in-memory tablet and check correct message has been returned.

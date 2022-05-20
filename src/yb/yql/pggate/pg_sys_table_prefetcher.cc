@@ -178,7 +178,7 @@ class ResultFunctorAdapter {
   const T bad_status_value_;
 };
 
-CHECKED_STATUS CheckRequestTargets(const PgObjectId& table_id,
+Status CheckRequestTargets(const PgObjectId& table_id,
                                    const ColumnIdsContainer& targets,
                                    const LWPgsqlReadRequestPB& req) {
   SCHECK_EQ(table_id,
@@ -241,7 +241,7 @@ class Loader {
   }
 
   // Prepare operation for read from particular table
-  CHECKED_STATUS Apply(const PgObjectId& table_id, const PgObjectId& index_id) {
+  Status Apply(const PgObjectId& table_id, const PgObjectId& index_id) {
     const auto table = VERIFY_RESULT(session_->LoadTable(table_id));
     const auto index = index_id.IsValid() ? VERIFY_RESULT(session_->LoadTable(index_id))
                                           : PgTableDescPtr();
@@ -282,7 +282,7 @@ class Loader {
   }
 
   // Load data from all prepared operations and place the result into data_container
-  CHECKED_STATUS Load(DataContainer* data_container) {
+  Status Load(DataContainer* data_container) {
     VLOG(2) << "Loader::Load";
     while (!op_info_.empty()) {
       auto response = VERIFY_RESULT(session_->RunAsync(

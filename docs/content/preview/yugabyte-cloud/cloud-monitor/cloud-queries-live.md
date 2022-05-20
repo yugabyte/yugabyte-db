@@ -25,6 +25,18 @@ Live queries only shows queries "in-flight" (that is, currently in progress); qu
 
 You can choose between displaying YSQL and YCQL queries.
 
-To filter the query list, enter query text in the filter field. To sort the list by column, click the column heading. Click **Options** to select the columns to display.
+To filter the query list, enter query text in the filter field. To sort the list by column, click the column heading. Click **Edit Options** to select the columns to display.
 
 To view query details, click the right-arrow button for the query in the list to display the **Query Details** sheet.
+
+The following table describes the **Live Queries** column values.
+
+| Column                         | Description                                                  |
+| ------------------------------ | ------------------------------------------------------------ |
+| Node Name                      | The name of the node where the query executed.               |
+| Database /Keyspace             | The YCQL keyspace or YSQL database used by the query.        |
+| Elapsed Time                   | The duration (in milliseconds) of the query handling.        |
+| Status (YSQL)                  | The YSQL session status: idle, active, idle in transaction, fastpath function call, idle in transaction (aborted), or disabled. |
+| Type (YCQL)                    | The YCQL query type: PREPARE, EXECUTE, QUERY, or BATCH       |
+| Client Host                    | The address of the client that sent this query.              |
+| Client Port                    | The port of the client that sent this query.                 |

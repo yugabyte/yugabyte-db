@@ -62,7 +62,7 @@ class YQLRowwiseIteratorIf {
   }
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  virtual CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;
+  virtual Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;
 
   // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
   virtual Result<Slice> GetTupleId() const;
@@ -74,12 +74,12 @@ class YQLRowwiseIteratorIf {
   // Common API methods.
   //------------------------------------------------------------------------------------------------
   // Read next row using the specified projection.
-  CHECKED_STATUS NextRow(const Schema& projection, QLTableRow* table_row);
+  Status NextRow(const Schema& projection, QLTableRow* table_row);
 
-  CHECKED_STATUS NextRow(QLTableRow* table_row);
+  Status NextRow(QLTableRow* table_row);
 
  private:
-  virtual CHECKED_STATUS DoNextRow(const Schema& projection, QLTableRow* table_row) = 0;
+  virtual Status DoNextRow(const Schema& projection, QLTableRow* table_row) = 0;
 };
 
 }  // namespace docdb

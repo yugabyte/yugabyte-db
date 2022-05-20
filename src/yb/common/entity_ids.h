@@ -33,10 +33,13 @@ static const uint32_t kPgDatabaseTableOid = 1262;  // Hardcoded for pg_database.
 static const uint32_t kPgFirstNormalObjectId = 16384; // Hardcoded in transam.h
 static const uint32_t kPgYbTablegroupTableOid = 8036;  // Hardcoded in pg_yb_tablegroup.h
 static const uint32_t kPgSequencesTableOid = 2224;  // Hardcoded for pg_sequence. (in pg_sequence.h)
+static const uint32_t kPgYbMigrationTableOid = 8027;  // Hardcoded for pg_yb_migration.
+                                                      // (in pg_yb_migration.h)
 
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
 extern const TableId kPgTablespaceTableId;
+extern const TableId kPgSequencesDataTableId;
 extern const std::string kPgSequencesDataNamespaceId;
 
 // Get YB namespace id for a Postgres database.

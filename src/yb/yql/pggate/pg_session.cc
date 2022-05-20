@@ -20,6 +20,8 @@
 #include <future>
 #include <memory>
 
+#include <boost/functional/hash.hpp>
+
 #include "yb/client/batcher.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
@@ -87,35 +89,12 @@ using yb::tserver::TServerSharedObject;
 
 namespace {
 
-struct PgForeignKeyReferenceLightweight {
-  PgOid table_id;
-  Slice ybctid;
-};
-
-size_t ForeignKeyReferenceHash(PgOid table_id, const char* begin, const char* end) {
-  size_t hash = 0;
-  boost::hash_combine(hash, table_id);
-  boost::hash_range(hash, begin, end);
-  return hash;
-}
-
-template<class Container>
-auto Find(const Container& container, PgOid table_id, const Slice& ybctid) {
-  return container.find(PgForeignKeyReferenceLightweight{table_id, ybctid},
-      [](const auto& k) {
-        return ForeignKeyReferenceHash(k.table_id, k.ybctid.cdata(), k.ybctid.cend()); },
-      [](const auto& l, const auto& r) {
-        return l.table_id == r.table_id && l.ybctid == r.ybctid; });
-}
-
-template<class Container>
-bool Erase(Container* container, PgOid table_id, const Slice& ybctid) {
-  const auto it = Find(*container, table_id, ybctid);
+template<class Container, class Key>
+void Erase(Container* container, const Key& key) {
+  auto it = container->find(key);
   if (it != container->end()) {
     container->erase(it);
-    return true;
   }
-  return false;
 }
 
 YB_DEFINE_ENUM(SessionType, (kRegular)(kTransactional)(kCatalog));
@@ -219,7 +198,7 @@ class PgSession::RunHelper {
       : pg_session_(*pg_session), session_type_(session_type) {
   }
 
-  CHECKED_STATUS Apply(const PgTableDesc& table,
+  Status Apply(const PgTableDesc& table,
                        const PgsqlOpPtr& op,
                        uint64_t* read_time,
                        bool force_non_bufferable) {
@@ -264,16 +243,13 @@ class PgSession::RunHelper {
       return Status::OK();
     }
 
-    TxnPriorityRequirement txn_priority_requirement = kLowerPriorityRange;
-    if (pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
-      txn_priority_requirement = kHighestPriority;
-    } else if (op->is_read()) {
-      const auto row_mark_type = GetRowMarkType(*op);
-      read_only = read_only && !IsValidRowMarkType(row_mark_type);
-      if (RowMarkNeedsHigherPriority(row_mark_type)) {
-        txn_priority_requirement = kHigherPriorityRange;
-      }
-    }
+    const auto row_mark_type = GetRowMarkType(*op);
+    const auto txn_priority_requirement =
+      pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED ||
+      RowMarkNeedsHigherPriority(row_mark_type)
+          ? kHigherPriorityRange : kLowerPriorityRange;
+    read_only = read_only && !IsValidRowMarkType(row_mark_type);
+
     return pg_session_.pg_txn_manager_->CalculateIsolation(
         read_only, txn_priority_requirement, read_time);
   }
@@ -306,20 +282,18 @@ class PgSession::RunHelper {
 };
 
 //--------------------------------------------------------------------------------------------------
-// Class PgForeignKeyReference
+// Class TableYbctidHasher
 //--------------------------------------------------------------------------------------------------
 
-PgForeignKeyReference::PgForeignKeyReference(PgOid tid, std::string yid) :
-  table_id(tid), ybctid(std::move(yid)) {
+size_t TableYbctidHasher::operator()(const LightweightTableYbctid& value) const {
+  size_t hash = 0;
+  boost::hash_combine(hash, value.table_id);
+  boost::hash_range(hash, value.ybctid.begin(), value.ybctid.end());
+  return hash;
 }
 
-bool operator==(const PgForeignKeyReference& k1, const PgForeignKeyReference& k2) {
-  return k1.table_id == k2.table_id && k1.ybctid == k2.ybctid;
-}
-
-size_t hash_value(const PgForeignKeyReference& key) {
-  return ForeignKeyReferenceHash(
-      key.table_id, key.ybctid.c_str(), key.ybctid.c_str() + key.ybctid.length());
+size_t TableYbctidHasher::operator()(const TableYbctid& value) const {
+  return (*this)(static_cast<LightweightTableYbctid>(value));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -599,17 +573,16 @@ Result<uint64_t> PgSession::GetSharedAuthKey() {
   }
 }
 
-Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
-                                                  const Slice& ybctid,
+Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& key,
                                                   const YbctidReader& reader) {
-  if (Find(fk_reference_cache_, table_id, ybctid) != fk_reference_cache_.end()) {
+  if (fk_reference_cache_.find(key) != fk_reference_cache_.end()) {
     return true;
   }
 
   // Check existence of required FK intent.
   // Absence means the key was checked by previous batched request and was not found.
   // We don't need to call the reader in this case.
-  auto it = Find(fk_reference_intent_, table_id, ybctid);
+  auto it = fk_reference_intent_.find(key);
   if (it == fk_reference_intent_.end()) {
     return false;
   }
@@ -621,45 +594,44 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
   // If the reader fails to get the result, we fail the whole operation (and transaction).
   // Hence it's ok to extract (erase) the keys from intent before calling reader.
   auto node = fk_reference_intent_.extract(it);
-  ybctids.push_back({table_id, std::move(node.value().ybctid)});
+  ybctids.emplace_back(key.table_id, std::move(node.value().ybctid));
 
   // Read up to session max batch size keys.
   for (auto it = fk_reference_intent_.begin();
-       it != fk_reference_intent_.end() && ybctids.size() < buffering_settings_.max_batch_size; ) {
+       it != fk_reference_intent_.end() && ybctids.size() < ybctids.capacity(); ) {
     node = fk_reference_intent_.extract(it++);
-    auto& key_ref = node.value();
-    ybctids.emplace_back(key_ref.table_id, std::move(key_ref.ybctid));
+    ybctids.push_back(std::move(node.value()));
   }
 
   // Add the keys found in docdb to the FK cache.
   RETURN_NOT_OK(reader(&ybctids, fk_intent_region_local_tables_));
-  for (auto& it : ybctids) {
-    fk_reference_cache_.emplace(it.table_id, std::move(it.ybctid));
+  for (auto& ybctid : ybctids) {
+    fk_reference_cache_.insert(std::move(ybctid));
   }
 
-  return Find(fk_reference_cache_, table_id, ybctid) != fk_reference_cache_.end();
+  return fk_reference_cache_.find(key) != fk_reference_cache_.end();
 }
 
 void PgSession::AddForeignKeyReferenceIntent(
-    PgOid table_id, bool is_region_local, const Slice& ybctid) {
-  if (Find(fk_reference_cache_, table_id, ybctid) == fk_reference_cache_.end()) {
+    const LightweightTableYbctid& key, bool is_region_local) {
+  if (fk_reference_cache_.find(key) == fk_reference_cache_.end()) {
     if (is_region_local) {
-      fk_intent_region_local_tables_.insert(table_id);
+      fk_intent_region_local_tables_.insert(key.table_id);
     } else {
-      fk_intent_region_local_tables_.erase(table_id);
+      fk_intent_region_local_tables_.erase(key.table_id);
     }
-    fk_reference_intent_.emplace(table_id, ybctid.ToBuffer());
+    fk_reference_intent_.emplace(key.table_id, std::string(key.ybctid));
   }
 }
 
-void PgSession::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
-  if (Find(fk_reference_cache_, table_id, ybctid) == fk_reference_cache_.end()) {
-    fk_reference_cache_.emplace(table_id, ybctid.ToBuffer());
+void PgSession::AddForeignKeyReference(const LightweightTableYbctid& key) {
+  if (fk_reference_cache_.find(key) == fk_reference_cache_.end()) {
+    fk_reference_cache_.emplace(key.table_id, std::string(key.ybctid));
   }
 }
 
-void PgSession::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
-  Erase(&fk_reference_cache_, table_id, ybctid);
+void PgSession::DeleteForeignKeyReference(const LightweightTableYbctid& key) {
+  Erase(&fk_reference_cache_, key);
 }
 
 Status PgSession::PatchStatus(const Status& status, const PgObjectIds& relations) {

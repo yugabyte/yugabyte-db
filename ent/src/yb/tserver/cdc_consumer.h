@@ -96,7 +96,7 @@ class CDCConsumer {
     return TEST_num_successful_write_rpcs.load(std::memory_order_acquire);
   }
 
-  CHECKED_STATUS ReloadCertificates();
+  Status ReloadCertificates();
 
  private:
   // Runs a thread that periodically polls for any new threads.

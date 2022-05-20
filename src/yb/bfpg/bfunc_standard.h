@@ -36,19 +36,19 @@ namespace bfpg {
 
 //--------------------------------------------------------------------------------------------------
 // Dummy function for minimum opcode.
-inline CHECKED_STATUS NoOp() {
+inline Status NoOp() {
   return Status::OK();
 }
 
 // ServerOperator that takes no argument and has no return value.
-inline CHECKED_STATUS ServerOperator() {
+inline Status ServerOperator() {
   LOG(ERROR) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
 
 // ServerOperator that takes 1 argument and has a return value.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ServerOperator(PTypePtr arg1, RTypePtr result) {
+Status ServerOperator(PTypePtr arg1, RTypePtr result) {
   LOG(ERROR) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
@@ -56,7 +56,7 @@ CHECKED_STATUS ServerOperator(PTypePtr arg1, RTypePtr result) {
 // This is not used but implemented as an example for future coding.
 // ServerOperator that takes 2 arguments and has a return value.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
+Status ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
   LOG(ERROR) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }

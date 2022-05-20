@@ -122,14 +122,14 @@ class DBTestUniversalCompactionDeletion : public DBTestBase {
     return options;
   }
 
-  CHECKED_STATUS WaitForNumFilesCreated(const std::string& desc, size_t num_files) {
+  Status WaitForNumFilesCreated(const std::string& desc, size_t num_files) {
     return yb::LoggedWaitFor(
         [this, num_files] { return file_create_listener_->NumFilesCreated() >= num_files; },
         kWaitTimeout, desc);
   }
 
   template <class FilePathsContainer>
-  CHECKED_STATUS WaitFilePathsDeleted(
+  Status WaitFilePathsDeleted(
       FilePathsContainer file_paths, const std::string& description) {
     RETURN_NOT_OK_PREPEND(
         yb::LoggedWaitFor(
@@ -148,7 +148,7 @@ class DBTestUniversalCompactionDeletion : public DBTestBase {
     return Status::OK();
   }
 
-  CHECKED_STATUS WaitLiveFilesDeleted(
+  Status WaitLiveFilesDeleted(
       const std::vector<LiveFileMetaData>& files, const std::string& description) {
     std::vector<std::string> file_paths;
     for (const auto& file : files) {

@@ -1072,7 +1072,7 @@ Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
               alter_name, table_id, _1, _2));
 }
 
-CHECKED_STATUS YBClient::Data::FlushTablesHelper(YBClient* client,
+Status YBClient::Data::FlushTablesHelper(YBClient* client,
                                                 const CoarseTimePoint deadline,
                                                 const FlushTablesRequestPB& req) {
   FlushTablesResponsePB resp;
@@ -1092,7 +1092,7 @@ CHECKED_STATUS YBClient::Data::FlushTablesHelper(YBClient* client,
   return Status::OK();
 }
 
-CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
+Status YBClient::Data::FlushTables(YBClient* client,
                                            const vector<YBTableName>& table_names,
                                            bool add_indexes,
                                            const CoarseTimePoint deadline,
@@ -1107,7 +1107,7 @@ CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
   return FlushTablesHelper(client, deadline, req);
 }
 
-CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
+Status YBClient::Data::FlushTables(YBClient* client,
                                            const vector<TableId>& table_ids,
                                            bool add_indexes,
                                            const CoarseTimePoint deadline,

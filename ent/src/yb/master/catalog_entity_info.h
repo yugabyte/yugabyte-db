@@ -111,7 +111,7 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
   void SetSetupUniverseReplicationErrorStatus(const Status& status);
 
   // Get the Status of the last error from the current SetupUniverseReplication.
-  CHECKED_STATUS GetSetupUniverseReplicationErrorStatus() const;
+  Status GetSetupUniverseReplicationErrorStatus() const;
 
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;

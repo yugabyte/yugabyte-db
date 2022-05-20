@@ -80,9 +80,9 @@ For production clusters, a minimum of 3 nodes with 4 to 8 vCPUs per node is reco
 
 By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB.
 
-You can choose to deploy your cluster using an edge release for development and testing. Edge releases are typically taken from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, though they can also include a recently released stable release.
+You can choose to deploy your cluster using a preview release for development and testing. YugabyteDB Managed database preview releases are typically taken from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, though they can also include a recently released stable release.
 
-If you need a feature from an edge release (that isn't yet available in a stable release) for a production deployment, contact {{<support-cloud>}} before you create your cluster.
+If you need a feature from a preview release (that isn't yet available in a stable release) for a production deployment, contact {{<support-cloud>}} before you create your cluster.
 
 Yugabyte manages upgrades for you. After you choose a track, database upgrades continue to take releases from the track you chose. For multi-node clusters, Yugabyte performs a rolling upgrade without any downtime. You can manage when Yugabyte performs maintenance and upgrades by configuring the [maintenance window](../../cloud-clusters/cloud-maintenance/) for your cluster.
 

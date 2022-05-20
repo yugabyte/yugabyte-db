@@ -218,7 +218,7 @@ Result<bool> TableMatchesIdentifier(
     InvalidArgument, "Wrong table identifier format: $0", table_identifier);
 }
 
-CHECKED_STATUS SetupError(MasterErrorPB* error, const Status& s) {
+Status SetupError(MasterErrorPB* error, const Status& s) {
   StatusToPB(s, error->mutable_status());
   error->set_code(MasterError::ValueFromStatus(s).get_value_or(MasterErrorPB::UNKNOWN_ERROR));
   return s;

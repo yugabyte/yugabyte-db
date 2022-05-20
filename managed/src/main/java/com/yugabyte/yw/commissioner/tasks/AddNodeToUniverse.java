@@ -146,7 +146,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
       // Re-install software.
       // TODO: Remove the need for version for existing instance, NodeManger needs changes.
-      createConfigureServerTasks(nodeSet, true /* isShell */)
+      createConfigureServerTasks(nodeSet, params -> params.isMasterInShellMode = true)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
       // All necessary nodes are created. Data moving will coming soon.

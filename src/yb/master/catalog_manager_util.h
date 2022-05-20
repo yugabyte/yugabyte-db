@@ -33,17 +33,19 @@ using ZoneToDescMap = std::unordered_map<string, TSDescriptorVector>;
 struct Comparator;
 class SetPreferredZonesRequestPB;
 
+static google::protobuf::RepeatedPtrField<TableIdentifierPB> sequences_data_table_filter_;
+
 class CatalogManagerUtil {
  public:
   // For the given set of descriptors, checks if the load is considered balanced across AZs in
   // multi AZ setup, else checks load distribution across tservers (single AZ).
-  static CHECKED_STATUS IsLoadBalanced(const TSDescriptorVector& ts_descs);
+  static Status IsLoadBalanced(const TSDescriptorVector& ts_descs);
 
   // For the given set of descriptors, checks if every tserver that shouldn't have leader load
   // actually has no leader load.
   // If transaction_tables_use_preferred_zones = false, then we also check if txn status tablet
   // leaders are spread evenly based on the information in `tables`.
-  static CHECKED_STATUS AreLeadersOnPreferredOnly(
+  static Status AreLeadersOnPreferredOnly(
       const TSDescriptorVector& ts_descs,
       const ReplicationInfoPB& replication_info,
       const vector<scoped_refptr<TableInfo>>& tables = {});
@@ -55,7 +57,7 @@ class CatalogManagerUtil {
 
   // For the given set of descriptors, returns the map from each placement AZ to list of tservers
   // running in that zone.
-  static CHECKED_STATUS GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,
+  static Status GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,
                                          ZoneToDescMap* zone_to_ts);
 
   // Checks whether two given cloud infos are identical.
@@ -74,7 +76,7 @@ class CatalogManagerUtil {
       const ReplicationInfoPB& replication_info, const consensus::RaftPeerPB& peer);
 
   // Returns error if tablet partition is not covered by running inner tablets partitions.
-  static CHECKED_STATUS CheckIfCanDeleteSingleTablet(const scoped_refptr<TabletInfo>& tablet);
+  static Status CheckIfCanDeleteSingleTablet(const scoped_refptr<TabletInfo>& tablet);
 
   enum CloudInfoSimilarity {
     NO_MATCH = 0,
@@ -101,15 +103,15 @@ class CatalogManagerUtil {
   // This translates to placement blocks being disjoint i.e. no placement
   // block string (C.R.Z format) should be proper prefix of another.
   // Validate placement information if passed.
-  static CHECKED_STATUS IsPlacementInfoValid(const PlacementInfoPB& placement_info);
+  static Status IsPlacementInfoValid(const PlacementInfoPB& placement_info);
 
-  static CHECKED_STATUS SetPreferredZones(
+  static Status SetPreferredZones(
       const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info);
 
   static void GetAllAffinitizedZones(
       const ReplicationInfoPB& replication_info, vector<AffinitizedZonesSet>* affinitized_zones);
 
-  static CHECKED_STATUS CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
+  static Status CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
 
   template<class LoadState>
   static void FillTableLoadState(const scoped_refptr<TableInfo>& table_info, LoadState* state) {
@@ -134,6 +136,13 @@ class CatalogManagerUtil {
         state->per_ts_load_[loc.first]++;
       }
     }
+  }
+
+  static const google::protobuf::RepeatedPtrField<TableIdentifierPB>& SequenceDataFilter() {
+    if (sequences_data_table_filter_.empty()) {
+      *sequences_data_table_filter_.Add()->mutable_table_id() = kPgSequencesDataTableId;
+    }
+    return sequences_data_table_filter_;
   }
 
  private:

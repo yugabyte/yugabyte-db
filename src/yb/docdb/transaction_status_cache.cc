@@ -33,7 +33,7 @@ namespace docdb {
 
 namespace {
 
-CHECKED_STATUS StatusWaitTimedOut(const TransactionId& transaction_id) {
+Status StatusWaitTimedOut(const TransactionId& transaction_id) {
   return STATUS_FORMAT(
       TimedOut, "Timed out waiting for transaction status: $0", transaction_id);
 }

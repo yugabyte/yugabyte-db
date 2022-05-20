@@ -400,7 +400,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
 }
 
 template <class TablesMap>
-CHECKED_STATUS MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
+Status MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
                                  const TablesMap& tables) {
   std::string table_name = "<unknown_table_name>";
   if (!table_id.empty()) {
@@ -1138,7 +1138,7 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::CotablePacking(
   auto res = GetTableInfo(cotable_id.ToHexString());
   if (!res.ok()) {
     return STATUS_FORMAT(
-        Corruption, "Cannot find table info for: $0, raft group id: $1",
+        NotFound, "Cannot find table info for: $0, raft group id: $1",
         cotable_id, raft_group_id_);
   }
   return TableInfo::Packing(*res, schema_version, history_cutoff);
@@ -1149,7 +1149,7 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::ColocationPacking(
   auto it = kv_store_.colocation_to_table.find(colocation_id);
   if (it == kv_store_.colocation_to_table.end()) {
     return STATUS_FORMAT(
-        Corruption, "Cannot find table info for colocation: $0, raft group id: $1",
+        NotFound, "Cannot find table info for colocation: $0, raft group id: $1",
         colocation_id, raft_group_id_);
   }
   return TableInfo::Packing(it->second, schema_version, history_cutoff);
@@ -1203,7 +1203,7 @@ namespace {
 // Each MigrateSuperblockForDXXXX could be removed after all YugabyteDB installations are
 // upgraded to have revision DXXXX.
 
-CHECKED_STATUS MigrateSuperblockForD5900(RaftGroupReplicaSuperBlockPB* superblock) {
+Status MigrateSuperblockForD5900(RaftGroupReplicaSuperBlockPB* superblock) {
   // In previous version of superblock format we stored primary table metadata in superblock's
   // top-level fields (deprecated table_* and other). TableInfo objects were stored inside
   // RaftGroupReplicaSuperBlockPB.tables.

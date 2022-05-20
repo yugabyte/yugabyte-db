@@ -26,7 +26,7 @@ Result<TabletScopedRWOperationPauses> TabletComponent::StartShutdownRocksDBs(
   return tablet_.StartShutdownRocksDBs(disable_flush_on_shutdown);
 }
 
-CHECKED_STATUS TabletComponent::CompleteShutdownRocksDBs(
+Status TabletComponent::CompleteShutdownRocksDBs(
     Destroy destroy, TabletScopedRWOperationPauses* ops_pauses) {
   return tablet_.CompleteShutdownRocksDBs(destroy, ops_pauses);
 }

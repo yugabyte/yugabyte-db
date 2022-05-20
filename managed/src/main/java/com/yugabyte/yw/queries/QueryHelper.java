@@ -38,8 +38,9 @@ public class QueryHelper {
           + "t.local_blks_hit, t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM "
           + "pg_stat_statements s JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid";
   public static final String QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY =
-      "query_stats.slow_queries.order_by";
-  public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY = "query_stats.slow_queries.limit";
+      "yb.query_stats.slow_queries.order_by";
+  public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY =
+      "yb.query_stats.slow_queries.limit";
   private final RuntimeConfigFactory runtimeConfigFactory;
 
   public enum QueryApi {

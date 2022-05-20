@@ -133,22 +133,22 @@ class FsManager {
   // If the file system has not been initialized, returns NotFound.
   // In that case, CreateInitialFileSystemLayout may be used to initialize
   // the on-disk structures.
-  CHECKED_STATUS CheckAndOpenFileSystemRoots();
+  Status CheckAndOpenFileSystemRoots();
 
   //
   // Returns an error if the file system is already initialized.
-  CHECKED_STATUS CreateInitialFileSystemLayout(bool delete_fs_if_lock_found = false);
+  Status CreateInitialFileSystemLayout(bool delete_fs_if_lock_found = false);
 
   // Deletes the yb-data directory contents for data/wal. "logs" subdirectory deletion is skipped
   // when 'also_delete_logs' is set to false.
   // Needed for a master shell process to be stoppable and restartable correctly in shell mode.
-  CHECKED_STATUS DeleteFileSystemLayout(
+  Status DeleteFileSystemLayout(
       ShouldDeleteLogs also_delete_logs = ShouldDeleteLogs::kFalse);
 
   // Check if a lock file is present.
   bool HasAnyLockFiles();
   // Delete the lock files. Used once the caller deems fs creation was succcessful.
-  CHECKED_STATUS DeleteLockFiles();
+  Status DeleteLockFiles();
 
   void DumpFileSystemTree(std::ostream& out);
 
@@ -225,22 +225,22 @@ class FsManager {
     return env_->FileExists(path);
   }
 
-  CHECKED_STATUS ListDir(const std::string& path, std::vector<std::string> *objects) const;
+  Status ListDir(const std::string& path, std::vector<std::string> *objects) const;
 
   Result<std::vector<std::string>> ListDir(const std::string& path) const;
 
-  CHECKED_STATUS CreateDirIfMissing(const std::string& path, bool* created = NULL);
+  Status CreateDirIfMissing(const std::string& path, bool* created = NULL);
 
-  CHECKED_STATUS CreateDirIfMissingAndSync(const std::string& path, bool* created = NULL);
+  Status CreateDirIfMissingAndSync(const std::string& path, bool* created = NULL);
 
  private:
   FRIEND_TEST(FsManagerTestBase, TestDuplicatePaths);
 
   // Initializes, sanitizes, and canonicalizes the filesystem roots.
-  CHECKED_STATUS Init();
+  Status Init();
 
   // Creates filesystem roots, writing new on-disk instances using 'metadata'.
-  CHECKED_STATUS CreateFileSystemRoots(const InstanceMetadataPB& metadata,
+  Status CreateFileSystemRoots(const InstanceMetadataPB& metadata,
                                        bool create_lock = false);
 
   std::set<std::string> GetAncillaryDirs() const;
@@ -250,7 +250,7 @@ class FsManager {
 
   // Save a InstanceMetadataPB to the filesystem.
   // Does not mutate the current state of the fsmanager.
-  CHECKED_STATUS WriteInstanceMetadata(
+  Status WriteInstanceMetadata(
       const InstanceMetadataPB& metadata,
       const std::string& path);
 
@@ -258,10 +258,10 @@ class FsManager {
   //
   // Returns an error if it's not a directory. Otherwise, sets 'is_empty'
   // accordingly.
-  CHECKED_STATUS IsDirectoryEmpty(const std::string& path, bool* is_empty);
+  Status IsDirectoryEmpty(const std::string& path, bool* is_empty);
 
   // Checks write to temporary file on root.
-  CHECKED_STATUS CheckWrite(const std::string& path);
+  Status CheckWrite(const std::string& path);
 
   void CreateAndSetFaultDriveMetric(const std::string& path);
 

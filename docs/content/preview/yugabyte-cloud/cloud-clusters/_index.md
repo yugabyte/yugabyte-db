@@ -23,7 +23,7 @@ YugabyteDB Managed provides the following tools to manage clusters:
 
 To reduce costs on unused clusters, you can pause or delete them.
 
-Access **Pause/Resume Cluster** and **Terminate Cluster** via the cluster **More Links** menu, or click the three dots icon for the cluster on the **Clusters** page.
+Access **Pause/Resume Cluster** and **Terminate Cluster** via the cluster **Actions** menu, or click the three dots icon for the cluster on the **Clusters** page.
 
 Deleting a cluster deletes all of its data, including backups.
 

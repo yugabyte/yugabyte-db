@@ -140,7 +140,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
     builder->AddColumn(kValueColumn)->Type(STRING);
   }
 
-  CHECKED_STATUS WaitForTabletLeaders() {
+  Status WaitForTabletLeaders() {
     const MonoTime deadline = MonoTime::Now() + 10s * kTimeMultiplier;
     for (const auto& tablet_id : ListTabletIdsForTable(cluster_.get(), table_->id())) {
       RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster_.get(), tablet_id, deadline));
@@ -160,7 +160,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
     return op;
   }
 
-  CHECKED_STATUS WriteRow(const YBSessionPtr& session,
+  Status WriteRow(const YBSessionPtr& session,
                           const TableHandle& table,
                           int32_t key,
                           const std::string& value) {
@@ -204,7 +204,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
     return QLStressTest::InsertRow(session, table_, key, value);
   }
 
-  CHECKED_STATUS WriteRow(const YBSessionPtr& session,
+  Status WriteRow(const YBSessionPtr& session,
                           int32_t key,
                           const std::string& value) {
     return QLStressTest::WriteRow(session, table_, key, value);

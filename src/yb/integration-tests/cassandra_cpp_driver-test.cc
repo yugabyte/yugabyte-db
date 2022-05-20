@@ -150,7 +150,7 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
     return session;
   }
 
-  CHECKED_STATUS CreateDefaultKeyspace(CassandraSession* session) {
+  Status CreateDefaultKeyspace(CassandraSession* session) {
     if (!keyspace_created_.load(std::memory_order_acquire)) {
       RETURN_NOT_OK(session->ExecuteQuery("CREATE KEYSPACE IF NOT EXISTS test"));
       keyspace_created_.store(true, std::memory_order_release);
@@ -158,7 +158,7 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS SetupSession(CassandraSession* session) {
+  virtual Status SetupSession(CassandraSession* session) {
     RETURN_NOT_OK(CreateDefaultKeyspace(session));
     return session->ExecuteQuery("USE test");
   }
@@ -488,7 +488,7 @@ class TestTable {
   typedef vector<string> StringVec;
   typedef tuple<ColumnsTypes...> ColumnsTuple;
 
-  CHECKED_STATUS CreateTable(
+  Status CreateTable(
       CassandraSession* session, const string& table, const StringVec& columns,
       const StringVec& keys, bool transactional = false,
       const MonoDelta& timeout = 60s) {
@@ -2495,7 +2495,7 @@ TEST_F(CppCassandraDriverTest, TestPrepareWithLocalKeyspace) {
 
 class CppCassandraDriverTestWithoutUse : public CppCassandraDriverTest {
  protected:
-  CHECKED_STATUS SetupSession(CassandraSession* session) override {
+  Status SetupSession(CassandraSession* session) override {
     LOG(INFO) << "Skipping 'USE test'";
     return CreateDefaultKeyspace(session);
   }

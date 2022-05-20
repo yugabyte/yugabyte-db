@@ -341,7 +341,11 @@ Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters *exec_pa
   }
 
   // Update request with the new batch of ybctids to fetch the next batch of rows.
-  RETURN_NOT_OK(doc_op_->PopulateDmlByYbctidOps(*ybctids));
+  auto i = ybctids->begin();
+  RETURN_NOT_OK(doc_op_->PopulateDmlByYbctidOps(make_lw_function(
+      [&i, end = ybctids->end()] {
+        return i != end ? *i++ : Slice();
+      })));
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return true;
 }

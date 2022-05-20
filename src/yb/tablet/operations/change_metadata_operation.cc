@@ -215,7 +215,7 @@ Status ChangeMetadataOperation::DoAborted(const Status& status) {
   return status;
 }
 
-CHECKED_STATUS SyncReplicateChangeMetadataOperation(
+Status SyncReplicateChangeMetadataOperation(
     const ChangeMetadataRequestPB* req,
     TabletPeer* tablet_peer,
     int64_t term) {

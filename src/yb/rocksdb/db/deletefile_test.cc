@@ -173,7 +173,7 @@ class DeleteFileTest : public RocksDBTest {
 
   DBImpl* dbfull() { return reinterpret_cast<DBImpl*>(db_.get()); }
 
-  CHECKED_STATUS FlushSync() {
+  Status FlushSync() {
     return dbfull()->TEST_FlushMemTable(/* wait = */ true);
   }
 

@@ -93,9 +93,11 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
         // the master comes up as a shell master.
         createConfigureServerTasks(
                 ImmutableList.of(currentNode),
-                true /* isShell */,
-                true /* updateMasterAddrs */,
-                true /* isMaster */)
+                params -> {
+                  params.isMasterInShellMode = true;
+                  params.updateMasterAddrsOnly = true;
+                  params.isMaster = true;
+                })
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         // Set gflags for master.

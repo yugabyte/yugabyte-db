@@ -127,7 +127,7 @@ PgsqlReadOp::PgsqlReadOp(Arena* arena, const PgTableDesc& desc, bool is_region_l
   read_request_.set_stmt_id(reinterpret_cast<int64_t>(&read_request_));
 }
 
-CHECKED_STATUS PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
+Status PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
   return client::InitPartitionKey(
        table.schema(), table.partition_schema(), table.LastPartition(), &read_request_);
 }
@@ -149,7 +149,7 @@ PgsqlWriteOp::PgsqlWriteOp(Arena* arena, bool need_transaction, bool is_region_l
       need_transaction_(need_transaction) {
 }
 
-CHECKED_STATUS PgsqlWriteOp::InitPartitionKey(const PgTableDesc& table) {
+Status PgsqlWriteOp::InitPartitionKey(const PgTableDesc& table) {
   return client::InitPartitionKey(table.schema(), table.partition_schema(), &write_request_);
 }
 
