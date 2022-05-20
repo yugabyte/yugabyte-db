@@ -44,11 +44,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.DomainValidator;
 
 @Singleton
-public class CustomerConfigValidator {
+public class CustomerConfigValidator extends BaseBeanValidator {
 
   private static final String[] TLD_OVERRIDE = {"local"};
-
-  private final BeanValidator beanValidator;
 
   private final CloudClientsFactory factory;
 
@@ -61,7 +59,7 @@ public class CustomerConfigValidator {
 
   @Inject
   public CustomerConfigValidator(BeanValidator beanValidator) {
-    this.beanValidator = beanValidator;
+    super(beanValidator);
     this.factory = createCloudFactory();
 
     validators.put(
@@ -194,12 +192,5 @@ public class CustomerConfigValidator {
 
   protected CloudClientsFactory createCloudFactory() {
     return new CloudClientsFactoryImpl();
-  }
-
-  private void throwBeanValidatorError(String fieldName, String exceptionMsg) {
-    beanValidator
-        .error()
-        .forField(ConfigDataValidator.fieldFullName(fieldName), exceptionMsg)
-        .throwError();
   }
 }
