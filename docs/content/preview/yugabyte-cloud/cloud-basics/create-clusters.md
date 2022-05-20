@@ -30,7 +30,7 @@ Standard clusters include the following features:
 - VPC networking support.
 - Automated and on-demand backups.
 - Create as many as you need.
-- Provisioned with a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB. You can choose to provision with an edge release. Before deploying a production cluster on an edge release, contact {{<support-cloud>}}.
+- Provisioned with a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB. You can choose to provision with a preview release. Before deploying a production cluster on a preview release, contact {{<support-cloud>}}.
 - Available in all [regions](../../release-notes#cloud-provider-regions).
 - Enterprise support.
 
@@ -79,7 +79,7 @@ Set the following options:
 
 - **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
-- **Database Version**: By default, clusters are deployed using a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use an [edge release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) for a standard cluster, click **Advanced Settings** and choose a release. Before deploying a production cluster using an edge release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+- **Database Version**: By default, clusters are deployed using a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use a [preview release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) for a standard cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
 
 Cluster costs are estimated automatically under **Cost**. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 

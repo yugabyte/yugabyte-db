@@ -13,9 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is PostgreSQL-compatible, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect.
-
-You can download and install the YugabyteDB client shells and connect to your database by following the steps below for either YSQL or YCQL.
+Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
 
 {{< warning title="IP allow list" >}}
 
@@ -30,6 +28,8 @@ When connecting via a Yugabyte client shell, ensure you are running the latest v
 {{< /note >}}
 
 ## Connect using a client shell
+
+Use the ysqlsh and ycqlsh shells to connect to and interact with YuagbyteDB using the YSQL and YCQL APIs respectively. You can download and install the YugabyteDB client shells and connect to your database using the following steps for either YSQL or YCQL.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -78,7 +78,7 @@ For information on using other SSL modes, refer to [SSL modes in YSQL](../../clo
 
 ## Connect using third party clients
 
-Because YugabyteDB is PostgreSQL- and Cassandra-compatible, you can use third-party clients to connect to your YugabyteDB clusters in YugabyteDB Managed.
+Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters in YugabyteDB Managed.
 
 To connect, follow the client's configuration steps for PostgreSQL or Cassandra, and use the following values:
 
