@@ -15,6 +15,21 @@ showAsideToc: true
 
 ## Releases
 
+### May 18, 2022
+
+#### Enhancements
+
+- Faster cluster creation. Create most clusters in under five minutes.
+
+#### Database
+
+- [Preview release](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.13.1. New free clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- Stable release updated to version 2.12.3 for standard clusters. New standard clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+#### Fixes
+
+- Cloud Shell is now available for clusters in a VPC.
+
 ### March 31, 2022
 
 #### New features
@@ -27,7 +42,7 @@ showAsideToc: true
 #### New features
 
 - Ability to schedule the maintenance window and exclusion periods for upcoming maintenance and database upgrades. The maintenance window is a weekly four-hour time slot during which Yugabyte may maintain or upgrade clusters. Yugabyte does not maintain or upgrade clusters outside the scheduled maintenance window, or during exclusion periods. Manage maintenance windows on the cluster **Maintenance** tab.
-- Ability to manually pause and resume clusters. To pause a cluster, select the cluster, click **More Links**, and choose **Pause Cluster**. Yugabyte suspends instance vCPU capacity charges for paused clusters; disk and backup storage are charged at the standard rate.
+- Ability to manually pause and resume clusters. To pause a cluster, select the cluster, click **Actions**, and choose **Pause Cluster**. Yugabyte suspends instance vCPU capacity charges for paused clusters; disk and backup storage are charged at the standard rate.
 
 ### February 3, 2022
 
@@ -43,7 +58,7 @@ showAsideToc: true
 
 #### Database
 
-- [Edge release](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.11.1. New free clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- [Preview release](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.11.1. New free clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 - Stable release updated to version 2.8.1 for standard clusters. New standard clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 ### January 27, 2022
@@ -173,6 +188,5 @@ The following **AWS regions** are available:
 ### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
 
 - If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
-- Cloud Shell is unavailable for clusters in a VPC.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
 - If a Cloud Shell session is inactive for more than five minutes, it may be disconnected.
