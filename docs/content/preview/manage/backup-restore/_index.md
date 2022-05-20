@@ -30,7 +30,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
         <div class="title">Export and import</div>
       </div>
       <div class="body">
-        Export and import data into and from SQL/CQL scripts.
+        Export and import data using SQL or CQL scripts.
       </div>
     </a>
   </div>
@@ -38,7 +38,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
     <a class="section-link icon-offset" href="snapshot-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Distributed Snapshots</div>
+        <div class="title">Distributed snapshots</div>
       </div>
       <div class="body">
         Back up and restore data using distributed snapshots.

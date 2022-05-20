@@ -108,29 +108,29 @@ To move a snapshot to external storage, gather all the relevant files from all t
     Version: 1
     ```
 
-2. [Create an in-cluster snapshot](#creating-a-snapshot).
+1. [Create an in-cluster snapshot](#creating-a-snapshot).
 
-3. Back up the YSQL metadata using the [`ysql_dump`](../../../admin/ysql-dump) command:
+1. Back up the YSQL metadata using the [`ysql_dump`](../../../admin/ysql-dump) command:
 
     ```sh
     ysql_dump --include-yb-metadata --serializable-deferrable --create --schema-only --dbname my_database --file my_database_schema.sql
     ```
 
-4. Verify that the catalog version is the same as it was prior to creating the snapshot. If it isn't, you're not guaranteed to get a consistent restorable snapshot, and should restart the process.
+1. Verify that the catalog version is the same as it was prior to creating the snapshot. If it isn't, you're not guaranteed to get a consistent restorable snapshot, and should restart the process.
 
     ```sh
     yb-admin ysql_catalog_version
     ```
 
-5. Create the snapshot metadata file by running the [`export_snapshot`](../../../admin/yb-admin/#export-snapshot) command and providing the ID of the snapshot:
+1. Create the snapshot metadata file by running the [`export_snapshot`](../../../admin/yb-admin/#export-snapshot) command and providing the ID of the snapshot:
 
     ```sh
     yb-admin export_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794 my_database.snapshot
     ```
 
-6. Copy the newly created YSQL metadata file (`my_database_schema.sql`) and the snapshot metadata file (`my_database.snapshot`) to the external storage.
+1. Copy the newly created YSQL metadata file (`my_database_schema.sql`) and the snapshot metadata file (`my_database.snapshot`) to the external storage.
 
-7. Copy the tablet snapshot data into the external storage directory. Do this for all tablets of all tables in the database.
+1. Copy the tablet snapshot data into the external storage directory. Do this for all tablets of all tables in the database.
 
     ```sh
     cp -r ~/yugabyte-data/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004003/tablet-b0de9bc6a4cb46d4aaacf4a03bcaf6be.snapshots snapshot/
@@ -158,7 +158,7 @@ the folders of ONLY the leader tablets on that node. Because each tablet-replica
 
     {{< /note >}}
 
-8. If you don't want to keep the in-cluster snapshot, it's now safe to [delete it](#deleting-a-snapshot).
+1. If you don't want to keep the in-cluster snapshot, it's now safe to [delete it](#deleting-a-snapshot).
 
 ## Restore a snapshot from external storage
 
@@ -170,7 +170,7 @@ To restore a snapshot that you've [moved to external storage](#move-a-snapshot-t
     ysqlsh -h 127.0.0.1 --echo-all --file=my_database_schema.sql
     ```
 
-2. Fetch the snapshot metadata file from the external storage and apply it by running the [`import_snapshot`](../../../admin/yb-admin/#import-snapshot) command:
+1. Fetch the snapshot metadata file from the external storage and apply it by running the [`import_snapshot`](../../../admin/yb-admin/#import-snapshot) command:
 
     ```sh
     yb-admin import_snapshot my_database.snapshot my_database
@@ -196,7 +196,7 @@ To restore a snapshot that you've [moved to external storage](#move-a-snapshot-t
     Snapshot         0d4b4935-2c95-4523-95ab-9ead1e95e794   6beb9c0e-52ea-4f61-89bd-c160ec02c729
     ```
 
-3. Copy the tablet snapshots.
+1. Copy the tablet snapshots.
 
     Use the tablet mappings to copy the tablet snapshot files from the external storage to the appropriate location.
 
@@ -222,7 +222,7 @@ For each tablet, you need to copy the snapshots folder on all tablet peers and i
 
     {{< /note >}}
 
-4. [Restore the snapshot](#restoring-a-snapshot).
+1. [Restore the snapshot](#restoring-a-snapshot).
 
 
 {{< note title="Automated backups for YugabyteDB Anywhere" >}}
