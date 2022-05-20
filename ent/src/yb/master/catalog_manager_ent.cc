@@ -3556,34 +3556,56 @@ Status CatalogManager::ValidateTableSchema(
     return STATUS(NotFound, Substitute("Error while listing table: $0", status.ToString()));
   }
 
-  // TODO: This does not work for situation where tables in different YSQL schemas have the same
-  // name. This will be fixed as part of #1476.
+  const auto& source_schema = client::internal::GetSchema(info->schema);
+  bool is_ysql_table = info->table_type == client::YBTableType::PGSQL_TABLE_TYPE;
   for (const auto& t : list_resp.tables()) {
-    if (t.name() == info->table_name.table_name() &&
-        t.namespace_().name() == info->table_name.namespace_name()) {
-      table->set_table_id(t.id());
-      break;
+    // Check that table name and namespace both match.
+    if (t.name() != info->table_name.table_name() ||
+        t.namespace_().name() != info->table_name.namespace_name()) {
+      continue;
     }
+
+    // Check that schema name matches for YSQL tables, if the field is empty, fill in that
+    // information during GetTableSchema call later.
+    if (is_ysql_table && t.has_pgschema_name() &&
+        t.pgschema_name() != source_schema.SchemaName()) {
+      continue;
+    }
+
+    // Get the table schema.
+    table->set_table_id(t.id());
+    status = GetTableSchema(&req, resp);
+    if (!status.ok() || resp->has_error()) {
+      return STATUS(NotFound,
+          Substitute("Error while getting table schema: $0", status.ToString()));
+    }
+
+    // Double-check schema name here if the previous check was skipped.
+    if (is_ysql_table && !t.has_pgschema_name()) {
+      std::string target_schema_name = resp->schema().has_pgschema_name()
+          ? resp->schema().pgschema_name()
+          : "";
+      if (target_schema_name != source_schema.SchemaName()) {
+        table->clear_table_id();
+        continue;
+      }
+    }
+
+    // We now have a table match. Validate the schema.
+    auto result = info->schema.EquivalentForDataCopy(resp->schema());
+    if (!result.ok() || !*result) {
+      return STATUS(IllegalState,
+          Substitute("Source and target schemas don't match: "
+                     "Source: $0, Target: $1, Source schema: $2, Target schema: $3",
+                     info->table_id, resp->identifier().table_id(),
+                     info->schema.ToString(), resp->schema().DebugString()));
+    }
+    break;
   }
 
   if (!table->has_table_id()) {
     return STATUS(NotFound,
         Substitute("Could not find matching table for $0", info->table_name.ToString()));
-  }
-
-  // We have a table match.  Now get the table schema and validate.
-  status = GetTableSchema(&req, resp);
-  if (!status.ok() || resp->has_error()) {
-    return STATUS(NotFound, Substitute("Error while getting table schema: $0", status.ToString()));
-  }
-
-  auto result = info->schema.EquivalentForDataCopy(resp->schema());
-  if (!result.ok() || !*result) {
-    return STATUS(IllegalState,
-        Substitute("Source and target schemas don't match: "
-                   "Source: $0, Target: $1, Source schema: $2, Target schema: $3",
-                   info->table_id, resp->identifier().table_id(),
-                   info->schema.ToString(), resp->schema().DebugString()));
   }
 
   // Still need to make map of table id to resp table id (to add to validated map)
