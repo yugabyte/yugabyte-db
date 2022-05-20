@@ -151,6 +151,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   ~MemTracker();
 
   #ifdef TCMALLOC_ENABLED
+  /* The properties definition can be found here:
+   * https://github.com/google/tcmalloc/blob/master/tcmalloc/malloc_extension.h#L226
+   */
   static int64_t GetTCMallocProperty(const char* prop) {
     size_t value;
     if (!MallocExtension::instance()->GetNumericProperty(prop, &value)) {
@@ -169,8 +172,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   }
 
   static int64_t GetTCMallocActualHeapSizeBytes() {
-    return GetTCMallocCurrentHeapSizeBytes() -
-           GetTCMallocProperty("tcmalloc.pageheap_unmapped_bytes");
+    return GetTCMallocCurrentHeapSizeBytes();
   }
   #endif
 
