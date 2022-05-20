@@ -67,9 +67,13 @@ done
 
 ## Configure load balancer for Helm charts
 
-If you experience issues with configuring a load balancer when installing and configuring YugabyteDB Anywhere on Kubernetes, you should define the Cross-Origin Resource Sharing (CORS) domain configuration by setting the [additionAllowedCorsOrigins](https://github.com/yugabyte/charts/blob/master/stable/yugaware/values.yaml#L66) value to the new domain involved.
+If you experience issues accessing YugabyteDB Anywhere through a load balancer, you can define the Cross-Origin Resource Sharing (CORS) domain configuration by setting the [additionAllowedCorsOrigins](https://github.com/yugabyte/charts/blob/master/stable/yugaware/values.yaml#L66) value to the new domain involved. For example, you would add the following to the appropriate Helm command: 
 
-For Amazon Web Services (AWS) load balancers, the default service configuration is adequate; however, if customization is required, the backend protocol should be configured to HTTP by setting the following AWS load balancer controller annotations:
+```properties
+ --set additionAllowedCorsOrigins:'https://mylbdomain'
+```
+
+If the default Amazon Web Services (AWS) load balancer brought up in Amazon Elastic Kubernetes Service (EKS) by the YugabyteDB Anywhere Helm chart is not suitable for your setup, you can use the following settings to customize the [AWS load balancer controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.2/guide/service/annotations/) behavior:
 
 - `aws-load-balancer-scheme` can be set to `internal` or `internet-facing` string value.
 - `aws-load-balancer-backend-protocol` and `aws-load-balancer-healthcheck-protocol` should be set to the `http` string value.
@@ -83,4 +87,8 @@ service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
 service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "http"
 ```
 
-For YugabyteDB Anywhere HTTPS configuration, you should set your own key or certificate. If you do provide this setting, the default public key is used, creating a potential security issue.
+<!-- 
+
+For YugabyteDB Anywhere HTTPS configuration, you should set your own key or certificate. If you do provide this setting, the default public key is used, creating a potential security risk.
+
+-->
