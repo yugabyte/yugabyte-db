@@ -75,6 +75,7 @@ DECLARE_int64(cdc_intent_retention_ms);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_bool(stream_truncate_record);
+DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 
 namespace yb {
 
@@ -214,26 +215,52 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       SetCDCCheckpointRequestPB* set_checkpoint_req,
       const CDCStreamId stream_id,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB>
-          tablets) {
+          tablets,
+      const OpId& op_id,
+      bool initial_checkpoint) {
     set_checkpoint_req->set_stream_id(stream_id);
-    set_checkpoint_req->set_initial_checkpoint(true);
+    set_checkpoint_req->set_initial_checkpoint(initial_checkpoint);
     set_checkpoint_req->set_tablet_id(tablets.Get(0).tablet_id());
-    set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_term(0);
-    set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_index(0);
+    set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_term(op_id.term);
+    set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_index(op_id.index);
   }
 
-  CHECKED_STATUS SetInitialCheckpoint(
-      const CDCStreamId& stream_id,
-      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
+  Result <SetCDCCheckpointResponsePB> SetCDCCheckpoint(
+               const CDCStreamId& stream_id,
+               const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+               const OpId& op_id = OpId::Min(),
+               bool initial_checkpoint = true) {
     RpcController set_checkpoint_rpc;
     SetCDCCheckpointRequestPB set_checkpoint_req;
     SetCDCCheckpointResponsePB set_checkpoint_resp;
     auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
     set_checkpoint_rpc.set_deadline(deadline);
-    PrepareSetCheckpointRequest(&set_checkpoint_req, stream_id, tablets);
+    PrepareSetCheckpointRequest(&set_checkpoint_req, stream_id, tablets, op_id, initial_checkpoint);
+    Status st =
+        cdc_proxy_->SetCDCCheckpoint(set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
 
-    return cdc_proxy_->SetCDCCheckpoint(
-        set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
+    RETURN_NOT_OK(st);
+    return set_checkpoint_resp;
+  }
+
+  Result<std::vector<OpId>> GetCDCCheckpoint(
+      const CDCStreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
+    RpcController get_checkpoint_rpc;
+    GetCheckpointRequestPB get_checkpoint_req;
+    GetCheckpointResponsePB get_checkpoint_resp;
+    auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
+    get_checkpoint_rpc.set_deadline(deadline);
+
+    std::vector<OpId> op_ids;
+    for (auto tablet : tablets) {
+      get_checkpoint_req.set_stream_id(stream_id);
+      get_checkpoint_req.set_tablet_id(tablets.Get(0).tablet_id());
+      RETURN_NOT_OK(
+          cdc_proxy_->GetCheckpoint(get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
+      op_ids.push_back(OpId::FromPB(get_checkpoint_resp.checkpoint().op_id()));
+    }
+    return op_ids;
   }
 
   void AssertKeyValue(const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value) {
@@ -243,10 +270,16 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Result<GetChangesResponsePB> GetChangesFromCDC(
       const CDCStreamId& stream_id,
-      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB* cp = nullptr) {
     GetChangesRequestPB change_req;
     GetChangesResponsePB change_resp;
-    PrepareChangeRequest(&change_req, stream_id, tablets);
+
+    if (cp == nullptr) {
+      PrepareChangeRequest(&change_req, stream_id, tablets);
+    } else {
+      PrepareChangeRequest(&change_req, stream_id, tablets, *cp);
+    }
 
     RpcController get_changes_rpc;
     RETURN_NOT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &get_changes_rpc));
@@ -282,8 +315,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
     CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-    ASSERT_OK(SetInitialCheckpoint(stream_id, tablets));
-
+    auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+    ASSERT_FALSE(resp.has_error());
     WriteRows(0 /* start */, 1 /* end */, &test_cluster_);
 
     const uint32_t expected_records_size = 1;
@@ -324,7 +357,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
     TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
     CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
-    ASSERT_OK(SetInitialCheckpoint(stream_id, tablets));
+    auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+    ASSERT_FALSE(resp.has_error());
 
     // Call GetChanges once to set the initial value in the cdc_state table.
     GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -385,8 +419,27 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
     TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
     CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
-    ASSERT_OK(SetInitialCheckpoint(stream_id, tablets));
+    auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+    ASSERT_FALSE(resp.has_error());
+    auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+    for (auto op_id : checkpoints) {
+      ASSERT_EQ(OpId(0, 0), op_id);
+    }
 
+    resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId(1, 3)));
+    ASSERT_FALSE(resp.has_error());
+
+    checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+
+    for (auto op_id : checkpoints) {
+      ASSERT_EQ(OpId(1, 3), op_id);
+    }
+
+    resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId(1, -3)));
+    ASSERT_TRUE(resp.has_error());
+
+    resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId(-2, 1)));
+    ASSERT_TRUE(resp.has_error());
   }
 
   Result<GetChangesResponsePB> VerifyIfDDLRecordPresent(
@@ -503,8 +556,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiRowInsertion)) {
   std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  ASSERT_OK(SetInitialCheckpoint(stream_id, tablets));
-
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
   WriteRows(0 /* start */, 10 /* end */, &test_cluster_);
 
   // Records will follow this structure: {key, value}.
@@ -548,14 +601,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNeedSchemaInfoFlag)) {
   std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
-  ASSERT_OK(SetInitialCheckpoint(stream_id, tablets));
-
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
   // This will write one row with PK = 0.
   WriteRows(0 /* start */, 1 /* end */, &test_cluster_);
 
   // This is the first call to GetChanges, we will get a DDL record.
-  GetChangesResponsePB resp =
-      ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, false, true));
+  auto resp = ASSERT_RESULT(VerifyIfDDLRecordPresent(stream_id, tablets, false, true));
 
   // Write another row to the database with PK = 1.
   WriteRows(1 /* start */, 2 /* end */, &test_cluster_);
@@ -584,8 +636,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTruncateTable)) {
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
-  ASSERT_OK(SetInitialCheckpoint(stream_id, tablets));
-
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
   WriteRows(0 /* start */, 1 /* end */, &test_cluster_);
   ASSERT_OK(TruncateTable(&test_cluster_, {table_id}));
   WriteRows(1 /* start */, 2 /* end */, &test_cluster_);
@@ -643,6 +695,69 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNoGarbageCollectionBeforeInte
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpoint)) {
   TestSetCDCCheckpoint(1, false);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRestart)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  // insert some records in transaction.
+  WriteRowsInTransaction(0 /* start */, 100 /* end */, &test_cluster_);
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // call get changes.
+  GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp_1.cdc_sdk_proto_records_size();
+  LOG(INFO) << "Total records read by get change call: " << record_size;
+
+  WriteRowsInTransaction(100 /* start */, 200 /* end */, &test_cluster_);
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  // Greater than 100 check because  we got records for BEGIN, COMMIT also.
+  ASSERT_GT(record_size, 100);
+
+  // call get changes.
+  GetChangesResponsePB change_resp_2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+  record_size = change_resp_2.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, 100);
+  LOG(INFO) << "Total records read by get change call: " << record_size;
+
+  // Restart one of the node.
+  SleepFor(MonoDelta::FromSeconds(1));
+  test_cluster()->mini_tablet_server(1)->Shutdown();
+  ASSERT_OK(test_cluster()->mini_tablet_server(1)->Start());
+  ASSERT_OK(test_cluster()->mini_tablet_server(1)->WaitStarted());
+
+  // Check all the tserver checkpoint info it's should be valid.
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+      if (peer->tablet_id() == tablets[0].tablet_id()) {
+        // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
+        // transaction participant tablet peer.
+        ASSERT_EQ(
+            peer->cdc_sdk_min_checkpoint_op_id(),
+            peer->tablet()->transaction_participant()->GetRetainOpId());
+      }
+    }
+  }
 }
 
 }  // namespace enterprise

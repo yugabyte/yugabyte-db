@@ -46,11 +46,14 @@ static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 
 struct TwoDCTestParams {
-  TwoDCTestParams(int batch_size_, bool enable_replicate_intents_) :
-      batch_size(batch_size_), enable_replicate_intents(enable_replicate_intents_) {}
+  TwoDCTestParams(int batch_size_, bool enable_replicate_intents_, bool transactional_table_)
+      : batch_size(batch_size_),
+        enable_replicate_intents(enable_replicate_intents_),
+        transactional_table(transactional_table_) {}
 
   int batch_size;
   bool enable_replicate_intents;
+  bool transactional_table;
 };
 
 class TwoDCTestBase : public YBTest {

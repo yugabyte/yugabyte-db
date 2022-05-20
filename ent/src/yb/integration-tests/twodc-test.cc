@@ -122,6 +122,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
     FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
     FLAGS_cdc_enable_replicate_intents = GetParam().enable_replicate_intents;
     FLAGS_yb_num_shards_per_tserver = 1;
+    bool transactional_table = GetParam().transactional_table;
     num_tservers = std::max(num_tservers, replication_factor);
 
     MiniClusterOptions opts;
@@ -150,7 +151,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
 
     // Create transactional table.
     TableProperties table_properties;
-    table_properties.SetTransactional(true);
+    table_properties.SetTransactional(transactional_table);
     b.SetTableProperties(table_properties);
     CHECK_OK(b.Build(&schema_));
 
@@ -291,9 +292,9 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
     }
   }
 
-  void WriteTransactionalWorkload(uint32_t start, uint32_t end, YBClient* client,
-                                  client::TransactionManager* txn_mgr, const YBTableName& table,
-                                  bool delete_op = false) {
+  void WriteTransactionalWorkload(
+      uint32_t start, uint32_t end, YBClient* client, client::TransactionManager* txn_mgr,
+      const YBTableName& table, bool delete_op = false) {
     auto pair = ASSERT_RESULT(CreateSessionWithTransaction(client, txn_mgr));
     ASSERT_NO_FATALS(WriteIntents(start, end, client, pair.first, table, delete_op));
     ASSERT_OK(pair.second->CommitFuture().get());
@@ -305,9 +306,11 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
   YBSchema schema_;
 };
 
-INSTANTIATE_TEST_CASE_P(TwoDCTestParams, TwoDCTest,
-                        ::testing::Values(TwoDCTestParams(1, true), TwoDCTestParams(1, false),
-                                          TwoDCTestParams(0, true), TwoDCTestParams(0, false)));
+INSTANTIATE_TEST_CASE_P(
+    TwoDCTestParams, TwoDCTest,
+    ::testing::Values(
+        TwoDCTestParams(1, true, true), TwoDCTestParams(1, false, false),
+        TwoDCTestParams(0, true, true), TwoDCTestParams(0, false, false)));
 
 TEST_P(TwoDCTest, SetupUniverseReplication) {
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
@@ -1034,7 +1037,15 @@ TEST_P(TwoDCTest, ApplyOperations) {
   Destroy();
 }
 
-TEST_P(TwoDCTest, ApplyOperationsWithTransactions) {
+class TwoDCTestWithTransactionalWrite : public TwoDCTest {};
+
+INSTANTIATE_TEST_CASE_P(
+    TwoDCTestParams, TwoDCTestWithTransactionalWrite,
+    ::testing::Values(
+        TwoDCTestParams(1, true, true), TwoDCTestParams(1, false, true),
+        TwoDCTestParams(0, true, true), TwoDCTestParams(0, false, true)));
+
+TEST_P(TwoDCTestWithTransactionalWrite, ApplyOperationsWithTransactions) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
 
@@ -1068,8 +1079,9 @@ TEST_P(TwoDCTest, ApplyOperationsWithTransactions) {
 class TwoDCTestWithEnableIntentsReplication : public TwoDCTest {
 };
 
-INSTANTIATE_TEST_CASE_P(TwoDCTestParams, TwoDCTestWithEnableIntentsReplication,
-                        ::testing::Values(TwoDCTestParams(0, true), TwoDCTestParams(1, true)));
+INSTANTIATE_TEST_CASE_P(
+    TwoDCTestParams, TwoDCTestWithEnableIntentsReplication,
+    ::testing::Values(TwoDCTestParams(0, true, true), TwoDCTestParams(1, true, true)));
 
 TEST_P(TwoDCTestWithEnableIntentsReplication, UpdateWithinTransaction) {
   constexpr int kNumTablets = 1;

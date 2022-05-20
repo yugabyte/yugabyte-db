@@ -48,7 +48,6 @@ public class TestLargeTabletCount extends CDCBaseClass {
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.setNumberOfTablets(12);
       testSubscriber.createStream("proto");
-      testSubscriber.setCheckpoint(0, 0, true);
 
       int ins1 = statement.executeUpdate("insert into test values (1, 2);");
       int ins2 = statement.executeUpdate("insert into test values (22, 33);");
