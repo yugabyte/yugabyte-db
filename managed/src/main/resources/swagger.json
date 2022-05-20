@@ -8214,7 +8214,6 @@
       "properties" : {
         "backupUuid" : {
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "bootstrapCreateTime" : {

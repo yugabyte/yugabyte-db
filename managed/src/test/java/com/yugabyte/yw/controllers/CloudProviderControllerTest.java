@@ -325,8 +325,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
         configFileJson.put("GOOGLE_APPLICATION_CREDENTIALS", "credentials");
         configJson.put("config_file_contents", configFileJson);
       } else if (code.equals("aws")) {
-        configJson.put("foo", "bar");
-        configJson.put("foo2", "bar2");
+        configJson.put("AWS_ACCESS_KEY_ID", "key");
+        configJson.put("AWS_SECRET_ACCESS_KEY", "secret");
       }
       bodyJson.set("config", configJson);
       Result result = createProvider(bodyJson);
@@ -804,7 +804,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     ObjectNode configJson = Json.newObject();
     configJson.put("AWS_ACCESS_KEY_ID", "test");
     configJson.put("AWS_SECRET_ACCESS_KEY", "secret");
-    configJson.put("AWS_HOSTED_ZONE_ID", "1234");
+    configJson.put("HOSTED_ZONE_ID", "1234");
     bodyJson.set("config", configJson);
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
