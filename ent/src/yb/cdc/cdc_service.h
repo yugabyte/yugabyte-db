@@ -169,7 +169,7 @@ class CDCServiceImpl : public CDCServiceIf {
   // Returns true if this server has received a GetChanges call.
   bool CDCEnabled();
 
-  void RetainIntents(
+  Status RetainIntents(
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& cdc_sdk_op_id);
 
  private:

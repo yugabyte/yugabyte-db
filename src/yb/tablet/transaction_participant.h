@@ -208,6 +208,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void SetRetainOpId(const OpId& op_id) const;
 
+  OpId GetRetainOpId() const;
+
   const TabletId& tablet_id() const override;
 
   size_t TEST_GetNumRunningTransactions() const;

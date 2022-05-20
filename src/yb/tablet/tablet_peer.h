@@ -380,6 +380,10 @@ class TabletPeer : public consensus::ConsensusContext,
 
   CHECKED_STATUS reset_cdc_min_replicated_index_if_stale();
 
+  Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id);
+
+  OpId cdc_sdk_min_checkpoint_op_id();
+
   TableType table_type();
 
   // Returns the number of segments in log_.
