@@ -1801,6 +1801,9 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       }
     }
 
+    // Table schema update depending on different conditions.
+    bool notify_ts_for_schema_change = false;
+
     // Update the table column ids if it's not equal to the stored ids.
     if (persisted_schema.column_ids() != column_ids) {
       if (meta.table_type() != TableType::PGSQL_TABLE_TYPE) {
@@ -1833,7 +1836,26 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
       l.Commit();
-      // Update the new table schema in tablets.
+      notify_ts_for_schema_change = true;
+    }
+
+    // Restore partition key version.
+    if (persisted_schema.table_properties().partitioning_version() !=
+        schema.table_properties().partitioning_version()) {
+      auto l = table->LockForWrite();
+      auto table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
+      table_props->set_partitioning_version(schema.table_properties().partitioning_version());
+
+      l.mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
+      l.mutable_data()->pb.set_version(l->pb.version() + 1);
+      // Update sys-catalog with the new table schema.
+      RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
+      l.Commit();
+      notify_ts_for_schema_change = true;
+    }
+
+    // Update the new table schema in tablets.
+    if (notify_ts_for_schema_change) {
       RETURN_NOT_OK(SendAlterTableRequest(table));
     }
   }

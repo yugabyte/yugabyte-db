@@ -226,7 +226,6 @@ struct ValueEntryTypeAsChar {
 
 // All primitive value types fall into this range, but not all value types in this range are
 // primitive (e.g. object and tombstone are not).
-
 constexpr ValueEntryType kMinPrimitiveValueEntryType = ValueEntryType::kNullLow;
 constexpr ValueEntryType kMaxPrimitiveValueEntryType = ValueEntryType::kNullHigh;
 

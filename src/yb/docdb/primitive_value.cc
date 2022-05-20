@@ -2262,7 +2262,7 @@ KeyEntryValue KeyEntryValue::DoFromQLValuePB(const PB& value, SortingType sortin
     }
 
     case QLValuePB::kVirtualValue:
-      return KeyEntryValue(VirtualValueToKeyEntryType(value.virtual_value()));
+      return FromQLVirtualValue(value.virtual_value());
     case QLValuePB::kGinNullValue:
       return KeyEntryValue::GinNull(value.gin_null_value());
 
@@ -2300,6 +2300,10 @@ KeyEntryValue KeyEntryValue::FromQLValuePBForKey(
     return KeyEntryValue::NullValue(sorting_type);
   }
   return DoFromQLValuePB(value, sorting_type);
+}
+
+KeyEntryValue KeyEntryValue::FromQLVirtualValue(QLVirtualValuePB value) {
+  return KeyEntryValue(VirtualValueToKeyEntryType(value));
 }
 
 std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {

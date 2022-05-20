@@ -45,9 +45,7 @@
 namespace yb {
 namespace tablet {
 
-using std::unordered_map;
 using std::vector;
-using strings::Substitute;
 
 // Test basic functionality of Schema definition
 TEST(TestSchema, TestSchema) {
@@ -78,8 +76,8 @@ TEST(TestSchema, TestSchema) {
                    "use_mangled_column_name: false "
                    "is_ysql_catalog_table: false "
                    "retain_delete_markers: false "
-                   "partition_key_version: $0",
-                   kCurrentPartitionKeyVersion),
+                   "partitioning_version: $0",
+                   kCurrentPartitioningVersion),
             schema.ToString());
   EXPECT_EQ("key[string NOT NULL NOT A PARTITION KEY]", schema.column(0).ToString());
   EXPECT_EQ("uint32 NULLABLE NOT A PARTITION KEY", schema.column(1).TypeToString());
@@ -245,8 +243,8 @@ TEST(TestSchema, TestCreateProjection) {
                    "use_mangled_column_name: false "
                    "is_ysql_catalog_table: false "
                    "retain_delete_markers: false "
-                   "partition_key_version: $0",
-                   kCurrentPartitionKeyVersion),
+                   "partitioning_version: $0",
+                   kCurrentPartitioningVersion),
             partial_schema.ToString());
 
   // By names, with IDS
@@ -260,11 +258,11 @@ TEST(TestSchema, TestCreateProjection) {
                    "use_mangled_column_name: false "
                    "is_ysql_catalog_table: false "
                    "retain_delete_markers: false "
-                   "partition_key_version: $3",
+                   "partitioning_version: $3",
                    schema_with_ids.column_id(0),
                    schema_with_ids.column_id(1),
                    schema_with_ids.column_id(3),
-                   kCurrentPartitionKeyVersion),
+                   kCurrentPartitioningVersion),
             partial_schema.ToString());
 
   // By names, with missing names.
@@ -286,11 +284,11 @@ TEST(TestSchema, TestCreateProjection) {
                    "use_mangled_column_name: false "
                    "is_ysql_catalog_table: false "
                    "retain_delete_markers: false "
-                   "partition_key_version: $3",
+                   "partitioning_version: $3",
                    schema_with_ids.column_id(0),
                    schema_with_ids.column_id(1),
                    schema_with_ids.column_id(3),
-                   kCurrentPartitionKeyVersion),
+                   kCurrentPartitioningVersion),
             partial_schema.ToString());
 }
 
