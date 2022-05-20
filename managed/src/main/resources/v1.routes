@@ -420,3 +420,16 @@ DELETE /customers/:cUUID/universes/:uniUUID/support_bundle/:sbUUID             c
 GET   /metadata/version/:version/list_gflags                                   com.yugabyte.yw.controllers.GFlagsValidationUiOnlyController.listGFlags(version: String, name: String ?= "", server: String ?= "", mostUsedGFlags: Boolean ?= false)
 POST  /metadata/version/:version/validate_gflags                               com.yugabyte.yw.controllers.GFlagsValidationUiOnlyController.validateGFlags(version: String)
 GET   /metadata/version/:version/gflag                                         com.yugabyte.yw.controllers.GFlagsValidationUiOnlyController.getGFlagMetadata(version: String, name: String ?= "", server: String ?= "")
+
+# Custom Hooks API
+GET     /customers/:cUUID/hooks                                                com.yugabyte.yw.controllers.HookController.list(cUUID: java.util.UUID)
+POST    /customers/:cUUID/hooks                                                com.yugabyte.yw.controllers.HookController.create(cUUID: java.util.UUID)
+DELETE  /customers/:cUUID/hooks/:hUUID                                         com.yugabyte.yw.controllers.HookController.delete(cUUID: java.util.UUID, hUUID: java.util.UUID)
+PUT     /customers/:cUUID/hooks/:hUUID                                         com.yugabyte.yw.controllers.HookController.update(cUUID: java.util.UUID, hUUID: java.util.UUID)
+
+# Custom Hook Scope API
+GET     /customers/:cUUID/hook_scopes                                          com.yugabyte.yw.controllers.HookScopeController.list(cUUID: java.util.UUID )
+POST    /customers/:cUUID/hook_scopes                                         com.yugabyte.yw.controllers.HookScopeController.create(cUUID: java.util.UUID)
+DELETE  /customers/:cUUID/hook_scopes/:hsUUID                                 com.yugabyte.yw.controllers.HookScopeController.delete(cUUID: java.util.UUID, hsUUID: java.util.UUID)
+POST    /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                    com.yugabyte.yw.controllers.HookScopeController.addHook(cUUID: java.util.UUID, hsUUID: java.util.UUID, hUUID: java.util.UUID)
+DELETE  /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                    com.yugabyte.yw.controllers.HookScopeController.removeHook(cUUID: java.util.UUID, hsUUID: java.util.UUID, hUUID: java.util.UUID)
