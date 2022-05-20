@@ -54,7 +54,7 @@ The **Infrastructure** section on the cluster **Settings** tab summarizes the cl
 To scale a cluster:
 
 1. On the **Clusters** page, select your cluster.
-1. On the **Settings** tab or under **More Links**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
     ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 
