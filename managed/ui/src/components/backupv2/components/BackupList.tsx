@@ -10,7 +10,7 @@
 import moment from 'moment';
 import React, { FC, useMemo, useReducer, useState } from 'react';
 import { DropdownButton, MenuItem, Row } from 'react-bootstrap';
-import { BootstrapTable, RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-table';
+import { RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-table';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import Select, { OptionTypeBase } from 'react-select';
@@ -38,6 +38,9 @@ import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { BackupAdvancedRestore } from './BackupAdvancedRestore';
 import clsx from 'clsx';
 import { AccountLevelBackupEmpty, UniverseLevelBackupEmpty } from './BackupEmpty';
+import { YBTable } from '../../common/YBTable';
+import { find } from 'lodash';
+import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -184,6 +187,16 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
     }
   );
 
+  const { data: tablesInUniverse, isLoading: isTableListLoading } = useQuery(
+    [universeUUID, 'tables'],
+    () => {
+      return fetchTablesInUniverse(universeUUID!);
+    },
+    {
+      enabled: allowTakingBackup !== undefined && universeUUID !== undefined
+    }
+  );
+
   const [showDetails, setShowDetails] = useState<IBackup | null>(null);
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
   const [restoreDetails, setRestoreDetails] = useState<IBackup | null>(null);
@@ -267,6 +280,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           onActionButtonClick={() => {
             setShowBackupCreateModal(true);
           }}
+          disabled={tablesInUniverse?.data.length === 0}
         />
         <BackupCreateModal
           visible={showBackupCreateModal}
@@ -388,12 +402,14 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           {allowTakingBackup && (
             <>
               <YBButton
+                loading={isTableListLoading}
                 btnText="Backup now"
                 onClick={() => {
                   setShowBackupCreateModal(true);
                 }}
                 btnClass="btn btn-orange backup-now-button"
                 btnIcon="fa fa-upload"
+                disabled={tablesInUniverse?.data.length === 0}
               />
               <DropdownButton
                 className="actions-btn"
@@ -423,7 +439,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         })}
       >
         {isLoading && <YBLoading />}
-        <BootstrapTable
+        <YBTable
           data={backups}
           options={{
             sizePerPage,
@@ -454,9 +470,8 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             }
           }}
           trClassName={(row) =>
-            `table-row ${showDetails?.backupUUID === row.backupUUID ? 'selected-row' : ''}`
+            `${find(selectedBackups, { backupUUID: row.backupUUID }) ? 'selected-row' : ''}`
           }
-          tableHeaderClass="backup-list-header"
           pagination={true}
           remote={(remoteObj: RemoteObjSpec) => {
             return {
@@ -534,7 +549,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             columnClassName="yb-actions-cell no-border"
             width="10%"
           />
-        </BootstrapTable>
+        </YBTable>
       </Row>
       <BackupDetails
         backup_details={showDetails}

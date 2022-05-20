@@ -7,9 +7,10 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import clsx from 'clsx';
 import React, { FC } from 'react';
+import { OverlayTrigger, Popover } from 'react-bootstrap';
 import { YBButton } from '../../common/forms/fields';
+import clsx from 'clsx';
 
 import './BackupEmpty.scss';
 
@@ -24,37 +25,47 @@ const BackupEmpty: FC<BackupEmptyProps> = ({ children, classNames }) => {
 };
 
 export const ScheduledBackupEmpty = ({
-  onActionButtonClick
+  onActionButtonClick,
+  disabled = false
 }: {
   onActionButtonClick: Function;
+  disabled?: boolean;
 }) => {
   return (
     <BackupEmpty>
       {UPLOAD_ICON}
-      <YBButton
-        onClick={onActionButtonClick}
-        btnClass="btn btn-orange backup-empty-button"
-        btnText="Create Scheduled Backup Policy"
-      />
+      <BackupDisabledTooltip disabled={disabled}>
+        <YBButton
+          onClick={onActionButtonClick}
+          btnClass="btn btn-orange backup-empty-button"
+          btnText="Create Scheduled Backup Policy"
+          disabled={disabled}
+        />
+      </BackupDisabledTooltip>
       <div className="sub-text">Currently there are no Scheduled Backup Policies to show</div>
     </BackupEmpty>
   );
 };
 
 export const UniverseLevelBackupEmpty = ({
-  onActionButtonClick
+  onActionButtonClick,
+  disabled = false
 }: {
   onActionButtonClick: Function;
+  disabled?: boolean;
 }) => {
   return (
     <BackupEmpty>
       {UPLOAD_ICON}
-      <YBButton
-        onClick={onActionButtonClick}
-        btnIcon="fa fa-upload"
-        btnClass="btn btn-orange backup-empty-button"
-        btnText="Backup now"
-      />
+      <BackupDisabledTooltip disabled={disabled}>
+        <YBButton
+          onClick={onActionButtonClick}
+          btnIcon="fa fa-upload"
+          btnClass="btn btn-orange backup-empty-button"
+          disabled={disabled}
+          btnText="Backup now"
+        />
+      </BackupDisabledTooltip>
       <div className="sub-text">Currently there are no Backups to show</div>
     </BackupEmpty>
   );
@@ -69,5 +80,28 @@ export const AccountLevelBackupEmpty = () => {
         <div className="sub-text">Backups from all universes will be listed in this page</div>
       </div>
     </BackupEmpty>
+  );
+};
+
+const BACKUP_DISABLED_POPOVER = (
+  <Popover id="popover-backup-disabled" title="This universe does not have any tables to backup" />
+);
+
+const BackupDisabledTooltip = ({
+  disabled,
+  children
+}: {
+  disabled: boolean;
+  children: JSX.Element;
+}) => {
+  return disabled ? (
+    <div className="backup-disabled-tooltip">
+      <OverlayTrigger trigger="click" placement="top" overlay={BACKUP_DISABLED_POPOVER}>
+        <div className="placeholder" />
+      </OverlayTrigger>
+      {children}
+    </div>
+  ) : (
+    <>{children}</>
   );
 };
