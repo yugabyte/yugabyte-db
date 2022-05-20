@@ -21,7 +21,7 @@ export const getReplicationStatus = (status = IReplicationStatus.INIT) => {
           <i className="fa fa-spinner fa-spin" />
           Updating
         </span>
-      )
+      );
     case IReplicationStatus.RUNNING:
       return (
         <span className="replication-status-text success">
@@ -62,7 +62,6 @@ export const getReplicationStatus = (status = IReplicationStatus.INIT) => {
 
 const ALERT_NAME = 'Replication Lag';
 
-
 export const GetConfiguredThreshold = ({
   currentUniverseUUID
 }: {
@@ -93,7 +92,6 @@ export const GetCurrentLag = ({
   replicationUUID: string;
   sourceUniverseUUID: string;
 }) => {
-  
   const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
     ['universe', sourceUniverseUUID],
     () => getUniverseInfo(sourceUniverseUUID)
@@ -101,21 +99,20 @@ export const GetCurrentLag = ({
   const nodePrefix = universeInfo?.data?.universeDetails.nodePrefix;
 
   const { data: metricsData, isFetching } = useQuery(
-    [replicationUUID, nodePrefix, 'metric'],
+    ['xcluster-metric', replicationUUID, nodePrefix, 'metric'],
     () => queryLagMetricsForUniverse(nodePrefix, replicationUUID),
     {
-      enabled: !currentUniverseLoading,
-      refetchInterval: 20 * 1000
+      enabled: !currentUniverseLoading
     }
-    );
-    const configurationFilter = {
-      name: ALERT_NAME,
-      targetUuid: sourceUniverseUUID
-    };
-    const { data: configuredThreshold, isLoading: threshholdLoading } = useQuery(
-      ['getConfiguredThreshold', configurationFilter],
-      () => getAlertConfigurations(configurationFilter)
-    );
+  );
+  const configurationFilter = {
+    name: ALERT_NAME,
+    targetUuid: sourceUniverseUUID
+  };
+  const { data: configuredThreshold, isLoading: threshholdLoading } = useQuery(
+    ['getConfiguredThreshold', configurationFilter],
+    () => getAlertConfigurations(configurationFilter)
+  );
 
   if (isFetching || currentUniverseLoading || threshholdLoading) {
     return <i className="fa fa-spinner fa-spin yb-spinner"></i>;
@@ -129,8 +126,25 @@ export const GetCurrentLag = ({
   }
   let maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
 
-  const latestLag = metricsData.data.tserver_async_replication_lag_micros.data[0]?.y.pop();
-  return <span className={`replication-lag-value ${maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'}`}>{latestLag || '-'}</span>;
+  const metricAliases = metricsData.data.tserver_async_replication_lag_micros.layout.yaxis.alias;
+  const committedLagName = metricAliases['async_replication_committed_lag_micros'];
+
+  const latestLag = Math.max(
+    ...metricsData.data.tserver_async_replication_lag_micros.data
+      .filter((d: any) => d.name === committedLagName)
+      .map((a: any) => {
+        return a.y.slice(-1);
+      })
+  );
+  return (
+    <span
+      className={`replication-lag-value ${
+        maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'
+      }`}
+    >
+      {latestLag ?? '-'}
+    </span>
+  );
 };
 
 export const GetCurrentLagForTable = ({
@@ -147,11 +161,10 @@ export const GetCurrentLagForTable = ({
   sourceUniverseUUID: string;
 }) => {
   const { data: metricsData, isFetching } = useQuery(
-    [replicationUUID, nodePrefix, tableName, 'metric'],
+    ['xcluster-metric', replicationUUID, nodePrefix, tableName, 'metric'],
     () => queryLagMetricsForTable(tableName, nodePrefix),
     {
-      enabled,
-      refetchInterval: 20 * 1000
+      enabled
     }
   );
 
@@ -176,8 +189,26 @@ export const GetCurrentLagForTable = ({
   }
 
   let maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
-  const latestLag = metricsData.data.tserver_async_replication_lag_micros.data[1]?.y[0];
-  return <span className={`replication-lag-value ${maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'}`}>{latestLag || '-'}</span>;
+
+  const metricAliases = metricsData.data.tserver_async_replication_lag_micros.layout.yaxis.alias;
+  const committedLagName = metricAliases['async_replication_committed_lag_micros'];
+
+  const latestLag = Math.max(
+    ...metricsData.data.tserver_async_replication_lag_micros.data
+      .filter((d: any) => d.name === committedLagName)
+      .map((a: any) => {
+        return a.y.slice(-1);
+      })
+  );
+  return (
+    <span
+      className={`replication-lag-value ${
+        maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'
+      }`}
+    >
+      {latestLag ?? '-'}
+    </span>
+  );
 };
 
 export const getMasterNodeAddress = (nodeDetailsSet: Array<any>) => {
@@ -188,11 +219,13 @@ export const getMasterNodeAddress = (nodeDetailsSet: Array<any>) => {
   return '';
 };
 
-export const convertToLocalTime = (time:string, timezone:string) => {
-  return (timezone ?  (moment.utc(time) as any).tz(timezone): moment.utc(time).local()).format('YYYY-MM-DD H:mm:ss')
-}
+export const convertToLocalTime = (time: string, timezone: string) => {
+  return (timezone ? (moment.utc(time) as any).tz(timezone) : moment.utc(time).local()).format(
+    'YYYY-MM-DD H:mm:ss'
+  );
+};
 
-export const formatBytes = function (sizeInBytes:any) {
+export const formatBytes = function (sizeInBytes: any) {
   if (Number.isInteger(sizeInBytes)) {
     const bytes = sizeInBytes;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
