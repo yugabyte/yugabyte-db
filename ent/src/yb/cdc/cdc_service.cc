@@ -1260,16 +1260,17 @@ Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
   return Status::OK();
 }
 
-void CDCServiceImpl::RetainIntents(
+Status CDCServiceImpl::RetainIntents(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& cdc_sdk_op_id) {
   if (cdc_sdk_op_id == OpId::Invalid()) {
-    return;
+    return Status::OK();
   }
-
+  RETURN_NOT_OK(tablet_peer->set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
   auto txn_participant = tablet_peer->tablet()->transaction_participant();
   if (txn_participant) {
     txn_participant->SetRetainOpId(cdc_sdk_op_id);
   }
+  return Status::OK();
 }
 
 void CDCServiceImpl::ComputeLagMetric(
@@ -1489,7 +1490,8 @@ Status CDCServiceImpl::SetInitialCheckPoint(
       CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   // Update the minimum checkpoint op_id for LEADER for intent cleanup for CDCSDK Stream type.
-  RetainIntents(tablet_peer, tablet_op_id.cdc_sdk_op_id);
+  RETURN_NOT_OK_SET_CODE(
+      RetainIntents(tablet_peer, tablet_op_id.cdc_sdk_op_id), CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   //  Even if the flag is enable_update_local_peer_min_index is set, for the first time
   //  we need to set it to follower too.
@@ -1612,7 +1614,13 @@ void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
           UpdatePeersCdcMinReplicatedIndex(tablet_id, tablet.second),
           "UpdatePeersCdcMinReplicatedIndex failed");
     } else {
-      RetainIntents(tablet_peer, tablet.second.cdc_sdk_op_id);
+      s = RetainIntents(tablet_peer, tablet.second.cdc_sdk_op_id);
+      if (!s.ok()) {
+        LOG(WARNING) << "Unable to set CDCSDK min checkpoint for tablet peer "
+                     << tablet_peer->permanent_uuid()
+                     << " and tablet " << tablet_peer->tablet_id()
+                     << ": " << s;
+      }
     }
   }
 }
@@ -1909,8 +1917,7 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
     return STATUS(TryAgain, "Tablet peer is not ready to set its log cdc index");
   }
   RETURN_NOT_OK(tablet_peer->set_cdc_min_replicated_index(replicated_index));
-
-  RetainIntents(tablet_peer, cdc_sdk_replicated_op);
+  RETURN_NOT_OK(RetainIntents(tablet_peer, cdc_sdk_replicated_op));
 
   return Status::OK();
 }
