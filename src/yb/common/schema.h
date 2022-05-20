@@ -306,12 +306,14 @@ class ColumnSchema {
 class ContiguousRow;
 extern const TableId kNoCopartitionTableId;
 
-// TODO(tsplit): default value must be revisit after #12190 and #12191 are fixed
-inline constexpr uint32_t kCurrentPartitionKeyVersion = 0;
-
+inline constexpr uint32_t kCurrentPartitioningVersion = 1;
 
 class TableProperties {
  public:
+  inline TableProperties() {
+    Reset();
+  }
+
   // Containing counters is a internal property instead of a user-defined property, so we don't use
   // it when comparing table properties.
   bool operator==(const TableProperties& other) const {
@@ -325,8 +327,7 @@ class TableProperties {
 
     // Ignoring num_tablets_.
     // Ignoring retain_delete_markers_.
-    // Ignoring wal_retention_secs_.
-    // Ignoring partition_key_version_.
+    // Ignoring partitioning_version_.
   }
 
   bool operator!=(const TableProperties& other) const {
@@ -357,8 +358,7 @@ class TableProperties {
     // Ignoring use_mangled_column_name_.
     // Ignoring contain_counters_.
     // Ignoring retain_delete_markers_.
-    // Ignoring wal_retention_secs_.
-    // Ignoring partition_key_version_.
+    // Ignoring partitioning_version_.
     return true;
   }
 
@@ -446,12 +446,12 @@ class TableProperties {
     retain_delete_markers_ = retain_delete_markers;
   }
 
-  uint32_t partition_key_version() const {
-    return partition_key_version_;
+  uint32_t partitioning_version() const {
+    return partitioning_version_;
   }
 
-  void set_partition_key_version(uint32_t value) {
-    partition_key_version_ = value;
+  void set_partitioning_version(uint32_t value) {
+    partitioning_version_ = value;
   }
 
   void ToTablePropertiesPB(TablePropertiesPB *pb) const;
@@ -470,17 +470,16 @@ class TableProperties {
   // is being taken into consideration when deciding whether properties between
   // two different tables are equal or equivalent.
   static const int kNoDefaultTtl = -1;
-  int64_t default_time_to_live_ = kNoDefaultTtl;
-  bool contain_counters_ = false;
-  bool is_transactional_ = false;
-  bool retain_delete_markers_ = false;
-  YBConsistencyLevel consistency_level_ = YBConsistencyLevel::STRONG;
-  TableId copartition_table_id_ = kNoCopartitionTableId;
-  boost::optional<uint32_t> wal_retention_secs_;
-  bool use_mangled_column_name_ = false;
-  int num_tablets_ = 0;
-  bool is_ysql_catalog_table_ = false;
-  uint32_t partition_key_version_ = kCurrentPartitionKeyVersion;
+  int64_t default_time_to_live_;
+  bool contain_counters_;
+  bool is_transactional_;
+  bool retain_delete_markers_;
+  YBConsistencyLevel consistency_level_;
+  TableId copartition_table_id_;
+  bool use_mangled_column_name_;
+  int num_tablets_;
+  bool is_ysql_catalog_table_;
+  uint32_t partitioning_version_;
 };
 
 typedef std::string PgSchemaName;
@@ -904,7 +903,7 @@ class Schema {
 
   // Return true if the schemas have exactly the same set of columns
   // and respective types, and equivalent properties.
-  // For example, one table property could have different properties for wal_retention_secs_ and
+  // For example, one table property could have different property
   // retain_delete_markers_ but still be equivalent.
   bool EquivalentForDataCopy(const Schema& other) const {
     if (this == &other) return true;

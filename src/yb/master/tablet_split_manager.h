@@ -79,9 +79,9 @@ class TabletSplitManager {
 
   void DoSplitting(const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map);
 
-  Status ValidateIndexTablePartitioning(const TableInfo& table);
   Status ValidateTableAgainstDisabledLists(const TableId& table_id);
   Status ValidateTabletAgainstDisabledList(const TabletId& tablet_id);
+  Status ValidatePartitioningVersion(const TableInfo& table);
 
   TabletSplitCandidateFilterIf* filter_;
   TabletSplitDriverIf* driver_;

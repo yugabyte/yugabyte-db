@@ -24,6 +24,7 @@
 #include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/ql_datatype.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -390,6 +391,7 @@ class KeyEntryValue {
   static KeyEntryValue FromQLValuePBForKey(const QLValuePB& value, SortingType sorting_type);
   static KeyEntryValue FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type);
   static KeyEntryValue FromQLValuePBForKey(const LWQLValuePB& value, SortingType sorting_type);
+  static KeyEntryValue FromQLVirtualValue(QLVirtualValuePB value);
 
   static KeyEntryValue Double(double d, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue Float(float f, SortOrder sort_order = SortOrder::kAscending);
