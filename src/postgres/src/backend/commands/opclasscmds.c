@@ -807,7 +807,7 @@ AlterOpFamily(AlterOpFamilyStmt *stmt)
 	 *
 	 * XXX re-enable NOT_USED code sections below if you remove this test.
 	 */
-	if (!superuser())
+	if (!superuser() && !(IsYbExtensionUser(GetUserId()) && creating_extension))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser to alter an operator family")));

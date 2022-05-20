@@ -9,7 +9,7 @@
 
 import React, { FC, useMemo, useState } from 'react';
 import { Col, DropdownButton, MenuItem, OverlayTrigger, Popover, Row } from 'react-bootstrap';
-import { useInfiniteQuery, useMutation, useQueryClient } from 'react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import cronstrue from 'cronstrue';
 
@@ -33,6 +33,7 @@ import { Link } from 'react-router';
 import { keyBy } from 'lodash';
 import { FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
 import { ScheduledBackupEmpty } from '../components/BackupEmpty';
+import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import './ScheduledBackupList.scss';
 
 const wrapTableName = (tablesList: string[] | undefined) => {
@@ -86,6 +87,11 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
     }
   );
 
+  const { data: tablesInUniverse, isLoading: isTableListLoading } = useQuery(
+    [universeUUID, 'tables'],
+    () => fetchTablesInUniverse(universeUUID!)
+  );
+
   if (isLoading) {
     return <YBLoading />;
   }
@@ -113,6 +119,7 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
           onActionButtonClick={() => {
             setShowCreateModal(true);
           }}
+          disabled={tablesInUniverse?.data.length === 0}
         />
         <BackupCreateModal
           visible={showCreateModal}
@@ -138,6 +145,8 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
           btnText="Create Scheduled Backup Policy"
           btnClass="btn btn-orange"
           onClick={() => setShowCreateModal(true)}
+          loading={isTableListLoading}
+          disabled={tablesInUniverse?.data.length === 0}
         />
       </div>
       <div className="schedule-backup-list" onScroll={handleScroll}>

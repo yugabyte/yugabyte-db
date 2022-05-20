@@ -34,6 +34,7 @@ import { KEYSPACE_VALIDATION_REGEX } from '../common/BackupUtils';
 import { toast } from 'react-toastify';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBLoading } from '../../common/indicators';
+import clsx from 'clsx';
 
 import './BackupAdvancedRestore.scss';
 
@@ -197,7 +198,10 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
   return (
     <YBModalForm
       visible={visible}
-      onHide={onHide}
+      onHide={() => {
+        setCurrentStep(0);
+        onHide();
+      }}
       className="backup-modal"
       title={'Advanced Restore'}
       initialValues={initialValues}
@@ -211,6 +215,13 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
         } else {
           doRestore(values);
         }
+      }}
+      headerClassName={clsx({
+        'show-back-button': currentStep > 0
+      })}
+      showBackButton={currentStep > 0}
+      backBtnCallbackFn={() => {
+        setCurrentStep(currentStep - 1);
       }}
       render={(formikProps: any) =>
         isTableListLoading ? (
@@ -421,11 +432,13 @@ function RenameSingleKeyspace({
   return (
     <div className="rename-keyspace-step">
       <Row className="help-text">
-        <Col lg={12}>Rename keyspace/database in this backup</Col>
+        <Col lg={12} className="no-padding">
+          Rename keyspace/database in this backup
+        </Col>
       </Row>
 
       <Row>
-        <Col lg={6} className="keyspaces-input">
+        <Col lg={6} className="keyspaces-input no-padding">
           <Field
             name={`keyspace_name`}
             component={YBInputField}

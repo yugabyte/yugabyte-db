@@ -154,6 +154,8 @@ class IntentAwareIterator {
 
   void DebugDump();
 
+  std::string DebugPosToString();
+
  private:
   friend class IntentAwareIteratorPrefixScope;
 

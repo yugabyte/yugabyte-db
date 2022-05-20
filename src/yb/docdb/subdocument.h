@@ -145,8 +145,10 @@ class SubDocument : public PrimitiveValue {
   // Set the child subdocument of an object to the given value.
   void SetChild(const KeyEntryValue& key, SubDocument&& value);
 
+  SubDocument& AllocateChild(const KeyEntryValue& key);
+
   void SetChildPrimitive(const KeyEntryValue& key, PrimitiveValue&& value) {
-    SetChild(key, SubDocument(value));
+    SetChild(key, SubDocument(std::move(value)));
   }
 
   void SetChildPrimitive(const KeyEntryValue& key, const PrimitiveValue& value) {

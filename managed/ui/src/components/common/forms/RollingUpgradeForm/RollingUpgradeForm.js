@@ -317,7 +317,7 @@ export default class RollingUpgradeForm extends Component {
             formName="RollingUpgradeForm"
             onHide={this.resetAndClose}
             footerAccessory={
-              formValues.upgradeOption === 'Non-Rolling' && (
+              formValues.upgradeOption === 'Non-Restart' && (
                 <span className="non-rolling-msg">
                   <img alt="Note" src={WarningIcon} />
                   &nbsp; <b>Note!</b> &nbsp; Flags that require rolling restart won't be applied
