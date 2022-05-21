@@ -1276,27 +1276,27 @@ replication_info {
 
 #### setup_universe_replication
 
-Sets up the universe replication for the specified source universe. Use this command only if no tables have been configured for replication. If tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
+Sets up the universe replication for the specified source universe. Use this command only if no tables have been configured for replication. If tables are already configured for replication, use [alter_universe_replication](#alter-universe-replication) to add more tables.
 
-To verify if any tables are already configured for replication, use [`list_cdc_streams`](#list-cdc-streams).
+To verify if any tables are already configured for replication, use [list_cdc_streams](#list-cdc-streams).
 
 **Syntax**
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    -master_addresses <target_master_addresses> \
     setup_universe_replication \
     <source_universe_uuid> \
     <source_master_addresses> \
     <comma_separated_list_of_table_ids> \
-    [comma_separated_list_of_producer_bootstrap_ids]
+    [ <comma_separated_list_of_producer_bootstrap_ids> ]
 ```
 
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
 * *source_universe_uuid*: The UUID of the source universe.
 * *source_master_addresses*: Comma-separated list of the source master addresses.
 * *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
-* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). These are obtained from using [`bootstrap_cdc_producer`](#bootstrap-cdc-producer).
+* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). Obtain these using [bootstrap_cdc_producer](#bootstrap-cdc-producer).
 
 {{< note title="Note" >}}
 It is important that the bootstrap_ids are in the same order as their corresponding table_ids!
@@ -1325,37 +1325,37 @@ Changes the universe replication for the specified source universe. Use this com
 * Add or remove tables in an existing replication UUID
 * Modify the source master addresses
 
-If no tables have been configured for replication, use [`setup_universe_replication`](#setup-universe-replication).
+If no tables have been configured for replication, use [setup_universe_replication](#setup-universe-replication).
 
-To check if any tables are configured for replication, use [`list_cdc_streams`](#list-cdc-streams).
+To check if any tables are configured for replication, use [list_cdc_streams](#list-cdc-streams).
 
 **Syntax**
 
 Use the `set_master_addresses` subcommand to replace the source master address list. Use this if the set of masters on the source changes:
 
 ```sh
-yb-admin -master_addresses <master-addresses> \
+yb-admin -master_addresses <target_master_addresses> \
     alter_universe_replication <source_universe_uuid> \
     set_master_addresses <source_master_addresses>
 ```
 
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
 * *source_universe_uuid*: The UUID of the source universe.
 * *source_master_addresses*: Comma-separated list of the source master addresses.
 
 Use the `add_table` subcommand to add one or more tables to the existing list:
 
 ```sh
-yb-admin -master_addresses <master-addresses> \
+yb-admin -master_addresses <target_master_addresses> \
     alter_universe_replication <source_universe_uuid> \
-    add_table [comma_separated_list_of_table_ids] \
-    [comma_separated_list_of_producer_bootstrap_ids]
+    add_table [ <comma_separated_list_of_table_ids> ] \
+    [ <comma_separated_list_of_producer_bootstrap_ids> ]
 ```
 
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
 * *source_universe_uuid*: The UUID of the source universe.
 * *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
-* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). These are obtained from using [`bootstrap_cdc_producer`](#bootstrap-cdc-producer).
+* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). Obtain these using [bootstrap_cdc_producer](#bootstrap-cdc-producer).
 
 {{< note title="Note" >}}
 It is important that the bootstrap_ids are in the same order as their corresponding table_ids!
@@ -1364,12 +1364,12 @@ It is important that the bootstrap_ids are in the same order as their correspond
 Use the `remove_table` subcommand to remove one or more tables from the existing list:
 
 ```sh
-yb-admin -master_addresses <master-addresses> \
+yb-admin -master_addresses <target_master_addresses> \
     alter_universe_replication <source_universe_uuid> \
-    remove_table [comma_separated_list_of_table_ids]
+    remove_table [ <comma_separated_list_of_table_ids> ]
 ```
 
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *target_master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *source_universe_uuid*: The UUID of the source universe.
 * *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
 
@@ -1381,11 +1381,11 @@ Deletes universe replication for the specified source universe.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    -master_addresses <target_master_addresses> \
     delete_universe_replication <source_universe_uuid>
 ```
 
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
 * *source_universe_uuid*: The UUID of the source universe.
 
 #### set_universe_replication_enabled
@@ -1396,11 +1396,11 @@ Sets the universe replication to be enabled or disabled.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    -master_addresses <target_master_addresses> \
     set_universe_replication_enabled <source_universe_uuid>
 ```
 
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
 * *source_universe_uuid*: The UUID of the source universe.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
