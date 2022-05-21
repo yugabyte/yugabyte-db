@@ -1983,13 +1983,19 @@ RETURNS NAME[] AS $$
     SELECT * FROM _keys($1, $2) LIMIT 1;
 $$ LANGUAGE sql;
 
--- col_is_pk( schema, table, column, description )
+-- col_is_pk( schema, table, column[], description )
 CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT is( _ckeys( $1, $2, 'p' ), $3, $4 );
 $$ LANGUAGE sql;
 
--- col_is_pk( table, column, description )
+-- col_is_pk( schema, table, column[] )
+CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT col_is_pk( $1, $2, $3, 'Columns ' || quote_ident($1) || '.' || quote_ident($2) || '(' || _ident_array_to_string($3, ', ') || ') should be a primary key' );
+$$ LANGUAGE sql;
+
+-- col_is_pk( table, column[], description )
 CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT is( _ckeys( $1, 'p' ), $2, $3 );
@@ -2005,6 +2011,12 @@ $$ LANGUAGE sql;
 CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_is_pk( $1, $2, ARRAY[$3], $4 );
+$$ LANGUAGE sql;
+
+-- col_is_pk( schema, table, column )
+CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT col_is_pk( $1, $2, $3, 'Column ' || quote_ident($1) || '.' || quote_ident($2) || '(' || quote_ident($3) || ') should be a primary key' );
 $$ LANGUAGE sql;
 
 -- col_is_pk( table, column, description )

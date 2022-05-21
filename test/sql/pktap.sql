@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(84);
+SELECT plan(90);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -140,6 +140,14 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    col_is_pk( 'public', 'sometab', 'id'::name ),
+    true,
+    'col_is_pk( schema, table, column )',
+    'Column public.sometab(id) should be a primary key',
+    ''
+);
+
+SELECT * FROM check_test(
     col_is_pk( 'sometab', 'id', 'sometab.id should be a pk' ),
     true,
     'col_is_pk( table, column, description )',
@@ -189,6 +197,14 @@ SELECT * FROM check_test(
     true,
     'col_is_pk( schema, table, column[], description )',
     'id + name should be a pk',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_is_pk( 'public', 'argh', ARRAY['id', 'name']::name[] ),
+    true,
+    'col_is_pk( schema, table, column[] )',
+    'Columns public.argh(id, name) should be a primary key',
     ''
 );
 

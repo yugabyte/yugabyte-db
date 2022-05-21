@@ -14,6 +14,9 @@ Revision history for pgTAP
   format, which will not affect tests run by `pg_prove`, but will break tests
   that depend on diffing files, as `pg_regress` does. Thanks to Matt DeLuco for
   highlighting the visual confusion of the indented diagnostic (#264).
+* Added variants of `col_is_pk()` with schema and without description (variants
+  without schema or description already existed). Thanks to Matteo Ferrando for
+  the PR (#199)!
 
 1.2.0 2021-12-05T18:08:13Z
 --------------------------

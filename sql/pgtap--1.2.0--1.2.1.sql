@@ -143,3 +143,15 @@ BEGIN
     RETURN;
 END;
 $$ LANGUAGE plpgsql;
+
+-- col_is_pk( schema, table, column[] )
+CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT col_is_pk( $1, $2, $3, 'Columns ' || quote_ident($1) || '.' || quote_ident($2) || '(' || _ident_array_to_string($3, ', ') || ') should be a primary key' );
+$$ LANGUAGE sql;
+
+-- col_is_pk( schema, table, column )
+CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT col_is_pk( $1, $2, $3, 'Column ' || quote_ident($1) || '.' || quote_ident($2) || '(' || quote_ident($3) || ') should be a primary key' );
+$$ LANGUAGE sql;
