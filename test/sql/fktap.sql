@@ -5,6 +5,7 @@ SELECT plan(134);
 --SELECT * from no_plan();
 
 -- These will be rolled back. :-)
+SET client_min_messages = warning;
 CREATE TABLE public.pk (
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT ''
@@ -44,7 +45,6 @@ CREATE TABLE public.fk4 (
     id INT REFERENCES pk3(id)
 );
 
-SET client_min_messages = warning;
 CREATE TEMP TABLE temp_pk(
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT ''
@@ -59,7 +59,7 @@ CREATE TEMP TABLE temp_fk (
 DO $F$
 BEGIN
     IF pg_version_num() >= 95000 THEN
-        EXECUTE 'CREATE FUNCTION tmpns() RETURNS NAME AS $$ SELECT pg_my_temp_schema()::regnamespace $$ LANGUAGE SQL;';
+        EXECUTE 'CREATE FUNCTION tmpns() RETURNS NAME AS $$ SELECT pg_my_temp_schema()::regnamespace::name $$ LANGUAGE SQL;';
     ELSE
         EXECUTE 'CREATE FUNCTION tmpns() RETURNS NAME AS $$ SELECT nspname FROM pg_namespace WHERE oid = pg_my_temp_schema() $$ LANGUAGE SQL;';
     END IF;
