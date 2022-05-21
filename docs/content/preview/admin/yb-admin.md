@@ -148,7 +148,7 @@ yb-admin \
 
 Lists all tablets and their replica locations for a particular table.
 
-Useful to find out who the LEADER of a tablet is.
+Use this to find out who the LEADER of a tablet is.
 
 **Syntax**
 
@@ -642,7 +642,7 @@ yb-admin \
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * `show_details`: (Optional) Print snapshot details, including the keyspaces, tables, and indexes.
-* `not_show_restored`: (Optional) Do not show successful "restorations" (that is, `COMPLETE`). Useful to see a list of only uncompleted or failed restore operations.
+* `not_show_restored`: (Optional) Do not show successful "restorations" (that is, `COMPLETE`). Use to see a list of only uncompleted or failed restore operations.
 * `show_deleted`: (Optional) Show snapshots that are deleted, but still retained in memory.
 
 Possible `state` values for creating and restoring snapshots:
@@ -945,7 +945,7 @@ Returns one or more schedule lists in JSON format.
 yb-admin list_snapshot_schedules <schedule-id>
 ```
 
-Where _schedule-id_ is the snapshot schedule's unique identifier. The ID is optional; omit the ID to return all schedules in the system.
+Where *schedule-id* is the snapshot schedule's unique identifier. The ID is optional; omit the ID to return all schedules in the system.
 
 **Example**
 
@@ -1049,7 +1049,7 @@ Returns a JSON object with the schedule_id that was just deleted.
 yb-admin delete_snapshot_schedule <schedule-id>
 ```
 
-Where _schedule-id_ is the snapshot schedule's unique identifier.
+Where *schedule-id* is the snapshot schedule's unique identifier.
 
 **Example**
 
@@ -1576,7 +1576,7 @@ yb-admin \
     create_change_data_stream ysql.<namespace_name>
 ```
 
-* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *namespace_name*: The namespace on which the DB stream ID is to be created.
 
 For example:
@@ -1605,7 +1605,7 @@ yb-admin \
     list_change_data_streams [namespace_name]
 ```
 
-* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *namespace_name*: Optional - The namespace name for which the streams are to be listed, if not provided it would list all the streams without filtering.
 
 **Example:**
@@ -1662,7 +1662,7 @@ yb-admin \
     get_change_data_stream_info <db_stream_id>
 ```
 
-* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *db_stream_id*: The CDC DB stream ID to get the info of.
 
 **Example:**
@@ -1696,7 +1696,7 @@ yb-admin \
     delete_change_data_stream <db_stream_id>
 ```
 
-* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *db_stream_id*: The CDC DB stream ID to be deleted.
 
 **Example:**
