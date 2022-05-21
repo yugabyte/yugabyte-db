@@ -15,8 +15,8 @@ Revision history for pgTAP
   that depend on diffing files, as `pg_regress` does. Thanks to Matt DeLuco for
   highlighting the visual confusion of the indented diagnostic (#264).
 * Added variants of `col_is_pk()` with schema and without description (variants
-  without schema or description already existed). Thanks to Matteo Ferrando for
-  the PR (#199)!
+  without schema or description already existed). Thanks to Luca Ferrari and
+  Matteo Ferrando for the PRs (#178 & #199)!
 * Added a note on the use of temporary tables to the `fk_ok()` documentation, as
   well as a test to ensure the suggested expressions work. Thanks to Jim Nasby
   for highlighting the special treatment of the temporary schema (#109).
