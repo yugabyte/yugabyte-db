@@ -17,6 +17,9 @@ Revision history for pgTAP
 * Added variants of `col_is_pk()` with schema and without description (variants
   without schema or description already existed). Thanks to Matteo Ferrando for
   the PR (#199)!
+* Added a note on the use of temporary tables to the `fk_ok()` documentation, as
+  well as a test to ensure the suggested expressions work. Thanks to Jim Nasby
+  for highlighting the special treatment of the temporary schema (#109).
 
 1.2.0 2021-12-05T18:08:13Z
 --------------------------

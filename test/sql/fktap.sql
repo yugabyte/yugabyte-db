@@ -1,11 +1,10 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(132);
+SELECT plan(134);
 --SELECT * from no_plan();
 
 -- These will be rolled back. :-)
-SET client_min_messages = warning;
 CREATE TABLE public.pk (
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT ''
@@ -44,6 +43,28 @@ CREATE TABLE public.pk3(
 CREATE TABLE public.fk4 (
     id INT REFERENCES pk3(id)
 );
+
+SET client_min_messages = warning;
+CREATE TEMP TABLE temp_pk(
+    id    INT NOT NULL PRIMARY KEY,
+    name  TEXT DEFAULT ''
+);
+
+CREATE TEMP TABLE temp_fk (
+    id    INT NOT NULL PRIMARY KEY,
+    pk_id INT NOT NULL REFERENCES temp_pk(id)
+);
+
+-- Create a funcion to return the temp scheme name.
+DO $F$
+BEGIN
+    IF pg_version_num() >= 95000 THEN
+        EXECUTE 'CREATE FUNCTION tmpns() RETURNS NAME AS $$ SELECT pg_my_temp_schema()::regnamespace $$ LANGUAGE SQL;';
+    ELSE
+        EXECUTE 'CREATE FUNCTION tmpns() RETURNS NAME AS $$ SELECT nspname FROM pg_namespace WHERE oid = pg_my_temp_schema() $$ LANGUAGE SQL;';
+    END IF;
+END;
+$F$;
 
 RESET client_min_messages;
 
@@ -327,6 +348,14 @@ SELECT * FROM check_test(
     fk_ok( 'public', 'fk', ARRAY['pk_id'], 'public', 'pk', ARRAY['id'], 'WHATEVER' ),
     true,
     'full fk_ok array',
+    'WHATEVER'
+);
+
+-- Make sure it works with the temp schema.
+SELECT * FROM check_test(
+    fk_ok( tmpns(), 'temp_fk', ARRAY['pk_id'], tmpns(), 'temp_pk', ARRAY['id'], 'WHATEVER' ),
+    true,
+    'pg_my_temp_schema()',
     'WHATEVER'
 );
 

@@ -4912,6 +4912,17 @@ should reference `:pk_column.pk_table(:pk_column)`. Some examples:
         ARRAY['given_name', 'surname'],
     );
 
+To test constraints in a temporary table (for example, after running a function
+that's expected to create one), either omit the schema names or use
+`pg_my_temp_schema()::regnamespace::name` (on PostgreSQL 9.5 and higher) or
+`(SELECT nspname FROM pg_namespace WHERE oid = pg_my_temp_schema())` (on
+PostgreSQL 9.4 and lower) to specify the temporary schema name. For example:
+
+    SELECT fk_ok(
+        pg_my_temp_schema()::regnamespace::name, 'tmpa', 'id',
+        pg_my_temp_schema()::regnamespace::name, 'tmpb', 'id'
+    );
+
 If the test fails, it will output useful diagnostics. For example this test:
 
     SELECT fk_ok( 'contacts', 'person_id', 'persons', 'id' );
