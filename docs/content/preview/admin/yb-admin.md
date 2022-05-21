@@ -1298,9 +1298,9 @@ yb-admin \
 * *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
 * *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). Obtain these using [bootstrap_cdc_producer](#bootstrap-cdc-producer).
 
-{{< note title="Note" >}}
-It is important that the bootstrap_ids are in the same order as their corresponding table_ids!
-{{< /note >}}
+{{< warning title="Important" >}}
+Enter the bootstrap_ids in the same order as their corresponding table_ids.
+{{< /warning >}}
 
 {{< note title="Tip" >}}
 
@@ -1357,9 +1357,9 @@ yb-admin -master_addresses <target_master_addresses> \
 * *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
 * *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). Obtain these using [bootstrap_cdc_producer](#bootstrap-cdc-producer).
 
-{{< note title="Note" >}}
-It is important that the bootstrap_ids are in the same order as their corresponding table_ids!
-{{< /note >}}
+{{< warning title="Important" >}}
+Enter the bootstrap_ids in the same order as their corresponding table_ids.
+{{< /warning >}}
 
 Use the `remove_table` subcommand to remove one or more tables from the existing list:
 
