@@ -270,16 +270,12 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result login() {
-    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     boolean useLdap =
         runtimeConfigFactory
             .globalRuntimeConf()
             .getString("yb.security.ldap.use_ldap")
             .equals("true");
-    if (useOAuth) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Platform login not supported when using SSO.");
-    }
+
     CustomerLoginFormData data =
         formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get();
 
