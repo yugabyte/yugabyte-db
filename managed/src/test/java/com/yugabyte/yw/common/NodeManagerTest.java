@@ -1040,6 +1040,8 @@ public class NodeManagerTest extends FakeDBApplication {
         ChangeInstanceType.Params citTaskParams = (ChangeInstanceType.Params) params;
         expectedCommand.add("--instance_type");
         expectedCommand.add(citTaskParams.instanceType);
+        expectedCommand.add("--pg_max_mem_mb");
+        expectedCommand.add("0");
         break;
       case Transfer_XCluster_Certs:
         TransferXClusterCerts.Params txccTaskParams = (TransferXClusterCerts.Params) params;

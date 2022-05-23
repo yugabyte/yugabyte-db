@@ -272,7 +272,8 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Create
             || type == NodeCommandType.Disk_Update
             || type == NodeCommandType.Update_Mounted_Disks
-            || type == NodeCommandType.Transfer_XCluster_Certs)
+            || type == NodeCommandType.Transfer_XCluster_Certs
+            || type == NodeCommandType.Change_Instance_Type)
         && keyInfo.sshUser != null) {
       subCommand.add("--ssh_user");
       subCommand.add(keyInfo.sshUser);
@@ -341,7 +342,12 @@ public class NodeManager extends DevopsBase {
           subCommand.add(server);
         }
       }
+    } else if (params instanceof ChangeInstanceType.Params) {
+      if (keyInfo.airGapInstall) {
+        subCommand.add("--air_gap");
+      }
     }
+
     return subCommand;
   }
 
@@ -1868,6 +1874,12 @@ public class NodeManager extends DevopsBase {
           ChangeInstanceType.Params taskParam = (ChangeInstanceType.Params) nodeTaskParam;
           commandArgs.add("--instance_type");
           commandArgs.add(taskParam.instanceType);
+
+          commandArgs.add("--pg_max_mem_mb");
+          commandArgs.add(
+              Integer.toString(
+                  runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB)));
+
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
