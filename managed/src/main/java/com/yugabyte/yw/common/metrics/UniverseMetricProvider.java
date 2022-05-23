@@ -96,6 +96,12 @@ public class UniverseMetricProvider implements MetricsProvider {
                   PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAYS,
                   encryptionKeyExpiryDays));
         }
+        universeGroup.metric(
+            createUniverseMetric(
+                customer,
+                universe,
+                PlatformMetrics.UNIVERSE_REPLICATION_FACTOR,
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor));
 
         if (universe.getUniverseDetails().nodeDetailsSet != null) {
           for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {

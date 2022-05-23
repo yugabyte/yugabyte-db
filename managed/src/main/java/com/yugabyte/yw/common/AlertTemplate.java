@@ -8,6 +8,7 @@ import static com.yugabyte.yw.models.common.Unit.COUNT;
 import static com.yugabyte.yw.models.common.Unit.DAY;
 import static com.yugabyte.yw.models.common.Unit.MILLISECOND;
 import static com.yugabyte.yw.models.common.Unit.PERCENT;
+import static com.yugabyte.yw.models.common.Unit.SECOND;
 import static com.yugabyte.yw.models.common.Unit.STATUS;
 
 import com.google.common.collect.ImmutableMap;
@@ -43,7 +44,7 @@ public enum AlertTemplate {
       "Average replication lag for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }} ms."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
-      15,
+      0,
       EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -60,7 +61,7 @@ public enum AlertTemplate {
       "Max clock skew for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }} ms."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -87,7 +88,7 @@ public enum AlertTemplate {
       "Average memory usage for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}%."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}%",
-      15,
+      0,
       EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -102,7 +103,7 @@ public enum AlertTemplate {
           + " {{ query_condition }} 1",
       "Failed to perform health check for universe '{{ $labels.source_name }}'"
           + " - check YB Platform logs for details or contact YB support team",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder().statusThreshold(SEVERE).build()),
@@ -116,7 +117,7 @@ public enum AlertTemplate {
       "Failed to perform health check notification for universe '{{ $labels.source_name }}'"
           + " - check Health notification settings and YB Platform logs for details"
           + " or contact YB support team",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder().statusThreshold(SEVERE).build()),
@@ -128,7 +129,7 @@ public enum AlertTemplate {
           + " {{ query_condition }} 1",
       "Last backup task for universe '{{ $labels.source_name }}' failed"
           + " - check backup task result for more details",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder().statusThreshold(SEVERE).build()),
@@ -141,7 +142,7 @@ public enum AlertTemplate {
           + " {{ query_condition }} 1",
       "Last attempt to run scheduled backup for universe '{{ $labels.source_name }}'"
           + " failed due to other backup or universe operation is in progress.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder().statusThreshold(SEVERE).build()),
@@ -153,7 +154,7 @@ public enum AlertTemplate {
           + " {{ query_condition }} {{ query_threshold }}",
       "{{ $value | printf \\\"%.0f\\\" }} node(s) has inactive cronjob"
           + " for universe '{{ $labels.source_name }}'.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -169,7 +170,7 @@ public enum AlertTemplate {
       "last_over_time(ybp_alert_query_status[1d]) {{ query_condition }} 1",
       "Last alert query for customer '{{ $labels.source_name }}' failed"
           + " - check YB Platform logs for details or contact YB support team",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.PLATFORM,
       ThresholdSettings.builder().statusThreshold(SEVERE).build()),
@@ -180,7 +181,7 @@ public enum AlertTemplate {
       "last_over_time(ybp_alert_config_writer_status[1d]) {{ query_condition }} 1",
       "Last alert rules sync for customer '{{ $labels.source_name }}' failed"
           + " - check YB Platform logs for details or contact YB support team",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.PLATFORM,
       ThresholdSettings.builder().statusThreshold(SEVERE).build()),
@@ -192,7 +193,7 @@ public enum AlertTemplate {
           + " {{ query_condition }} 1",
       "Last attempt to send alert notifications for customer '{{ $labels.source_name }}'"
           + " failed - check YB Platform logs for details or contact YB support team",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.PLATFORM,
       ThresholdSettings.builder().statusThreshold(SEVERE).build()),
@@ -204,7 +205,7 @@ public enum AlertTemplate {
           + " {{ query_condition }} 1",
       "Last attempt to send alert notifications to channel '{{ $labels.source_name }}'"
           + " failed - try sending test alert to get more details",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER, DefinitionSettings.SKIP_TARGET_LABELS),
       TargetType.PLATFORM,
       ThresholdSettings.builder().statusThreshold(SEVERE).build(),
@@ -219,7 +220,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }}",
       "{{ $value | printf \\\"%.0f\\\" }} DB node(s) are down "
           + "for more than 15 minutes for universe '{{ $labels.source_name }}'.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -238,7 +239,7 @@ public enum AlertTemplate {
       "Universe '{{ $labels.source_name }}'"
           + " DB node is restarted {{ $value | printf \\\"%.0f\\\" }} times"
           + " during last 30 minutes",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -259,7 +260,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }})",
       "Average node CPU usage for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -279,7 +280,7 @@ public enum AlertTemplate {
           + "* 100) {{ query_condition }} {{ query_threshold }})",
       "Node disk usage for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -296,7 +297,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }})",
       "Node file descriptors usage for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -314,7 +315,7 @@ public enum AlertTemplate {
       "More than {{ $labels.threshold }} OOM kills detected"
           + " for universe '{{ $labels.source_name }}'"
           + " on {{ $value | printf \\\"%.0f\\\" }} node(s).",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -355,7 +356,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }}",
       "{{ $value | printf \\\"%.0f\\\" }} DB Master/TServer instance(s) are down "
           + "for more than 15 minutes for universe '{{ $labels.source_name }}'.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -376,7 +377,7 @@ public enum AlertTemplate {
       "Universe '{{ $labels.source_name }}'"
           + " Master or TServer is restarted {{ $value | printf \\\"%.0f\\\" }} times"
           + " during last 30 minutes",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -399,7 +400,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }}",
       "Fatal logs detected for universe '{{ $labels.source_name }}'"
           + " on {{ $value | printf \\\"%.0f\\\" }} Master/TServer instance(s).",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -425,7 +426,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }}",
       "Error logs detected for universe '{{ $labels.source_name }}'"
           + " on {{ $value | printf \\\"%.0f\\\" }} Master/TServer instance(s).",
-      15,
+      0,
       EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -442,7 +443,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }}",
       "Core files detected for universe '{{ $labels.source_name }}'"
           + " on {{ $value | printf \\\"%.0f\\\" }} TServer instance(s).",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -459,7 +460,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }}",
       "YSQLSH connection failure detected for universe '{{ $labels.source_name }}'"
           + " on {{ $value | printf \\\"%.0f\\\" }} TServer instance(s).",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -476,7 +477,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }}",
       "CQLSH connection failure detected for universe '{{ $labels.source_name }}'"
           + " on {{ $value | printf \\\"%.0f\\\" }} TServer instance(s).",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -492,7 +493,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }}",
       "Redis connection failure detected for universe '{{ $labels.source_name }}'"
           + " on {{ $value | printf \\\"%.0f\\\" }} TServer instance(s).",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -512,7 +513,7 @@ public enum AlertTemplate {
           + "operation_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) "
           + "{{ query_condition }} {{ query_threshold }}",
       "DB memory rejections detected for universe '{{ $labels.source_name }}'.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -529,7 +530,7 @@ public enum AlertTemplate {
           + "majority_sst_files_rejections{node_prefix=\"__nodePrefix__\"}[10m])) "
           + "{{ query_condition }} {{ query_threshold }}",
       "DB compaction rejections detected for universe '{{ $labels.source_name }}'.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -548,7 +549,7 @@ public enum AlertTemplate {
           + "rpcs_timed_out_in_queue{node_prefix=\"__nodePrefix__\"}[10m])) "
           + "{{ query_condition }} {{ query_threshold }}",
       "DB queues overflow detected for universe '{{ $labels.source_name }}'.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -566,7 +567,7 @@ public enum AlertTemplate {
           + " {{ query_condition }} {{ query_threshold }})",
       "Test YSQL write/read operation failed on "
           + "{{ $value | printf \\\"%.0f\\\" }} nodes(s) for universe '{{ $labels.source_name }}'.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder().statusThreshold(SEVERE).build()),
@@ -579,7 +580,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }})",
       "Node to node CA certificate for universe '{{ $labels.source_name }}'"
           + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -596,7 +597,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }})",
       "Node to node certificate for universe '{{ $labels.source_name }}'"
           + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -613,7 +614,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }})",
       "Client to node CA certificate for universe '{{ $labels.source_name }}'"
           + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -630,7 +631,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }})",
       "Client to node certificate for universe '{{ $labels.source_name }}'"
           + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -647,7 +648,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }}",
       "Encryption At Rest config for universe '{{ $labels.source_name }}'"
           + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -670,7 +671,7 @@ public enum AlertTemplate {
       "Average YSQL operations latency for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }} ms."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
-      15,
+      0,
       EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -692,7 +693,7 @@ public enum AlertTemplate {
       "Average YCQL operations latency for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }} ms."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
-      15,
+      0,
       EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -710,7 +711,7 @@ public enum AlertTemplate {
       "YSQL P99 latency for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }} ms."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
-      15,
+      0,
       EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -728,7 +729,7 @@ public enum AlertTemplate {
       "YCQL P99 latency for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }} ms."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
-      15,
+      0,
       EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -744,7 +745,7 @@ public enum AlertTemplate {
       "Number of YSQL connections for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
-      15,
+      0,
       EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -760,7 +761,7 @@ public enum AlertTemplate {
       "Number of YCQL connections for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
-      15,
+      0,
       EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -776,7 +777,7 @@ public enum AlertTemplate {
       "Number of YEDIS connections for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
-      15,
+      0,
       EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -794,7 +795,7 @@ public enum AlertTemplate {
       "Maximum throughput for YSQL operations for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
-      15,
+      0,
       EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -812,7 +813,7 @@ public enum AlertTemplate {
       "Maximum throughput for YCQL operations for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
-      15,
+      0,
       EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -831,6 +832,26 @@ public enum AlertTemplate {
       TargetType.UNIVERSE,
       ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
+  MASTER_UNDER_REPLICATED(
+      "Under-replicated master",
+      "Master is missing from raft group or has follower lag higher than threshold",
+      "(min_over_time((ybp_universe_replication_factor{node_prefix=\"__nodePrefix__\"}"
+          + " - on(node_prefix) count by(node_prefix) (count by (node_prefix, exported_instance)"
+          + " (follower_lag_ms{export_type=\"master_export\", node_prefix=\"__nodePrefix__\"})))"
+          + "[{{ query_threshold }}s:]) > 0 or (max by(node_prefix) (follower_lag_ms"
+          + "{export_type=\"master_export\", node_prefix=\"__nodePrefix__\"})"
+          + " {{ query_condition }} ({{ query_threshold }} * 1000)))",
+      "Master is missing from raft group or has follower lag higher"
+          + " than {{ $labels.threshold }} seconds for universe '{{ $labels.source_name }}'.",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.underreplicated_masters_secs_severe")
+          .defaultThresholdUnit(SECOND)
+          .thresholdMinValue(1.0)
+          .build()),
+
   LEADERLESS_TABLETS(
       "Leaderless tablets",
       "Leader is missing for some tablet(s) for more than 5 minutes",
@@ -839,7 +860,7 @@ public enum AlertTemplate {
           + " {{ query_condition }} {{ query_threshold }})",
       "Tablet leader is missing for more than 5 minutes for "
           + "{{ $value | printf \\\"%.0f\\\" }} tablet(s) in universe '{{ $labels.source_name }}'.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
@@ -856,7 +877,7 @@ public enum AlertTemplate {
           + " {{ query_condition }} {{ query_threshold }})",
       "{{ $value | printf \\\"%.0f\\\" }} tablet(s) remain under-replicated "
           + "for more than 5 minutes in universe '{{ $labels.source_name }}'.",
-      15,
+      0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
