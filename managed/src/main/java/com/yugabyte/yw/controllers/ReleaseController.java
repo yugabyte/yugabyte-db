@@ -112,10 +112,13 @@ public class ReleaseController extends AuthenticatedController {
       response = Object.class,
       responseContainer = "Map",
       nickname = "getListOfRegionReleases")
-  public Result listByRegion(
-      UUID customerUUID, UUID providerUUID, UUID regionUUID, Boolean includeMetadata) {
+  public Result listByProvider(UUID customerUUID, UUID providerUUID, Boolean includeMetadata) {
     Customer.getOrBadRequest(customerUUID);
-    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+    List<Region> regionList = Region.getByProvider(providerUUID);
+    Region region = regionList.get(0);
+    if (region == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "No Regions configured for provider.");
+    }
     Map<String, Object> releases = releaseManager.getReleaseMetadata();
     Architecture arch = region.getArchitecture();
     // Old region without architecture. Return all releases.
