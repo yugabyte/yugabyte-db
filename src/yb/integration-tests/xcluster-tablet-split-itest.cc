@@ -592,18 +592,24 @@ TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
     ASSERT_OK(producer_table.Open(table_->name(), client_.get()));
     auto producer_session = client_->NewSession();
     producer_session->SetTimeout(60s);
-    int32_t key = kDefaultNumRows;
+    int32_t key = kDefaultNumRows + 1;
     while (!stop) {
-      key = (key + 1);
-      ASSERT_RESULT(client::kv_table_test::WriteRow(
+      auto res = client::kv_table_test::WriteRow(
           &producer_table, producer_session, key, key,
-          client::WriteOpType::INSERT, client::Flush::kTrue));
+          client::WriteOpType::INSERT, client::Flush::kTrue);
+      if (!res.ok() && res.status().IsNotFound()) {
+        LOG(INFO) << "Encountered NotFound error on write : " << res;
+      } else {
+        ASSERT_OK(res);
+        key++;
+      }
     }
   });
 
   // Perform tablet splits on both sides.
   ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 1));
   SwitchToConsumer();
+  ASSERT_OK(FlushTestTable());
   ASSERT_OK(SplitAllTablets(
       /* cur_num_tablets */ 1, /* parent_tablet_protected_from_deletion */ false));
   SwitchToProducer();
