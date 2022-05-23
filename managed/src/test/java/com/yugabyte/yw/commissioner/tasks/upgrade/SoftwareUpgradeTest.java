@@ -113,7 +113,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     ybAdminFuncName = ArgumentCaptor.forClass(String.class);
 
     ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "COMMAND OUTPUT: \n 2989898";
+    shellResponse.message = "Command output:\n2989898";
     shellResponse.code = 0;
     when(mockNodeUniverseManager.runCommand(any(), any(), any())).thenReturn(shellResponse);
 
