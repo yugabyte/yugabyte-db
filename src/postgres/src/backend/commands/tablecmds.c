@@ -7431,7 +7431,10 @@ YBCopyTableRowsUnchecked(Relation oldrel, Relation newrel, AttrNumber* attmap)
 		ExecStoreHeapTuple(tuple, newslot, false);
 
 		/* Write the tuple out to the new relation */
-		YBCExecuteInsert(newrel, newslot->tts_tupleDescriptor, tuple);
+		YBCExecuteInsert(newrel,
+						 newslot->tts_tupleDescriptor,
+						 tuple,
+						 ONCONFLICT_NONE);
 
 		MemoryContextReset(per_tup_cxt);
 
