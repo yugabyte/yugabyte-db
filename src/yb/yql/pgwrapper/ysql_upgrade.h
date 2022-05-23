@@ -52,7 +52,7 @@ class YsqlUpgradeHelper {
   // Migrate a given database to the next version, updating it in the given database entry.
   CHECKED_STATUS MigrateOnce(DatabaseEntry* db_entry);
 
-  const HostPort& ysql_proxy_addr_;
+  const HostPort ysql_proxy_addr_;
 
   const uint64_t ysql_auth_key_;
 
