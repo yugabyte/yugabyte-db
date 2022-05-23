@@ -11,7 +11,6 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -55,22 +54,16 @@ public class CheckMemory extends UniverseTaskBase {
             nodeUniverseManager
                 .runCommand(node, universe, String.join(" ", command))
                 .processErrors();
-        // We will be expecting the response in below format and the retrieved memory will be in KB.
-        // Command output: \n 4044800
-        List<String> cmdOutputList = Arrays.asList(response.getMessage().trim().split("\n", 0));
-        if (cmdOutputList.size() >= 2) {
-          Long availMemory = Long.parseLong(cmdOutputList.get(1).trim());
-          if (availMemory < params().memoryLimitKB) {
-            throw new RuntimeException(
-                "Insufficient memory available on node "
-                    + nodeIp
-                    + " as "
-                    + params().memoryLimitKB
-                    + " is required but found "
-                    + availMemory);
-          }
-        } else {
-          throw new RuntimeException("Error while fetching memory from node " + nodeIp);
+
+        long availMemory = Long.parseLong(response.extractRunCommandOutput());
+        if (availMemory < params().memoryLimitKB) {
+          throw new RuntimeException(
+              "Insufficient memory available on node "
+                  + nodeIp
+                  + " as "
+                  + params().memoryLimitKB
+                  + " is required but found "
+                  + availMemory);
         }
       }
       log.info("Validated Enough memory is available for Upgrade.");

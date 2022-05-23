@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.common.PlatformExecutorFactory.SHUTDOWN_TIMEOUT_MINUTES;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -113,7 +115,8 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public void terminate() {
     if (executor != null && !executor.isShutdown()) {
-      MoreExecutors.shutdownAndAwaitTermination(executor, 5, TimeUnit.MINUTES);
+      MoreExecutors.shutdownAndAwaitTermination(
+          executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
     }
   }
 

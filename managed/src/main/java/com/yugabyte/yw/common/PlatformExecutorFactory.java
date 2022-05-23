@@ -14,8 +14,6 @@ import com.google.common.util.concurrent.MoreExecutors;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.logging.MDCAwareThreadPoolExecutor;
-
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -30,6 +28,8 @@ import play.inject.ApplicationLifecycle;
 @Slf4j
 @Singleton
 public class PlatformExecutorFactory {
+
+  public static final int SHUTDOWN_TIMEOUT_MINUTES = 5;
 
   final Config config;
   final ApplicationLifecycle lifecycle;
@@ -73,7 +73,9 @@ public class PlatformExecutorFactory {
     lifecycle.addStopHook(
         () ->
             CompletableFuture.supplyAsync(
-                () -> MoreExecutors.shutdownAndAwaitTermination(executor, 5, TimeUnit.MINUTES)));
+                () ->
+                    MoreExecutors.shutdownAndAwaitTermination(
+                        executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES)));
 
     return executor;
   }

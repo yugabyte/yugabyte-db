@@ -106,13 +106,17 @@ public class MetricsController extends Controller {
 
     Map<String, PlatformMetrics> platformMetricsMap =
         Stream.of(PlatformMetrics.values())
-            .collect(Collectors.toMap(PlatformMetrics::name, Function.identity()));
+            .collect(Collectors.toMap(PlatformMetrics::getMetricName, Function.identity()));
     for (Map.Entry<String, List<Metric>> metric : metricsByName.entrySet()) {
       String metricName = metric.getKey();
       List<Metric> metrics = metric.getValue();
       PlatformMetrics knownMetric = platformMetricsMap.get(metricName);
-      String help = knownMetric != null ? knownMetric.getHelp() : StringUtils.EMPTY;
-      String unit = knownMetric != null ? knownMetric.getUnitName() : StringUtils.EMPTY;
+      String help = knownMetric != null ? knownMetric.getHelp() : metrics.get(0).getHelp();
+      String unit = knownMetric != null ? knownMetric.getUnitName() : metrics.get(0).getUnit();
+      if (unit == null) {
+        // Prometheus client library expects empty string in case metric has no unit
+        unit = StringUtils.EMPTY;
+      }
       Collector.Type type = metrics.get(0).getType().getPrometheusType();
 
       List<Collector.MetricFamilySamples.Sample> samples =

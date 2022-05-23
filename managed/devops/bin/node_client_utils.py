@@ -1,9 +1,14 @@
 import os
 import paramiko
+import socket
 import subprocess
 import time
+import logging
 
 YB_USERNAME = 'yugabyte'
+
+CONNECTION_RETRY_COUNT = 3
+CONNECTION_RETRY_DELAY_SEC = 15
 # Let's set some timeout to our commands.
 # If 10 minutes will not be enough for something - will have to pass command timeout as an argument.
 # Just having timeout in shell script, which we're running on the node,
@@ -21,10 +26,11 @@ class KubernetesClient:
         self.env_config["KUBECONFIG"] = args.kubeconfig
 
     def wrap_command(self, cmd):
+        command = cmd
         if isinstance(cmd, str):
-            cmd = cmd.split()
+            command = [cmd]
         return ['kubectl', 'exec', '-n', self.namespace, '-c',
-                'yb-master' if self.is_master else 'yb-tserver', self.node_name, '--'] + cmd
+                'yb-master' if self.is_master else 'yb-tserver', self.node_name, '--'] + command
 
     def get_file(self, source_file_path, target_local_file_path):
         cmd = [
@@ -32,6 +38,14 @@ class KubernetesClient:
             'cp',
             self.namespace + "/" + self.node_name + ":" + source_file_path,
             target_local_file_path]
+        return subprocess.call(cmd, env=self.env_config)
+
+    def put_file(self, source_file_path, target_file_path):
+        cmd = [
+            'kubectl',
+            'cp',
+            source_file_path,
+            self.namespace + "/" + self.node_name + ":" + target_file_path]
         return subprocess.call(cmd, env=self.env_config)
 
     def get_command_output(self, cmd, stdout=None):
@@ -63,6 +77,7 @@ class KubernetesClient:
 
 
 class SshParamikoClient:
+
     def __init__(self, args):
         self.key_filename = args.key
         self.ip = args.ip
@@ -70,11 +85,22 @@ class SshParamikoClient:
         self.client = None
 
     def connect(self):
-        self.client = paramiko.SSHClient()
-        self.client.set_missing_host_key_policy(paramiko.MissingHostKeyPolicy())
-        self.client.connect(self.ip, self.port, username=YB_USERNAME,
-                            key_filename=self.key_filename, timeout=10,
-                            banner_timeout=20, auth_timeout=20)
+        attempt = 1
+        while True:
+            try:
+                self.client = paramiko.SSHClient()
+                self.client.set_missing_host_key_policy(paramiko.MissingHostKeyPolicy())
+                self.client.connect(self.ip, self.port, username=YB_USERNAME,
+                                    key_filename=self.key_filename, timeout=10,
+                                    banner_timeout=20, auth_timeout=20)
+                return
+            except socket.error as ex:
+                logging.info("Failed to establish SSH connection to {}:{} - {}"
+                             .format(self.ip, self.port, str(ex)))
+                if attempt >= CONNECTION_RETRY_COUNT:
+                    raise ex
+                attempt += 1
+                time.sleep(CONNECTION_RETRY_DELAY_SEC)
 
     def close_connection(self):
         self.client.close()

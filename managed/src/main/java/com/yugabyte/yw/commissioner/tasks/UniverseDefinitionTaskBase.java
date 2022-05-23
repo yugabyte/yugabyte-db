@@ -734,21 +734,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Creates a task list to wait for a minimum number of tservers to heartbeat to the master leader.
-   */
-  public SubTaskGroup createWaitForTServerHeartBeatsTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("WaitForTServerHeartBeats", executor);
-    WaitForTServerHeartBeats task = createTask(WaitForTServerHeartBeats.class);
-    WaitForTServerHeartBeats.Params params = new WaitForTServerHeartBeats.Params();
-    params.universeUUID = taskParams().universeUUID;
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
    * Creates a task that will always fail. Utility task to display preflight error messages.
    *
    * @param failedNodes : map of nodeName to associated error message
