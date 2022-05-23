@@ -32,9 +32,6 @@ DEFINE_int32(pggate_ybclient_reactor_threads, 2,
              "The number of reactor threads to be used for processing ybclient "
              "requests originating in the PostgreSQL proxy server");
 
-DEFINE_string(pggate_proxy_bind_address, "",
-              "Address to which the PostgreSQL proxy server is bound.");
-
 DEFINE_string(pggate_master_addresses, "",
               "Addresses of the master servers to which the PostgreSQL proxy server connects.");
 

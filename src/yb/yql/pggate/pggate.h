@@ -54,14 +54,6 @@ class PgSession;
 
 //--------------------------------------------------------------------------------------------------
 
-class PggateOptions : public yb::server::ServerBaseOptions {
- public:
-  static const uint16_t kDefaultPort = 5432;
-  static const uint16_t kDefaultWebPort = 13000;
-
-  PggateOptions();
-};
-
 struct PgApiContext {
   struct MessengerHolder {
     std::unique_ptr<rpc::SecureContext> security_context;
@@ -570,9 +562,6 @@ class PgApiImpl {
   Status ValidatePlacement(const char *placement_info);
 
  private:
-  // Control variables.
-  PggateOptions pggate_options_;
-
   // Metrics.
   std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
