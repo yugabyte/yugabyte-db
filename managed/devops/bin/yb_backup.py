@@ -536,7 +536,10 @@ class GcsBackupStorage(AbstractBackupStorage):
         return self._command_list_prefix() + ["cp", src, dest]
 
     def upload_dir_cmd(self, src, dest):
-        return self._command_list_prefix() + ["-m", "rsync", "-r", src, dest]
+        if self.options.args.disable_parallelism:
+            return self._command_list_prefix() + ["rsync", "-r", src, dest]
+        else:
+            return self._command_list_prefix() + ["-m", "rsync", "-r", src, dest]
 
     def download_dir_cmd(self, src, dest):
         return self._command_list_prefix() + ["-m", "rsync", "-r", src, dest]
@@ -1089,6 +1092,10 @@ class YBBackup:
             help='Maximum number of parallel commands to launch. '
                  'This also affects the amount of outgoing s3cmd sync traffic when copying a '
                  'backup to S3.')
+        parser.add_argument(
+            '--disable_parallelism', action='store_true', default=False,
+            help="If specified as False, we add the parallelism flag '-m' during gsutil. "
+                 "If speciifed as True, the '-m' flag is not added.")
         parser.add_argument(
             '--storage_type', choices=list(BACKUP_STORAGE_ABSTRACTIONS.keys()),
             default=S3BackupStorage.storage_type(),

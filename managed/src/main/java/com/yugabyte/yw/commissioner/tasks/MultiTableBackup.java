@@ -260,6 +260,8 @@ public class MultiTableBackup extends UniverseTaskBase {
           tableBackupParams.backupType = params().backupType;
           tableBackupParams.isFullBackup = true;
           tableBackupParams.disableChecksum = params().disableChecksum;
+          tableBackupParams.useTablespaces = params().useTablespaces;
+          tableBackupParams.disableParallelism = params().disableParallelism;
 
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
           backup.setTaskUUID(userTaskUUID);
@@ -292,6 +294,8 @@ public class MultiTableBackup extends UniverseTaskBase {
             tableParams.backupUuid = backup.backupUUID;
             tableParams.customerUuid = backup.customerUUID;
             tableParams.disableChecksum = params().disableChecksum;
+            tableBackupParams.useTablespaces = params().useTablespaces;
+            tableBackupParams.disableParallelism = params().disableParallelism;
             log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
             createEncryptedUniverseKeyBackupTask(tableParams)
@@ -372,6 +376,8 @@ public class MultiTableBackup extends UniverseTaskBase {
     backupParams.backupType = backupType;
     backupParams.transactionalBackup = params().transactionalBackup;
     backupParams.disableChecksum = params().disableChecksum;
+    backupParams.useTablespaces = params().useTablespaces;
+    backupParams.disableParallelism = params().disableParallelism;
 
     if (tableName != null && tableUUID != null) {
       if (backupParams.tableNameList == null) {
@@ -416,6 +422,8 @@ public class MultiTableBackup extends UniverseTaskBase {
     backupParams.timeBeforeDelete = params().timeBeforeDelete;
     backupParams.scheduleUUID = params().scheduleUUID;
     backupParams.disableChecksum = params().disableChecksum;
+    backupParams.useTablespaces = params().useTablespaces;
+    backupParams.disableParallelism = params().disableParallelism;
     return backupParams;
   }
 

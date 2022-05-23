@@ -1311,6 +1311,10 @@
           "description" : "Disable checksum",
           "type" : "boolean"
         },
+        "disableParallelism" : {
+          "description" : "Don't add -m flag during gsutil upload dir command",
+          "type" : "boolean"
+        },
         "enableVerboseLogs" : {
           "description" : "Is verbose logging enabled",
           "type" : "boolean"
@@ -1609,6 +1613,10 @@
         },
         "disableChecksum" : {
           "description" : "Disable checksum",
+          "type" : "boolean"
+        },
+        "disableParallelism" : {
+          "description" : "Don't add -m flag during gsutil upload dir command",
           "type" : "boolean"
         },
         "enableVerboseLogs" : {
@@ -3723,6 +3731,10 @@
         },
         "disableChecksum" : {
           "description" : "Disable checksum",
+          "type" : "boolean"
+        },
+        "disableParallelism" : {
+          "description" : "Don't add -m flag during gsutil upload dir command",
           "type" : "boolean"
         },
         "enableVerboseLogs" : {

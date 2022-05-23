@@ -286,6 +286,9 @@ public class TableManagerYb extends DevopsBase {
     if (backupTableParams.disableChecksum) {
       commandArgs.add("--disable_checksums");
     }
+    if (backupTableParams.disableParallelism) {
+      commandArgs.add("--disable_parallelism");
+    }
   }
 
   private void addAdditionalCommands(
