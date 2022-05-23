@@ -758,6 +758,7 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
               file->raw_key_size + file->raw_value_size,
           ConvertBoundaryValues(file->smallest),
           ConvertBoundaryValues(file->largest),
+          file->imported,
           file->being_compacted);
       level_size += file->fd.GetTotalFileSize();
     }
@@ -3701,27 +3702,19 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
     for (int level = 0; level < cfd->NumberLevels(); level++) {
       for (const auto& file :
            cfd->current()->storage_info()->LevelFiles(level)) {
-        LiveFileMetaData filemetadata;
-        filemetadata.column_family_name = cfd->GetName();
-        uint32_t path_id = file->fd.GetPathId();
-        if (path_id < db_options_->db_paths.size()) {
-          filemetadata.db_path = db_options_->db_paths[path_id].path;
-        } else {
-          assert(!db_options_->db_paths.empty());
-          filemetadata.db_path = db_options_->db_paths.back().path;
-        }
-        filemetadata.name = MakeTableFileName("", file->fd.GetNumber());
-        filemetadata.level = level;
-        filemetadata.total_size = file->fd.GetTotalFileSize();
-        filemetadata.base_size = file->fd.GetBaseFileSize();
-        // TODO: replace base_size with an accurate metadata size for
-        // uncompressed data. Look into: BlockBasedTableBuilder
-        filemetadata.uncompressed_size = filemetadata.base_size +
-            file->raw_key_size + file->raw_value_size;
-        filemetadata.smallest = ConvertBoundaryValues(file->smallest);
-        filemetadata.largest = ConvertBoundaryValues(file->largest);
-        filemetadata.imported = file->imported;
-        metadata->push_back(filemetadata);
+        const auto path_id = file->fd.GetPathId();
+        const auto& db_path = path_id < db_options_->db_paths.size()
+                                  ? db_options_->db_paths[path_id].path
+                                  : db_options_->db_paths.back().path;
+        // TODO: replace base_size with an accurate metadata size for uncompressed data.
+        // Look into: BlockBasedTableBuilder
+        const auto uncompressed_size =
+            file->fd.GetBaseFileSize() + file->raw_key_size + file->raw_value_size;
+        metadata->emplace_back(
+            cfd->GetName(), level, MakeTableFileName("", file->fd.GetNumber()), db_path,
+            file->fd.GetTotalFileSize(), file->fd.GetBaseFileSize(), uncompressed_size,
+            ConvertBoundaryValues(file->smallest), ConvertBoundaryValues(file->largest),
+            file->imported, file->being_compacted);
       }
     }
   }

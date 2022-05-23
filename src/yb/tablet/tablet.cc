@@ -808,6 +808,10 @@ void Tablet::DoCleanupIntentFiles() {
   std::vector<rocksdb::LiveFileMetaData> files;
   // Stops when there are no more files to delete.
   std::string previous_name;
+  // If intents SST file deletion was blocked by running transactions we want to wait for running
+  // transactions to have time larger than best_file_max_ht by calling
+  // transaction_participant_->WaitMinRunningHybridTime outside of ScopedReadOperation.
+  bool has_deletions_blocked_by_running_transations = false;
   while (GetAtomicFlag(&FLAGS_cleanup_intents_sst_files)) {
     auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
     if (!scoped_read_operation.ok()) {
@@ -838,6 +842,7 @@ void Tablet::DoCleanupIntentFiles() {
 
     auto min_running_start_ht = transaction_participant_->MinRunningHybridTime();
     if (!min_running_start_ht.is_valid() || min_running_start_ht <= best_file_max_ht) {
+      has_deletions_blocked_by_running_transations = true;
       VLOG_WITH_PREFIX_AND_FUNC(4)
           << "Cannot delete because of running transactions: " << min_running_start_ht
           << ", best file max ht: " << best_file_max_ht;
@@ -868,7 +873,7 @@ void Tablet::DoCleanupIntentFiles() {
     }
   }
 
-  if (best_file_max_ht != HybridTime::kMax) {
+  if (best_file_max_ht != HybridTime::kMax && has_deletions_blocked_by_running_transations) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Wait min running hybrid time: " << best_file_max_ht;
     transaction_participant_->WaitMinRunningHybridTime(best_file_max_ht);
   }

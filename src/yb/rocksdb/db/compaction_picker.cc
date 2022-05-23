@@ -668,10 +668,24 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
 
 // Test whether two files have overlapping key-ranges.
 bool HaveOverlappingKeyRanges(const Comparator* c,
-                              const SstFileMetaData& a,
+                              const SstFileMetaData::BoundaryValues& a_smallest,
+                              const SstFileMetaData::BoundaryValues& a_largest,
+                              const SstFileMetaData::BoundaryValues& b_smallest,
+                              const SstFileMetaData::BoundaryValues& b_largest) {
+  return c->Compare(a_largest.key, b_smallest.key) >= 0 &&
+         c->Compare(b_largest.key, a_smallest.key) >= 0;
+}
+
+bool HaveOverlappingKeyRanges(const Comparator* c,
+                              const SstFileMetaData::BoundaryValues& a_smallest,
+                              const SstFileMetaData::BoundaryValues& a_largest,
                               const SstFileMetaData& b) {
-  return c->Compare(a.largest.key, b.smallest.key) >= 0 &&
-         c->Compare(b.largest.key, a.smallest.key) >= 0;
+  return HaveOverlappingKeyRanges(c, a_smallest, a_largest, b.smallest, b.largest);
+}
+
+bool HaveOverlappingKeyRanges(
+    const Comparator* c, const SstFileMetaData& a, const SstFileMetaData& b) {
+  return HaveOverlappingKeyRanges(c, a.smallest, a.largest, b.smallest, b.largest);
 }
 
 #ifndef ROCKSDB_LITE
@@ -786,10 +800,6 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
       UpdateBoundaryKeys(comparator, current_files[last_included], nullptr, &largest);
     }
 
-    SstFileMetaData aggregated_file_meta;
-    aggregated_file_meta.smallest = smallest;
-    aggregated_file_meta.largest = largest;
-
     // For all lower levels, include all overlapping files.
     // We need to add overlapping files from the current level too because even
     // if there no input_files in level l, we would still need to add files
@@ -799,7 +809,7 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
     for (int m = std::max(l, 1); m <= output_level; ++m) {
       for (auto& next_lv_file : levels[m].files) {
         if (HaveOverlappingKeyRanges(
-            comparator, aggregated_file_meta, next_lv_file)) {
+            comparator, smallest, largest, next_lv_file)) {
           if (next_lv_file.being_compacted) {
             return STATUS(Aborted,
                 "File " + next_lv_file.name +
