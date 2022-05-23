@@ -1167,4 +1167,32 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, totalLines);
     }
   }
+
+  @Test
+  public void testBatchedCopWithReplaceOptions() throws Exception {
+    String oldFilePath = getAbsFilePath("copy-with-replace-old.txt");
+    String newFilePath = getAbsFilePath("copy-with-replace-new.txt");
+
+    String tableName = "copy_with_replace";
+    int totalLines = 100;
+    createFileInTmpDir(oldFilePath, totalLines / 2);
+    createFileInTmpDir(newFilePath, totalLines);
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(
+          String.format("CREATE TABLE %s (a INT PRIMARY KEY, b INT, c INT, d INT)", tableName));
+
+      // Copy the old file's content to the table.
+      statement.execute(String.format(
+        "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)", tableName, oldFilePath));
+
+      assertOneRow(statement, String.format("SELECT COUNT(*) FROM %s", tableName), totalLines / 2);
+
+      // Now copy the new file's content to the table with the REPLACE option.
+      statement.execute(String.format(
+        "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, REPLACE)", tableName, newFilePath));
+
+      assertOneRow(statement, String.format("SELECT COUNT(*) FROM %s", tableName), totalLines);
+    }
+  }
 }
