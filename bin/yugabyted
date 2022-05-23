@@ -1872,6 +1872,9 @@ class ControlScript(object):
                     has_errors = True
                 args.background = args.daemon
 
+            if args.background is None:
+                args.background = "True"
+
             args.ui = self.parse_bool(args.ui)
             args.background = self.parse_bool(args.background)
             if args.callhome is not None:
@@ -2059,9 +2062,9 @@ class ControlScript(object):
                 "--join", help="IP address to which this process will join".format(SCRIPT_NAME),
                 metavar="")
             cur_parser.add_argument(
-                "--daemon", choices=BOOL_CHOICES, default="true", help=argparse.SUPPRESS)
+                "--daemon", choices=BOOL_CHOICES, help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--background", choices=BOOL_CHOICES, default="true", metavar="",
+                "--background", choices=BOOL_CHOICES, metavar="",
                 help="Runs {} in the background as a daemon. Does not persist on restart. "
                      "Default true.".format(SCRIPT_NAME))
             cur_parser.add_argument(
