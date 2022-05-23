@@ -149,6 +149,11 @@ DEFINE_int32(compaction_priority_step_size, 5,
 DEFINE_int32(small_compaction_extra_priority, 1,
              "Small compaction will get small_compaction_extra_priority extra priority.");
 
+DEFINE_int32(automatic_compaction_extra_priority, 50,
+             "Assigns automatic compactions extra priority. This deprioritizes manual "
+             "compactions including those induced by the tserver (e.g. post-split compactions). "
+             "Suggested value between 0 and 50.");
+
 DEFINE_bool(rocksdb_use_logging_iterator, false,
             "Wrap newly created RocksDB iterators in a logging wrapper");
 
@@ -417,6 +422,13 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
 
     if (!db_impl_->IsLargeCompaction(*compaction_)) {
       result += FLAGS_small_compaction_extra_priority;
+    }
+
+    // Adding extra priority to automatic compactions can have a large positive impact on
+    // performance for situations with many manual major compactions (e.g. insert-heavy workloads
+    // with tablet splitting enabled).
+    if (!compaction_->is_manual_compaction()) {
+      result += FLAGS_automatic_compaction_extra_priority;
     }
 
     return result;
