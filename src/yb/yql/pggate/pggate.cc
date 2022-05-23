@@ -319,29 +319,6 @@ using client::YBSession;
 
 //--------------------------------------------------------------------------------------------------
 
-PggateOptions::PggateOptions() : ServerBaseOptions(kDefaultPort) {
-  server_type = "tserver";
-  rpc_opts.connection_keepalive_time_ms = FLAGS_pgsql_rpc_keepalive_time_ms;
-
-  if (FLAGS_pggate_proxy_bind_address.empty()) {
-    HostPort host_port;
-    CHECK_OK(host_port.ParseString(FLAGS_rpc_bind_addresses, 0));
-    host_port.set_port(PggateOptions::kDefaultPort);
-    FLAGS_pggate_proxy_bind_address = host_port.ToString();
-    LOG(INFO) << "Reset YSQL bind address to " << FLAGS_pggate_proxy_bind_address;
-  }
-  rpc_opts.rpc_bind_addresses = FLAGS_pggate_proxy_bind_address;
-  master_addresses_flag = FLAGS_pggate_master_addresses;
-
-  server::MasterAddresses master_addresses;
-  // TODO: we might have to allow setting master_replication_factor similarly to how it is done
-  // in tserver to support master auto-discovery on Kubernetes.
-  CHECK_OK(server::DetermineMasterAddresses(
-      "pggate_master_addresses", master_addresses_flag, /* master_replication_factor */ 0,
-      &master_addresses, &master_addresses_flag));
-  SetMasterAddresses(make_shared<server::MasterAddresses>(std::move(master_addresses)));
-}
-
 PgApiContext::MessengerHolder::MessengerHolder(
     std::unique_ptr<rpc::SecureContext> security_context_,
     std::unique_ptr<rpc::Messenger> messenger_)
