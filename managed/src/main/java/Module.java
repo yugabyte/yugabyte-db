@@ -19,7 +19,6 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.GFlagsValidation;
-import com.yugabyte.yw.common.HealthManager;
 import com.yugabyte.yw.common.NativeKubernetesManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -104,7 +103,6 @@ public class Module extends AbstractModule {
     // We only needed to bind below ones for Platform mode.
     if (config.getString("yb.mode", "PLATFORM").equals("PLATFORM")) {
       bind(SwamperHelper.class).asEagerSingleton();
-      bind(HealthManager.class).asEagerSingleton();
       bind(NodeManager.class).asEagerSingleton();
       bind(MetricQueryHelper.class).asEagerSingleton();
       bind(QueryHelper.class).asEagerSingleton();

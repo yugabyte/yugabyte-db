@@ -42,6 +42,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -116,7 +117,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
 
   @Test
   public void testDownloadNodeLogs_NodeNotFound() {
-    when(mockShellProcessHandler.run(anyList(), anyMap(), eq(true)))
+    when(mockShellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
         .thenReturn(new ShellResponse());
 
     Universe u = createUniverse(customer.getCustomerId());
@@ -149,7 +150,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     Path logPath =
         Paths.get(mockAppConfig.getString("yb.storage.path") + "/" + "10.0.0.1-logs.tar.gz");
     byte[] fakeLog = createFakeLog(logPath);
-    when(mockShellProcessHandler.run(anyList(), anyMap(), eq(true)))
+    when(mockShellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
         .thenReturn(new ShellResponse());
 
     UniverseDefinitionTaskParams.UserIntent ui = getDefaultUserIntent(customer);

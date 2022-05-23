@@ -1,7 +1,5 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 
-import org.mockito.junit.MockitoJUnitRunner;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,6 +20,7 @@ import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CheckMemoryTest extends CommissionerBaseTest {
@@ -57,7 +56,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
             .map(node -> node.cloudInfo.private_ip)
             .collect(Collectors.toList());
     ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "COMMAND OUTPUT: \n 2989898";
+    shellResponse.message = "Command output:\n2989898";
     shellResponse.code = 0;
     when(mockNodeUniverseManager.runCommand(any(), any(), any())).thenReturn(shellResponse);
     CheckMemory checkMemoryTask = AbstractTaskBase.createTask(CheckMemory.class);
@@ -86,8 +85,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     CheckMemory checkMemoryTask = AbstractTaskBase.createTask(CheckMemory.class);
     checkMemoryTask.initialize(params);
     RuntimeException re = assertThrows(RuntimeException.class, () -> checkMemoryTask.run());
-    assertEquals(
-        "Error while fetching memory from node " + node.cloudInfo.private_ip, re.getMessage());
+    assertEquals("Invalid command output", re.getMessage());
     verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), any());
   }
 
@@ -105,7 +103,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
             .map(node -> node.cloudInfo.private_ip)
             .collect(Collectors.toList());
     ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "COMMAND OUTPUT: \n" + String.valueOf(AVAILABLE_MEMORY_LIMIT_KB - 1);
+    shellResponse.message = "Command output:\n" + String.valueOf(AVAILABLE_MEMORY_LIMIT_KB - 1);
     shellResponse.code = 0;
     when(mockNodeUniverseManager.runCommand(any(), any(), any())).thenReturn(shellResponse);
     CheckMemory checkMemoryTask = AbstractTaskBase.createTask(CheckMemory.class);
