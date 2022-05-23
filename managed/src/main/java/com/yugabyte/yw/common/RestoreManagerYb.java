@@ -66,7 +66,8 @@ public class RestoreManagerYb extends DevopsBase {
       // nodes in different clusters.
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         UserIntent clusterUserIntent = cluster.userIntent;
-        Provider clusterProvider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+        Provider clusterProvider =
+            Provider.getOrBadRequest(UUID.fromString(clusterUserIntent.provider));
         AccessKey accessKeyForCluster =
             AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
