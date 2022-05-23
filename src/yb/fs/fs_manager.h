@@ -76,11 +76,8 @@ struct FsManagerOpts {
   FsManagerOpts(const FsManagerOpts&);
   FsManagerOpts& operator=(const FsManagerOpts&);
 
-  // The entity under which all metrics should be grouped. If NULL, metrics
-  // will not be produced.
-  //
-  // Defaults to NULL.
-  scoped_refptr<MetricEntity> metric_entity;
+  // The aggregated registry associated with the server.
+  MetricRegistry* metric_registry;
 
   // The memory tracker under which all new memory trackers will be parented.
   // If NULL, new memory trackers will be parented to the root tracker.
@@ -284,7 +281,7 @@ class FsManager {
   const std::vector<std::string> data_fs_roots_;
   const std::string server_type_;
 
-  scoped_refptr<MetricEntity> metric_entity_;
+  MetricRegistry* metric_registry_;
 
   std::shared_ptr<MemTracker> parent_mem_tracker_;
 
@@ -297,8 +294,6 @@ class FsManager {
   std::string canonicalized_default_fs_root_;
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;
-
-  std::map<std::string, scoped_refptr<Counter>> counters_;
 
   std::unordered_map<std::string, std::string> tablet_id_to_path_ GUARDED_BY(data_mutex_);
   mutable std::mutex data_mutex_;

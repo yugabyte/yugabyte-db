@@ -85,6 +85,13 @@ DEFINE_test_flag(bool, simulate_fs_create_failure, false,
                  "Simulate failure during initial creation of fs during the first time "
                  "process creation.");
 
+METRIC_DEFINE_entity(drive);
+
+METRIC_DEFINE_counter(drive, drive_fault,
+                      "Drive Fault. Tablet Server isn't able to read/write on this drive.",
+                      yb::MetricUnit::kUnits,
+                      "Drive Fault. Tablet Server isn't able to read/write on this drive.");
+
 using google::protobuf::Message;
 using yb::env_util::ScopedFileDeleter;
 using std::map;
@@ -103,15 +110,15 @@ const char *FsManager::kDataDirName = "data";
 
 namespace {
 
-static const char kRaftGroupMetadataDirName[] = "tablet-meta";
-static const char kInstanceMetadataFileName[] = "instance";
-static const char kFsLockFileName[] = "fs-lock";
-static const char kConsensusMetadataDirName[] = "consensus-meta";
-static const char kLogsDirName[] = "logs";
-static const char kTmpInfix[] = ".tmp";
-static const char kCheckFileTemplate[] = "check.XXXXXX";
-static const char kMetricDescription[] = "Tablet Server isn't able to read/write on drive.";
-static const char kSecureCertsDirName[] = "certs";
+const char kRaftGroupMetadataDirName[] = "tablet-meta";
+const char kInstanceMetadataFileName[] = "instance";
+const char kFsLockFileName[] = "fs-lock";
+const char kConsensusMetadataDirName[] = "consensus-meta";
+const char kLogsDirName[] = "logs";
+const char kTmpInfix[] = ".tmp";
+const char kCheckFileTemplate[] = "check.XXXXXX";
+const char kSecureCertsDirName[] = "certs";
+const char kPrefixMetricId[] = "drive:";
 
 std::string DataDir(const std::string& root, const std::string& server_type) {
   return JoinPathSegments(GetServerTypeDataPath(root, server_type), FsManager::kDataDirName);
@@ -144,7 +151,7 @@ FsManager::FsManager(Env* env, const string& root_path, const std::string& serve
       wal_fs_roots_({ root_path }),
       data_fs_roots_({ root_path }),
       server_type_(server_type),
-      metric_entity_(nullptr),
+      metric_registry_(nullptr),
       initted_(false) {
 }
 
@@ -155,7 +162,7 @@ FsManager::FsManager(Env* env,
       wal_fs_roots_(opts.wal_paths),
       data_fs_roots_(opts.data_paths),
       server_type_(opts.server_type),
-      metric_entity_(opts.metric_entity),
+      metric_registry_(opts.metric_registry),
       parent_mem_tracker_(opts.parent_mem_tracker),
       initted_(false) {
 }
@@ -554,12 +561,12 @@ Status FsManager::CheckWrite(const std::string& root) {
 }
 
 void FsManager::CreateAndSetFaultDriveMetric(const std::string& path) {
-  std::unique_ptr<CounterPrototype> counter = std::make_unique<OwningCounterPrototype>(
-      "server", Format("drive_fault_$0", counters_.size()), path, yb::MetricUnit::kThreads,
-      kMetricDescription, yb::MetricLevel::kWarn, yb::EXPOSE_AS_COUNTER);
-  auto pointer = metric_entity_->FindOrCreateCounter(std::move(counter));
-  counters_[path] = pointer;
-  pointer->Increment();
+  MetricEntity::AttributeMap attrs;
+  attrs["drive_path"] = path;
+  auto metric_entity = METRIC_ENTITY_drive.Instantiate(metric_registry_,
+                                                       kPrefixMetricId + path,
+                                                       attrs);
+  METRIC_drive_fault.Instantiate(metric_entity)->Increment();
 }
 
 Status FsManager::CreateDirIfMissing(const string& path, bool* created) {
