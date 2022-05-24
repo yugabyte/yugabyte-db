@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import * as Yup from 'yup';
+import { trimStart, trimEnd } from 'lodash';
 import { toast } from 'react-toastify';
 import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
@@ -52,12 +53,18 @@ export const OIDCAuth = (props) => {
     return transformedData;
   };
 
+  const escapeStr = (str) => {
+    let s = trimStart(str, '""');
+    s = trimEnd(s, '""');
+    return s;
+  };
+
   const initializeFormValues = () => {
     const oidcFields = OIDC_FIELDS.map((ef) => `${OIDC_PATH}.${ef}`);
     const oidcConfigs = configEntries.filter((config) => oidcFields.includes(config.key));
     const formData = oidcConfigs.reduce((fData, config) => {
       const [, key] = config.key.split(`${OIDC_PATH}.`);
-      fData[key] = config.value;
+      fData[key] = escapeStr(config.value);
       return fData;
     }, {});
 
@@ -137,7 +144,7 @@ export const OIDCAuth = (props) => {
       config.key.includes(`${OIDC_PATH}.use_oauth`)
     );
     setToggleVisible(!!oidcConfig);
-    setOIDC(oidcConfig?.value === 'true');
+    setOIDC(escapeStr(oidcConfig?.value) === 'true');
   }, [configEntries, setToggleVisible, setOIDC]);
 
   const restartBanner = () => (
