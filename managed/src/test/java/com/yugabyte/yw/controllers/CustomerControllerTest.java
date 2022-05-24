@@ -15,6 +15,7 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Matchers.anyList;
@@ -42,6 +43,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.AlertingData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
@@ -53,6 +55,9 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Date;
@@ -592,12 +597,26 @@ public class CustomerControllerTest extends FakeDBApplication {
 
   @Test
   public void testCustomerMetricsForContainerMetricsSingleAZ() {
+    testCustomerMetricsForContainerMetricsSingleAZBase(false);
+  }
+
+  @Test
+  public void testCustomerMetricsForContainerMetricsNewNamingStyle() {
+    testCustomerMetricsForContainerMetricsSingleAZBase(true);
+  }
+
+  private void testCustomerMetricsForContainerMetricsSingleAZBase(boolean helmNewNamingStyle) {
     String authToken = user.createAuthToken();
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
     params.put("nodePrefix", "demo");
     Universe u1 = createUniverse("demo", customer.getCustomerId());
+    if (helmNewNamingStyle) {
+      u1 =
+          Universe.saveDetails(
+              u1.universeUUID, ApiUtils.mockUniverseUpdaterWithHelmNamingStyle(true));
+    }
     Provider provider =
         Provider.get(
             UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
@@ -618,6 +637,11 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     assertValue(filters, "namespace", "demo");
+    if (helmNewNamingStyle) {
+      assertValue(filters, "pod_name", "demo-(.*)-yb-tserver-(.*)");
+    } else {
+      assertNull(filters.get("pod_name"));
+    }
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
     assertAuditEntry(1, customer.uuid);
@@ -632,6 +656,18 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.put("nodePrefix", "demo");
     params.put("nodeName", "demo-n1");
     Universe u1 = createUniverse("demo", customer.getCustomerId());
+    u1 =
+        Universe.saveDetails(
+            u1.universeUUID,
+            univ -> {
+              UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+              NodeDetails node = ApiUtils.getDummyNodeDetails(0);
+              node.nodeName = "demo-n1";
+              node.cloudInfo.private_ip =
+                  "yb-pod-name-az.yb-pod-service.demo-namespace.svc.cluster.local";
+              details.nodeDetailsSet.add(node);
+              univ.setUniverseDetails(details);
+            });
     Provider provider =
         Provider.get(
             UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
@@ -651,8 +687,8 @@ public class CustomerControllerTest extends FakeDBApplication {
         .query(metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
-    assertValue(filters, "namespace", "demo");
-    assertValue(filters, "pod_name", "demo-n1");
+    assertValue(filters, "namespace", "demo-namespace");
+    assertValue(filters, "pod_name", "yb-pod-name-az");
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
     assertAuditEntry(1, customer.uuid);

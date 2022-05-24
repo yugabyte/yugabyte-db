@@ -53,6 +53,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         taskParams().clusters = universe.getUniverseDetails().clusters;
       }
 
+      // This value is used by subsequent calls to helper methods for
+      // creating KubernetesCommandExecutor tasks. This value cannot
+      // be changed once set during the Universe creation, so we don't
+      // allow users to modify it later during edit, upgrade, etc.
+      taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+
       // Execute the lambda which populates subTaskGroupQueue
       upgradeLambda.run();
 
@@ -104,6 +110,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         Provider.getOrBadRequest(
             UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
@@ -111,7 +118,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             placement.masters,
             taskParams().nodePrefix,
             provider,
-            universeDetails.communicationPorts.masterRpcPort);
+            universeDetails.communicationPorts.masterRpcPort,
+            newNamingStyle);
 
     if (isMasterChanged) {
       upgradePodsTask(
@@ -122,7 +130,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           softwareVersion,
           taskParams().sleepAfterMasterRestartMillis,
           isMasterChanged,
-          isTServerChanged);
+          isTServerChanged,
+          newNamingStyle);
     }
 
     if (isTServerChanged) {
@@ -138,7 +147,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           softwareVersion,
           taskParams().sleepAfterTServerRestartMillis,
           false, // master change is false since it has already been upgraded.
-          isTServerChanged);
+          isTServerChanged,
+          newNamingStyle);
 
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType());
     }
