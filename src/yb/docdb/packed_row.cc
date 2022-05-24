@@ -37,6 +37,10 @@ bool IsVarlenColumn(const ColumnSchema& column_schema) {
 }
 
 size_t EncodedValueSize(const ColumnSchema& column_schema) {
+  if (column_schema.type_info()->type == DataType::BOOL) {
+    // Boolean values are encoded as value type only.
+    return 1;
+  }
   return 1 + column_schema.type_info()->size;
 }
 
