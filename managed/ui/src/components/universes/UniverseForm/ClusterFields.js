@@ -1488,9 +1488,9 @@ export default class ClusterFields extends Component {
     this.setDefaultProviderStorage(currentProviderData);
   };
 
-  accessKeyChanged(event) {
+  accessKeyChanged(value) {
     const { clusterType } = this.props;
-    this.props.updateFormField(`${clusterType}.accessKeyCode`, event.target.value);
+    this.props.updateFormField(`${clusterType}.accessKeyCode`, value);
   }
 
   instanceTypeChanged(value) {
