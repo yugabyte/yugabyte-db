@@ -18,9 +18,8 @@ COMMAND_TIMEOUT_SEC = 600
 
 class KubernetesClient:
     def __init__(self, args):
-        self.namespace = args.namespace
-        # MultiAZ deployments have hostname_az in their name.
-        self.node_name = args.node_name.split('_')[0]
+        self.namespace = args.pod_fqdn.split('.')[2]
+        self.pod_name = args.pod_fqdn.split('.')[0]
         self.is_master = args.is_master
         self.env_config = os.environ.copy()
         self.env_config["KUBECONFIG"] = args.kubeconfig
@@ -30,13 +29,13 @@ class KubernetesClient:
         if isinstance(cmd, str):
             command = [cmd]
         return ['kubectl', 'exec', '-n', self.namespace, '-c',
-                'yb-master' if self.is_master else 'yb-tserver', self.node_name, '--'] + command
+                'yb-master' if self.is_master else 'yb-tserver', self.pod_name, '--'] + command
 
     def get_file(self, source_file_path, target_local_file_path):
         cmd = [
             'kubectl',
             'cp',
-            self.namespace + "/" + self.node_name + ":" + source_file_path,
+            self.namespace + "/" + self.pod_name + ":" + source_file_path,
             target_local_file_path]
         return subprocess.call(cmd, env=self.env_config)
 
@@ -45,7 +44,7 @@ class KubernetesClient:
             'kubectl',
             'cp',
             source_file_path,
-            self.namespace + "/" + self.node_name + ":" + target_file_path]
+            self.namespace + "/" + self.pod_name + ":" + target_file_path]
         return subprocess.call(cmd, env=self.env_config)
 
     def get_command_output(self, cmd, stdout=None):

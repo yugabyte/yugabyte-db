@@ -209,28 +209,17 @@ public class NodeUniverseManager extends DevopsBase {
     commandArgs.add("--node_name");
     commandArgs.add(node.nodeName);
     if (universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
-
-      // Get namespace.  First determine isMultiAz.
-      Provider provider = Provider.getOrBadRequest(providerUUID);
-      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-      String namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
-              universe.getUniverseDetails().nodePrefix,
-              isMultiAz ? AvailabilityZone.getOrBadRequest(node.azUuid).name : null,
-              AvailabilityZone.get(node.azUuid).getUnmaskedConfig());
-      // TODO(bhavin192): this might need an updated when we have
-      // multiple releases in one namespace.
       String kubeconfig =
-          PlacementInfoUtil.getConfigPerNamespace(
-                  cluster.placementInfo, universe.getUniverseDetails().nodePrefix, provider)
-              .get(namespace);
+          PlacementInfoUtil.getKubernetesConfigPerPod(
+                  cluster.placementInfo, universe.getUniverseDetails().nodeDetailsSet)
+              .get(node.cloudInfo.private_ip);
       if (kubeconfig == null) {
         throw new RuntimeException("kubeconfig cannot be null");
       }
 
       commandArgs.add("k8s");
-      commandArgs.add("--namespace");
-      commandArgs.add(namespace);
+      commandArgs.add("--pod_fqdn");
+      commandArgs.add(node.cloudInfo.private_ip);
       commandArgs.add("--kubeconfig");
       commandArgs.add(kubeconfig);
     } else if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.unknown)) {

@@ -218,7 +218,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             Common.CloudType.kubernetes,
             pi);
     return Universe.saveDetails(
-        universe.universeUUID, ApiUtils.mockUniverseUpdaterWithActiveYSQLNode());
+        universe.universeUUID, ApiUtils.mockUniverseUpdaterWithActiveYSQLNode(az.uuid));
   }
 
   private AlertingData setupAlertingData(

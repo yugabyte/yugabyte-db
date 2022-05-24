@@ -211,14 +211,14 @@ public class TableManagerTest extends FakeDBApplication {
   private List<String> getExpectedBackupTableCommand(
       BackupTableParams backupTableParams, String storageType, boolean isDelete) {
     AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
-    Map<String, String> namespaceToConfig = new HashMap<>();
+    Map<String, String> podFQDNToConfig = new HashMap<>();
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
 
     if (testProvider.code.equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
-      namespaceToConfig =
-          PlacementInfoUtil.getConfigPerNamespace(
-              pi, testUniverse.getUniverseDetails().nodePrefix, testProvider);
+      podFQDNToConfig =
+          PlacementInfoUtil.getKubernetesConfigPerPod(
+              pi, testUniverse.getUniverseDetails().nodeDetailsSet);
     }
 
     List<String> cmd = new LinkedList<>();
@@ -264,7 +264,7 @@ public class TableManagerTest extends FakeDBApplication {
     }
     if (testProvider.code.equals("kubernetes")) {
       cmd.add("--k8s_config");
-      cmd.add(Json.stringify(Json.toJson(namespaceToConfig)));
+      cmd.add(Json.stringify(Json.toJson(podFQDNToConfig)));
     } else {
       cmd.add("--ssh_port");
       cmd.add(accessKey.getKeyInfo().sshPort.toString());
