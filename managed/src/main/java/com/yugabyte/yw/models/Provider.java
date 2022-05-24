@@ -167,6 +167,13 @@ public class Provider extends Model {
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public List<String> ntpServers = new ArrayList<>();
 
+  // Indicates whether the provider was created before or after PLAT-3009
+  // True if it was created after, else it was created before.
+  // Dictates whether or not to show the set up NTP option in the provider UI
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public boolean showSetUpChrony = true;
+
   // Hosted Zone for the deployment
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
