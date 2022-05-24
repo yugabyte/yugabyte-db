@@ -119,7 +119,7 @@ public class SwamperHelper {
     }
     File swamperTargetFolder = new File(swamperFile);
 
-    if (swamperTargetFolder.exists() && swamperTargetFolder.isDirectory()) {
+    if (swamperTargetFolder.isDirectory() || swamperTargetFolder.mkdirs()) {
       return String.format(
           "%s/%s.%s.json", swamperTargetFolder.toString(), prefix, universeUUID.toString());
     }
