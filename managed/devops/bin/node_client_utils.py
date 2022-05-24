@@ -119,7 +119,9 @@ class SshParamikoClient:
         if isinstance(cmd, str):
             command = cmd
         else:
-            command = ' '.join(cmd)
+            # Need to join with spaces, but surround arguments with spaces using "'" character
+            command = ' '.join(
+                list(map(lambda part: part if ' ' not in part else "'" + part + "'", cmd)))
         stdin, stdout, stderr = self.client.exec_command(command, timeout=COMMAND_TIMEOUT_SEC)
         return_code = stdout.channel.recv_exit_status()
         if return_code != 0:
