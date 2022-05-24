@@ -139,7 +139,7 @@ public class NodeUniverseManager extends DevopsBase {
     List<String> bashCommand = new ArrayList<>();
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
     if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
-      bashCommand.add("env sslmode=\"require\"");
+      bashCommand.add("export sslmode=\"require\";");
     }
     bashCommand.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     bashCommand.add("-h");
