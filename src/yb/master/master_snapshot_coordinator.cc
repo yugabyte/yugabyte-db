@@ -739,6 +739,16 @@ class MasterSnapshotCoordinator::Impl {
     return false;
   }
 
+  bool IsPitrActive() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& schedule : schedules_) {
+      if (!schedule->deleted()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Result<docdb::KeyValuePairPB> UpdateRestorationAndGetWritePair(
       SnapshotScheduleRestoration* restoration) {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
@@ -1740,6 +1750,10 @@ Result<TxnSnapshotId> MasterSnapshotCoordinator::CreateForSchedule(
 Result<docdb::KeyValuePairPB> MasterSnapshotCoordinator::UpdateRestorationAndGetWritePair(
     SnapshotScheduleRestoration* restoration) {
   return impl_->UpdateRestorationAndGetWritePair(restoration);
+}
+
+bool MasterSnapshotCoordinator::IsPitrActive() {
+  return impl_->IsPitrActive();
 }
 
 } // namespace master
