@@ -1503,6 +1503,65 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlTestTruncate
   ASSERT_OK(conn.Execute("TRUNCATE TABLE test_table"));
 }
 
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDisableTablegroup),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  // Try creating tablegroup inside the database on which snapshot schedule is setup.
+  auto res = conn.Execute("CREATE TABLEGROUP tg1");
+  ASSERT_FALSE(res.ok());
+  ASSERT_STR_CONTAINS(
+      res.ToString(), "Cannot create tablegroup when there are one or more snapshot schedules");
+
+  // Try to create tablegroup inside another database.
+  auto conn1 = ASSERT_RESULT(PgConnect("yugabyte"));
+  res = conn1.Execute("CREATE TABLEGROUP tg1");
+  ASSERT_FALSE(res.ok());
+  ASSERT_STR_CONTAINS(
+      res.ToString(), "Cannot create tablegroup when there are one or more snapshot schedules");
+
+  // Delete the snapshot schedule and try creating tablegroups.
+  ASSERT_OK(DeleteSnapshotSchedule(schedule_id));
+
+  ASSERT_OK(conn.Execute("CREATE TABLEGROUP tg1"));
+  ASSERT_OK(conn1.Execute("CREATE TABLEGROUP tg2"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id int primary key) TABLEGROUP tg1"));
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDisableScheduleOnTablegroups),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  ASSERT_OK(PrepareCommon());
+  auto conn1 = ASSERT_RESULT(PgConnect("yugabyte"));
+  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0", client::kTableName.namespace_name()));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  // Create a tablegroup.
+  ASSERT_OK(conn.Execute("CREATE TABLEGROUP tg1"));
+
+  // Try creating a snapshot schedule, it should fail.
+  auto res = CreateSnapshotScheduleAndWaitSnapshot(
+      "ysql." + client::kTableName.namespace_name(), kInterval, kRetention);
+  ASSERT_FALSE(res.ok());
+  ASSERT_STR_CONTAINS(
+      res.ToString(), "Not allowed to create snapshot schedule "
+                      "when one or more tablegroups exist");
+
+  // Try creating snapshot schedule on another database, it should fail too.
+  res = CreateSnapshotScheduleAndWaitSnapshot("ysql.yugabyte", kInterval, kRetention);
+  ASSERT_FALSE(res.ok());
+  ASSERT_STR_CONTAINS(
+      res.ToString(), "Not allowed to create snapshot schedule "
+                      "when one or more tablegroups exist");
+
+  // Drop this tablegroup.
+  ASSERT_OK(conn.Execute("DROP TABLEGROUP tg1"));
+
+  // Now we should be able to create a snapshot schedule.
+  auto schedule_id = ASSERT_RESULT(CreateSnapshotScheduleAndWaitSnapshot(
+      "ysql." + client::kTableName.namespace_name(), kInterval, kRetention));
+}
+
 class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotScheduleTestWithYsql {
   std::vector<std::string> ExtraMasterFlags() override {
     // To speed up tests.
