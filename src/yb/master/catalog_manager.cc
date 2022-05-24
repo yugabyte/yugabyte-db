@@ -5439,15 +5439,15 @@ Status CatalogManager::DeleteTableInMemory(
   return Status::OK();
 }
 
-TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableInfoPtr& table) {
+bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
   if (!table) {
     LOG_WITH_PREFIX(INFO) << "Finished deleting an Orphaned tablet. "
                           << "Table Information is null. Skipping updating its state to DELETED.";
-    return TableInfo::WriteLock();
+    return false;
   }
   if (table->HasTasks()) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << table->ToString() << " has tasks";
-    return TableInfo::WriteLock();
+    return false;
   }
   bool hide_only;
   {
@@ -5462,11 +5462,11 @@ TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableIn
       // Usually this would have been done except for tables that were hidden and are now deleted.
       // Also, this is a catch all in case any other path misses clearing the maps.
       table->ClearTabletMaps();
-      return TableInfo::WriteLock();
+      return false;
     }
     hide_only = !lock->is_deleting();
     if (hide_only && !lock->is_hiding()) {
-      return TableInfo::WriteLock();
+      return false;
     }
   }
   // The current relevant order of operations during a DeleteTable is:
@@ -5482,10 +5482,10 @@ TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableIn
   VLOG_WITH_PREFIX_AND_FUNC(2)
       << table->ToString() << " hide only: " << hide_only << ", all tablets done: "
       << all_tablets_done;
-  if (!all_tablets_done && !IsSystemTable(*table) && !table->IsColocatedUserTable()) {
-    return TableInfo::WriteLock();
-  }
+  return all_tablets_done || IsSystemTable(*table) || table->IsColocatedUserTable();
+}
 
+TableInfo::WriteLock CatalogManager::PrepareTableDeletion(const TableInfoPtr& table) {
   auto lock = table->LockForWrite();
   if (lock->is_hiding()) {
     LOG(INFO) << "Marking table as HIDDEN: " << table->ToString();
@@ -5522,10 +5522,12 @@ void CatalogManager::CleanUpDeletedTables() {
   vector<TableInfo::WriteLock> table_locks;
   for (const auto& it : copy_of_table_by_id_map) {
     const auto& table = it.second;
-    auto lock = MaybeTransitionTableToDeleted(table);
-    if (lock.locked()) {
-      table_locks.push_back(std::move(lock));
-      tables_to_update_on_disk.push_back(table.get());
+    if (ShouldDeleteTable(table)) {
+      auto lock = PrepareTableDeletion(table);
+      if (lock.locked()) {
+        table_locks.push_back(std::move(lock));
+        tables_to_update_on_disk.push_back(table.get());
+      }
     }
   }
   if (tables_to_update_on_disk.size() > 0) {
@@ -11057,22 +11059,23 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
   //
   // However, if tasks fail, timeout, or are aborted, we still have the background thread as a
   // catch all.
-  auto lock = MaybeTransitionTableToDeleted(table);
-  if (!lock.locked()) {
+  if (!ShouldDeleteTable(table)) {
     return;
   }
 
-  auto lock_ptr = std::make_shared<TableInfo::WriteLock>(std::move(lock));
-  WARN_NOT_OK(async_task_pool_->SubmitFunc([this, lock_ptr, table]() {
-    lock_ptr->ThreadChanged();
+  WARN_NOT_OK(async_task_pool_->SubmitFunc([this, table]() {
+    auto lock = PrepareTableDeletion(table);
+    if (!lock.locked()) {
+      return;
+    }
     Status s = sys_catalog_->Upsert(leader_ready_term(), table);
     if (!s.ok()) {
       LOG_WITH_PREFIX(WARNING)
           << "Error marking table as "
-          << (lock_ptr->data().started_deleting() ? "DELETED" : "HIDDEN") << ": " << s;
+          << (lock.data().started_deleting() ? "DELETED" : "HIDDEN") << ": " << s;
       return;
     }
-    lock_ptr->Commit();
+    lock.Commit();
   }), "Failed to submit update table task");
 }
 
