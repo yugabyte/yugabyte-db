@@ -343,6 +343,12 @@ public class UniverseCRUDHandler {
           throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
         }
         checkHelmChartExists(c.userIntent.ybSoftwareVersion);
+        // TODO(bhavin192): there should be some validation on the
+        // universe_name when creating the universe, because we cannot
+        // have more than 43 characters for universe_name + az_name
+        // when using new naming style. The length of longest AZ name
+        // should be picked up for that provider and then checked
+        // against the give universe_name.
       }
 
       // Set the node exporter config based on the provider
@@ -425,6 +431,16 @@ public class UniverseCRUDHandler {
         taskType = TaskType.CreateKubernetesUniverse;
         universe.updateConfig(
             ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+        // TODO(bhavin192): remove the flag once the new naming style
+        // is stable enough.
+        if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.use_new_helm_naming")) {
+          if (Util.compareYbVersions(primaryIntent.ybSoftwareVersion, "2.8.0.0") >= 0) {
+            taskParams.useNewHelmNamingStyle = true;
+          }
+          // TODO(bhavin192): check if
+          // taskParams.useNewHelmNamingStyle is set to true for
+          // ybSoftwareVersion < 2.8.0.0? If so, respond with error.
+        }
       } else {
         if (primaryCluster.userIntent.enableIPV6) {
           throw new PlatformServiceException(
