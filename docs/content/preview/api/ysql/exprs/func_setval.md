@@ -14,15 +14,14 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `setval( sequence_name , value, is_called)` function to set and return the value for the specified sequence.
+Use the `setval(sequence_name , value, is_called)` function to set and return the value for the specified sequence.
 `UPDATE` privilege on the sequence is required to call this function.
 
-Calling the function with two parameters, will default `is_called` to true, meaning, the `nextval` will advance the sequence 
-prior to returning the value and `currval` will also return the specified value.
+Calling the function with two parameters defaults `is_called` to `true`, meaning that the `nextval` will advance the sequence prior to returning the value, and `currval` will also return the specified value.
 
-When called with `is_called` as `false`, `nextval` will return the specified value and the value reported by `currval` will not be changed.
+When called with `is_called` set to `false`, `nextval` will return the specified value and the value reported by `currval` will not be changed.
 
-`setval()` returns just the value of it's second argument.
+`setval()` returns just the value of its second argument.
 
 ## Semantics
 
@@ -36,7 +35,7 @@ Specify the value of the sequence.
 
 ### _is_called_
 
-Specify `is_called` to `true` or `false`.
+Set `is_called` to `true` or `false`.
 
 ## Examples
 
@@ -50,7 +49,7 @@ yugabyte=# CREATE SEQUENCE s;
 CREATE SEQUENCE
 ```
 
-Use `setval` with `is_called` as `true`:
+Use `setval` with `is_called` set to `true`:
 ```sql
 yugabyte=# SELECT setval('s', 21);
 yugabyte=# SELECT setval('s', 21, true);  -- the same command as above
@@ -64,8 +63,7 @@ yugabyte=# SELECT nextval('s');
 (1 row)
 ```
 
-Use `setval` with `is_called` as `false`:
-
+Use `setval` with `is_called` set to `false`:
 ```sql
 yugabyte=# SELECT setval('s', 21, false);
 yugabyte=# SELECT nextval('s');
