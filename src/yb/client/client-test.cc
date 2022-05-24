@@ -2126,7 +2126,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
 
   // Introduce latency in each scan to increase the likelihood of
   // ERROR_SERVER_TOO_BUSY.
-  FLAGS_TEST_scanner_inject_latency_on_each_batch_ms = 10;
+  FLAGS_TEST_scanner_inject_latency_on_each_batch_ms = 10 * kTimeMultiplier;
 
   // Reduce the service queue length of each tablet server in order to increase
   // the likelihood of ERROR_SERVER_TOO_BUSY.
@@ -2176,7 +2176,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
         }
         --running_threads;
       });
-      std::this_thread::sleep_for(10ms);
+      std::this_thread::sleep_for(10ms * kTimeMultiplier);
     }
 
     for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
@@ -2198,7 +2198,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
         idle_threads.pop_back();
       }
     }
-    std::this_thread::sleep_for(10ms);
+    std::this_thread::sleep_for(10ms * kTimeMultiplier);
   }
   thread_holder.JoinAll();
 }
