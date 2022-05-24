@@ -70,7 +70,7 @@ public class EmailHelper {
       SmtpData smtpData,
       Map<String, String> content)
       throws MessagingException {
-    LOG.info("Sending email: '{}' to '{}'", subject, destinations);
+    LOG.info("Sending email: '{}'", subject);
 
     Session session =
         Session.getInstance(
