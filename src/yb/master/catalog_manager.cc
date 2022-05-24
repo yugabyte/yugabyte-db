@@ -7105,7 +7105,10 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
 Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
                                         CreateTablegroupResponsePB* resp,
                                         rpc::RpcContext* rpc) {
-
+  if (IsPitrActive()) {
+    return STATUS(NotSupported, "Cannot create tablegroup when there are "
+                                "one or more snapshot schedules in the cluster");
+  }
   CreateTableRequestPB ctreq;
   CreateTableResponsePB ctresp;
 
@@ -7159,6 +7162,10 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
                                         rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing DeleteTablegroup request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
+  if (IsPitrActive()) {
+    return STATUS(NotSupported, "Cannot delete tablegroup when there are "
+                                "one or more snapshot schedules in the cluster");
+  }
   DeleteTableRequestPB dtreq;
   DeleteTableResponsePB dtresp;
 

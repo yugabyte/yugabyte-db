@@ -1405,6 +1405,10 @@ class CatalogManager :
     return SnapshotSchedulesToObjectIdsMap();
   }
 
+  virtual bool IsPitrActive() {
+    return false;
+  }
+
   Result<SnapshotScheduleId> FindCoveringScheduleForObject(
       SysRowEntryType type, const std::string& object_id);
 

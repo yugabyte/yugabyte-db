@@ -329,6 +329,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntryType type) override;
 
+  bool IsPitrActive() override;
+
   static void SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                       SysSnapshotEntryPB* snapshot_pb);
 

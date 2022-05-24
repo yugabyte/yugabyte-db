@@ -117,6 +117,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info);
 
+  // Returns true if there are one or more non-deleted
+  // snapshot schedules present.
+  bool IsPitrActive();
+
   void Start();
 
   void Shutdown();
