@@ -48,13 +48,24 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
 
   private final Config appConfig;
 
+  private static final String newLine = System.getProperty("line.separator");
+
   // We need to do this because appConfig is preResolved by playFramework
   // So setting references to global or universe scoped config in reference.conf or application.conf
   // wont resolve to unexpected.
   // This helps us avoid unnecessary migrations of config keys.
   private static final Config UNRESOLVED_STATIC_CONFIG =
       ConfigFactory.parseString(
-          "\n" + "yb {\n" + "  upgrade.vmImage = ${yb.cloud.enabled}\n" + "}\n");
+          String.join(
+              newLine,
+              "yb {",
+              "  upgrade.vmImage = ${yb.cloud.enabled}",
+              "  external_script {",
+              "    content = ${?platform_ext_script_content}",
+              "    params = ${?platform_ext_script_params}",
+              "    schedule = ${?platform_ext_script_schedule}",
+              "  }",
+              "}"));
 
   @Inject
   public SettableRuntimeConfigFactory(
