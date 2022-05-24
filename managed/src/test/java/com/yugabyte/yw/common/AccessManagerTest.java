@@ -107,7 +107,8 @@ public class AccessManagerTest extends FakeDBApplication {
               false,
               false,
               false,
-              null));
+              null,
+              false));
     } else {
       response.code = 0;
       response.message =
@@ -126,7 +127,8 @@ public class AccessManagerTest extends FakeDBApplication {
               false,
               false,
               false,
-              null));
+              null,
+              false));
     }
   }
 
@@ -173,7 +175,7 @@ public class AccessManagerTest extends FakeDBApplication {
 
     if (commandType.equals("add-key")) {
       return Json.toJson(
-          accessManager.addKey(regionUUID, "foo", SSH_PORT, false, false, false, null));
+          accessManager.addKey(regionUUID, "foo", SSH_PORT, false, false, false, null, false));
     } else if (commandType.equals("list-keys")) {
       return accessManager.listKeys(regionUUID);
     } else if (commandType.equals("create-vault")) {
