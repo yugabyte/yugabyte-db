@@ -4680,6 +4680,10 @@
           "description" : "Transient property - only present in mutate API request",
           "type" : "boolean"
         },
+        "showSetUpChrony" : {
+          "description" : "Transient property - only present in mutate API request",
+          "type" : "boolean"
+        },
         "sshPort" : {
           "description" : "Transient property - only present in mutate API request",
           "format" : "int32",
