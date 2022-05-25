@@ -95,7 +95,8 @@ public enum PlatformMetrics {
   UNIVERSE_PAUSED("Flag, indicating that universe is paused", Unit.STATUS),
   UNIVERSE_UPDATE_IN_PROGRESS("Flag, indicating that universe update is in progress", Unit.STATUS),
   UNIVERSE_BACKUP_IN_PROGRESS("Flag, indicating that universe backup is in progress", Unit.STATUS),
-  UNIVERSE_NODE_FUNCTION("Flag, indicating expected node functions", Unit.STATUS);
+  UNIVERSE_NODE_FUNCTION("Flag, indicating expected node functions", Unit.STATUS),
+  UNIVERSE_REPLICATION_FACTOR("Universe replication factor", Unit.COUNT);
 
   private final String help;
   private final Unit unit;
