@@ -453,9 +453,6 @@ class UniverseDetail extends Component {
                 tabtitle={
                   <>
                     Backups
-                    {(featureFlags.test['backupv2'] || featureFlags.released['backupv2']) && (
-                      <YBTag>Beta</YBTag>
-                    )}
                   </>
                 }
                 key="backups-tab"

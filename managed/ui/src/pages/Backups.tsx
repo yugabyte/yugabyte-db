@@ -9,13 +9,12 @@
 
 import React, { Component } from 'react';
 import { AccountLevelBackup } from '../components/backupv2';
-import { YBTag } from '../components/common/YBTag';
 
 export default class Backups extends Component {
   render() {
     return (
       <div className="dashboard-container">
-        <h2 className="content-title" id="backups-v2-title">Backups<YBTag>Beta</YBTag></h2>
+        <h2 className="content-title">Backups</h2>
         <AccountLevelBackup />
       </div>
     );
