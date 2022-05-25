@@ -2044,6 +2044,46 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentTxnRestore, YbAdminSnapshotCons
   }
 }
 
+// Tests that DDLs are blocked during restore.
+TEST_F_EX(YbAdminSnapshotScheduleTest, DDLsDuringRestore, YbAdminSnapshotConsistentRestoreTest) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table (k1 INT PRIMARY KEY)"));
+  ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (k1) VALUES (1)"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Created table test_table";
+
+  // Drop the table.
+  ASSERT_OK(conn.ExecuteQuery("DROP TABLE test_table"));
+  LOG(INFO) << "Dropped table test_table";
+
+  // Introduce a delay between catalog patching and loading into memory.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_delay_sys_catalog_reload_secs", "4"));
+
+  // Now start restore.
+  auto restoration_id = ASSERT_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
+  LOG(INFO) << "Restored sys catalog metadata";
+
+  // Issue DDLs in-between.
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table2 (k1 INT PRIMARY KEY)"));
+  ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table2 (k1) VALUES (1)"));
+  LOG(INFO) << "Created table test_table2";
+
+  ASSERT_OK(WaitRestorationDone(restoration_id, 40s));
+
+  // Validate data.
+  auto out = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * from test_table"));
+  LOG(INFO) << "test_table entry: " << out;
+  ASSERT_EQ(out, "1");
+
+  out = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * from test_table2"));
+  LOG(INFO) << "test_table2 entry: " << out;
+  ASSERT_EQ(out, "1");
+}
+
 class YbAdminSnapshotConsistentRestoreFailoverTest : public YbAdminSnapshotScheduleTest {
  public:
   std::vector<std::string> ExtraTSFlags() override {

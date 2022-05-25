@@ -1942,6 +1942,15 @@ void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& ta
 Status CatalogManager::RestoreSysCatalog(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, Status* complete_status) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
+  bool restore_successful = false;
+  // If sys catalog restoration fails then unblock other RPCs.
+  auto scope_exit = ScopeExit([this, &restore_successful] {
+    if (!restore_successful) {
+      LOG(INFO) << "PITR: Accepting RPCs to the master leader";
+      std::lock_guard<simple_spinlock> l(state_lock_);
+      is_catalog_loaded_ = true;
+    }
+  });
   // Restore master snapshot and load it to RocksDB.
   auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(
       restoration->snapshot_id, restoration->restore_at));
@@ -2024,6 +2033,8 @@ Status CatalogManager::RestoreSysCatalog(
   if (LeaderTerm() >= 0) {
     RETURN_NOT_OK(ElectedAsLeaderCb());
   }
+
+  restore_successful = true;
 
   return Status::OK();
 }
@@ -5285,6 +5296,12 @@ std::shared_ptr<cdc::CDCServiceProxy> CatalogManager::GetCDCServiceProxy(RemoteT
 
 void CatalogManager::SetCDCServiceEnabled() {
   cdc_enabled_.store(true, std::memory_order_release);
+}
+
+void CatalogManager::PrepareRestore() {
+  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
+  std::lock_guard<simple_spinlock> l(state_lock_);
+  is_catalog_loaded_ = false;
 }
 
 }  // namespace enterprise
