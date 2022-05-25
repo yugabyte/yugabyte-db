@@ -1300,7 +1300,7 @@ yb-admin \
 * *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
 
 {{< warning title="Important" >}}
-Enter the bootstrap_ids in the same order as their corresponding table_ids.
+Enter the source universe bootstrap_ids in the same order as their corresponding table_ids.
 {{< /warning >}}
 
 {{< note title="Tip" >}}
