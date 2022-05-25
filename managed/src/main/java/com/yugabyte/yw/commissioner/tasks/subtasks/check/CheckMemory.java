@@ -6,6 +6,7 @@ import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -20,7 +21,7 @@ public class CheckMemory extends UniverseTaskBase {
 
   private final NodeUniverseManager nodeUniverseManager;
 
-  private final int DEFAULT_COMMMAND_TIMEOUT_SEC = 20;
+  private final int DEFAULT_COMMAND_TIMEOUT_SEC = 20;
 
   @Inject
   protected CheckMemory(
@@ -45,15 +46,25 @@ public class CheckMemory extends UniverseTaskBase {
       Universe universe = getUniverse();
       for (String nodeIp : params().nodeIpList) {
         List<String> command = new ArrayList<>();
-        command.add("timeout");
-        command.add(String.valueOf(DEFAULT_COMMMAND_TIMEOUT_SEC));
-        command.add("cat /proc/meminfo | grep -i '" + params().memoryType + "'");
-        command.add(" | awk -F' ' '{print $2}'");
+        command.add("cat");
+        command.add("/proc/meminfo");
+        command.add("|");
+        command.add("grep");
+        command.add("-i");
+        command.add(params().memoryType);
+        command.add("|");
+        command.add("awk");
+        command.add("-F");
+        command.add(" ");
+        command.add("{print $2}");
         NodeDetails node = universe.getNodeByPrivateIP(nodeIp);
+        ShellProcessContext context =
+            ShellProcessContext.builder()
+                .logCmdOutput(true)
+                .timeoutSecs(DEFAULT_COMMAND_TIMEOUT_SEC)
+                .build();
         ShellResponse response =
-            nodeUniverseManager
-                .runCommand(node, universe, String.join(" ", command))
-                .processErrors();
+            nodeUniverseManager.runCommand(node, universe, command, context).processErrors();
 
         long availMemory = Long.parseLong(response.extractRunCommandOutput());
         if (availMemory < params().memoryLimitKB) {
