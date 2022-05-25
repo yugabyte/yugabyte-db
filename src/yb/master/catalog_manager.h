@@ -1529,6 +1529,20 @@ class CatalogManager :
   // correctly.
   int64_t leader_ready_term_ GUARDED_BY(state_lock_);
 
+  // This field is set to true when the leader master has completed loading
+  // metadata into in-memory structures. This can happen in two cases presently:
+  // 1. When a new leader is elected
+  // 2. When an existing leader executes a restore_snapshot_schedule
+  // In case (1), the above leader_ready_term_ is sufficient to indicate
+  // the completion of this stage since the new term is only set after load.
+  // However, in case (2), since the before/after term is the same, the above
+  // check will succeed even when load is not complete i.e. there's a small
+  // window when there's a possibility that the master_service sends RPCs
+  // to the leader. This window is after the sys catalog has been restored and
+  // all records have been updated on disk and before it starts loading them
+  // into the in-memory structures.
+  bool is_catalog_loaded_ GUARDED_BY(state_lock_) = false;
+
   // Lock used to fence operations and leader elections. All logical operations
   // (i.e. create table, alter table, etc.) should acquire this lock for
   // reading. Following an election where this master is elected leader, it
