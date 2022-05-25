@@ -104,8 +104,6 @@ using std::string;
 using std::unique_ptr;
 using std::vector;
 
-using google::protobuf::RepeatedPtrField;
-using google::protobuf::util::MessageDifferencer;
 using strings::Substitute;
 
 DEFINE_int32(cdc_state_table_num_tablets, 0,
@@ -2262,8 +2260,7 @@ void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool
 
   auto tablet_l = tablet->LockForRead();
   auto l = snapshot->LockForWrite();
-  RepeatedPtrField<SysSnapshotEntryPB_TabletSnapshotPB>* tablet_snapshots =
-      l.mutable_data()->pb.mutable_tablet_snapshots();
+  auto* tablet_snapshots = l.mutable_data()->pb.mutable_tablet_snapshots();
   int num_tablets_complete = 0;
 
   for (int i = 0; i < tablet_snapshots->size(); ++i) {
@@ -2335,8 +2332,7 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
 
   auto tablet_l = tablet->LockForRead();
   auto l = snapshot->LockForWrite();
-  RepeatedPtrField<SysSnapshotEntryPB_TabletSnapshotPB>* tablet_snapshots =
-      l.mutable_data()->pb.mutable_tablet_snapshots();
+  auto* tablet_snapshots = l.mutable_data()->pb.mutable_tablet_snapshots();
   int num_tablets_complete = 0;
 
   for (int i = 0; i < tablet_snapshots->size(); ++i) {
@@ -2404,8 +2400,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
 
   auto tablet_l = tablet->LockForRead();
   auto l = snapshot->LockForWrite();
-  RepeatedPtrField<SysSnapshotEntryPB_TabletSnapshotPB>* tablet_snapshots =
-      l.mutable_data()->pb.mutable_tablet_snapshots();
+  auto* tablet_snapshots = l.mutable_data()->pb.mutable_tablet_snapshots();
   int num_tablets_complete = 0;
 
   for (int i = 0; i < tablet_snapshots->size(); ++i) {
@@ -2559,8 +2554,7 @@ Status CatalogManager::FillHeartbeatResponseEncryption(
 
 void CatalogManager::SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                              SysSnapshotEntryPB* snapshot_pb) {
-  RepeatedPtrField<SysSnapshotEntryPB_TabletSnapshotPB>* tablet_snapshots =
-      snapshot_pb->mutable_tablet_snapshots();
+  auto* tablet_snapshots = snapshot_pb->mutable_tablet_snapshots();
 
   for (int i = 0; i < tablet_snapshots->size(); ++i) {
     SysSnapshotEntryPB_TabletSnapshotPB* tablet_info = tablet_snapshots->Mutable(i);
