@@ -1297,7 +1297,7 @@ yb-admin \
 * *replication_name*: The name for the replication.
 * *source_master_addresses*: Comma-separated list of the source master addresses.
 * *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
-* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these using [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids).
+* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
 
 {{< warning title="Important" >}}
 Enter the bootstrap_ids in the same order as their corresponding table_ids.
@@ -1358,10 +1358,10 @@ yb-admin -master_addresses <target_master_addresses> \
 * *source_universe_uuid*: The UUID of the source universe.
 * *replication_name*: The name of the replication to be altered.
 * *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
-* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these using [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids).
+* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
 
 {{< warning title="Important" >}}
-Enter the bootstrap_ids in the same order as their corresponding table_ids.
+Enter the source universe bootstrap_ids in the same order as their corresponding table_ids.
 {{< /warning >}}
 
 Use the `remove_table` subcommand to remove one or more tables from the existing list:
