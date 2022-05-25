@@ -1019,7 +1019,8 @@ let awsProviderConfigForm = reduxForm({
   initialValues: {
     ntp_option: NTP_TYPES.PROVIDER,
     ntpServers: []
-  }
+  },
+  touchOnChange: true
 })(AWSProviderInitView);
 
 // Decorate with connect to read form values

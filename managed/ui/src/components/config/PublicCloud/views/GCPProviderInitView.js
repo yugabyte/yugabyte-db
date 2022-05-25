@@ -433,6 +433,7 @@ export default connect(
 )(
   reduxForm({
     form: 'gcpProviderConfigForm',
-    validate
+    validate,
+    touchOnChange: true
   })(GCPProviderInitView)
 );
