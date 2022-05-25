@@ -16,10 +16,11 @@ package com.yugabyte.sample.common;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TimeseriesLoadGenerator {
-  private static final Logger LOG = Logger.getLogger(TimeseriesLoadGenerator.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TimeseriesLoadGenerator.class);
 
   Random random = new Random();
   // The data source id.

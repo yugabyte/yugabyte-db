@@ -315,5 +315,10 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Colocated)) {
   TestCompaction("WITH (colocated = true)");
 }
 
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Serial)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE sbtest1(id SERIAL, PRIMARY KEY (id))"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

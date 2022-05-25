@@ -148,8 +148,7 @@ const initialState = {
 const portValidation = (value) => (value && value < 65536 ? undefined : 'Invalid Port');
 
 function getMinDiskIops(storageType, volumeSize) {
-  return storageType === 'UltraSSD_LRS' ?
-         Math.max(UltraSSD_MIN_DISK_IOPS, volumeSize) : 0;
+  return storageType === 'UltraSSD_LRS' ? Math.max(UltraSSD_MIN_DISK_IOPS, volumeSize) : 0;
 }
 
 function getMaxDiskIops(storageType, volumeSize) {
@@ -896,24 +895,20 @@ export default class ClusterFields extends Component {
       clusterType,
       universe: { currentUniverse }
     } = this.props;
-    const {
-      hasInstanceTypeChanged,
-      deviceInfo
-    } = this.state;
+    const { hasInstanceTypeChanged, deviceInfo } = this.state;
 
-    if (!validateVolumeSizeUnchanged ||
-        hasInstanceTypeChanged ||
-        isEmptyObject(currentUniverse.data) ||
-        isEmptyObject(currentUniverse.data.universeDetails)
+    if (
+      !validateVolumeSizeUnchanged ||
+      hasInstanceTypeChanged ||
+      isEmptyObject(currentUniverse.data) ||
+      isEmptyObject(currentUniverse.data.universeDetails)
     ) {
       return true;
     }
-    const curCluster = getClusterByType(
-        currentUniverse.data.universeDetails.clusters,
-        clusterType
-    );
-    if (!isEmptyObject(curCluster) &&
-        Number(curCluster.userIntent.deviceInfo.volumeSize) !== Number(deviceInfo.volumeSize)
+    const curCluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
+    if (
+      !isEmptyObject(curCluster) &&
+      Number(curCluster.userIntent.deviceInfo.volumeSize) !== Number(deviceInfo.volumeSize)
     ) {
       return false;
     }
@@ -922,7 +917,9 @@ export default class ClusterFields extends Component {
 
   volumeSizeChanged(val) {
     const { updateFormField, clusterType } = this.props;
-    const { deviceInfo: { storageType, diskIops } } = this.state;
+    const {
+      deviceInfo: { storageType, diskIops }
+    } = this.state;
     updateFormField(`${clusterType}.volumeSize`, val);
     this.setState({ deviceInfo: { ...this.state.deviceInfo, volumeSize: val } });
     if (storageType === 'UltraSSD_LRS') {
@@ -931,7 +928,9 @@ export default class ClusterFields extends Component {
   }
 
   getThroughputByIops(currentIops, currentThroughput) {
-    const { deviceInfo: { storageType } } = this.state;
+    const {
+      deviceInfo: { storageType }
+    } = this.state;
     if (storageType === 'GP3') {
       if (
         (currentIops > GP3_DEFAULT_DISK_IOPS || currentThroughput > GP3_DEFAULT_DISK_THROUGHPUT) &&
@@ -942,10 +941,11 @@ export default class ClusterFields extends Component {
           Math.max(currentIops / GP3_IOPS_TO_MAX_DISK_THROUGHPUT, GP3_DEFAULT_DISK_THROUGHPUT)
         );
       }
-    } else
-    if (storageType === 'UltraSSD_LRS') {
-      const maxThroughput =
-          Math.min(currentIops / UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT, UltraSSD_DISK_THROUGHPUT_CAP);
+    } else if (storageType === 'UltraSSD_LRS') {
+      const maxThroughput = Math.min(
+        currentIops / UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT,
+        UltraSSD_DISK_THROUGHPUT_CAP
+      );
       return Math.max(0, Math.min(maxThroughput, currentThroughput));
     }
 
@@ -954,7 +954,9 @@ export default class ClusterFields extends Component {
 
   diskIopsChanged(val) {
     const { updateFormField, clusterType } = this.props;
-    const { deviceInfo: { storageType, volumeSize, throughput, diskIops } } = this.state;
+    const {
+      deviceInfo: { storageType, volumeSize, throughput, diskIops }
+    } = this.state;
     const maxDiskIops = getMaxDiskIops(storageType, volumeSize);
     const minDiskIops = getMinDiskIops(storageType, volumeSize);
 
@@ -962,9 +964,10 @@ export default class ClusterFields extends Component {
     updateFormField(`${clusterType}.diskIops`, actualVal);
     this.setState({ deviceInfo: { ...this.state.deviceInfo, diskIops: actualVal } });
 
-    if ((storageType === 'IO1'
-        || storageType === 'GP3'
-        || storageType === 'UltraSSD_LRS') && diskIops !== actualVal) {
+    if (
+      (storageType === 'IO1' || storageType === 'GP3' || storageType === 'UltraSSD_LRS') &&
+      diskIops !== actualVal
+    ) {
       //resetting throughput
       this.throughputChanged(throughput);
     }
@@ -972,7 +975,9 @@ export default class ClusterFields extends Component {
 
   throughputChanged(val) {
     const { updateFormField, clusterType } = this.props;
-    const { deviceInfo: { diskIops } } = this.state;
+    const {
+      deviceInfo: { diskIops }
+    } = this.state;
     var actualVal = this.getThroughputByIops(Number(diskIops), val);
 
     updateFormField(`${clusterType}.throughput`, actualVal);
@@ -1456,9 +1461,15 @@ export default class ClusterFields extends Component {
           providerUUID && this.props.type === 'Create' && this.props.clusterType === 'async'
       });
 
-      if(currentProviderData.code === 'aws' && this.props.runtimeConfigs && getPromiseState(this.props.runtimeConfigs).isSuccess()){
-        const default_aws_instance = this.props.runtimeConfigs.data.configEntries.find( c => c.key === 'yb.internal.default_aws_instance_type')
-        if(default_aws_instance?.value){
+      if (
+        currentProviderData.code === 'aws' &&
+        this.props.runtimeConfigs &&
+        getPromiseState(this.props.runtimeConfigs).isSuccess()
+      ) {
+        const default_aws_instance = this.props.runtimeConfigs.data.configEntries.find(
+          (c) => c.key === 'yb.internal.default_aws_instance_type'
+        );
+        if (default_aws_instance?.value) {
           updateFormField(`${clusterType}.instanceType`, default_aws_instance.value);
         }
       }
@@ -1477,9 +1488,9 @@ export default class ClusterFields extends Component {
     this.setDefaultProviderStorage(currentProviderData);
   };
 
-  accessKeyChanged(event) {
+  accessKeyChanged(value) {
     const { clusterType } = this.props;
-    this.props.updateFormField(`${clusterType}.accessKeyCode`, event.target.value);
+    this.props.updateFormField(`${clusterType}.accessKeyCode`, value);
   }
 
   instanceTypeChanged(value) {
@@ -1771,8 +1782,7 @@ export default class ClusterFields extends Component {
           );
         }
         const isProvisionalThroughput =
-            deviceInfo.storageType === 'GP3' ||
-            deviceInfo.storageType === 'UltraSSD_LRS';
+          deviceInfo.storageType === 'GP3' || deviceInfo.storageType === 'UltraSSD_LRS';
         if (isProvisionalThroughput) {
           throughputField = (
             <Field
@@ -2166,12 +2176,14 @@ export default class ClusterFields extends Component {
         />
       );
     }
-    // Only enable Time Sync Service toggle for AWS/GCP.
+    // Only enable Time Sync Service toggle for AWS/GCP/Azure.
     if (
       isDefinedNotNull(currentProvider) &&
-      (currentProvider.code === 'aws' || currentProvider.code === 'gcp')
+      ['aws', 'gcp', 'azu'].includes(currentProvider.code) &&
+      !currentProvider.setUpChrony
     ) {
-      const providerCode = currentProvider.code === 'aws' ? 'AWS' : 'GCP';
+      const providerCode =
+        currentProvider.code === 'aws' ? 'AWS' : currentProvider.code === 'gcp' ? 'GCP' : 'Azure';
       useTimeSync = (
         <Field
           name={`${clusterType}.useTimeSync`}

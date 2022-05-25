@@ -59,8 +59,7 @@ public class SmtpData {
         + smtpServer
         + ", smtpPort="
         + smtpPort
-        + ", emailFrom="
-        + emailFrom
+        + ", emailFrom=REDACTED"
         + ", smtpUsername="
         + smtpUsername
         + ", useSSL="

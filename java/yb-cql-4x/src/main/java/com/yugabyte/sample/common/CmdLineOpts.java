@@ -26,20 +26,21 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import org.apache.log4j.Logger;
 
 import com.google.common.collect.ImmutableList;
 
 // Import * so we can list the sample apps.
 import com.yugabyte.sample.apps.*;
 import com.yugabyte.sample.apps.AppBase.TableOp;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This is a helper class to parse the user specified command-line options if they were specified,
  * print help messages when running the app, etc.
  */
 public class CmdLineOpts {
-  private static final Logger LOG = Logger.getLogger(CmdLineOpts.class);
+  private static final Logger LOG = LoggerFactory.getLogger(CmdLineOpts.class);
 
   // This is a unique UUID that is created by each instance of the application. This UUID is used in
   // various apps to make the keys unique. This allows us to run multiple instances of the app
@@ -159,7 +160,7 @@ public class CmdLineOpts {
               Integer.parseInt(commandLine.getOptionValue("batch_size"));
 
         if (AppBase.appConfig.batchSize > AppBase.appConfig.numUniqueKeysToWrite) {
-          LOG.fatal("The batch size cannot be more than the number of unique keys");
+          LOG.error("The batch size cannot be more than the number of unique keys");
           System.exit(-1);
         }
         LOG.info("Batch size : " + AppBase.appConfig.batchSize);

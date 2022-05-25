@@ -222,14 +222,15 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String softwareVersion,
       int waitTime,
       boolean masterChanged,
-      boolean tserverChanged) {
+      boolean tserverChanged,
+      boolean newNamingStyle) {
 
     boolean edit = currPlacement != null;
     boolean isMultiAz = masterAddresses != null;
+    String nodePrefix = taskParams().nodePrefix;
 
     Map<UUID, Integer> serversToUpdate =
         serverType == ServerType.MASTER ? newPlacement.masters : newPlacement.tservers;
-    String sType = serverType == ServerType.MASTER ? "yb-master" : "yb-tserver";
 
     if (serverType == ServerType.TSERVER) {
       Map<UUID, PlacementInfo.PlacementAZ> placementAZMap =
@@ -307,7 +308,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         masterPartition = serverType == ServerType.MASTER ? partition : masterPartition;
         tserverPartition = serverType == ServerType.TSERVER ? partition : tserverPartition;
 
-        NodeDetails node = getPodName(partition, azCode, serverType, isMultiAz);
+        NodeDetails node = getKubernetesNodeName(partition, azCode, serverType, isMultiAz);
         boolean isLeaderBlacklistValidRF = isLeaderBlacklistValidRF(node.nodeName);
         List<NodeDetails> nodeList = new ArrayList<>();
         nodeList.add(node);
@@ -332,9 +333,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             config,
             masterPartition,
             tserverPartition);
-        // TODO(bhavin192): might need to account for multiple
-        // releases in one namespace.
-        String podName = String.format("%s-%d", sType, partition);
+        String podName =
+            getPodName(partition, azCode, serverType, nodePrefix, isMultiAz, newNamingStyle);
         createKubernetesWaitForPodTask(
             KubernetesWaitForPod.CommandType.WAIT_FOR_POD, podName, azCode, config);
 
@@ -458,19 +458,34 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     getRunnableTask().addSubTaskGroup(podsWait);
   }
 
+  // TODO(bhavin192): should we just override the getNodeName from
+  // UniverseDefinitionTaskBase?
   /*
   Returns the NodeDetails of the pod that we need to wait for.
   */
-  public NodeDetails getPodName(
+  public NodeDetails getKubernetesNodeName(
       int partition, String azCode, ServerType serverType, boolean isMultiAz) {
     String sType = serverType == ServerType.MASTER ? "yb-master" : "yb-tserver";
-    String podName =
+    String nodeName =
         isMultiAz
             ? String.format("%s-%d_%s", sType, partition, azCode)
             : String.format("%s-%d", sType, partition);
     NodeDetails node = new NodeDetails();
-    node.nodeName = podName;
+    node.nodeName = nodeName;
     return node;
+  }
+
+  public String getPodName(
+      int partition,
+      String azCode,
+      ServerType serverType,
+      String nodePrefix,
+      boolean isMultiAz,
+      boolean newNamingStyle) {
+    String sType = serverType == ServerType.MASTER ? "yb-master" : "yb-tserver";
+    String helmFullName =
+        PlacementInfoUtil.getHelmFullNameWithSuffix(isMultiAz, nodePrefix, azCode, newNamingStyle);
+    return String.format("%s%s-%d", helmFullName, sType, partition);
   }
 
   /*
@@ -492,7 +507,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         numCurrReplicas = currPlacement.getOrDefault(azUUID, 0);
       }
       for (int i = numCurrReplicas; i < numNewReplicas; i++) {
-        NodeDetails node = getPodName(i, azCode, serverType, isMultiAz);
+        NodeDetails node = getKubernetesNodeName(i, azCode, serverType, isMultiAz);
         podsToAdd.add(node);
       }
     }
@@ -515,7 +530,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       int numCurrReplicas = entry.getValue();
       int numNewReplicas = newPlacement.getOrDefault(azUUID, 0);
       for (int i = numCurrReplicas - 1; i >= numNewReplicas; i--) {
-        NodeDetails node = getPodName(i, azCode, serverType, isMultiAz);
+        NodeDetails node = getKubernetesNodeName(i, azCode, serverType, isMultiAz);
         podsToRemove.add(universe.getNode(node.nodeName));
       }
     }
@@ -583,7 +598,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix, az, config);
+          PlacementInfoUtil.getKubernetesNamespace(
+              taskParams().nodePrefix, az, config, taskParams().useNewHelmNamingStyle);
     }
     params.masterPartition = masterPartition;
     params.tserverPartition = tserverPartition;
@@ -652,7 +668,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix, az, config);
+          PlacementInfoUtil.getKubernetesNamespace(
+              taskParams().nodePrefix, az, config, taskParams().useNewHelmNamingStyle);
     }
     params.masterPartition = masterPartition;
     params.tserverPartition = tserverPartition;
@@ -687,7 +704,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix, az, config);
+          PlacementInfoUtil.getKubernetesNamespace(
+              taskParams().nodePrefix, az, config, taskParams().useNewHelmNamingStyle);
     }
     params.universeUUID = taskParams().universeUUID;
     params.podName = podName;
@@ -716,7 +734,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix, az, config);
+          PlacementInfoUtil.getKubernetesNamespace(
+              taskParams().nodePrefix, az, config, taskParams().useNewHelmNamingStyle);
     }
     params.universeUUID = taskParams().universeUUID;
     params.podNum = numPods;

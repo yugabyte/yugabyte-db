@@ -1036,7 +1036,7 @@ public class AlertControllerTest extends FakeDBApplication {
                 new AlertConfigurationThreshold()
                     .setCondition(Condition.GREATER_THAN)
                     .setThreshold(1D))));
-    assertThat(configuration.getDurationSec(), equalTo(15));
+    assertThat(configuration.getDurationSec(), equalTo(0));
     assertThat(configuration.getDestinationUUID(), equalTo(destination.getUuid()));
   }
 

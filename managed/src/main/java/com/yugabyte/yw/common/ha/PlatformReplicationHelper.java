@@ -16,8 +16,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.PlatformInstanceClient;
-import com.yugabyte.yw.common.PlatformInstanceClientFactory;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;

@@ -70,12 +70,14 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -98,6 +100,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
@@ -129,6 +132,16 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
+
+  protected static final String MIN_WRITE_READ_TABLE_CREATION_RELEASE = "2.6.0.0";
+
+  protected String ysqlPassword;
+  protected String ycqlPassword;
+  private String ysqlCurrentPassword = Util.DEFAULT_YSQL_PASSWORD;
+  private String ysqlUsername = Util.DEFAULT_YSQL_USERNAME;
+  private String ycqlCurrentPassword = Util.DEFAULT_YCQL_PASSWORD;
+  private String ycqlUsername = Util.DEFAULT_YCQL_USERNAME;
+  private String ysqlDb = Util.YUGABYTE_DB;
 
   enum VersionCheckMode {
     NEVER,
@@ -558,6 +571,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public void checkAndCreateChangeAdminPasswordTask(Cluster primaryCluster) {
+    // Change admin password for Admin user, as specified.
+    if ((primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth)
+        || (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth)) {
+      createChangeAdminPasswordTask(
+              primaryCluster,
+              ysqlPassword,
+              ysqlCurrentPassword,
+              ysqlUsername,
+              ysqlDb,
+              ycqlPassword,
+              ycqlCurrentPassword,
+              ycqlUsername)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+  }
   /** Create a task to mark the final software version on a universe. */
   public SubTaskGroup createUpdateSoftwareVersionTask(
       String softwareVersion, boolean isSoftwareUpdateViaVm) {
@@ -1079,9 +1108,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public void checkAndCreateRedisTableTask(Cluster primaryCluster) {
+    if (primaryCluster.userIntent.enableYEDIS) {
+      // Create a simple redis table.
+      createTableTask(
+              TableType.REDIS_TABLE_TYPE,
+              YBClient.REDIS_DEFAULT_TABLE_NAME,
+              null /* table details */,
+              true /* ifNotExist */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+  }
+
   /** Create a task to create write/read test table wor write/read metric and alert. */
   public SubTaskGroup createReadWriteTestTableTask(int numPartitions, boolean ifNotExist) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateReadWriteTestTable");
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("CreateReadWriteTestTable", executor);
 
     CreateTable task = createTask(CreateTable.class);
 
@@ -1115,6 +1157,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public void checkAndCreateReadWriteTestTableTask(Cluster primaryCluster) {
+    if (primaryCluster.userIntent.enableYSQL
+        && CommonUtils.isReleaseEqualOrAfter(
+            MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion)) {
+      // Create read-write test table
+      List<NodeDetails> tserverLiveNodes =
+          universe
+              .getUniverseDetails()
+              .getNodesInCluster(primaryCluster.uuid)
+              .stream()
+              .filter(nodeDetails -> nodeDetails.isTserver)
+              .collect(Collectors.toList());
+      createReadWriteTestTableTask(tserverLiveNodes.size(), true)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
   }
 
   /**
@@ -1752,7 +1811,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Collection<NodeDetails> addNodes,
       Collection<NodeDetails> removeNodes,
       boolean isLeaderBlacklist) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ModifyBlackList");
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ModifyBlackList", executor);
     ModifyBlackList.Params params = new ModifyBlackList.Params();
     params.universeUUID = taskParams().universeUUID;
     params.addNodes = addNodes;
@@ -1802,6 +1861,61 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Add the task list to the task queue.
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * Creates a task list to wait for a minimum number of tservers to heartbeat to the master leader.
+   */
+  public SubTaskGroup createWaitForTServerHeartBeatsTask() {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("WaitForTServerHeartBeats", executor);
+    WaitForTServerHeartBeats task = createTask(WaitForTServerHeartBeats.class);
+    WaitForTServerHeartBeats.Params params = new WaitForTServerHeartBeats.Params();
+    params.universeUUID = taskParams().universeUUID;
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public void createConfigureUniverseTasks(Cluster primaryCluster) {
+    // Wait for a Master Leader to be elected.
+    createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Persist the placement info into the YB master leader.
+    createPlacementInfoTask(null /* blacklistNodes */)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Manage encryption at rest
+    SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
+    if (manageEncryptionKeyTask != null) {
+      manageEncryptionKeyTask.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
+    // Wait for a master leader to hear from all the tservers.
+    createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Update the DNS entry for all the nodes once, using the primary cluster type.
+    createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster.userIntent)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Update the swamper target file.
+    createSwamperTargetUpdateTask(false /* removeFile */);
+
+    // Create alert definitions.
+    createUnivCreateAlertDefinitionsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Create default redis table.
+    checkAndCreateRedisTableTask(primaryCluster);
+
+    // Create read write test table tasks.
+    checkAndCreateReadWriteTestTableTask(primaryCluster);
+
+    // Change admin password for Admin user, as specified.
+    checkAndCreateChangeAdminPasswordTask(primaryCluster);
+
+    // Marks the update of this universe as a success only if all the tasks before it succeeded.
+    createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   // Check if the node present in taskParams has a backing instance alive on the IaaS.

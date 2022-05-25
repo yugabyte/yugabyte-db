@@ -614,7 +614,8 @@ class CatalogManager :
   //
   // If all conditions are met, returns a locked write lock on this table.
   // Otherwise lock is default constructed, i.e. not locked.
-  TableInfo::WriteLock MaybeTransitionTableToDeleted(const TableInfoPtr& table);
+  TableInfo::WriteLock PrepareTableDeletion(const TableInfoPtr& table);
+  bool ShouldDeleteTable(const TableInfoPtr& table);
 
   // Used by ConsensusService to retrieve the TabletPeer for a system
   // table specified by 'tablet_id'.
@@ -1403,6 +1404,10 @@ class CatalogManager :
   virtual Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntryType type) {
     return SnapshotSchedulesToObjectIdsMap();
+  }
+
+  virtual bool IsPitrActive() {
+    return false;
   }
 
   Result<SnapshotScheduleId> FindCoveringScheduleForObject(

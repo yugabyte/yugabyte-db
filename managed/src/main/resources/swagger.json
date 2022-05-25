@@ -410,7 +410,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -465,7 +465,7 @@
           "type" : "string"
         },
         "template" : {
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
           "type" : "string"
         },
         "uuids" : {
@@ -619,7 +619,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -1349,6 +1349,10 @@
           "description" : "Disable checksum",
           "type" : "boolean"
         },
+        "disableParallelism" : {
+          "description" : "Don't add -m flag during gsutil upload dir command",
+          "type" : "boolean"
+        },
         "enableVerboseLogs" : {
           "description" : "Is verbose logging enabled",
           "type" : "boolean"
@@ -1668,6 +1672,10 @@
         },
         "disableChecksum" : {
           "description" : "Disable checksum",
+          "type" : "boolean"
+        },
+        "disableParallelism" : {
+          "description" : "Don't add -m flag during gsutil upload dir command",
           "type" : "boolean"
         },
         "enableVerboseLogs" : {
@@ -2274,6 +2282,9 @@
         "upgradeOption" : {
           "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ],
           "type" : "string"
+        },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
         },
         "userAZSelected" : {
           "type" : "boolean"
@@ -3247,6 +3258,9 @@
           "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ],
           "type" : "string"
         },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
+        },
         "userAZSelected" : {
           "type" : "boolean"
         },
@@ -3833,6 +3847,10 @@
         },
         "disableChecksum" : {
           "description" : "Disable checksum",
+          "type" : "boolean"
+        },
+        "disableParallelism" : {
+          "description" : "Don't add -m flag during gsutil upload dir command",
           "type" : "boolean"
         },
         "enableVerboseLogs" : {
@@ -5034,6 +5052,9 @@
           "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ],
           "type" : "string"
         },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
+        },
         "userAZSelected" : {
           "type" : "boolean"
         },
@@ -5621,6 +5642,9 @@
           "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ],
           "type" : "string"
         },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
+        },
         "userAZSelected" : {
           "type" : "boolean"
         },
@@ -5838,6 +5862,9 @@
         "upgradeOption" : {
           "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ],
           "type" : "string"
+        },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
         },
         "userAZSelected" : {
           "type" : "boolean"
@@ -6221,6 +6248,9 @@
           "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ],
           "type" : "string"
         },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
+        },
         "userAZSelected" : {
           "type" : "boolean"
         },
@@ -6401,6 +6431,9 @@
         "upgradeOption" : {
           "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ],
           "type" : "string"
+        },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
         },
         "userAZSelected" : {
           "type" : "boolean"
@@ -6583,6 +6616,9 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
+        },
         "userAZSelected" : {
           "type" : "boolean"
         },
@@ -6743,6 +6779,9 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
+        },
         "userAZSelected" : {
           "type" : "boolean"
         },
@@ -6902,6 +6941,9 @@
         "updatingTaskUUID" : {
           "format" : "uuid",
           "type" : "string"
+        },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
         },
         "userAZSelected" : {
           "type" : "boolean"
@@ -7219,6 +7261,9 @@
         "upgradeOption" : {
           "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ],
           "type" : "string"
+        },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
         },
         "userAZSelected" : {
           "type" : "boolean"
@@ -7711,6 +7756,9 @@
         "upgradeOption" : {
           "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ],
           "type" : "string"
+        },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
         },
         "userAZSelected" : {
           "type" : "boolean"
@@ -10895,53 +10943,6 @@
         "tags" : [ "Region management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/releases" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "getListOfRegionReleases",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "rUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "default" : false,
-          "in" : "query",
-          "name" : "includeMetadata",
-          "required" : false,
-          "type" : "boolean"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List all releases valid in region",
-        "tags" : [ "Release management" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones" : {
       "get" : {
         "description" : "",
@@ -11072,6 +11073,47 @@
         } ],
         "summary" : "Delete an availability zone",
         "tags" : [ "Availability Zones" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/releases" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getListOfRegionReleases",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "includeMetadata",
+          "required" : false,
+          "type" : "boolean"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all releases valid in region",
+        "tags" : [ "Release management" ]
       }
     },
     "/api/v1/customers/{cUUID}/regions" : {

@@ -71,6 +71,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     HELM_INIT,
     HELM_INSTALL,
     HELM_UPGRADE,
+    // TODO(bhavin192): should we just deprecate this? It is not used
+    // anywhere in the code, and we use Helm operations to modify the
+    // number of TServer nodes. The code which was using it has been
+    // removed 3 years back in
+    // 6c757362e4ba55921963e34c01e382f48843d959.
     UPDATE_NUM_NODES,
     HELM_DELETE,
     VOLUME_DELETE,
@@ -126,6 +131,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public CommandType commandType;
     // We use the nodePrefix as Helm Chart's release name,
     // so we would need that for any sort helm operations.
+    // TODO(bhavin192): rename this to helmReleaseName for clarity.
     public String nodePrefix;
     public String namespace;
     public String ybSoftwareVersion = null;
@@ -206,11 +212,18 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       case UPDATE_NUM_NODES:
         int numNodes = this.getNumNodes();
         if (numNodes > 0) {
-          // TODO(bhavin192): we might also need nodePrefix later, so
-          // that we can have multiple releases in one namespace.
+          boolean newNamingStyle =
+              Universe.getOrBadRequest(taskParams().universeUUID)
+                  .getUniverseDetails()
+                  .useNewHelmNamingStyle;
           kubernetesManagerFactory
               .getManager()
-              .updateNumNodes(config, taskParams().namespace, numNodes);
+              .updateNumNodes(
+                  config,
+                  taskParams().nodePrefix,
+                  taskParams().namespace,
+                  numNodes,
+                  newNamingStyle);
         }
         break;
       case HELM_DELETE:
@@ -257,11 +270,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               .getManager()
               .getServices(config, taskParams().nodePrefix, taskParams().namespace);
 
-      // TODO(bhavin192): this will need an update when we have
-      // multiple releases in one namespace, the generated service
-      // name will be different and not just yb-masters, yb-tservers
-      // etc. Values file will still have yb-masters, yb-tservers
-      // etc.
       services.forEach(
           service -> {
             serviceToIP.put(service.getMetadata().getName(), service.getSpec().getClusterIP());
@@ -292,7 +300,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               : taskParams().nodePrefix;
       String namespace =
           PlacementInfoUtil.getKubernetesNamespace(
-              isMultiAz, taskParams().nodePrefix, azName, config);
+              isMultiAz,
+              taskParams().nodePrefix,
+              azName,
+              config,
+              u.getUniverseDetails().useNewHelmNamingStyle);
 
       List<Pod> podInfos =
           kubernetesManagerFactory.getManager().getPodInfos(config, nodePrefix, namespace);
@@ -303,19 +315,28 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         pod.put("az_uuid", azUUID.toString());
         pod.put("az_name", azName);
         pod.put("region_name", regionName);
-        // Pod name is differentiated by the zone of deployment appended to
-        // the hostname of the pod in case of multi-az.
-        String podName =
-            isMultiAz
-                ? String.format("%s_%s", podInfo.getSpec().getHostname(), azName)
-                : podInfo.getSpec().getHostname();
+        String hostname = podInfo.getSpec().getHostname();
+        pod.put("hostname", hostname);
+
+        int ybIdx = hostname.lastIndexOf("yb-");
+        // The Helm full name is added to all the pods by the Helm
+        // chart as a prefix, we are removing the yb-<server>-N part
+        // from it. It is blank in case of old naming style.
+        pod.put("helmFullNameWithSuffix", hostname.substring(0, ybIdx));
+        // We leave out the Helm name prefix from the pod hostname,
+        // and use the name like yb-<server>-N[_<az-name>] as nodeName
+        // i.e. yb-master-0, and yb-master-0_az1 in case of multi-az.
+        String nodeName = hostname.substring(ybIdx, hostname.length());
+        nodeName = isMultiAz ? String.format("%s_%s", nodeName, azName) : nodeName;
+
         String podNamespace = podInfo.getMetadata().getNamespace();
         if (StringUtils.isBlank(podNamespace)) {
           throw new IllegalArgumentException(
-              "metadata.namespace of pod " + podName + " is empty. This shouldn't happen");
+              "metadata.namespace of pod " + hostname + " is empty. This shouldn't happen");
         }
         pod.put("namespace", podNamespace);
-        pods.set(podName, pod);
+
+        pods.set(nodeName, pod);
       }
     }
 
@@ -329,23 +350,27 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           while (iter.hasNext()) {
             NodeDetails nodeDetail = defaultNode.clone();
             Map.Entry<String, JsonNode> pod = iter.next();
-            String hostname = pod.getKey();
+            String nodeName = pod.getKey();
             JsonNode podVals = pod.getValue();
+            String hostname = podVals.get("hostname").asText();
             String namespace = podVals.get("namespace").asText();
+            String helmFullNameWithSuffix = podVals.get("helmFullNameWithSuffix").asText();
             UUID azUUID = UUID.fromString(podVals.get("az_uuid").asText());
             String domain = azToDomain.get(azUUID);
-            if (hostname.contains("master")) {
+            if (nodeName.contains("master")) {
               nodeDetail.isTserver = false;
               nodeDetail.isMaster = true;
               nodeDetail.cloudInfo.private_ip =
                   String.format(
-                      "%s.%s.%s.%s", hostname.split("_")[0], "yb-masters", namespace, domain);
+                      "%s.%s%s.%s.%s",
+                      hostname, helmFullNameWithSuffix, "yb-masters", namespace, domain);
             } else {
               nodeDetail.isMaster = false;
               nodeDetail.isTserver = true;
               nodeDetail.cloudInfo.private_ip =
                   String.format(
-                      "%s.%s.%s.%s", hostname.split("_")[0], "yb-tservers", namespace, domain);
+                      "%s.%s%s.%s.%s",
+                      hostname, helmFullNameWithSuffix, "yb-tservers", namespace, domain);
             }
             if (isMultiAz) {
               nodeDetail.cloudInfo.az = podVals.get("az_name").asText();
@@ -354,7 +379,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             nodeDetail.azUuid = azUUID;
             nodeDetail.placementUuid = placementUuid;
             nodeDetail.state = NodeDetails.NodeState.Live;
-            nodeDetail.nodeName = hostname;
+            nodeDetail.nodeName = nodeName;
             nodeDetailsSet.add(nodeDetail);
           }
           universeDetails.nodeDetailsSet = nodeDetailsSet;
@@ -363,6 +388,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     saveUniverseDetails(updater);
   }
 
+  // TODO: Remove this method as it is no longer needed. It does not
+  // generate correct pod name with new naming style. The method which
+  // was using this has stopped doing so as of
+  // ea110f66098d2684863578cd2b730ec677e2de4e
   private String nodeNameToPodName(String nodeName, boolean isMaster) {
     Matcher matcher = nodeNamePattern.matcher(nodeName);
     if (!matcher.matches()) {
@@ -764,9 +793,21 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         Map<String, Object> endpoint = mapper.convertValue(serviceEndpoint, Map.class);
         String endpointName = (String) endpoint.get("name");
         if (serviceToIP.containsKey(endpointName)) {
+          // With the newNamingStyle, the serviceToIP map will have
+          // service names containing helmFullNameWithSuffix in
+          // them. NOT making any changes to this code, as we have
+          // deprecated Helm 2. And the newNamingStyle will be used
+          // for newly created universes using Helm 3.
           endpoint.put("clusterIP", serviceToIP.get(endpointName));
         }
       }
+    }
+
+    // TODO(bhavin192): we can save universeDetails at the top, we use
+    // this call a couple of times throughout this method.
+    if (u.getUniverseDetails().useNewHelmNamingStyle) {
+      overrides.put("oldNamingStyle", false);
+      overrides.put("fullnameOverride", taskParams().nodePrefix);
     }
 
     try {

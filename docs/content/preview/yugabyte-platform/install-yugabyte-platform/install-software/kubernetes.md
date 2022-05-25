@@ -70,13 +70,13 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     "yugabytedb" has been added to your repositories
     ```
 
-    <br>To search for the available chart version, run this command:
+    <br>To search for the available chart version, run the following command:
 
     ```sh
     helm search repo yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
     ```
 
-    <br>The latest Helm Chart version and App version will be displayed:
+    <br>The latest Helm chart version and application version is displayed via the output similar to the following:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
@@ -94,6 +94,14 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     ```sh
     helm install yw-test yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
     ```
+
+    <br>In addition, you may provide a custom TLS certificate in the Helm chart, as follows:
+
+    ```sh
+    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2" tls.certificate="LS0tLS1CRUdJTiBDRVJUSUZJQ..." tls.key="LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0t..."
+    ```
+
+    <br>where `certificate` and `key` are set to full string values of your custom certificate and its corresponding key.
 
 1. Use the following command to check the service:
 

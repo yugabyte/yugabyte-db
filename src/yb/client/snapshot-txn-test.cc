@@ -358,7 +358,7 @@ void SnapshotTxnTest::TestBankAccounts(
 
 TEST_F(SnapshotTxnTest, BankAccounts) {
   FLAGS_TEST_disallow_lmp_failures = true;
-  FLAGS_enable_multi_raft_heartbeat_batcher = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */);
 }
 
@@ -395,7 +395,7 @@ TEST_F(SnapshotTxnTest, BankAccountsDelayCreate) {
 
 TEST_F(SnapshotTxnTest, BankAccountsDelayAddLeaderPending) {
   FLAGS_TEST_disallow_lmp_failures = true;
-  FLAGS_enable_multi_raft_heartbeat_batcher = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms = 20;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(5, 1) /* minimal_updates_per_second */);
 }

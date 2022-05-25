@@ -139,6 +139,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // EDIT mode: Set to true if nodes could be resized without full move.
   @ApiModelProperty public boolean nodesResizeAvailable = false;
 
+  // This flag indicates whether the Kubernetes universe will use new
+  // naming style of the Helm chart. The value cannot be changed once
+  // set during universe creation. Default is set to false for
+  // backward compatability.
+  @ApiModelProperty public boolean useNewHelmNamingStyle = false;
+
   /** Allowed states for an imported universe. */
   public enum ImportedState {
     NONE, // Default, and for non-imported universes.

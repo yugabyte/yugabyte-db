@@ -303,8 +303,7 @@ static void appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 static char *get_synchronized_snapshot(Archive *fout);
 static void setupDumpWorker(Archive *AHX);
 static TableInfo *getRootTableInfo(TableInfo *tbinfo);
-static bool pgYbTablegroupTableExists(Archive *fout);
-static bool pgTablegroupTableExists(Archive *fout);
+static bool catalogTableExists(Archive *fout, char *tablename);
 
 static void getYbTablePropertiesAndReloptions(Archive *fout,
 						YBCPgTableProperties *properties,
@@ -834,8 +833,8 @@ main(int argc, char **argv)
 		dopt.outputBlobs = true;
 
 	/* Update pg_tablegroup existence variables */
-	pg_yb_tablegroup_exists = pgYbTablegroupTableExists(fout);
-	pg_tablegroup_exists = pgTablegroupTableExists(fout);
+	pg_yb_tablegroup_exists = catalogTableExists(fout, "pg_yb_tablegroup");
+	pg_tablegroup_exists = catalogTableExists(fout, "pg_tablegroup");
 
 	/*
 	 * Now scan the database and create DumpableObject structs for all the
@@ -5925,37 +5924,15 @@ getFuncs(Archive *fout, int *numFuncs)
 	return finfo;
 }
 
-/*
- * pgYbTablegroupTableExists returns true if the pg_yb_tablegroup table has been created.
- */
-static bool pgYbTablegroupTableExists(Archive *fout) {
+static bool catalogTableExists(Archive *fout, char *tablename)
+{
 	PQExpBuffer query = createPQExpBuffer();
 	PGresult   *res;
 
 	appendPQExpBuffer(query,
-					  "SELECT 1 FROM pg_class WHERE relname = 'pg_yb_tablegroup' "
-					  "AND relnamespace = 'pg_catalog'::regnamespace");
-
-	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
-
-	bool exists = (PQntuples(res) == 1);
-
-	destroyPQExpBuffer(query);
-	PQclear(res);
-
-	return exists;
-}
-
-/*
- * pgTablegroupTableExists returns true if the pg_tablegroup table has been created.
- */
-static bool pgTablegroupTableExists(Archive *fout) {
-	PQExpBuffer query = createPQExpBuffer();
-	PGresult   *res;
-
-	appendPQExpBuffer(query,
-					  "SELECT 1 FROM pg_class WHERE relname = 'pg_tablegroup' "
-					  "AND relnamespace = 'pg_catalog'::regnamespace");
+					  "SELECT 1 FROM pg_class WHERE relname = '%s' "
+					  "AND relnamespace = 'pg_catalog'::regnamespace",
+					  tablename);
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
@@ -6778,6 +6755,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 	int			i_grpinitacl;
 	int			i_grpinitracl;
 	int			i_grpoptions;
+	int			i_grptablespace;
 
 	if (!pg_yb_tablegroup_exists && !pg_tablegroup_exists)
 	{
@@ -6799,21 +6777,25 @@ getTablegroups(Archive *fout, int *numTablegroups)
 
 	/* Select all tablegroups from pg_tablegroup or pg_yb_tablegroup table */
 	appendPQExpBuffer(query,
-						"SELECT grpname, tg.oid, grpoptions, "
-						"(%s grpowner) AS owner, "
-						"%s AS acl, "
-						"%s AS racl, "
-						"%s AS initacl, "
-						"%s AS initracl "
-						"FROM %s AS tg "
-						"LEFT JOIN pg_init_privs pip ON "
-						"tg.oid = pip.objoid",
-						username_subquery,
-						acl_subquery->data,
-						racl_subquery->data,
-						init_acl_subquery->data,
-						init_racl_subquery->data,
-						pg_yb_tablegroup_exists ? "pg_yb_tablegroup" : "pg_tablegroup");
+					  "SELECT grpname, tg.oid, grpoptions, "
+					  "(%s grpowner) AS owner, "
+					  "(%s) AS grptablespace, "
+					  "%s AS acl, "
+					  "%s AS racl, "
+					  "%s AS initacl, "
+					  "%s AS initracl "
+					  "FROM %s AS tg "
+					  "LEFT JOIN pg_init_privs pip ON "
+					  "tg.oid = pip.objoid",
+					  username_subquery,
+					  pg_yb_tablegroup_exists ?
+						  "SELECT spcname FROM pg_tablespace t WHERE t.oid = grptablespace" :
+						  "NULL",
+					  acl_subquery->data,
+					  racl_subquery->data,
+					  init_acl_subquery->data,
+					  init_racl_subquery->data,
+					  pg_yb_tablegroup_exists ? "pg_yb_tablegroup" : "pg_tablegroup");
 
 	destroyPQExpBuffer(acl_subquery);
 	destroyPQExpBuffer(racl_subquery);
@@ -6835,6 +6817,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 	i_grpracl = PQfnumber(res, "racl");
 	i_grpinitacl = PQfnumber(res, "initacl");
 	i_grpinitracl = PQfnumber(res, "initracl");
+	i_grptablespace = PQfnumber(res, "grptablespace");
 
 	for (i = 0; i < ntups; i++)
 	{
@@ -6847,6 +6830,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 
 		tbinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_grpname));
 		tbinfo[i].grpowner = pg_strdup(PQgetvalue(res, i, i_grpowner));
+		tbinfo[i].grptablespace = pg_strdup(PQgetvalue(res, i, i_grptablespace));
 
 		tbinfo[i].grpacl = pg_strdup(PQgetvalue(res, i, i_grpacl));
 		tbinfo[i].grpracl = pg_strdup(PQgetvalue(res, i, i_grpracl));
@@ -15789,8 +15773,7 @@ dumpTablegroup(Archive *fout, TablegroupInfo *tginfo)
 					 tginfo->dobj.dumpId,	/* dump ID */
 					 tginfo->dobj.name,		/* Name */
 					 NULL,  				/* Namespace */
-					 /* TODO: timothy-e: dump tablespaces for tablegroups */
-					 NULL,					/* Tablespace */
+					 tginfo->grptablespace,	/* Tablespace */
 					 tginfo->grpowner,		/* Owner */
 					 false,					/* with oids */
 					 "TABLEGROUP",			/* Desc */

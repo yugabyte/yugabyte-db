@@ -6,6 +6,7 @@ import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import java.net.HttpURLConnection;
@@ -17,6 +18,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
@@ -25,11 +28,18 @@ import play.mvc.Http;
 
 /** Helper class API specific stuff */
 @Singleton
+@Slf4j
 public class ApiHelper {
 
   private static final Duration DEFAULT_GET_REQUEST_TIMEOUT = Duration.ofSeconds(10);
 
-  @Inject WSClient wsClient;
+  @Getter(onMethod_ = {@VisibleForTesting})
+  private final WSClient wsClient;
+
+  @Inject
+  public ApiHelper(WSClient wsClient) {
+    this.wsClient = wsClient;
+  }
 
   public boolean postRequest(String url) {
     try {
@@ -124,7 +134,11 @@ public class ApiHelper {
       String jsonString = jsonPromise.toCompletableFuture().get();
       return Json.parse(jsonString);
     } catch (InterruptedException | ExecutionException e) {
+      log.warn("Unexpected exception while parsing response", e);
       return ApiResponse.errorJSON(e.getMessage());
+    } catch (RuntimeException e) {
+      log.warn("Unexpected exception while parsing response", e);
+      throw e;
     }
   }
 

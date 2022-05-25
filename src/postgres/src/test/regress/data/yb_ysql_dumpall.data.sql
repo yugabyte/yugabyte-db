@@ -31,8 +31,9 @@ ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPL
 -- Tablespaces
 --
 
-CREATE TABLESPACE x OWNER yugabyte_test LOCATION '';
-CREATE TABLESPACE z OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
+CREATE TABLESPACE tsp1 OWNER yugabyte_test LOCATION '';
+CREATE TABLESPACE tsp2 OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
+CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"dc_unused","zone":"z_unused","min_num_replicas":1}]}');
 
 
 \connect template1
@@ -54,7 +55,6 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
-SET yb_enable_create_with_table_oid = true;
 
 --
 -- YSQL database dump complete
@@ -79,7 +79,6 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
-SET yb_enable_create_with_table_oid = true;
 
 --
 -- YSQL database dump complete
@@ -102,7 +101,6 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
-SET yb_enable_create_with_table_oid = true;
 
 --
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
@@ -125,7 +123,6 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
-SET yb_enable_create_with_table_oid = true;
 
 --
 -- Name: DATABASE system_platform; Type: COMMENT; Schema: -; Owner: postgres
@@ -155,7 +152,6 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
-SET yb_enable_create_with_table_oid = true;
 
 --
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
@@ -178,7 +174,6 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
-SET yb_enable_create_with_table_oid = true;
 
 --
 -- Name: DATABASE yugabyte; Type: COMMENT; Schema: -; Owner: postgres
@@ -187,21 +182,43 @@ SET yb_enable_create_with_table_oid = true;
 COMMENT ON DATABASE yugabyte IS 'default administrative connection database';
 
 
-SET default_tablespace = x;
+SET default_tablespace = tsp1;
+
+--
+-- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test; Tablespace: tsp1
+--
+
+CREATE TABLEGROUP grp_with_spc;
+
+
+ALTER TABLEGROUP grp_with_spc OWNER TO yugabyte_test;
+
+SET default_tablespace = '';
+
+--
+-- Name: grp_without_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test
+--
+
+CREATE TABLEGROUP grp_without_spc;
+
+
+ALTER TABLEGROUP grp_without_spc OWNER TO yugabyte_test;
+
+SET default_tablespace = tsp1;
 
 SET default_with_oids = false;
 
 --
--- Name: table1; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: x
+-- Name: table1; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: tsp1
 --
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16390'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16391'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16389'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16390'::pg_catalog.oid);
 
 CREATE TABLE public.table1 (
     id integer
@@ -211,19 +228,19 @@ SPLIT INTO 3 TABLETS;
 
 ALTER TABLE public.table1 OWNER TO yugabyte_test;
 
-SET default_tablespace = z;
+SET default_tablespace = tsp2;
 
 --
--- Name: table2; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: z
+-- Name: table2; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
 --
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16394'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16395'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16393'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16394'::pg_catalog.oid);
 
 CREATE TABLE public.table2 (
     name character varying
@@ -232,6 +249,29 @@ SPLIT INTO 3 TABLETS;
 
 
 ALTER TABLE public.table2 OWNER TO yugabyte_test;
+
+SET default_tablespace = '';
+
+--
+-- Name: tbl_with_grp_with_spc; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16401'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16400'::pg_catalog.oid);
+
+CREATE TABLE public.tbl_with_grp_with_spc (
+    a integer
+)
+WITH (autovacuum_enabled='true', colocation_id='20001')
+TABLEGROUP grp_with_spc;
+
+
+ALTER TABLE public.tbl_with_grp_with_spc OWNER TO yugabyte_test;
 
 --
 -- Data for Name: table1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
@@ -250,16 +290,26 @@ COPY public.table2 (name) FROM stdin;
 
 
 --
--- Name: idx1; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: z
+-- Data for Name: tbl_with_grp_with_spc; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.tbl_with_grp_with_spc (a) FROM stdin;
+\.
+
+
+SET default_tablespace = tsp2;
+
+--
+-- Name: idx1; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
 --
 
 CREATE INDEX idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
 
 
-SET default_tablespace = x;
+SET default_tablespace = tsp1;
 
 --
--- Name: idx2; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: x
+-- Name: idx2; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp1
 --
 
 CREATE INDEX idx2 ON public.table2 USING lsm (name HASH) SPLIT INTO 3 TABLETS;

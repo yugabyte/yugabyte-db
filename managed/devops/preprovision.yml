@@ -29,10 +29,14 @@
     # Disable unattended-upgrades so we can acquire locks to install packages on Ubuntu 18.
     - block:
       - name: Disable timers for unattended upgrade, so none will be triggered by `date -s` call.
-        raw: systemctl disable --now {{item}}
+        raw: >
+          if systemctl is-enabled --quiet {{item}}; then systemctl disable --now {{item}} &&
+          echo disabled ; fi
         with_items:
           - 'apt-daily.timer'
           - 'apt-daily-upgrade.timer'
+        register: output
+        changed_when: "'disabled' in output.stdout"
 
       - name: Reload systemctl daemon to apply the new changes
         raw: systemctl daemon-reload

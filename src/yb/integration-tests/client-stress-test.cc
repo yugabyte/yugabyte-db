@@ -141,15 +141,15 @@ class ClientStressTest_MultiMaster : public ClientStressTest {
 // to fixing that bug.
 TEST_F(ClientStressTest_MultiMaster, TestLeaderResolutionTimeout) {
   TestWorkload work(cluster_.get());
-  work.set_num_write_threads(64);
+  work.set_num_write_threads(RegularBuildVsSanitizers(64, 8));
 
   // This timeout gets applied to the master requests. It's lower than the
   // amount of time that we sleep the masters, to ensure they timeout.
-  work.set_client_default_rpc_timeout_millis(250);
+  work.set_client_default_rpc_timeout_millis(250 * kTimeMultiplier);
   // This is the time budget for the whole request. It has to be longer than
   // the above timeout so that the client actually attempts to resolve
   // the leader.
-  work.set_write_timeout_millis(280);
+  work.set_write_timeout_millis(280 * kTimeMultiplier);
   work.set_timeout_allowed(true);
   work.Setup();
 
@@ -161,19 +161,19 @@ TEST_F(ClientStressTest_MultiMaster, TestLeaderResolutionTimeout) {
   ASSERT_OK(cluster_->master(0)->Pause());
   ASSERT_OK(cluster_->master(1)->Pause());
   ASSERT_OK(cluster_->master(2)->Pause());
-  SleepFor(MonoDelta::FromMilliseconds(300));
+  SleepFor(MonoDelta::FromMilliseconds(300 * kTimeMultiplier));
   ASSERT_OK(cluster_->tablet_server(0)->Resume());
   ASSERT_OK(cluster_->tablet_server(1)->Resume());
   ASSERT_OK(cluster_->tablet_server(2)->Resume());
   ASSERT_OK(cluster_->master(0)->Resume());
   ASSERT_OK(cluster_->master(1)->Resume());
   ASSERT_OK(cluster_->master(2)->Resume());
-  SleepFor(MonoDelta::FromMilliseconds(100));
+  SleepFor(MonoDelta::FromMilliseconds(100 * kTimeMultiplier));
 
   // Set an explicit timeout. This test has caused deadlocks in the past.
   // Also make sure to dump stacks before the alarm goes off.
-  PstackWatcher watcher(MonoDelta::FromSeconds(30));
-  alarm(60);
+  PstackWatcher watcher(MonoDelta::FromSeconds(30 * kTimeMultiplier));
+  alarm(60 * kTimeMultiplier);
 }
 
 namespace {
