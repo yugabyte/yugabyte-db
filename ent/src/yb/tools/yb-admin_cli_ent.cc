@@ -31,8 +31,6 @@ namespace yb {
 namespace tools {
 namespace enterprise {
 
-using std::cerr;
-using std::endl;
 using std::string;
 using std::vector;
 
