@@ -68,7 +68,7 @@
 
 #define JUMBLE_SIZE				1024	/* query serialization buffer size */
 
-#define MAX_RESPONSE_BUCKET 10
+#define MAX_RESPONSE_BUCKET 50
 #define INVALID_BUCKET_ID	-1
 #define MAX_REL_LEN			255
 #define MAX_BUCKETS			10
