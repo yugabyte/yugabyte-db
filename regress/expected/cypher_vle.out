@@ -617,6 +617,151 @@ NOTICE:  graph "mygraph" has been dropped
 
 COMMIT;
 --
+-- Test VLE inside procedures
+--
+SELECT create_graph('mygraph');
+NOTICE:  graph "mygraph" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT create_vlabel('mygraph', 'head');
+NOTICE:  VLabel "head" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_vlabel('mygraph', 'tail');
+NOTICE:  VLabel "tail" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_vlabel('mygraph', 'node');
+NOTICE:  VLabel "node" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('mygraph', 'next');
+NOTICE:  ELabel "next" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+CREATE OR REPLACE FUNCTION create_list(list_name text)
+RETURNS void
+LANGUAGE 'plpgsql'
+AS $$
+DECLARE
+    ag_param agtype;
+BEGIN
+    ag_param = FORMAT('{"list_name": "%s"}', $1)::agtype;
+    PERFORM * FROM cypher('mygraph', $CYPHER$
+        MERGE (:head {name: $list_name})-[:next]->(:tail {name: $list_name})
+    $CYPHER$, ag_param) AS (a agtype);
+END $$;
+CREATE OR REPLACE FUNCTION prepend_node(list_name text, node_content text)
+RETURNS void
+LANGUAGE 'plpgsql'
+AS $$
+DECLARE
+    ag_param agtype;
+BEGIN
+    ag_param = FORMAT('{"list_name": "%s", "node_content": "%s"}', $1, $2)::agtype;
+    PERFORM * FROM cypher('mygraph', $CYPHER$
+        MATCH (h:head {name: $list_name})-[e:next]->(v)
+        DELETE e
+        CREATE (h)-[:next]->(:node {content: $node_content})-[:next]->(v)
+    $CYPHER$, ag_param) AS (a agtype);
+END $$;
+CREATE OR REPLACE FUNCTION show_list_use_vle(list_name text)
+RETURNS TABLE(node agtype)
+LANGUAGE 'plpgsql'
+AS $$
+DECLARE
+    ag_param agtype;
+BEGIN
+    ag_param = FORMAT('{"list_name": "%s"}', $1)::agtype;
+    RETURN QUERY
+    SELECT * FROM cypher('mygraph', $CYPHER$
+        MATCH (h:head {name: $list_name})-[e:next*]->(v:node)
+        RETURN v
+    $CYPHER$, ag_param) AS (node agtype);
+END $$;
+-- create a list
+SELECT create_list('list01');
+ create_list 
+-------------
+ 
+(1 row)
+
+-- prepend a node 'a'
+-- should find 1 row
+SELECT prepend_node('list01', 'a');
+ prepend_node 
+--------------
+ 
+(1 row)
+
+SELECT * FROM show_list_use_vle('list01');
+                                       node                                        
+-----------------------------------------------------------------------------------
+ {"id": 1407374883553281, "label": "node", "properties": {"content": "a"}}::vertex
+(1 row)
+
+-- prepend a node 'b'
+-- should find 2 rows
+SELECT prepend_node('list01', 'b');
+ prepend_node 
+--------------
+ 
+(1 row)
+
+SELECT * FROM show_list_use_vle('list01');
+                                       node                                        
+-----------------------------------------------------------------------------------
+ {"id": 1407374883553281, "label": "node", "properties": {"content": "a"}}::vertex
+ {"id": 1407374883553282, "label": "node", "properties": {"content": "b"}}::vertex
+(2 rows)
+
+-- prepend a node 'c'
+-- should find 3 rows
+SELECT prepend_node('list01', 'c');
+ prepend_node 
+--------------
+ 
+(1 row)
+
+SELECT * FROM show_list_use_vle('list01');
+                                       node                                        
+-----------------------------------------------------------------------------------
+ {"id": 1407374883553281, "label": "node", "properties": {"content": "a"}}::vertex
+ {"id": 1407374883553282, "label": "node", "properties": {"content": "b"}}::vertex
+ {"id": 1407374883553283, "label": "node", "properties": {"content": "c"}}::vertex
+(3 rows)
+
+DROP FUNCTION show_list_use_vle;
+SELECT drop_graph('mygraph', true);
+NOTICE:  drop cascades to 6 other objects
+DETAIL:  drop cascades to table mygraph._ag_label_vertex
+drop cascades to table mygraph._ag_label_edge
+drop cascades to table mygraph.head
+drop cascades to table mygraph.tail
+drop cascades to table mygraph.node
+drop cascades to table mygraph.next
+NOTICE:  graph "mygraph" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
 -- Clean up
 --
 DROP TABLE start_and_end_points;

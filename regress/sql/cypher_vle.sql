@@ -216,6 +216,81 @@ SELECT drop_graph('mygraph', true);
 COMMIT;
 
 --
+-- Test VLE inside procedures
+--
+
+SELECT create_graph('mygraph');
+SELECT create_vlabel('mygraph', 'head');
+SELECT create_vlabel('mygraph', 'tail');
+SELECT create_vlabel('mygraph', 'node');
+SELECT create_elabel('mygraph', 'next');
+
+CREATE OR REPLACE FUNCTION create_list(list_name text)
+RETURNS void
+LANGUAGE 'plpgsql'
+AS $$
+DECLARE
+    ag_param agtype;
+BEGIN
+    ag_param = FORMAT('{"list_name": "%s"}', $1)::agtype;
+    PERFORM * FROM cypher('mygraph', $CYPHER$
+        MERGE (:head {name: $list_name})-[:next]->(:tail {name: $list_name})
+    $CYPHER$, ag_param) AS (a agtype);
+END $$;
+
+CREATE OR REPLACE FUNCTION prepend_node(list_name text, node_content text)
+RETURNS void
+LANGUAGE 'plpgsql'
+AS $$
+DECLARE
+    ag_param agtype;
+BEGIN
+    ag_param = FORMAT('{"list_name": "%s", "node_content": "%s"}', $1, $2)::agtype;
+    PERFORM * FROM cypher('mygraph', $CYPHER$
+        MATCH (h:head {name: $list_name})-[e:next]->(v)
+        DELETE e
+        CREATE (h)-[:next]->(:node {content: $node_content})-[:next]->(v)
+    $CYPHER$, ag_param) AS (a agtype);
+END $$;
+
+CREATE OR REPLACE FUNCTION show_list_use_vle(list_name text)
+RETURNS TABLE(node agtype)
+LANGUAGE 'plpgsql'
+AS $$
+DECLARE
+    ag_param agtype;
+BEGIN
+    ag_param = FORMAT('{"list_name": "%s"}', $1)::agtype;
+    RETURN QUERY
+    SELECT * FROM cypher('mygraph', $CYPHER$
+        MATCH (h:head {name: $list_name})-[e:next*]->(v:node)
+        RETURN v
+    $CYPHER$, ag_param) AS (node agtype);
+END $$;
+
+-- create a list
+SELECT create_list('list01');
+
+-- prepend a node 'a'
+-- should find 1 row
+SELECT prepend_node('list01', 'a');
+SELECT * FROM show_list_use_vle('list01');
+
+-- prepend a node 'b'
+-- should find 2 rows
+SELECT prepend_node('list01', 'b');
+SELECT * FROM show_list_use_vle('list01');
+
+-- prepend a node 'c'
+-- should find 3 rows
+SELECT prepend_node('list01', 'c');
+SELECT * FROM show_list_use_vle('list01');
+
+DROP FUNCTION show_list_use_vle;
+
+SELECT drop_graph('mygraph', true);
+
+--
 -- Clean up
 --
 

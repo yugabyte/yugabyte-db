@@ -200,6 +200,17 @@ static VLE_local_context *get_cached_VLE_local_context(int64 vle_grammar_node_id
                  * If ggctx != vlelctx->ggctx, then vlelctx needs to be updated.
                  * In the end, vlelctx->ggctx will be set to ggctx.
                  */
+
+                /*
+                 * If the returned ggctx isn't valid (there was some update to
+                 * the underlying graph), then set it to NULL. This will force a
+                 * rebuild of it.
+                 */
+                if (ggctx != NULL && is_ggctx_invalid(ggctx))
+                {
+                    ggctx = NULL;
+                }
+
                 vlelctx->ggctx = ggctx;
 
                 /*

@@ -107,6 +107,27 @@ static bool insert_vertex_entry(GRAPH_global_context *ggctx, graphid vertex_id,
                                 Oid vertex_label_table_oid,
                                 Datum vertex_properties);
 /* definitions */
+
+/*
+ * Helper function to determine validity of the passed GRAPH_global_context.
+ * This is based off of the current active snaphot, to see if the graph could
+ * have been modified. Ideally, we should find a way to more accurately know
+ * whether the particular graph was modified.
+ */
+bool is_ggctx_invalid(GRAPH_global_context *ggctx)
+{
+    Snapshot snap = GetActiveSnapshot();
+
+    /*
+     * If the transaction ids (xmin or xmax) or currentCommandId (curcid) have
+     * changed, then we have a graph that was updated. This means that the
+     * global context for this graph is no longer valid.
+     */
+    return (ggctx->xmin != snap->xmin ||
+            ggctx->xmax != snap->xmax ||
+            ggctx->curcid != snap->curcid);
+
+}
 /*
  * Helper function to create the global vertex and edge hashtables. One
  * hashtable will hold the vertex, its edges (both incoming and exiting) as a
@@ -676,9 +697,7 @@ GRAPH_global_context *manage_GRAPH_global_contexts(char *graph_name,
         GRAPH_global_context *next_ggctx = curr_ggctx->next;
 
         /* if the transaction ids have changed, we have an invalid graph */
-        if (curr_ggctx->xmin != GetActiveSnapshot()->xmin ||
-            curr_ggctx->xmax != GetActiveSnapshot()->xmax ||
-            curr_ggctx->curcid != GetActiveSnapshot()->curcid)
+        if (is_ggctx_invalid(curr_ggctx))
         {
             /*
              * If prev_ggctx is NULL then we are freeing the top of the
