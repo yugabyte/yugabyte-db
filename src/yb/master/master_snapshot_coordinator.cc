@@ -33,6 +33,7 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/restoration_state.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_schedule_state.h"
 #include "yb/master/snapshot_state.h"
@@ -163,8 +164,8 @@ auto MakeDoneCallback(
 
 class MasterSnapshotCoordinator::Impl {
  public:
-  explicit Impl(SnapshotCoordinatorContext* context)
-      : context_(*context), poller_(std::bind(&Impl::Poll, this)) {}
+  explicit Impl(SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm)
+      : context_(*context), cm_(cm), poller_(std::bind(&Impl::Poll, this)) {}
 
   Result<TxnSnapshotId> Create(
       const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline) {
@@ -474,6 +475,10 @@ class MasterSnapshotCoordinator::Impl {
                              snapshot.schedule_id());
       }
       std::swap(restoration->schedules[0], restoration->schedules[this_idx]);
+    }
+    // Disable concurrent RPCs to the master leader for the duration of sys catalog restore.
+    if (leader_term >= 0) {
+      context_.PrepareRestore();
     }
     LOG_SLOW_EXECUTION(INFO, 1000, "Restore sys catalog took") {
       RETURN_NOT_OK_PREPEND(
@@ -979,6 +984,10 @@ class MasterSnapshotCoordinator::Impl {
   void Poll() {
     auto leader_term = context_.LeaderTerm();
     if (leader_term < 0) {
+      return;
+    }
+    SCOPED_LEADER_SHARED_LOCK(l, cm_);
+    if (!l.catalog_status().ok() || !l.leader_status().ok()) {
       return;
     }
     VLOG(4) << __func__ << "()";
@@ -1594,6 +1603,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   SnapshotCoordinatorContext& context_;
+  enterprise::CatalogManager* cm_;
   std::mutex mutex_;
   class ScheduleTag;
   using Snapshots = boost::multi_index_container<
@@ -1646,8 +1656,9 @@ class MasterSnapshotCoordinator::Impl {
   rpc::Poller poller_;
 };
 
-MasterSnapshotCoordinator::MasterSnapshotCoordinator(SnapshotCoordinatorContext* context)
-    : impl_(new Impl(context)) {}
+MasterSnapshotCoordinator::MasterSnapshotCoordinator(
+    SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm)
+    : impl_(new Impl(context, cm)) {}
 
 MasterSnapshotCoordinator::~MasterSnapshotCoordinator() {}
 

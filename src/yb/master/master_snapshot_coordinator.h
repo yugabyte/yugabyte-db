@@ -53,7 +53,8 @@ struct SnapshotScheduleRestoration {
 // Class that coordinates transaction aware snapshots at master.
 class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
  public:
-  explicit MasterSnapshotCoordinator(SnapshotCoordinatorContext* context);
+  explicit MasterSnapshotCoordinator(
+      SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm);
   ~MasterSnapshotCoordinator();
 
   Result<TxnSnapshotId> Create(

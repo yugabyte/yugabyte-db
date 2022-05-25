@@ -31,7 +31,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   typedef yb::master::CatalogManager super;
  public:
   explicit CatalogManager(yb::master::Master* master)
-      : super(master), snapshot_coordinator_(this) {}
+      : super(master), snapshot_coordinator_(this, this) {}
 
   virtual ~CatalogManager();
   void CompleteShutdown();
@@ -201,6 +201,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status ClearFailedUniverse();
 
   void SetCDCServiceEnabled();
+
+  void PrepareRestore() override;
 
  private:
   friend class SnapshotLoader;
