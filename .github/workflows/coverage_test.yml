@@ -1,8 +1,13 @@
-name: coverage-test
-on: ["push", "pull_request"]
+name: coverage_test
+on:
+  pull_request:
+    types:
+      - closed 
 
 jobs:
-  build:
+  if_merged:
+    if: github.event.pull_request.merged == true
+    build:
     name: coverage-test
     runs-on: ubuntu-latest
     steps:
