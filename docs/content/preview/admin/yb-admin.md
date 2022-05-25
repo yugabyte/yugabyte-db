@@ -1296,8 +1296,8 @@ yb-admin \
 * *source_universe_uuid*: The UUID of the source universe.
 * *replication_name*: The name for the replication.
 * *source_master_addresses*: Comma-separated list of the source master addresses.
-* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
-* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). Obtain these using [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids).
+* *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
+* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these using [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids).
 
 {{< warning title="Important" >}}
 Enter the bootstrap_ids in the same order as their corresponding table_ids.
@@ -1357,8 +1357,8 @@ yb-admin -master_addresses <target_master_addresses> \
 * *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
 * *source_universe_uuid*: The UUID of the source universe.
 * *replication_name*: The name of the replication to be altered.
-* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
-* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). Obtain these using [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids).
+* *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
+* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these using [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids).
 
 {{< warning title="Important" >}}
 Enter the bootstrap_ids in the same order as their corresponding table_ids.
