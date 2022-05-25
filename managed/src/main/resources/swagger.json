@@ -5588,7 +5588,15 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "creationDate" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
         "endDate" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "expirationDate" : {
           "format" : "date-time",
           "type" : "string"
         },
@@ -5608,7 +5616,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "bundleDetails", "bundleUUID", "endDate", "path", "scopeUUID", "startDate", "status" ],
+      "required" : [ "bundleDetails", "bundleUUID", "creationDate", "endDate", "expirationDate", "path", "scopeUUID", "startDate", "status" ],
       "type" : "object"
     },
     "SystemdUpgradeParams" : {
@@ -12852,7 +12860,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "type" : "object"
+                "$ref" : "#/definitions/SupportBundle"
               },
               "type" : "array"
             }
@@ -12958,7 +12966,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "type" : "object"
+              "$ref" : "#/definitions/SupportBundle"
             }
           }
         },

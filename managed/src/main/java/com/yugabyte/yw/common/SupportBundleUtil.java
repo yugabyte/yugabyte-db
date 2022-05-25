@@ -49,7 +49,6 @@ public class SupportBundleUtil {
 
     String[] fileNameSplit = fileName.split("-");
     String fileDateStr = fileNameSplit[fileNameSplit.length - 2];
-
     return newSdf.parse(newSdf.format(bundleSdf.parse(fileDateStr)));
   }
 

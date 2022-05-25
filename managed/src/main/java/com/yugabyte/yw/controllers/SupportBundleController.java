@@ -3,10 +3,8 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.typesafe.config.Config;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
@@ -28,17 +26,13 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.InputStream;
-import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.stream.Collectors;
-import java.util.Date;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Result;
-import play.libs.Json;
 
 @Api(
     value = "Support Bundle management",
@@ -144,31 +138,25 @@ public class SupportBundleController extends AuthenticatedController {
 
   @ApiOperation(
       value = "List all support bundles from a universe",
-      response = Object.class,
+      response = SupportBundle.class,
       responseContainer = "List",
       nickname = "listSupportBundle")
   public Result list(UUID customerUUID, UUID universeUUID) {
+    int retentionDays = config.getInt("yb.support_bundle.retention_days");
+    SupportBundle.setRetentionDays(retentionDays);
     List<SupportBundle> supportBundles = SupportBundle.getAll(universeUUID);
-    List<ObjectNode> supportBundlesResponse =
-        supportBundles
-            .stream()
-            .map(
-                supportBundle -> {
-                  return getSupportBundleResponse(supportBundle);
-                })
-            .filter(Objects::nonNull)
-            .collect(Collectors.toList());
-    return PlatformResults.withData(supportBundlesResponse);
+    return PlatformResults.withData(supportBundles);
   }
 
   @ApiOperation(
       value = "Get a support bundle from a universe",
-      response = Object.class,
+      response = SupportBundle.class,
       nickname = "getSupportBundle")
   public Result get(UUID customerUUID, UUID universeUUID, UUID supportBundleUUID) {
+    int retentionDays = config.getInt("yb.support_bundle.retention_days");
+    SupportBundle.setRetentionDays(retentionDays);
     SupportBundle supportBundle = SupportBundle.getOrBadRequest(supportBundleUUID);
-    ObjectNode supportBundleResponse = getSupportBundleResponse(supportBundle);
-    return PlatformResults.withData(supportBundleResponse);
+    return PlatformResults.withData(supportBundle);
   }
 
   @ApiOperation(
@@ -189,30 +177,5 @@ public class SupportBundleController extends AuthenticatedController {
             ctx(), Audit.TargetType.SupportBundle, bundleUUID.toString(), Audit.ActionType.Delete);
     log.info("Successfully deleted the support bundle: " + bundleUUID.toString());
     return YBPSuccess.empty();
-  }
-
-  public ObjectNode getSupportBundleResponse(SupportBundle supportBundle) {
-
-    ObjectMapper mapper = new ObjectMapper();
-    ObjectNode supportBundleResponse = mapper.valueToTree(supportBundle);
-    if (supportBundle.getStatus() == SupportBundleStatusType.Success) {
-      Date creationDate, expirationDate;
-      try {
-        creationDate = supportBundleUtil.getDateFromBundleFileName(supportBundle.getFileName());
-      } catch (Exception e) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "Failed to parse supportBundle filename %s for creation date",
-                supportBundle.getFileName()));
-      }
-      int defaultRetentionDays = config.getInt("yb.support_bundle.default_retention_days");
-      expirationDate = supportBundleUtil.getDateNDaysAfter(creationDate, defaultRetentionDays);
-      String datePattern = "yyyy-MM-dd";
-      SimpleDateFormat dateFormat = new SimpleDateFormat(datePattern);
-      supportBundleResponse.put("creationDate", dateFormat.format(creationDate));
-      supportBundleResponse.put("expirationDate", dateFormat.format(expirationDate));
-    }
-    return supportBundleResponse;
   }
 }

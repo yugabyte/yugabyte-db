@@ -90,7 +90,7 @@ public class SupportBundleCleanup {
 
   public synchronized void deleteSupportBundleIfOld(SupportBundle supportBundle)
       throws ParseException {
-    int default_delete_days = config.getInt("yb.support_bundle.default_retention_days");
+    int default_delete_days = config.getInt("yb.support_bundle.retention_days");
 
     if (supportBundle.getStatus() == SupportBundleStatusType.Failed) {
       // Deletes row from the support_bundle db table

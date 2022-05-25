@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import io.ebean.Finder;
@@ -19,6 +20,7 @@ import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.ParseException;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -66,6 +68,8 @@ public class SupportBundle extends Model {
   @Getter
   @Setter
   private SupportBundleStatusType status;
+
+  @JsonIgnore @Setter @Getter private static int retentionDays;
 
   public enum SupportBundleStatusType {
     Running("Running"),
@@ -162,6 +166,38 @@ public class SupportBundle extends Model {
       return null;
     }
     return bundlePath.getFileName().toString();
+  }
+
+  public Date parseCreationDate() {
+    Date creationDate;
+    try {
+      SupportBundleUtil sbutil = new SupportBundleUtil();
+      creationDate = sbutil.getDateFromBundleFileName(this.getFileName());
+    } catch (ParseException e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Failed to parse supportBundle filename %s for creation date", this.getFileName()));
+    }
+    return creationDate;
+  }
+
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+  public Date getCreationDate() {
+    if (this.status != SupportBundleStatusType.Success) {
+      return null;
+    }
+    return this.parseCreationDate();
+  }
+
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+  public Date getExpirationDate() {
+    if (this.status != SupportBundleStatusType.Success) {
+      return null;
+    }
+    SupportBundleUtil sbutil = new SupportBundleUtil();
+    Date expirationDate = sbutil.getDateNDaysAfter(this.parseCreationDate(), getRetentionDays());
+    return expirationDate;
   }
 
   public static List<SupportBundle> getAll(UUID universeUUID) {
