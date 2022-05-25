@@ -7,7 +7,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -90,13 +89,13 @@ public class NodeUniverseManager extends DevopsBase {
     return executeNodeAction(UniverseNodeAction.UPLOAD_FILE, universe, node, actionArgs, context);
   }
 
-  public ShellResponse runCommand(NodeDetails node, Universe universe, String command) {
-    return runCommand(node, universe, command, DEFAULT_CONTEXT);
-  }
-
   public ShellResponse runCommand(
       NodeDetails node, Universe universe, String command, ShellProcessContext context) {
     return runCommand(node, universe, Collections.singletonList(command), context);
+  }
+
+  public ShellResponse runCommand(NodeDetails node, Universe universe, List<String> command) {
+    return runCommand(node, universe, command, DEFAULT_CONTEXT);
   }
 
   public ShellResponse runCommand(
