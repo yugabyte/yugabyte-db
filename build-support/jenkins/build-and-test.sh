@@ -801,9 +801,14 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
       if is_mac; then
         unset YB_MVN_LOCAL_REPO
       fi
-      if [[ ${YB_NUM_REPETITIONS:-1} -gt 1 ]]; then
-        run_tests_extra_args+=( "--num_repetitions" "$YB_NUM_REPETITIONS" )
+
+      NUM_REPETITIONS="${YB_NUM_REPETITIONS:-1}"
+      log "NUM_REPETITIONS is set to $NUM_REPETITIONS"
+      if [[ $NUM_REPETITIONS -gt 1 ]]; then
+        log "Repeating each test $NUM_REPETITIONS times"
+        run_tests_extra_args+=( "--num_repetitions" "$NUM_REPETITIONS" )
       fi
+
       set +u  # because extra_args can be empty
       if ! run_tests_on_spark "${run_tests_extra_args[@]}"; then
         set -u
