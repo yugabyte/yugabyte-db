@@ -496,9 +496,20 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     // collection can happen.
     vector<int64> intent_counts(num_tservers, -1);
     ASSERT_OK(WaitFor(
-        [this, &num_tservers, &set_flag_to_a_smaller_value, &intent_counts]() -> Result<bool> {
+        [this, &num_tservers, &set_flag_to_a_smaller_value, &intent_counts, &stream_id,
+         &tablets]() -> Result<bool> {
           uint32_t i = 0;
           while (i < num_tservers) {
+            // Call GetChanges once to set the initial value in the cdc_state table.
+            auto result = GetChangesFromCDC(stream_id, tablets);
+            if (!result.ok()) {
+              return false;
+            }
+            yb::cdc::GetChangesResponsePB change_resp = *result;
+            if (change_resp.has_error()) {
+              return false;
+            }
+
             auto status = GetIntentCounts(i, &intent_counts[i]);
             if (!status.ok()) {
               continue;
@@ -513,7 +524,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
           }
           return true;
         },
-        MonoDelta::FromSeconds(60), "Wait for the intent counts"));
+        MonoDelta::FromSeconds(60), "Waiting for all the tservers intent counts"));
 
     for (uint32_t i = 0; i < num_tservers; ++i) {
       if (set_flag_to_a_smaller_value) {
