@@ -43,9 +43,9 @@ YugabyteDB Managed supports all the regions that have robust infrastructure and 
 
 ## Clusters
 
-### What are the differences between Sandbox and Decicated clusters?
+### What are the differences between Sandbox and Dedicated clusters?
 
-Use the Sandbox cluster to get started with YugabyteDB. The Sandbox cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads or performance testing, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Sandbox clusters are provisioned with a [preview release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one Sandbox cluster. Sandbox clusters that are inactive for 21 days are [paused](#why-is-my-sandbox-cluster-paused); after 30 days they are deleted.
+Use the free Sandbox cluster to get started with YugabyteDB. The Sandbox cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads or performance testing, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Sandbox clusters are provisioned with a [preview release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one Sandbox cluster. Sandbox clusters that are inactive for 21 days are [paused](#why-is-my-sandbox-cluster-paused); after 30 days they are deleted.
 
 Dedicated clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Dedicated clusters also support VPC peering, and scheduled and manual backups. By default, Dedicated clusters are provisioned using a [stable release](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
@@ -62,6 +62,7 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 | [Scaling](../cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
 | [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Preview | Stable |
+| Price | Free | [Pay-as-you-go and subscription](#how-is-yugabytedb-managed-priced) |
 | Support | Slack Community | Enterprise Support |
 
 ### What can I do if I run out of resources on my Sandbox cluster?

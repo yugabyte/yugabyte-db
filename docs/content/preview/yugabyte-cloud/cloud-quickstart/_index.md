@@ -13,7 +13,7 @@ menu:
     weight: 15
 ---
 
-The quickest way to get started with YugabyteDB is to [sign up for YugabyteDB Managed](http://cloud.yugabyte.com) and create a Sandbox cluster. Although not suitable for production workloads, the Sandbox cluster includes enough resources to learn and develop applications with YugabyteDB.
+The quickest way to get started with YugabyteDB is to [sign up for YugabyteDB Managed](http://cloud.yugabyte.com) and create a free Sandbox cluster. Although not suitable for production workloads, the Sandbox cluster includes enough resources to learn and develop applications with YugabyteDB.
 
 This quick start is also available in the [YugabyteDB Managed Getting Started](https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJqisBVRDi6GAy8rhVo1xjc) playlist on the Yugabyte YouTube channel.
 
@@ -27,7 +27,7 @@ This quick start is also available in the [YugabyteDB Managed Getting Started](h
         <div class="title">Create a Sandbox cluster</div>
       </div>
       <div class="body">
-        Create a Sandbox cluster on YugabyteDB Managed.
+        Create a free Sandbox cluster on YugabyteDB Managed.
       </div>
     </a>
   </div>
