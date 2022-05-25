@@ -1,7 +1,7 @@
 ---
-title: Create a free cluster
-linkTitle: Create a free cluster
-description: Create free clusters in YugabyteDB Managed.
+title: Create a Sandbox cluster
+linkTitle: Create a Sandbox cluster
+description: Create Sandbox clusters in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -13,11 +13,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use a free cluster to get started with YugabyteDB. Although not suitable for production workloads, a free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB.
+Use a Sandbox cluster to get started with YugabyteDB. Although not suitable for production workloads, a Sandbox cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB.
 
 ## Features
 
-Your free cluster includes the following:
+Your Sandbox cluster includes the following:
 
 - Single node.
 - Up to 2 vCPUs, 4 GB RAM, and 10 GB of storage, depending on the cloud provider.
@@ -26,9 +26,9 @@ Your free cluster includes the following:
 
 Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).
 
-## Creating a free cluster
+## Creating a Sandbox cluster
 
-To create a free cluster, on the **Clusters** page, click **Add Cluster** to start the **Create Cluster** wizard.
+To create a Sandbox cluster, on the **Clusters** page, click **Add Cluster** to start the **Create Cluster** wizard.
 
 The **Create Cluster** wizard has the following pages:
 
@@ -40,7 +40,7 @@ The **Create Cluster** wizard has the following pages:
 
 ![Add Cluster Wizard - Select Type](/images/yb-cloud/cloud-addcluster1-type.png)
 
-Select **YugabyteDB Managed Free** and click **Next** to display the **Cluster Settings** page.
+Select **Sandbox** and click **Next** to display the **Cluster Settings** page.
 
 ### Cluster Settings
 
@@ -82,13 +82,13 @@ When the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/)
 
 You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed with the database admin credentials you specified.
 
-## Inactive free clusters
+## Inactive Sandbox clusters
 
-Free clusters are paused after 21 days of inactivity. When a cluster is paused, you receive an email notification. You need to resume the paused cluster before you can perform any operations on it. If you don't resume your cluster, a second notification is sent after 28 days of inactivity, notifying you that the cluster will be deleted in 48 hours.
+Sandbox clusters are paused after 21 days of inactivity. When a cluster is paused, you receive an email notification. You need to resume the paused cluster before you can perform any operations on it. If you don't resume your cluster, a second notification is sent after 28 days of inactivity, notifying you that the cluster will be deleted in 48 hours.
 
 To resume your paused cluster, sign in to YugabyteDB Managed, select the cluster on the **Clusters** page, and click **Resume**.
 
-Free clusters are deleted after 30 days of inactivity. Only paused clusters are deleted. YugabyteDB Managed runs idle cluster deletion jobs daily, so your cluster may be paused or deleted any time up to 24 hours after the time mentioned in the notification email.
+Sandbox clusters are deleted after 30 days of inactivity. Only paused clusters are deleted. YugabyteDB Managed runs idle cluster deletion jobs daily, so your cluster may be paused or deleted any time up to 24 hours after the time mentioned in the notification email.
 
 To keep your cluster from being paused, you (or, where applicable, an application connected to the database) can perform any of the following actions:
 
@@ -100,17 +100,17 @@ To keep your cluster from being paused, you (or, where applicable, an applicatio
 
 ## Limitations
 
-- Limit of one free cluster per account.
-- Free clusters can't be scaled.
-- Free clusters are secured by limiting network access using IP allow lists. VPC networking is not supported.
+- Limit of one Sandbox cluster per account.
+- Sandbox clusters can't be scaled.
+- Sandbox clusters are secured by limiting network access using IP allow lists. VPC networking is not supported.
 - No backups.
-- You can't change the maintenance window schedule, set exclusion periods, or delay cluster maintenance for free clusters.
-- You can't pause free clusters.
-- Free clusters have the following resource limitations:
+- You can't change the maintenance window schedule, set exclusion periods, or delay cluster maintenance for Sandbox clusters.
+- You can't pause Sandbox clusters.
+- Sandbox clusters have the following resource limitations:
   - Up to 10 simultaneous connections; more than that will result in increased latencies and dropped connections.
-  - Maximum 500 tables or 12.5 million objects.
+  - Maximum 500 tables or 12.5 million rows; more than that may result in out-of-memory errors.
 
-YugabyteDB is a distributed database optimized for deployment across multiple nodes. Because free clusters are single node, they are not suitable for proof-of-concept (POC) or performance testing. To evaluate YugabyteDB Managed for production use or conduct a POC, contact {{<support-cloud>}}.
+YugabyteDB is a distributed database optimized for deployment across multiple nodes. Because Sandbox clusters are single node, they are not suitable for proof-of-concept (POC) or performance testing. To evaluate YugabyteDB Managed for production use or conduct a POC, contact {{<support-cloud>}}.
 
 ## Next steps
 

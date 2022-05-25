@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-After [creating a free cluster](../qs-add/), the easiest way to connect to it is to use Cloud Shell.
+After [creating a Sandbox cluster](../qs-add/), the easiest way to connect to it is to use Cloud Shell.
 
 Using Cloud Shell, you can connect to your YugabyteDB Managed cluster from your browser, and interact with it using distributed SQL.
 

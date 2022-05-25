@@ -72,7 +72,7 @@ You can view the metrics on the cluster **Performance** tab. Refer to [Performan
 
 {{< note title="Note" >}}
 
-If you get frequent cluster alerts on a free cluster, you may have reached the performance limits for free clusters. Consider upgrading to a standard cluster.
+If you get frequent cluster alerts on a Sandbox cluster, you may have reached the performance limits for Sandbox clusters. Consider upgrading to a Dedicated cluster.
 
 {{< /note >}}
 

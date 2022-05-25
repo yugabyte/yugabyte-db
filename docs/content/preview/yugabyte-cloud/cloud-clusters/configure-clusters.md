@@ -47,7 +47,7 @@ The **Infrastructure** section on the cluster **Settings** tab summarizes the cl
 
 - You can't scale single node clusters (fault tolerance none), you can only increase disk size.
 
-- You can't scale free clusters.
+- You can't scale Sandbox clusters.
 
 ## Scale a cluster
 

@@ -1,6 +1,6 @@
 ---
-title: Create a standard cluster
-linkTitle: Create a standard cluster
+title: Create a Dedicated cluster
+linkTitle: Create a Dedicated cluster
 description: Deploy production clusters in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
@@ -16,13 +16,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Standard clusters support multi-node and highly available deployments and are suitable for production deployments.
+Dedicated clusters support multi-node and highly available deployments and are suitable for production deployments.
 
 {{< youtube id="qYMcNzWotkI" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
 
 ## Features
 
-Standard clusters include the following features:
+Dedicated clusters include the following features:
 
 - No limit on cluster size - choose any cluster size based on your use case.
 - Multi node [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3 clusters with availability zone and node level fault tolerance. To deploy multi-region clusters, contact {{<support-cloud>}}.
@@ -36,7 +36,7 @@ Standard clusters include the following features:
 
 ## Prerequisites
 
-- Create a billing profile and add a payment method before you can create a standard cluster. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
+- Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
 - If you want to use dedicated VPCs for network isolation and security, create the VPC before you create your cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
 ## Create a cluster
@@ -79,11 +79,11 @@ Set the following options:
 
 - **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
-- **Database Version**: By default, clusters are deployed using a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use a [preview release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) for a standard cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+- **Database Version**: By default, clusters are deployed using a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use a [preview release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
 
 Cluster costs are estimated automatically under **Cost**. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
-Standard clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../cloud-clusters/configure-clusters#infrastructure).
+Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../cloud-clusters/configure-clusters#infrastructure).
 
 ### Database Admin Credentials
 

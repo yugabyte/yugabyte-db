@@ -16,7 +16,7 @@ YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to
 
 ![YugabyteDB Managed high-level architecture](/images/yb-cloud/cloud-security-diagram.png)
 
-All customer clusters are firewalled from each other. Outside connections are also firewalled according to the [IP allow list](../../cloud-secure-clusters/add-connections/) rules that you assign to your clusters. You can also connect standard (that is, not free) clusters to virtual private clouds (VPCs) on the public cloud provider of your choice (subject to the IP allow list rules).
+All customer clusters are firewalled from each other. Outside connections are also firewalled according to the [IP allow list](../../cloud-secure-clusters/add-connections/) rules that you assign to your clusters. You can also connect Dedicated (that is, not Sandbox) clusters to virtual private clouds (VPCs) on the public cloud provider of your choice (subject to the IP allow list rules).
 
 ## Infrastructure security
 

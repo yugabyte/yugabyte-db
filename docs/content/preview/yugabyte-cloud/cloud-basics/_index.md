@@ -45,10 +45,10 @@ Using YugabyteDB Managed, you can create single region clusters that can be depl
     <a class="section-link icon-offset" href="create-clusters-free/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">Create a free cluster</div>
+        <div class="title">Create a Sandbox cluster</div>
       </div>
       <div class="body">
-        Create a free cluster in YugabyteDB Managed.
+        Create a Sandbox cluster in YugabyteDB Managed.
       </div>
     </a>
   </div>
@@ -57,10 +57,10 @@ Using YugabyteDB Managed, you can create single region clusters that can be depl
     <a class="section-link icon-offset" href="create-clusters/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">Create a standard cluster</div>
+        <div class="title">Create a Dedicated cluster</div>
       </div>
       <div class="body">
-        Create a new standard cluster in YugabyteDB Managed.
+        Create a new Dedicated cluster in YugabyteDB Managed.
       </div>
     </a>
   </div>
