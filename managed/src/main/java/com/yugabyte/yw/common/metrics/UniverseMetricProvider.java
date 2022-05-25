@@ -63,6 +63,12 @@ public class UniverseMetricProvider implements MetricsProvider {
                 universe,
                 PlatformMetrics.UNIVERSE_BACKUP_IN_PROGRESS,
                 statusValue(universe.getUniverseDetails().backupInProgress)));
+        universeGroup.metric(
+            createUniverseMetric(
+                customer,
+                universe,
+                PlatformMetrics.UNIVERSE_REPLICATION_FACTOR,
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor));
 
         if (universe.getUniverseDetails().nodeDetailsSet != null) {
           for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {
