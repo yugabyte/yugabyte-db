@@ -258,3 +258,29 @@ class AzureDeleteRootVolumesMethod(DeleteRootVolumesMethod):
 
     def delete_volumes(self, args):
         pass
+
+
+class AzurePauseInstancesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(AzurePauseInstancesMethod, self).__init__(base_command, "pause")
+
+    def add_extra_args(self):
+        super(AzurePauseInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to pause.")
+
+    def callback(self, args):
+        self.cloud.stop_instance(args)
+
+
+class AzureResumeInstancesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(AzureResumeInstancesMethod, self).__init__(base_command,  "resume")
+
+    def add_extra_args(self):
+        super(AzureResumeInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to resume.")
+
+    def callback(self, args):
+        self.cloud.start_instance(args, [args.custom_ssh_port])
