@@ -475,6 +475,8 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   VLOG(1) << "Number of remote bootstraps before running load balancer: "
           << global_state_->total_starting_tablets_;
 
+  bool task_added = false;
+
   // Iterate over all the tables to take actions based on the data collected on the previous loop.
   for (const auto& table : GetTableMap()) {
     state_ = nullptr;
@@ -521,6 +523,8 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       if (!*handle_add) {
         break;
       }
+
+      task_added = true;
     }
     if (PREDICT_FALSE(FLAGS_TEST_load_balancer_handle_under_replicated_tablets_only)) {
       LOG(INFO) << "Skipping remove replicas and leader moves for " << table.first;
@@ -544,6 +548,8 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       if (!*handle_remove) {
         break;
       }
+
+      task_added = true;
     }
 
     // Handle tablet servers with too many leaders.
@@ -565,10 +571,12 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       if (!*handle_leader) {
         break;
       }
+
+      task_added = true;
     }
   }
 
-  RecordActivity(master_errors);
+  RecordActivity(task_added, master_errors);
 }
 
 void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
@@ -598,7 +606,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
   }
 }
 
-void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
+void ClusterLoadBalancer::RecordActivity(bool tasks_added_in_this_run, uint32_t master_errors) {
   // Update the list of tables for whom load-balancing has been
   // skipped in this run.
   {
@@ -609,6 +617,12 @@ void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
   uint32_t table_tasks = 0;
   for (const auto& table : GetTableMap()) {
     table_tasks += table.second->NumLBTasks();
+  }
+
+  if (!master_errors && !table_tasks && tasks_added_in_this_run) {
+    VLOG(1) << "Tasks scheduled by Load balancer have already completed. Force setting table tasks "
+               "count to 1 so that it does not appear idle";
+    ++table_tasks;
   }
 
   struct ActivityInfo ai {table_tasks, master_errors};
