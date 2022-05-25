@@ -371,4 +371,9 @@ public class DelegatingConfig implements Config {
   public List<Duration> getDurationList(String path) {
     return delegate().getDurationList(path);
   }
+
+  @Override
+  public String toString() {
+    return SettableRuntimeConfigFactory.toRedactedString(delegate());
+  }
 }

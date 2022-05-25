@@ -676,6 +676,12 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(ChangeInstanceTypeMethod, self).__init__(base_command, "change_instance_type")
 
+    def add_extra_args(self):
+        super(ChangeInstanceTypeMethod, self).add_extra_args()
+        self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
+                                 help="Max memory for postgress process.")
+        self.parser.add_argument("--air_gap", action="store_true", default=False, help="Run airgapped install.")
+
     def prepare(self):
         super(ChangeInstanceTypeMethod, self).prepare()
 
@@ -685,7 +691,14 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Instance {} not found".format(args.search_pattern))
 
+        self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
+        self.update_ansible_vars_with_args(args)
         self._resize_instance(args, self._host_info(args, host_info))
+
+    def update_ansible_vars_with_args(self, args):
+      super(ChangeInstanceTypeMethod, self).update_ansible_vars_with_args(args)
+      self.extra_vars["pg_max_mem_mb"] = args.pg_max_mem_mb
+      self.extra_vars["air_gap"] = args.air_gap
 
     def _validate_args(self, args):
         # Make sure "instance_type" exists in args
@@ -709,6 +722,9 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         finally:
             self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
             logging.info('Instance {} is started'.format(args.search_pattern))
+
+        # Make sure we are using the updated cgroup value if instance type is changing.
+        self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
 
 
 class CronCheckMethod(AbstractInstancesMethod):

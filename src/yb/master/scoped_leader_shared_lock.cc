@@ -156,8 +156,11 @@ void ScopedLeaderSharedLock::Unlock() {
       decltype(leader_shared_lock_) lock;
       lock.swap(leader_shared_lock_);
     }
-    auto finish = std::chrono::steady_clock::now();
+    if (IsSanitizer()) {
+      return;
+    }
 
+    auto finish = std::chrono::steady_clock::now();
     bool need_stack_trace = finish > start_ + 1ms * FLAGS_master_leader_lock_stack_trace_ms;
     bool need_warning =
         need_stack_trace || (finish > start_ + 1ms * FLAGS_master_log_lock_warning_ms);

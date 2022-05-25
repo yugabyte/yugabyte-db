@@ -959,8 +959,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 		 * yb_extension role in the midst of creating an extension.
 		 */
 		if (!(IsYbExtensionUser(GetUserId()) && creating_extension) &&
-			!superuser() &&
-			!IsYbDbAdminUser(GetUserId()))
+			!superuser())
 			aclcheck_error(ACLCHECK_NO_PRIV, OBJECT_LANGUAGE,
 						   NameStr(languageStruct->lanname));
 	}

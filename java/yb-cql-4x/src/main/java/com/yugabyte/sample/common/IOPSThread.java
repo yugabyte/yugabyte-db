@@ -13,9 +13,10 @@
 
 package com.yugabyte.sample.common;
 
-import org.apache.log4j.Logger;
 
 import com.yugabyte.sample.apps.AppBase;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A class that encapsulates a single IO thread. The thread has an index (which is an integer),
@@ -23,7 +24,7 @@ import com.yugabyte.sample.apps.AppBase;
  * the app has not completed all its IO.
  */
 public class IOPSThread extends Thread {
-  private static final Logger LOG = Logger.getLogger(IOPSThread.class);
+  private static final Logger LOG = LoggerFactory.getLogger(IOPSThread.class);
 
   // The thread id.
   protected int threadIdx;

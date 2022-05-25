@@ -30,7 +30,7 @@ const initialStateFeatureReleased = {
   enableHCVaultEAT: true,
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false,
-  backupv2: false,
+  backupv2: true,
   enableOIDC: false,
   supportBundle: true,
   enableThirdpartyUpgrade: false

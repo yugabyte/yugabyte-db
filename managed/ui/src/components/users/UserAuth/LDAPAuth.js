@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import * as Yup from 'yup';
+import { trimStart, trimEnd } from 'lodash';
 import { toast } from 'react-toastify';
 import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
@@ -77,11 +78,17 @@ export const LDAPAuth = (props) => {
     return transformedData;
   };
 
+  const escapeStr = (str) => {
+    let s = trimStart(str, '""');
+    s = trimEnd(s, '""');
+    return s;
+  };
+
   const initializeFormValues = () => {
     const ldapConfigs = configEntries.filter((config) => config.key.includes(LDAP_PATH));
     const formData = ldapConfigs.reduce((fData, config) => {
       const [, key] = config.key.split(`${LDAP_PATH}.`);
-      fData[key] = config.value;
+      fData[key] = escapeStr(config.value);
       return fData;
     }, {});
 
@@ -174,7 +181,7 @@ export const LDAPAuth = (props) => {
   useEffect(() => {
     const ldapConfig = configEntries.find((config) => config.key.includes(`${LDAP_PATH}.use_ldap`));
     setToggleVisible(!!ldapConfig);
-    setLDAP(ldapConfig?.value === 'true');
+    setLDAP(escapeStr(ldapConfig?.value) === 'true');
   }, [configEntries, setToggleVisible, setLDAP]);
 
   return (

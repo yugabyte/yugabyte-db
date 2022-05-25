@@ -363,6 +363,11 @@ public class AlertTest extends FakeDBApplication {
             alert,
             KnownAlertLabels.UNIVERSE_NAME.labelName(),
             definition.getLabelValue(KnownAlertLabels.UNIVERSE_NAME));
+    AlertLabel nodePrefixLabel =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.NODE_PREFIX.labelName(),
+            definition.getLabelValue(KnownAlertLabels.NODE_PREFIX));
     AlertLabel targetUuidLabel =
         new AlertLabel(
             alert,
@@ -414,6 +419,7 @@ public class AlertTest extends FakeDBApplication {
             customerUuidLabel,
             universeUuidLabel,
             universeNameLabel,
+            nodePrefixLabel,
             targetUuidLabel,
             targetNameLabel,
             targetTypeLabel,

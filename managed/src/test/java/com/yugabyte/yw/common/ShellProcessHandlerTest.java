@@ -122,16 +122,25 @@ public class ShellProcessHandlerTest extends TestCase {
     long startMs = System.currentTimeMillis();
     ShellResponse response =
         shellProcessHandler.run(
-            command,
-            null,
-            true /*logCmdOutput*/,
-            "test cmd",
-            null /*uuid*/,
-            null /*sensitiveData*/,
-            5 /*5 secs timeout*/);
+            command, ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(5).build());
     long durationMs = System.currentTimeMillis() - startMs;
     assert (durationMs < 7000); // allow for some slack on loaded Jenkins servers
     assertNotEquals(0, response.code);
     assertThat(response.message.trim(), allOf(notNullValue(), equalTo("error")));
+  }
+
+  @Test
+  public void testGetPythonErrMsg() {
+    String errMsg =
+        "<yb-python-error>{\"type\": \"YBOpsRuntimeError\","
+            + "\"message\": \"Runtime error: Instance: i does not exist\","
+            + "\"file\": \"/Users/test/code/yugabyte-db/managed/devops/venv/bin/ybcloud.py\","
+            + "\"method\": \"<module>\", \"line\": 4}</yb-python-error>";
+    String out = ShellProcessHandler.getPythonErrMsg(0, errMsg);
+    assertNull(out);
+    out = ShellProcessHandler.getPythonErrMsg(2, errMsg);
+    assertEquals("YBOpsRuntimeError: Runtime error: Instance: i does not exist", out);
+    out = ShellProcessHandler.getPythonErrMsg(2, "{}");
+    assertNull(out);
   }
 }
