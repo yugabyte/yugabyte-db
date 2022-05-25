@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `setval(sequence_name , value, is_called)` function to set and return the value for the specified sequence.
+Use the `setval(sequence_name, value, is_called)` function to set and return the value for the specified sequence.
 `UPDATE` privilege on the sequence is required to call this function.
 
 Calling the function with two parameters defaults `is_called` to `true`, meaning that the `nextval` will advance the sequence prior to returning the value, and `currval` will also return the specified value.
