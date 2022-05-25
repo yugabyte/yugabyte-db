@@ -166,9 +166,8 @@ class UniverseLogsComponent implements SupportBundleComponent {
     command.add(String.valueOf(maxDepth));
     command.add("-type");
     command.add(fileType);
-    String cmd = String.join(" ", command);
 
-    ShellResponse shellOutput = this.nodeUniverseManager.runCommand(node, universe, cmd);
+    ShellResponse shellOutput = this.nodeUniverseManager.runCommand(node, universe, command);
     return Arrays.asList(shellOutput.extractRunCommandOutput().trim().split("\n", 0));
   }
 
