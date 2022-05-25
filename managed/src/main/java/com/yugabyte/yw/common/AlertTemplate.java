@@ -213,9 +213,11 @@ public enum AlertTemplate {
   NODE_DOWN(
       "DB node down",
       "DB node is down for 15 minutes",
-      "count by (node_prefix) (max_over_time("
-          + "up{export_type=\"node_export\","
-          + "node_prefix=\"__nodePrefix__\"}[15m]) < 1) "
+      "count by (node_prefix) (label_replace(max_over_time("
+          + "up{export_type=\"node_export\",node_prefix=\"__nodePrefix__\"}[15m])"
+          + ", \"exported_instance\", \"$1\", \"instance\", \"(.*)\") < 1 and on"
+          + " (node_prefix, export_type, exported_instance) (min_over_time("
+          + "ybp_universe_node_function{node_prefix=\"__nodePrefix__\"}[15m]) == 1)) "
           + "{{ query_condition }} {{ query_threshold }}",
       "{{ $value | printf \\\"%.0f\\\" }} DB node(s) are down "
           + "for more than 15 minutes for universe '{{ $labels.source_name }}'.",

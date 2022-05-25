@@ -5,6 +5,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
@@ -101,11 +102,10 @@ public class SessionHandler {
     String description = String.join(" ", commandArgs);
     return shellProcessHandler.run(
         commandArgs,
-        null /*envVars*/,
-        true /*logCmdOutput*/,
-        description,
-        null /*uuid*/,
-        null /*sensitiveData*/,
-        config.getInt("yb.logging.search_timeout_secs"));
+        ShellProcessContext.builder()
+            .logCmdOutput(true)
+            .description(description)
+            .timeoutSecs(config.getInt("yb.logging.search_timeout_secs"))
+            .build());
   }
 }

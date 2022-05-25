@@ -16,7 +16,6 @@
     "remote_role.yml"
   ],
   "bin": [
-    "bin/cluster_health.py",
     "bin/common.sh",
     "bin/install_ansible_requirements.sh",
     "bin/install_python_requirements.sh",

@@ -122,13 +122,7 @@ public class ShellProcessHandlerTest extends TestCase {
     long startMs = System.currentTimeMillis();
     ShellResponse response =
         shellProcessHandler.run(
-            command,
-            null,
-            true /*logCmdOutput*/,
-            "test cmd",
-            null /*uuid*/,
-            null /*sensitiveData*/,
-            5 /*5 secs timeout*/);
+            command, ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(5).build());
     long durationMs = System.currentTimeMillis() - startMs;
     assert (durationMs < 7000); // allow for some slack on loaded Jenkins servers
     assertNotEquals(0, response.code);

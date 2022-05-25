@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
@@ -153,6 +154,17 @@ public class UniverseMetricProvider implements MetricsProvider {
                     nodeDetails.redisServerHttpPort,
                     "redis_export",
                     statusValue(nodeDetails.isRedisServer)));
+            boolean hasNodeExporter =
+                !CloudType.kubernetes.equals(universe.getNodeDeploymentMode(nodeDetails));
+            universeGroup.metric(
+                createNodeMetric(
+                    customer,
+                    universe,
+                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                    ipAddress,
+                    nodeDetails.nodeExporterPort,
+                    "node_export",
+                    statusValue(hasNodeExporter)));
           }
         }
         universeGroup.cleanMetricFilter(

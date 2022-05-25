@@ -33,6 +33,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
+import org.apache.commons.collections.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
@@ -75,47 +76,44 @@ public class ShellProcessHandler {
       Map<String, String> extraEnvVars,
       boolean logCmdOutput,
       String description) {
-    return run(command, extraEnvVars, logCmdOutput, description, null, null, 0 /*timeoutSecs*/);
+    return run(
+        command,
+        ShellProcessContext.builder()
+            .extraEnvVars(extraEnvVars)
+            .logCmdOutput(logCmdOutput)
+            .description(description)
+            .build());
   }
 
   /**
    * *
    *
    * @param command - command to run with list of args
-   * @param extraEnvVars - env vars for this command
-   * @param logCmdOutput - whether to log stdout&stderr to application.log or not
-   * @param description - human readable description for logging
-   * @param uuid - used to track this execution, can be null
-   * @param sensitiveData - Args that will be added to the cmd but will be redacted in logs
-   * @param timeoutSecs - Abort the command forcibly if it takes longer than this
-   * @return
+   * @param context - command context
+   * @return shell response
    */
-  public ShellResponse run(
-      List<String> command,
-      Map<String, String> extraEnvVars,
-      boolean logCmdOutput,
-      String description,
-      UUID uuid,
-      Map<String, String> sensitiveData,
-      int timeoutSecs) {
+  public ShellResponse run(List<String> command, ShellProcessContext context) {
 
     List<String> redactedCommand = new ArrayList<>(command);
 
     // Redacting the sensitive data in the command which is used for logging.
-    if (sensitiveData != null) {
-      sensitiveData.forEach(
-          (key, value) -> {
-            redactedCommand.add(key);
-            command.add(key);
-            command.add(value);
-            redactedCommand.add(Util.redactString(value));
-          });
+    if (context.getSensitiveData() != null) {
+      context
+          .getSensitiveData()
+          .forEach(
+              (key, value) -> {
+                redactedCommand.add(key);
+                command.add(key);
+                command.add(value);
+                redactedCommand.add(Util.redactString(value));
+              });
     }
 
     ProcessBuilder pb = new ProcessBuilder(command);
     Map<String, String> envVars = pb.environment();
-    if (extraEnvVars != null && !extraEnvVars.isEmpty()) {
-      envVars.putAll(extraEnvVars);
+    Map<String, String> extraEnvVars = context.getExtraEnvVars();
+    if (MapUtils.isNotEmpty(extraEnvVars)) {
+      envVars.putAll(context.getExtraEnvVars());
     }
     String devopsHome = appConfig.getString("yb.devops.home");
     if (devopsHome != null) {
@@ -124,10 +122,10 @@ public class ShellProcessHandler {
 
     ShellResponse response = new ShellResponse();
     response.code = ERROR_CODE_GENERIC_ERROR;
-    if (description == null) {
+    if (context.getDescription() == null) {
       response.setDescription(redactedCommand);
     } else {
-      response.description = description;
+      response.description = context.getDescription();
     }
 
     File tempOutputFile = null;
@@ -152,16 +150,18 @@ public class ShellProcessHandler {
           tempErrorFile.getAbsolutePath());
 
       long endTimeSecs = 0;
-      if (timeoutSecs > 0) {
-        endTimeSecs = (System.currentTimeMillis() / 1000) + timeoutSecs;
+      if (context.getTimeoutSecs() > 0) {
+        endTimeSecs = (System.currentTimeMillis() / 1000) + context.getTimeoutSecs();
       }
       process = pb.start();
-      if (uuid != null) {
-        Util.setPID(uuid, process);
+      if (context.getUuid() != null) {
+        Util.setPID(context.getUuid(), process);
       }
-      waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeSecs);
+      waitForProcessExit(
+          process, context.getDescription(), tempOutputFile, tempErrorFile, endTimeSecs);
       // We will only read last 20MB of process stderr file.
       // stdout has `data` so we wont limit that.
+      boolean logCmdOutput = context.isLogCmdOutput();
       try (BufferedReader outputStream = getLastNReader(tempOutputFile, Long.MAX_VALUE);
           BufferedReader errorStream = getLastNReader(tempErrorFile, getMaxLogMsgSize())) {
         if (logCmdOutput) {
@@ -274,7 +274,12 @@ public class ShellProcessHandler {
 
   public ShellResponse run(List<String> command, Map<String, String> extraEnvVars, UUID uuid) {
     return run(
-        command, extraEnvVars, true /*logCommandOutput*/, null, uuid, null, 0 /*timeoutSecs*/);
+        command,
+        ShellProcessContext.builder()
+            .extraEnvVars(extraEnvVars)
+            .logCmdOutput(true)
+            .uuid(uuid)
+            .build());
   }
 
   public ShellResponse run(
@@ -289,12 +294,12 @@ public class ShellProcessHandler {
       Map<String, String> sensitiveData) {
     return run(
         command,
-        extraEnvVars,
-        true /*logCommandOutput*/,
-        description,
-        null,
-        sensitiveData,
-        0 /*timeoutSecs*/);
+        ShellProcessContext.builder()
+            .extraEnvVars(extraEnvVars)
+            .logCmdOutput(true)
+            .description(description)
+            .sensitiveData(sensitiveData)
+            .build());
   }
 
   private static void waitForProcessExit(
