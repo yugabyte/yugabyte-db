@@ -36,7 +36,7 @@ To back up your universe YCQL data immediately, see [Back up universe YCQL data]
 
 ## Create a scheduled backup policy
 
-Before scheduling a backup of your universe YSQL data, create a policy, as follows:
+Before scheduling a backup of your universe YCQL data, create a policy, as follows:
 
 - Navigate to **Universes**.
 - Select the name of the universe for which you want to schedule backups.
@@ -51,17 +51,17 @@ Before scheduling a backup of your universe YSQL data, create a policy, as follo
 - Provide the backup policy name.
 - Specify the interval between backups or select **Use cron expression (UTC)**.
 - Set the API type as YCQL. 
-- Select the backup storage configuration. Notice that the contents of the **Select the storage config you want to use for your backup** list depends on your existing backup storage configurations. For more information, see [Configure backup storage](../../configure-backup-storage/).
-- Select the database to backup, and then specify whether you want to back up all tables in the keyspace or only specific tables.
+- Select the database to back up. 
+- Specify whether you want to back up all tables in the keyspace to which the database belongs or only  certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up.
 - Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
-- Specify the number of threads that should be available for the backup process.
+- Optionally, specify the number of threads that should be available for the backup process.
 - Click **Create**.
 
 Subsequent backups are created based on the value you specified for **Set backup intervals** or **Use cron expression**.
 
-## Disable scheduled backups
+## Disable backups
 
-You can temporarily disable all scheduled backups, as follows:
+You can disable all backups, including scheduled ones, as follows:
 
 1. Navigate to the universe's **Tables** tab.
 2. Click **Actions > Disable Backup**.

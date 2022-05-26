@@ -41,11 +41,13 @@ To view, [restore](../../restore-universe-data/ysql/), or delete existing backup
 
 ![Create Backup](/images/yp/create-backup-new-1.png)
 
-To view details information about an existing backup, click on it to open **Backup Details**.
+By default, the list displays all the backups generated for the universe regardless of the time period. You can configure the list to only display the backups created during a specific time period, such as last year,  last month, and so on. In addition, you can specify a custom time period.
+
+To view detailed information about an existing backup, click on it to open **Backup Details**.
 
 The **Backups** page allows you to create new backups that start immediately, as follows: 
 
-- Select the time period for the backup and click **Backup now** to open the dialog shown in the following illustration:<br><br>
+- Click **Backup now** to open the dialog shown in the following illustration:<br><br>
 
   ![Backup](/images/yp/create-backup-new-2.png)<br><br>
 
@@ -67,4 +69,4 @@ Versions of YugabyteDB Anywhere prior to 2.11.2.0 do not support backups of YSQL
 
 For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql/).
 
-To access a list of all backups from all universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu.
+To access a list of all backups from all universes, including the deleted universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu.

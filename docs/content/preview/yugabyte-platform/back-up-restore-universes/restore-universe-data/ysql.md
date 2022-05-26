@@ -39,11 +39,13 @@ You can restore YugabyteDB universe YSQL data from a backup as follows:
 
 1. Open your universe and select **Backups**.
 
-2. In the **Backups** page, select the backup you want to restore and click its **... > Restore Entire Backup**, as per the following illustration:<br><br>
+2. If you want to restore a backup from a specific keyspace, click on the backup and use its **Backup Details** page to perform the restore procedure.
+
+3. If you want to restore a full backup, use the **Backups** page to select the backup and click its **... > Restore Entire Backup**, as per the following illustration:<br><br>
 
     ![Restore backup](/images/yp/restore-entire-backup.png)<br><br><br>
 
-3. Complete the fields of the **Restore Backup** dialog shown in the following illustration:
+4. Complete the fields of the **Restore Backup** dialog shown in the following illustration:
 
     <br/><br/>
     ![Restore backup - YSQL](/images/yp/restore-universe-data-ysql.png)<br><br><br>
@@ -60,7 +62,7 @@ You can restore YugabyteDB universe YSQL data from a backup as follows:
 
       The restore begins immediately. When finished, a completed **Restore Backup** task appears under **Tasks > Task History**.
 
-4. To confirm that the restore succeeded, select **Tables** to compare the original table with the table to which you restored.
+5. To confirm that the restore succeeded, select **Tables** to compare the original table with the table to which you restored.
 
 ## Advanced restore procedure
 
@@ -78,7 +80,7 @@ To proceed, complete the fields of the **Advanced Restore** dialog shown in the 
 
 - Specify the location of the backup you want to restore.
 
-- Select the cloud provider-specific configuration of the backup storage. The storage could be on Google Cloud, Amazon S3, or Network File System. 
+- Select the cloud provider-specific configuration of the backup storage. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System. 
 
 - Specify the name of the database from which you are performing a restore.
 
