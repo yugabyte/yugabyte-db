@@ -137,7 +137,7 @@ init_guc(void)
 		.guc_desc = "Sets the maximum number of histogram buckets",
 		.guc_default = 10,
 		.guc_min = 2,
-		.guc_max = INT_MAX,
+		.guc_max = MAX_RESPONSE_BUCKET,
 		.guc_restart = true,
 		.guc_unit = 0,
 		.guc_value = &PGSM_HISTOGRAM_BUCKETS
