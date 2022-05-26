@@ -43,49 +43,62 @@ Dedicated clusters include the following features:
 
 To create a cluster, on the **Clusters** page, click **Add Cluster** to start the **Create Cluster** wizard.
 
-The **Create Cluster** wizard has the following three pages:
+The **Create Cluster** wizard has the following pages:
 
 1. [Select Cluster Type](#select-cluster-type)
-1. [Cluster Settings](#cluster-settings)
-1. [Database Admin Credentials](#database-admin-credentials)
+1. [General Settings](#general-settings)
+1. [Cluster Setup](#cluster-setup)
+1. [DB Credentials](#db-credentials)
 
 ### Select Cluster Type
 
 ![Add Cluster Wizard - Select Type](/images/yb-cloud/cloud-addcluster-paid1.png)
 
-Select **YugabyteDB Managed** and click **Next** to display the **Cluster Settings** page.
+Select **Dedicated** and click **Choose** to display the **General Settings** page.
 
-### Cluster Settings
+### General Settings
 
-![Add Cluster Wizard - Cluster Settings](/images/yb-cloud/cloud-addcluster-paid2.png)
+![Add Cluster Wizard - General Settings](/images/yb-cloud/cloud-addcluster-free2.png)
 
 Set the following options:
 
-- **Provider**: Choose a cloud provider - AWS or GCP. (For Azure, contact {{<support-cloud>}}.)
 - **Cluster Name**: Enter a name for the cluster.
-- **Region**: Choose the [region](../../release-notes#cloud-provider-regions) where the cluster will be located, or click **Request a multi-region cluster** to contact Yugabyte Support to arrange multi-region deployment.
+- **Provider**: Choose a cloud provider - AWS or GCP. (For Azure, contact {{<support-cloud>}}.)
+- **Database Version**: By default, clusters are deployed using a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use a [preview release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
 
-- **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failures:
+### Cluster Setup
+
+Set the following options:
+
+- **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failures.
+
+  ![Add Cluster Wizard - Fault tolerance](/images/yb-cloud/cloud-addcluster-paid3.1.png)
 
   - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
   - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
   - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
 
-- **Cluster Configuration** determines the size of the cluster:
+- **Choose a region and size your cluster**
+
+  ![Add Cluster Wizard - Region and size](/images/yb-cloud/cloud-addcluster-paid3.2.png)
+
+  - **Region**: Choose the [region](../../release-notes#cloud-provider-regions) where the cluster will be located, or click **Request a multi-region cluster** to contact Yugabyte Support to arrange multi-region deployment.
 
   - **Nodes** - enter the number of nodes for the cluster. Node and Availability zone level clusters have a minimum of 3 nodes; Availability zone level clusters increment by 3.
   - **vCPU/Node** - enter the number of virtual CPUs per node.
   - **Disk size/Node** - enter the disk size per node in GB.
 
-- **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
+- **Configure VPC**
 
-- **Database Version**: By default, clusters are deployed using a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use a [preview release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+  ![Add Cluster Wizard - Configure VPC](/images/yb-cloud/cloud-addcluster-paid3.3.png)
 
-Cluster costs are estimated automatically under **Cost**. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+  To use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
+
+Monthly total costs for the cluster are estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
 Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../cloud-clusters/configure-clusters#infrastructure).
 
-### Database Admin Credentials
+### DB Credentials
 
 The admin credentials are required to connect to the YugabyteDB database that is installed on the cluster.
 

@@ -71,6 +71,14 @@ The database admin credentials are separate from your YugabyteDB Managed credent
 
 If you are a database user who was added to the database by an administrator, ask your administrator to either re-send your credentials or [change your database password](../cloud-secure-clusters/add-users/).
 
+Verify the case of the user name. Like SQL, YSQL is case-insensitive. When adding roles, YSQL automatically converts the name to lowercase. For example, the following command:
+
+```sql
+CREATE ROLE Alice LOGIN PASSWORD 'Password';
+```
+
+creates the user "alice". If you subsequently try to log in as "Alice", the login will fail. To use a case-sensitive name for a role, enclose the name in quotes. For example, to create the role "Alice", use `CREATE ROLE "Alice"`.
+
 If you are the database admin and are unable to locate your database admin credentials file, contact {{<support-cloud>}}.
 
 ### VPC networking
@@ -109,12 +117,6 @@ HINT:  Must be superuser to [...].
 ```
 
 For security reasons, the database admin user is not a superuser. The admin user is a member of yb_superuser, which does allow most operations. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../cloud-secure-clusters/cloud-users/). If you need to perform an operation that requires superuser privileges, contact {{<support-cloud>}}.
-
-### I added a user, but can't log in
-
-Verify the case of the role name. Like SQL, YSQL is case-insensitive. When adding roles, YSQL automatically converts the name to lowercase. For example, `CREATE ROLE Alice LOGIN PASSWORD 'Password';` creates the user "alice". If you subsequently try to log in as "Alice", the login will fail.
-
-To use a case-sensitive name for a role, enclose the name in quotes. For example, to create the role "Alice", use `CREATE ROLE "Alice"`.
 
 ### I need to change my database admin password
 
