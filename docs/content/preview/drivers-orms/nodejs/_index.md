@@ -1,7 +1,6 @@
 ---
 title: NodeJS drivers and ORMs
 headerTitle: NodeJS
-headcontent: Prerequisites and CRUD examples for building applications in NodeJS.
 linkTitle: NodeJS
 description: NodeJS Drivers and ORMs support for YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -13,7 +12,14 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
+
 The following projects are recommended for implementing Node applications using the YugabyteDB YSQL API.
+
+## Supported Projects
+
+| Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
+| ------- | ------------------------ | ------------------------ | ---------------------|
+| node-postgres | [Documentation](postgres-node-driver) <br /> [Hello World](/preview/quick-start/build-apps/nodejs/ysql-pg/) <br /> [Reference Page](../../reference/drivers/ysql-client-drivers/#node-postgres) | [8.7.3](https://www.npmjs.com/package/pg) | 2.6 and above |
 
 | Project | Type | Support | Examples |
 | :------ | :--- | :------ | :------- |
