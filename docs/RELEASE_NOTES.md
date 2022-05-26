@@ -2,6 +2,16 @@
 
 Below is the complete list of release notes for every version of ``pg_stat_monitor``.
 
+## 1.0.1
+
+### Bugs Fixed
+
+[PG-382](https://jira.percona.com/browse/PG-382): Histogram default settings changed to prevent the PostgreSQL server to crash
+
+[PG-417](https://jira.percona.com/browse/PG-417): Addressed security vulnerabilities to prevent an attacker from precreating functions
+
+[DISTPG-427](https://jira.percona.com/browse/DISTPG-427): Fixed the issue with the extensions not working when pg_stat_monitor is enabled by replacing the `return` with `goto exit` for the `pgsm_emit_log_hook` function
+
 ## 1.0.0
 
 Bump version from 1.0.0-rc.2 to 1.0.0.
