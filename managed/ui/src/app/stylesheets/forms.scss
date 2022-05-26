@@ -220,6 +220,13 @@
     font-size: 1.2em;
   }
 }
+.form-right-aligned-labels.center-align-row  {
+  display: block;
+  &>.form-group{
+    display: flex;
+    align-items: center;
+  }
+}
 
 .fade.in.yb-popover {
   opacity: 0.85;
