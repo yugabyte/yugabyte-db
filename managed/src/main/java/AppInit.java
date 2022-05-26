@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ShellLogsManager;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
@@ -67,6 +68,7 @@ public class AppInit {
       Scheduler scheduler,
       CallHome callHome,
       HealthChecker healthChecker,
+      ShellLogsManager shellLogsManager,
       Config config,
       SupportBundleCleanup supportBundleCleanup)
       throws ReflectiveOperationException {
@@ -168,6 +170,7 @@ public class AppInit {
       callHome.start();
       queryAlerts.start();
       healthChecker.initialize();
+      shellLogsManager.startLogsGC();
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();

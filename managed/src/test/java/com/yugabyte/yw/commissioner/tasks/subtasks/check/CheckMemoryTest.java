@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -58,11 +59,12 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "Command output:\n2989898";
     shellResponse.code = 0;
-    when(mockNodeUniverseManager.runCommand(any(), any(), any())).thenReturn(shellResponse);
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenReturn(shellResponse);
     CheckMemory checkMemoryTask = AbstractTaskBase.createTask(CheckMemory.class);
     checkMemoryTask.initialize(params);
     checkMemoryTask.run();
-    verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), any());
+    verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), anyList(), any());
   }
 
   @Test
@@ -81,12 +83,13 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "COMMAND OUTPUT:";
     shellResponse.code = 0;
-    when(mockNodeUniverseManager.runCommand(any(), any(), any())).thenReturn(shellResponse);
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenReturn(shellResponse);
     CheckMemory checkMemoryTask = AbstractTaskBase.createTask(CheckMemory.class);
     checkMemoryTask.initialize(params);
     RuntimeException re = assertThrows(RuntimeException.class, () -> checkMemoryTask.run());
     assertEquals("Invalid command output", re.getMessage());
-    verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), any());
+    verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), anyList(), any());
   }
 
   @Test
@@ -103,9 +106,10 @@ public class CheckMemoryTest extends CommissionerBaseTest {
             .map(node -> node.cloudInfo.private_ip)
             .collect(Collectors.toList());
     ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "Command output:\n" + String.valueOf(AVAILABLE_MEMORY_LIMIT_KB - 1);
+    shellResponse.message = "Command output:\n" + (AVAILABLE_MEMORY_LIMIT_KB - 1);
     shellResponse.code = 0;
-    when(mockNodeUniverseManager.runCommand(any(), any(), any())).thenReturn(shellResponse);
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenReturn(shellResponse);
     CheckMemory checkMemoryTask = AbstractTaskBase.createTask(CheckMemory.class);
     checkMemoryTask.initialize(params);
     RuntimeException re = assertThrows(RuntimeException.class, () -> checkMemoryTask.run());
@@ -117,6 +121,6 @@ public class CheckMemoryTest extends CommissionerBaseTest {
             + " is required but found "
             + String.valueOf(AVAILABLE_MEMORY_LIMIT_KB - 1),
         re.getMessage());
-    verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), any());
+    verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), anyList(), any());
   }
 }
