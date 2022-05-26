@@ -248,6 +248,7 @@ class PgApiImpl {
                                 const PgObjectId& tablegroup_oid,
                                 const ColocationId colocation_id,
                                 const PgObjectId& tablespace_oid,
+                                bool is_matview,
                                 const PgObjectId& matview_pg_table_oid,
                                 PgStatement **handle);
 

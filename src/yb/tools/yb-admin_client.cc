@@ -1258,6 +1258,9 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
         case master::INDEX_TABLE_RELATION:
           str << " index";
           break;
+        case master::MATVIEW_TABLE_RELATION:
+          str << "matview";
+          break;
         default:
           str << " other";
       }
