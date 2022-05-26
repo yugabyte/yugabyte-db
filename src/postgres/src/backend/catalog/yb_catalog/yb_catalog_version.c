@@ -92,6 +92,7 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	HandleYBStatus(YBCPgNewUpdate(TemplateDbOid,
 								  YBCatalogVersionRelationId,
 								  false /* is_single_row_txn */,
+								  false /* is_region_local */,
 								  &update_stmt));
 	/* Construct HeapTuple */
 	Datum		values[3];
@@ -260,6 +261,7 @@ bool YbGetMasterCatalogVersionFromTable(uint64_t *version)
 	HandleYBStatus(YBCPgNewSelect(TemplateDbOid,
 	                              YBCatalogVersionRelationId,
 	                              NULL /* prepare_params */,
+	                              false /* is_region_local */,
 	                              &ybc_stmt));
 
 	/*

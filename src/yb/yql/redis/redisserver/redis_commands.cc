@@ -173,7 +173,7 @@ BOOST_PP_SEQ_FOR_EACH(DEFINE_HISTOGRAM, ~, REDIS_COMMANDS)
 #define CLUSTER_OP RedisResponsePB
 
 #define DO_PARSER_FORWARD(name, cname, arity, type) \
-    CHECKED_STATUS BOOST_PP_CAT(Parse, cname)( \
+    Status BOOST_PP_CAT(Parse, cname)( \
         BOOST_PP_CAT(type, _OP) *op, \
         const RedisClientCommand& args);
 #define PARSER_FORWARD(r, data, elem) DO_PARSER_FORWARD elem

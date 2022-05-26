@@ -45,7 +45,6 @@ YB_STRONGLY_TYPED_BOOL(ShouldRetainDeleteMarkersInMajorCompaction);
 
 struct Expiration;
 using ColumnIds = std::unordered_set<ColumnId, boost::hash<ColumnId>>;
-using ColumnIdsPtr = std::shared_ptr<ColumnIds>;
 
 // A "directive" of how a particular compaction should retain old (overwritten or deleted) values.
 struct HistoryRetentionDirective {
@@ -56,18 +55,16 @@ struct HistoryRetentionDirective {
   // the lowest "read point" of any pending read operations.
   HybridTime history_cutoff;
 
-  // Columns that were deleted at a timestamp lower than the history cutoff.
-  ColumnIdsPtr deleted_cols;
-
   MonoDelta table_ttl;
 
   ShouldRetainDeleteMarkersInMajorCompaction retain_delete_markers_in_major_compaction{false};
 };
 
-struct CompactionSchemaPacking {
+struct CompactionSchemaInfo {
   uint32_t schema_version = std::numeric_limits<uint32_t>::max();
   std::shared_ptr<const docdb::SchemaPacking> schema_packing;
   Uuid cotable_id;
+  ColumnIds deleted_cols;
 };
 
 // Used to query latest possible schema version.
@@ -77,13 +74,13 @@ class SchemaPackingProvider {
  public:
   // Returns schema packing for provided cotable_id and schema version.
   // If schema_version is kLatestSchemaVersion, then latest possible schema packing is returned.
-  virtual Result<CompactionSchemaPacking> CotablePacking(
-      const Uuid& table_id, uint32_t schema_version) = 0;
+  virtual Result<CompactionSchemaInfo> CotablePacking(
+      const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) = 0;
 
   // Returns schema packing for provided colocation_id and schema version.
   // If schema_version is kLatestSchemaVersion, then latest possible schema packing is returned.
-  virtual Result<CompactionSchemaPacking> ColocationPacking(
-      ColocationId colocation_id, uint32_t schema_version) = 0;
+  virtual Result<CompactionSchemaInfo> ColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) = 0;
 
   virtual ~SchemaPackingProvider() = default;
 };
@@ -95,9 +92,13 @@ class HistoryRetentionPolicy {
   virtual HistoryRetentionDirective GetRetentionDirective() = 0;
 };
 
+using DeleteMarkerRetentionTimeProvider = std::function<HybridTime(
+    const std::vector<rocksdb::FileMetaData*>&)>;
+
 std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
     const KeyBounds* key_bounds,
+    const DeleteMarkerRetentionTimeProvider& delete_marker_retention_provider,
     SchemaPackingProvider* schema_packing_provider);
 
 // A history retention policy that can be configured manually. Useful in tests. This class is
@@ -108,16 +109,10 @@ class ManualHistoryRetentionPolicy : public HistoryRetentionPolicy {
 
   void SetHistoryCutoff(HybridTime history_cutoff);
 
-  void AddDeletedColumn(ColumnId col);
-
   void SetTableTTLForTests(MonoDelta ttl);
 
  private:
   std::atomic<HybridTime> history_cutoff_{HybridTime::kMin};
-
-  std::mutex deleted_cols_mtx_;
-  ColumnIds deleted_cols_ GUARDED_BY(deleted_cols_mtx_);
-
   std::atomic<MonoDelta> table_ttl_{MonoDelta::kMax};
 };
 

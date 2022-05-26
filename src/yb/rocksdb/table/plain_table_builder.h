@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_TABLE_PLAIN_TABLE_BUILDER_H
-#define ROCKSDB_TABLE_PLAIN_TABLE_BUILDER_H
+#pragma once
 
 #ifndef ROCKSDB_LITE
 #include <stdint.h>
@@ -94,6 +93,8 @@ class PlainTableBuilder: public TableBuilder {
 
   bool SaveIndexInFile() const { return store_index_in_file_; }
 
+  const std::string& LastKey() const override;
+
  private:
   Arena arena_;
   const ImmutableCFOptions& ioptions_;
@@ -117,6 +118,7 @@ class PlainTableBuilder: public TableBuilder {
   bool closed_ = false;  // Either Finish() or Abandon() has been called.
 
   const SliceTransform* prefix_extractor_;
+  std::string last_key_;
 
   Slice GetPrefix(const Slice& target) const {
     assert(target.size() >= 8);  // target is internal key
@@ -153,5 +155,3 @@ class PlainTableBuilder: public TableBuilder {
 }  // namespace rocksdb
 
 #endif  // ROCKSDB_LITE
-
-#endif  // ROCKSDB_TABLE_PLAIN_TABLE_BUILDER_H

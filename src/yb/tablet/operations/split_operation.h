@@ -48,18 +48,18 @@ class SplitOperation
 
   static bool ShouldAllowOpAfterSplitTablet(consensus::OperationType op_type);
 
-  static CHECKED_STATUS RejectionStatus(
+  static Status RejectionStatus(
       OpId split_op_id, OpId rejected_op_id, consensus::OperationType op_type,
       const TabletId& child1, const TabletId& child2);
 
  private:
-  CHECKED_STATUS Prepare() override;
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
+  Status Prepare() override;
+  Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+  Status DoAborted(const Status& status) override;
   void AddedAsPending() override;
   void RemovedFromPending() override;
 
-  CHECKED_STATUS CheckOperationAllowed(
+  Status CheckOperationAllowed(
       const OpId& id, consensus::OperationType op_type) const override;
 
   TabletSplitter& tablet_splitter_;

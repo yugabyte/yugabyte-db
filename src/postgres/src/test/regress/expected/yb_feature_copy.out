@@ -470,6 +470,18 @@ select * from v ORDER BY a,b;
  1 | 10
 (6 rows)
 
+-- Test various copy options
+create table copy_options (a int primary key, b int);
+-- skip
+copy copy_options from stdin with (format csv, skip 2);
+select * from copy_options order by a;
+ a | b
+---+---
+ 3 | 3
+ 4 | 4
+ 5 | 5
+(3 rows)
+
 -- clean up
 DROP TABLE forcetest;
 DROP TABLE x;
@@ -485,3 +497,4 @@ DROP TABLE w;
 DROP TABLE p;
 DROP TABLE u;
 DROP TABLE v;
+DROP TABLE copy_options;

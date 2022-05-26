@@ -150,7 +150,7 @@ class TabletPeer : public consensus::ConsensusContext,
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
   // split_op_id is the ID of split tablet Raft operation requesting split of this tablet or unset.
-  CHECKED_STATUS InitTabletPeer(
+  Status InitTabletPeer(
       const TabletPtr& tablet,
       const std::shared_ptr<MemTracker>& server_mem_tracker,
       rpc::Messenger* messenger,
@@ -166,7 +166,7 @@ class TabletPeer : public consensus::ConsensusContext,
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
   // in the consensus configuration.
-  CHECKED_STATUS Start(const consensus::ConsensusBootstrapInfo& info);
+  Status Start(const consensus::ConsensusBootstrapInfo& info);
 
   // Starts shutdown process.
   // Returns true if shutdown was just initiated, false if shutdown was already running.
@@ -175,24 +175,24 @@ class TabletPeer : public consensus::ConsensusContext,
   void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown);
 
   // Abort active transactions on the tablet after shutdown is initiated.
-  CHECKED_STATUS AbortSQLTransactions();
+  Status AbortSQLTransactions();
 
-  CHECKED_STATUS Shutdown(
+  Status Shutdown(
       ShouldAbortActiveTransactions should_abort_active_txns,
       DisableFlushOnShutdown disable_flush_on_shutdown);
 
   // Check that the tablet is in a RUNNING state.
-  CHECKED_STATUS CheckRunning() const;
+  Status CheckRunning() const;
 
   // Returns whether shutdown started. If shutdown already completed returns true as well.
   bool IsShutdownStarted() const;
 
   // Check that the tablet is in a SHUTDOWN/NOT_STARTED state.
-  CHECKED_STATUS CheckShutdownOrNotStarted() const;
+  Status CheckShutdownOrNotStarted() const;
 
   // Wait until the tablet is in a RUNNING state or if there's a timeout.
   // TODO have a way to wait for any state?
-  CHECKED_STATUS WaitUntilConsensusRunning(const MonoDelta& timeout);
+  Status WaitUntilConsensusRunning(const MonoDelta& timeout);
 
   // Submits a write to a tablet and executes it asynchronously.
   // The caller is expected to build and pass a WriteOperation that points
@@ -214,12 +214,12 @@ class TabletPeer : public consensus::ConsensusContext,
   HybridTime SafeTimeForTransactionParticipant() override;
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;
 
-  CHECKED_STATUS GetLastReplicatedData(RemoveIntentsData* data) override;
+  Status GetLastReplicatedData(RemoveIntentsData* data) override;
 
   void GetTabletStatusPB(TabletStatusPB* status_pb_out);
 
   // Used by consensus to create and start a new ReplicaOperation.
-  CHECKED_STATUS StartReplicaOperation(
+  Status StartReplicaOperation(
       const scoped_refptr<consensus::ConsensusRound>& round,
       HybridTime propagated_safe_time) override;
 
@@ -260,11 +260,11 @@ class TabletPeer : public consensus::ConsensusContext,
   }
 
   // Sets the tablet to a BOOTSTRAPPING state, indicating it is starting up.
-  CHECKED_STATUS SetBootstrapping() {
+  Status SetBootstrapping() {
     return UpdateState(RaftGroupStatePB::NOT_STARTED, RaftGroupStatePB::BOOTSTRAPPING, "");
   }
 
-  CHECKED_STATUS UpdateState(RaftGroupStatePB expected, RaftGroupStatePB new_state,
+  Status UpdateState(RaftGroupStatePB expected, RaftGroupStatePB new_state,
                              const std::string& error_message);
 
   // sets the tablet state to FAILED additionally setting the error to the provided
@@ -272,7 +272,7 @@ class TabletPeer : public consensus::ConsensusContext,
   void SetFailed(const Status& error);
 
   // Returns the error that occurred, when state is FAILED.
-  CHECKED_STATUS error() const {
+  Status error() const {
     Status *error;
     if ((error = error_.get(std::memory_order_acquire)) != nullptr) {
       // Once the error_ is set, we do not reset it to nullptr
@@ -301,7 +301,7 @@ class TabletPeer : public consensus::ConsensusContext,
   // Returns the amount of bytes that would be GC'd if RunLogGC() was called.
   //
   // Returns a non-ok status if the tablet isn't running.
-  CHECKED_STATUS GetGCableDataSize(int64_t* retention_size) const;
+  Status GetGCableDataSize(int64_t* retention_size) const;
 
   // Returns true if it is safe to retrieve the log pointer using the log() function from this
   // tablet peer. Once the log pointer is initialized, it will stay valid for the lifetime of the
@@ -357,7 +357,7 @@ class TabletPeer : public consensus::ConsensusContext,
   Result<OperationDriverPtr> NewReplicaOperationDriver(std::unique_ptr<Operation>* operation);
 
   // Tells the tablet's log to garbage collect.
-  CHECKED_STATUS RunLogGC();
+  Status RunLogGC();
 
   // Register the maintenance ops associated with this peer's tablet, also invokes
   // Tablet::RegisterMaintenanceOps().
@@ -374,11 +374,15 @@ class TabletPeer : public consensus::ConsensusContext,
     return meta_;
   }
 
-  CHECKED_STATUS set_cdc_min_replicated_index(int64_t cdc_min_replicated_index);
+  Status set_cdc_min_replicated_index(int64_t cdc_min_replicated_index);
 
-  CHECKED_STATUS set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index);
+  Status set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index);
 
-  CHECKED_STATUS reset_cdc_min_replicated_index_if_stale();
+  Status reset_cdc_min_replicated_index_if_stale();
+
+  Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id);
+
+  OpId cdc_sdk_min_checkpoint_op_id();
 
   TableType table_type();
 
@@ -402,7 +406,7 @@ class TabletPeer : public consensus::ConsensusContext,
   // After bootstrap is complete and consensus is setup this initiates the transactions
   // that were not complete on bootstrap.
   // Not implemented yet. See .cc file.
-  CHECKED_STATUS StartPendingOperations(PeerRole my_role,
+  Status StartPendingOperations(PeerRole my_role,
                                         const consensus::ConsensusBootstrapInfo& bootstrap_info);
 
   scoped_refptr<OperationDriver> CreateOperationDriver();
@@ -486,7 +490,7 @@ class TabletPeer : public consensus::ConsensusContext,
   uint64_t NumSSTFiles() override;
   void ListenNumSSTFilesChanged(std::function<void()> listener) override;
   rpc::Scheduler& scheduler() const override;
-  CHECKED_STATUS CheckOperationAllowed(
+  Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) override;
 
   // Return granular types of on-disk size of this tablet replica, in bytes.

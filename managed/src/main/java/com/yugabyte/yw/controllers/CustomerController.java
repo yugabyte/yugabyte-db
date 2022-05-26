@@ -72,6 +72,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -407,25 +408,59 @@ public class CustomerController extends AuthenticatedController {
       // Check if it is a Kubernetes deployment.
       if (hasContainerMetric) {
         final String nodePrefix = params.remove("nodePrefix");
-        if (params.containsKey("nodeName")) {
-          // We calculate the correct namespace by using the zone if
-          // it exists. Example: it is yb-tserver-0_az1 (multi AZ) or
-          // yb-tserver-0 (single AZ).
-          String[] nodeWithZone = params.remove("nodeName").split("_");
-          filterJson.put(nodeFilterLabel, nodeWithZone[0]);
-          // TODO(bhavin192): might need to account for multiple
-          // releases in one namespace.
-          // The pod name is of the format yb-<server>-<replica_num> and we just need the
-          // container, which is yb-<server>.
-          String containerName = nodeWithZone[0].substring(0, nodeWithZone[0].lastIndexOf("-"));
-          String pvcName = String.format("(.*)-%s", nodeWithZone[0]);
-          String azName = nodeWithZone.length == 2 ? nodeWithZone[1] : null;
+        // Check if the universe is using newNamingStyle.
+        List<Universe> universes =
+            customer
+                .getUniverses()
+                .stream()
+                .filter(universe -> universe.getUniverseDetails().nodePrefix.equals(nodePrefix))
+                .collect(Collectors.toList());
+        if (universes.isEmpty()) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              String.format("No universe found with nodePrefix %s.", nodePrefix));
+        }
+        if (universes.size() > 1) {
+          LOG.warn("Found mulitple universes with nodePrefix {}, using first one.", nodePrefix);
+        }
+        Universe universe = universes.get(0);
 
+        boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+
+        if (params.containsKey("nodeName")) {
+          String nodeName = params.remove("nodeName");
+          NodeDetails node =
+              universe
+                  .maybeGetNode(nodeName)
+                  .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, nodeName));
+
+          String podFQDN = node.cloudInfo.private_ip;
+          if (StringUtils.isBlank(podFQDN)) {
+            throw new PlatformServiceException(
+                INTERNAL_SERVER_ERROR, nodeName + " has a blank FQDN");
+          }
+
+          String podName = podFQDN.split("\\.")[0];
+          String namespace = podFQDN.split("\\.")[2];
+          // The pod name is of the format
+          // <helm_prefix>-yb-<server>-<replica_num> and we just need
+          // the container, which is yb-<server>.
+          String containerName = podName.contains("yb-master") ? "yb-master" : "yb-tserver";
+          String pvcName = String.format("(.*)-%s", podName);
+          filterJson.put(nodeFilterLabel, podName);
           filterJson.put(containerLabel, containerName);
           filterJson.put(pvcLabel, pvcName);
-          filterJson.put(universeFilterLabel, getNamespacesFilter(customer, nodePrefix, azName));
+          filterJson.put(universeFilterLabel, namespace);
         } else {
-          filterJson.put(universeFilterLabel, getNamespacesFilter(customer, nodePrefix));
+          filterJson.put(
+              universeFilterLabel, getNamespacesFilter(universe, nodePrefix, newNamingStyle));
+          // Check if the universe is using newNamingStyle.
+          if (newNamingStyle) {
+            // TODO(bhavin192): account for max character limit in
+            // Helm release name, which is 53 characters.
+            // The default value in metrics.yml is yb-tserver-(.*)
+            filterJson.put(nodeFilterLabel, nodePrefix + "-(.*)-yb-tserver-(.*)");
+          }
         }
       } else {
         final String nodePrefix = params.remove("nodePrefix");
@@ -469,42 +504,26 @@ public class CustomerController extends AuthenticatedController {
     return PlatformResults.withRawData(response);
   }
 
-  private String getNamespacesFilter(Customer customer, String nodePrefix) {
-    return getNamespacesFilter(customer, nodePrefix, null);
-  }
-
   // Return a regex string for filtering the metrics based on
-  // namespaces of the universe matching the given customer and
-  // nodePrefix. If azName is not null, then returns the only
-  // namespace corresponding to the given AZ. Should be used for
-  // Kubernetes universes only.
-  private String getNamespacesFilter(Customer customer, String nodePrefix, String azName) {
+  // namespaces of the given universe and nodePrefix. Should be used
+  // for Kubernetes universes only.
+  private String getNamespacesFilter(Universe universe, String nodePrefix, boolean newNamingStyle) {
     // We need to figure out the correct namespace for each AZ.  We do
-    // that by getting the correct universe and its provider and then
-    // go through the azConfigs.
-    List<Universe> universes =
-        customer
-            .getUniverses()
-            .stream()
-            .filter(u -> u.getUniverseDetails().nodePrefix.equals(nodePrefix))
-            .collect(Collectors.toList());
+    // that by getting the the universe's provider and then go through
+    // the azConfigs.
     // TODO: account for readonly replicas when we support them for
     // Kubernetes providers.
     Provider provider =
         Provider.get(
-            UUID.fromString(
-                universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.provider));
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
     List<String> namespaces = new ArrayList<>();
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
 
     for (Region r : Region.getByProvider(provider.uuid)) {
       for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
-        if (azName != null && !azName.equals(az.code)) {
-          continue;
-        }
         namespaces.add(
             PlacementInfoUtil.getKubernetesNamespace(
-                isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig()));
+                isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig(), newNamingStyle));
       }
     }
 

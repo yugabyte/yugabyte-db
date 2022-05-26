@@ -37,7 +37,7 @@ PTInsertJsonClause::PTInsertJsonClause(MemoryContext* memctx,
 
 PTInsertJsonClause::~PTInsertJsonClause() = default;
 
-CHECKED_STATUS PTInsertJsonClause::Analyze(SemContext* sem_context) {
+Status PTInsertJsonClause::Analyze(SemContext* sem_context) {
   SemState sem_state(sem_context, QLType::Create(DataType::STRING), InternalType::kStringValue);
   sem_state.set_bindvar_name("json"); // To match Cassandra behaviour
   RETURN_NOT_OK(json_expr_->Analyze(sem_context));

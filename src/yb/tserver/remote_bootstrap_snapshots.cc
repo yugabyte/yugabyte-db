@@ -28,7 +28,7 @@ namespace tserver {
 
 namespace {
 
-CHECKED_STATUS AddDirToSnapshotFiles(
+Status AddDirToSnapshotFiles(
     const std::string& dir, const std::string& prefix, const std::string& snapshot_id,
     google::protobuf::RepeatedPtrField<tablet::SnapshotFilePB>* out) {
   auto files = VERIFY_RESULT_PREPEND(

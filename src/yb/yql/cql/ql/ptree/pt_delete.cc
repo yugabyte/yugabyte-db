@@ -51,7 +51,7 @@ PTDeleteStmt::PTDeleteStmt(MemoryContext *memctx,
 PTDeleteStmt::~PTDeleteStmt() {
 }
 
-CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
+Status PTDeleteStmt::Analyze(SemContext *sem_context) {
   // If use_cassandra_authentication is set, permissions are checked in PTDmlStmt::Analyze.
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
@@ -126,7 +126,7 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTDeleteStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_context) {
+Status PTDeleteStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_context) {
   // Walking through the target expressions and collect all columns. Currently, CQL doesn't allow
   // any expression except for references to table column.
   if (target->opcode() != TreeNodeOpcode::kPTRef) {

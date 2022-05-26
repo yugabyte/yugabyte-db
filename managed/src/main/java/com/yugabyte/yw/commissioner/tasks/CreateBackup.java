@@ -41,6 +41,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.CustomerConfig.ConfigState;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
@@ -91,6 +92,9 @@ public class CreateBackup extends UniverseTaskBase {
     tableBackupParams.expiryTimeUnit = params().expiryTimeUnit;
     tableBackupParams.backupType = params().backupType;
     tableBackupParams.isFullBackup = CollectionUtils.isEmpty(params().keyspaceTableList);
+    tableBackupParams.disableChecksum = params().disableChecksum;
+    tableBackupParams.useTablespaces = params().useTablespaces;
+    tableBackupParams.disableParallelism = params().disableParallelism;
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().universeUUID);
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
@@ -291,6 +295,9 @@ public class CreateBackup extends UniverseTaskBase {
                 BackupVersion.V2);
         backup.setTaskUUID(userTaskUUID);
         tableBackupParams.backupUuid = backup.backupUUID;
+        tableBackupParams.disableChecksum = params().disableChecksum;
+        tableBackupParams.useTablespaces = params().useTablespaces;
+        tableBackupParams.disableParallelism = params().disableParallelism;
         log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
         for (BackupTableParams backupParams : backupParamsList) {
@@ -372,6 +379,9 @@ public class CreateBackup extends UniverseTaskBase {
     backupParams.scheduleUUID = params().scheduleUUID;
     backupParams.setKeyspace(tableKeySpace);
     backupParams.backupType = backupType;
+    backupParams.disableChecksum = params().disableChecksum;
+    backupParams.useTablespaces = params().useTablespaces;
+    backupParams.disableParallelism = params().disableParallelism;
 
     if (tableName != null && tableUUID != null) {
       if (backupParams.tableNameList == null) {
@@ -415,6 +425,9 @@ public class CreateBackup extends UniverseTaskBase {
     backupParams.parallelism = params().parallelism;
     backupParams.timeBeforeDelete = params().timeBeforeDelete;
     backupParams.scheduleUUID = params().scheduleUUID;
+    backupParams.disableChecksum = params().disableChecksum;
+    backupParams.useTablespaces = params().useTablespaces;
+    backupParams.disableParallelism = params().disableParallelism;
     return backupParams;
   }
 
@@ -442,21 +455,26 @@ public class CreateBackup extends UniverseTaskBase {
         || !shouldTakeBackup
         || universe.getUniverseDetails().backupInProgress
         || universe.getUniverseDetails().updateInProgress) {
-
       if (shouldTakeBackup) {
+        schedule.updateBacklogStatus(true);
+        log.debug("Schedule {} backlog status is set to true", schedule.scheduleUUID);
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
       }
-
+      String stateLogMsg = CommonUtils.generateStateLogMsg(universe, alreadyRunning);
       log.warn(
-          "Cannot run CreateBackup task since the universe {} is currently {}",
+          "Cannot run Backup task on universe {} due to the state {}",
           taskParams.universeUUID.toString(),
-          "in a locked/paused state or has backup running");
+          stateLogMsg);
       return;
     }
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
+    if (schedule.getBacklogStatus()) {
+      schedule.updateBacklogStatus(false);
+      log.debug("Schedule {} backlog status is set to false", schedule.scheduleUUID);
+    }
     log.info(
         "Submitted backup for universe: {}, task uuid = {}.", taskParams.universeUUID, taskUUID);
     CustomerTask.create(

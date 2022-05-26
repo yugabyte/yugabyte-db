@@ -28,3 +28,10 @@
     dest: "{{ prometheus_config_path }}/alertmanager.yml"
   notify: restart alertmanager
   when: '"alertmanager" in prometheus_components'
+
+- name: Reload node_exporter to apply the new changes
+  raw: systemctl daemon-reload
+  become: yes
+  become_method: sudo
+  notify: restart node_exporter
+  when: '"node_exporter" in prometheus_components'

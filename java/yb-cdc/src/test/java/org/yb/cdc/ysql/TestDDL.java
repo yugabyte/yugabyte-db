@@ -13,10 +13,11 @@
 
 package org.yb.cdc.ysql;
 
-import org.apache.log4j.Logger;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.common.*;
 import org.yb.cdc.util.CDCSubscriber;
@@ -31,7 +32,7 @@ import java.util.List;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestDDL extends CDCBaseClass {
-  private final static Logger LOG = Logger.getLogger(TestDDL.class);
+  private final static Logger LOG = LoggerFactory.getLogger(TestDDL.class);
 
   @Before
   public void setUp() throws Exception {
@@ -47,7 +48,6 @@ public class TestDDL extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
-      testSubscriber.setCheckpoint(0, 0, true);
 
       List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
       // We are expecting 2 DDL records, the first one with 3 columns which will be added with the
@@ -88,7 +88,6 @@ public class TestDDL extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
-      testSubscriber.setCheckpoint(0, 0, true);
 
       int dummyInsert = statement.executeUpdate("insert into test values (1, 2);");
       assertEquals(1, dummyInsert);
@@ -138,7 +137,6 @@ public class TestDDL extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
-      testSubscriber.setCheckpoint(0, 0, true);
 
       assertEquals(1, statement.executeUpdate("insert into test values (1);"));
       assertEquals(1, statement.executeUpdate("insert into test values (2, 3);"));
@@ -175,7 +173,6 @@ public class TestDDL extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
-      testSubscriber.setCheckpoint(0, 0, true);
 
       int dummyInsert = statement.executeUpdate("insert into test values (1);");
       assertEquals(1, dummyInsert);
@@ -214,7 +211,6 @@ public class TestDDL extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
-      testSubscriber.setCheckpoint(0, 0, true);
 
       // We expect 2 DDL records, the first one would have the old table name while the second
       // one will have the new table name. The record for the first DDL record would be added

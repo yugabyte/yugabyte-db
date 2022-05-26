@@ -8,61 +8,45 @@ import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
-
-import com.fasterxml.jackson.annotation.JsonFormat;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategy;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import com.fasterxml.jackson.databind.deser.std.UUIDDeserializer;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
+import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
+import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.FileUtils;
-import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
+import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.queries.SlowQueryExecutor;
-
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -72,38 +56,27 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
-import java.util.Scanner;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
-import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
-import oshi.util.tuples.Triplet;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
-import org.yb.master.CatalogEntityInfo.PlacementBlockPB;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
-import org.yb.tserver.Tserver;
-
 import play.Environment;
 import play.data.Form;
 import play.libs.Json;
@@ -113,9 +86,13 @@ import play.mvc.Result;
     value = "Table management",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class TablesController extends AuthenticatedController {
+
   private static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
-  private static final String mastersUnavailableErrMsg =
+
+  private static final String MASTERS_UNAVAILABLE_ERR_MSG =
       "Expected error. Masters are not currently queryable.";
+
+  private static final String PARTITION_QUERY_PATH = "queries/fetch_table_partitions.sql";
 
   Commissioner commissioner;
 
@@ -128,8 +105,6 @@ public class TablesController extends AuthenticatedController {
   private final NodeUniverseManager nodeUniverseManager;
 
   private final Environment environment;
-
-  private final String PARTITION_QUERY_PATH = "queries/fetch_table_partitions.sql";
 
   @Inject
   public TablesController(
@@ -223,7 +198,7 @@ public class TablesController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
-      throw new PlatformServiceException(SERVICE_UNAVAILABLE, mastersUnavailableErrMsg);
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = ybService.getClient(masterAddresses, certificate);
@@ -355,7 +330,7 @@ public class TablesController extends AuthenticatedController {
 
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
-      throw new PlatformServiceException(SERVICE_UNAVAILABLE, mastersUnavailableErrMsg);
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
 
     Map<String, Double> tableSizes = getTableSizesOrEmpty(universe);
@@ -436,7 +411,7 @@ public class TablesController extends AuthenticatedController {
     String masterAddresses = universe.getMasterAddresses(true);
 
     if (masterAddresses.isEmpty()) {
-      throw new PlatformServiceException(SERVICE_UNAVAILABLE, mastersUnavailableErrMsg);
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
 
     try {
@@ -899,7 +874,7 @@ public class TablesController extends AuthenticatedController {
           tablespaceList
               .stream()
               .filter(x -> !x.tableSpaceName.startsWith("pg_"))
-              .map(x -> parseToTableSpaceInfoResp(x))
+              .map(TableSpaceUtil::parseToTableSpaceInfo)
               .collect(Collectors.toList());
       return PlatformResults.withData(tableSpaceInfoRespList);
     } catch (IOException ioe) {
@@ -909,73 +884,65 @@ public class TablesController extends AuthenticatedController {
     }
   }
 
-  private TableSpaceInfo parseToTableSpaceInfoResp(TableSpaceQueryResponse tablespace) {
-    TableSpaceInfo.TableSpaceInfoBuilder builder = TableSpaceInfo.builder();
-    builder.name(tablespace.tableSpaceName);
-    try {
-      ObjectMapper objectMapper = Json.mapper();
-      for (String optionStr : tablespace.tableSpaceOptions) {
-        if (optionStr.startsWith("replica_placement=")) {
-          optionStr = optionStr.replaceFirst("replica_placement=", "");
-          TableSpaceOptions option = objectMapper.readValue(optionStr, TableSpaceOptions.class);
-          builder.numReplicas(option.numReplicas).placementBlocks(option.placementBlocks);
-        }
-      }
-      return builder.build();
-    } catch (IOException ioe) {
-      LOG.error(
-          "Unable to parse options fron fetchTablespaceQuery response {}",
-          tablespace.tableSpaceOptions,
-          ioe);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error while fetching TableSpace information");
-    }
-  }
+  /**
+   * This API starts a task for tablespaces creation.
+   *
+   * @param customerUUID UUID of the customer owning the universe.
+   * @param universeUUID UUID of the universe in which the tablespaces will be created.
+   */
+  @ApiOperation(
+      value = "Create tableSpaces",
+      nickname = "createTableSpaces",
+      response = YBPTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "CreateTableSpacesRequest",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.CreateTablespaceParams",
+        paramType = "body")
+  })
+  public Result createTableSpaces(UUID customerUUID, UUID universeUUID) {
+    // Validate customer UUID.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID.
+    Universe universe = Universe.getOrBadRequest(universeUUID);
 
-  @ApiModel(description = "Tablespace information response")
-  @Jacksonized
-  @Builder
-  static class TableSpaceInfo {
+    // Extract tablespaces list.
+    CreateTablespaceParams tablespacesInfo = parseJsonAndValidate(CreateTablespaceParams.class);
 
-    @ApiModelProperty(value = "Tablespace Name")
-    public String name;
+    TableSpaceUtil.validateTablespaces(tablespacesInfo, universe);
 
-    @ApiModelProperty(value = "numReplicas")
-    public int numReplicas;
+    CreateTableSpaces.Params taskParams = new CreateTableSpaces.Params();
+    taskParams.universeUUID = universeUUID;
+    taskParams.tablespaceInfos = tablespacesInfo.tablespaceInfos;
+    taskParams.expectedUniverseVersion = universe.version;
 
-    @ApiModelProperty(value = "placements")
-    public List<PlacementBlock> placementBlocks;
-  }
+    UUID taskUUID = commissioner.submit(TaskType.CreateTableSpacesInUniverse, taskParams);
+    LOG.info("Submitted create tablespaces task, uuid = {}.", taskUUID);
 
-  static class PlacementBlock {
-    @ApiModelProperty(value = "Cloud")
-    public String cloud;
+    CustomerTask.create(
+        customer,
+        universe.universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.CreateTableSpaces,
+        universe.name);
 
-    @ApiModelProperty(value = "Region")
-    public String region;
+    LOG.info(
+        "Saved task uuid {} in customer tasks table for universe {}:{}.",
+        taskUUID,
+        universeUUID,
+        universe.name);
 
-    @ApiModelProperty(value = "Zone")
-    public String zone;
-
-    @ApiModelProperty(value = "Minimum replicas")
-    @JsonAlias("min_num_replicas")
-    public int minNumReplicas;
-  }
-
-  private static class TableSpaceQueryResponse {
-    @JsonProperty("spcname")
-    public String tableSpaceName;
-
-    @JsonProperty("spcoptions")
-    public List<String> tableSpaceOptions;
-  }
-
-  static class TableSpaceOptions {
-    @JsonProperty("num_replicas")
-    public int numReplicas;
-
-    @JsonProperty("placement_blocks")
-    public List<PlacementBlock> placementBlocks;
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.CreateTableSpaces,
+            Json.toJson(request().body().asJson()),
+            taskUUID);
+    return new YBPTask(taskUUID, universeUUID).asResult();
   }
 
   private Result listTablesWithParentTableInfo(UUID customerUUID, UUID universeUUID) {
@@ -1106,7 +1073,7 @@ public class TablesController extends AuthenticatedController {
                 partition.keyspace = dbName;
                 return partition;
               })
-          .collect(Collectors.toMap(partition -> partition.getKey(), Function.identity()));
+          .collect(Collectors.toMap(TablePartitionInfo::getKey, Function.identity()));
     } catch (IOException e) {
       LOG.error("Error while parsing partition query response {}", jsonData, e);
       throw new PlatformServiceException(

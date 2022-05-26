@@ -67,12 +67,14 @@
 #include "commands/defrem.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
+#include "optimizer/cost.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "fmgr.h"
 #include "funcapi.h"
@@ -2305,4 +2307,12 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		}
 	}
 	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id);
+}
+
+bool YBCIsRegionLocal(Relation rel) {
+	double cost = 0.0;
+	return IsNormalProcessingMode() &&
+			!IsSystemRelation(rel) &&
+			get_yb_tablespace_cost(rel->rd_rel->reltablespace, &cost) &&
+			cost <= yb_interzone_cost;
 }

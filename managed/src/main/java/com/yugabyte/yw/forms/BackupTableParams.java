@@ -95,6 +95,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
   public int parallelism = 8;
 
+  @ApiModelProperty(value = "Don't add -m flag during gsutil upload dir command")
+  public boolean disableParallelism = false;
+
   // The associated schedule UUID (if applicable)
   @ApiModelProperty(value = "Schedule UUID")
   public UUID scheduleUUID = null;
@@ -150,4 +153,8 @@ public class BackupTableParams extends TableManagerParams {
   public void setFullBackup(boolean isFullBackup) {
     this.isFullBackup = isFullBackup;
   }
+
+  @JsonIgnore public List<UUID> targetAsyncReplicationRelationships;
+
+  @JsonIgnore public List<UUID> sourceAsyncReplicationRelationships;
 }

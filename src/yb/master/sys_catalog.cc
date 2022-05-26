@@ -187,6 +187,10 @@ void SysCatalogTable::StartShutdown() {
   if (peer) {
     CHECK(peer->StartShutdown());
   }
+
+  if (multi_raft_manager_) {
+    multi_raft_manager_->StartShutdown();
+  }
 }
 
 void SysCatalogTable::CompleteShutdown() {
@@ -197,6 +201,9 @@ void SysCatalogTable::CompleteShutdown() {
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();
   tablet_prepare_pool_->Shutdown();
+  if (multi_raft_manager_) {
+    multi_raft_manager_->CompleteShutdown();
+  }
 }
 
 Status SysCatalogTable::ConvertConfigToMasterAddresses(
@@ -661,7 +668,7 @@ Status SysCatalogTable::WaitUntilRunning() {
   return Status::OK();
 }
 
-CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
+Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   if (PREDICT_FALSE(FLAGS_TEST_sys_catalog_write_rejection_percentage > 0) &&
       RandomUniformInt(1, 99) <= FLAGS_TEST_sys_catalog_write_rejection_percentage) {
     return STATUS(InternalError, "Injected random failure for testing.");

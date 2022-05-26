@@ -76,10 +76,11 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
 
   ~TwoDCOutputClient() {
     std::lock_guard<decltype(lock_)> l(lock_);
+    shutdown_ = true;
     rpcs_->Abort({&write_handle_});
   }
 
-  CHECKED_STATUS ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
+  Status ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
 
   void WriteCDCRecordDone(const Status& status, const WriteResponsePB& response);
 
@@ -88,23 +89,23 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   // Process all records in twodc_resp_copy_ starting from the start index. If we find a ddl
   // record, then we process the current changes first, wait for those to complete, then process
   // the ddl + other changes after.
-  CHECKED_STATUS ProcessChangesStartingFromIndex(int start);
+  Status ProcessChangesStartingFromIndex(int start);
 
-  CHECKED_STATUS ProcessRecordForTablet(
+  Status ProcessRecordForTablet(
       const int record_idx, const Result<client::internal::RemoteTabletPtr>& tablet);
 
-  CHECKED_STATUS ProcessRecordForLocalTablet(const int record_idx);
+  Status ProcessRecordForLocalTablet(const int record_idx);
 
-  CHECKED_STATUS ProcessRecordForTabletRange(
+  Status ProcessRecordForTabletRange(
       const int record_idx,
       const std::string partition_key_start,
       const std::string partition_key_end,
       const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets);
 
-  CHECKED_STATUS ProcessSplitOp(const cdc::CDCRecordPB& record);
+  Result<bool> ProcessSplitOp(const cdc::CDCRecordPB& record);
 
   // Processes the Record and sends the CDCWrite for it.
-  CHECKED_STATUS ProcessRecord(
+  Status ProcessRecord(
       const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record);
 
   void SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request);
@@ -138,6 +139,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   Status error_status_ GUARDED_BY(lock_);
   OpIdPB op_id_ GUARDED_BY(lock_) = consensus::MinimumOpId();
   bool done_processing_ GUARDED_BY(lock_) = false;
+  bool shutdown_ GUARDED_BY(lock_) = false;
 
   uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
@@ -225,7 +227,11 @@ Status TwoDCOutputClient::ProcessChangesStartingFromIndex(int start) {
         break;
       }
       // No other records to process, so we can process the SPLIT_OP.
-      RETURN_NOT_OK(ProcessSplitOp(record));
+      bool done = VERIFY_RESULT(ProcessSplitOp(record));
+      if (done) {
+        HandleResponse();
+        return Status::OK();
+      }
       continue;
     }
 
@@ -317,7 +323,7 @@ Status TwoDCOutputClient::ProcessRecordForLocalTablet(const int record_idx) {
   return ProcessRecord({consumer_tablet_info_.tablet_id}, twodc_resp_copy_.records(record_idx));
 }
 
-Status TwoDCOutputClient::ProcessSplitOp(const cdc::CDCRecordPB& record) {
+Result<bool> TwoDCOutputClient::ProcessSplitOp(const cdc::CDCRecordPB& record) {
   // Construct and send the update request.
   master::ProducerSplitTabletInfoPB split_info;
   split_info.set_tablet_id(record.split_tablet_request().tablet_id());
@@ -340,10 +346,7 @@ Status TwoDCOutputClient::ProcessSplitOp(const cdc::CDCRecordPB& record) {
     std::lock_guard<decltype(lock_)> l(lock_);
     done = IncProcessedRecordCount();
   }
-  if (done) {
-    HandleResponse();
-  }
-  return Status::OK();
+  return done;
 }
 
 void TwoDCOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request) {
@@ -374,6 +377,10 @@ void TwoDCOutputClient::WriteCDCRecordDone(const Status& status, const WriteResp
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     retained = rpcs_->Unregister(&write_handle_);
+    if (shutdown_) {
+      LOG(INFO) << "Aborting ApplyChanges since the client is shutting down.";
+      return;
+    }
   }
   if (!status.ok()) {
     HandleError(status, true /* done */);

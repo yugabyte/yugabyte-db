@@ -41,7 +41,7 @@ PTAlterKeyspace::PTAlterKeyspace(MemoryContext *memctx,
 PTAlterKeyspace::~PTAlterKeyspace() {
 }
 
-CHECKED_STATUS PTAlterKeyspace::Analyze(SemContext *sem_context) {
+Status PTAlterKeyspace::Analyze(SemContext *sem_context) {
   if (*name_ == common::kRedisKeyspaceName) {
     return sem_context->Error(loc(),
                               strings::Substitute("$0 is a reserved keyspace name",

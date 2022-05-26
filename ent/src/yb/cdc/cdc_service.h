@@ -81,7 +81,7 @@ struct TabletCheckpoint {
 // log cache eviction as well as for intent cleanup.
 struct TabletCDCCheckpointInfo {
   OpId cdc_op_id = OpId::Max();
-  OpId cdc_sdk_op_id = OpId::Max();
+  OpId cdc_sdk_op_id = OpId::Invalid();
 };
 
 using TabletOpIdMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
@@ -131,7 +131,7 @@ class CDCServiceImpl : public CDCServiceIf {
                           GetCDCDBStreamInfoResponsePB* resp,
                           rpc::RpcContext context) override;
 
-  CHECKED_STATUS UpdateCdcReplicatedIndexEntry(
+  Status UpdateCdcReplicatedIndexEntry(
       const string& tablet_id, int64 replicated_index, boost::optional<int64> replicated_term,
       const OpId& cdc_sdk_replicated_op);
 
@@ -166,8 +166,14 @@ class CDCServiceImpl : public CDCServiceIf {
     return server_metrics_;
   }
 
-  // Returns true if this server has received a GetChanges call.
+  // Returns true if this server is a producer of a valid replication stream.
   bool CDCEnabled();
+
+  Status RetainIntents(
+      const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& cdc_sdk_op_id);
+
+  // Marks the CDC enable flag as true.
+  void SetCDCServiceEnabled();
 
  private:
   FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);
@@ -188,11 +194,12 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<std::string> GetCdcStreamId(const ProducerTabletInfo& producer_tablet,
                                      const std::shared_ptr<client::YBSession>& session);
 
-  CHECKED_STATUS UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
+  Status UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
                                   const OpId& sent_op_id,
                                   const OpId& commit_op_id,
                                   const client::YBSessionPtr& session,
-                                  uint64_t last_record_hybrid_time);
+                                  uint64_t last_record_hybrid_time,
+                                  bool force_update = false);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
       const CDCStreamId& stream_id);
@@ -212,7 +219,7 @@ class CDCServiceImpl : public CDCServiceIf {
   void AddStreamMetadataToCache(const std::string& stream_id,
                                 const std::shared_ptr<StreamMetadata>& stream_metadata);
 
-  CHECKED_STATUS CheckTabletValidForStream(const ProducerTabletInfo& producer_info);
+  Status CheckTabletValidForStream(const ProducerTabletInfo& producer_info);
 
   void TabletLeaderGetChanges(const GetChangesRequestPB* req,
                               GetChangesResponsePB* resp,
@@ -235,7 +242,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);
-  CHECKED_STATUS GetTServers(const TabletId& tablet_id,
+  Status GetTServers(const TabletId& tablet_id,
                              std::vector<client::internal::RemoteTabletServer*>* servers);
 
   std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(client::internal::RemoteTabletServer* ts);
@@ -249,7 +256,7 @@ class CDCServiceImpl : public CDCServiceIf {
   OpId GetMinAppliedCheckpointForTablet(const std::string& tablet_id,
                                         const client::YBSessionPtr& session);
 
-  CHECKED_STATUS UpdatePeersCdcMinReplicatedIndex(
+  Status UpdatePeersCdcMinReplicatedIndex(
       const TabletId& tablet_id,
       const TabletCDCCheckpointInfo& cdc_checkpoint_min);
 
@@ -261,13 +268,13 @@ class CDCServiceImpl : public CDCServiceIf {
                                     std::atomic<int>* const finished_tasks,
                                     int total_tasks);
 
-  CHECKED_STATUS BootstrapProducerHelperParallelized(
+  Status BootstrapProducerHelperParallelized(
     const BootstrapProducerRequestPB* req,
     BootstrapProducerResponsePB* resp,
     std::vector<client::YBOperationPtr>* ops,
     CDCCreationState* creation_state);
 
-  CHECKED_STATUS BootstrapProducerHelper(
+  Status BootstrapProducerHelper(
     const BootstrapProducerRequestPB* req,
     BootstrapProducerResponsePB* resp,
     std::vector<client::YBOperationPtr>* ops,
@@ -357,7 +364,7 @@ class CDCServiceImpl : public CDCServiceIf {
   // get_minimum_checkpoints_and_update_peers_thread_ that it should exit.
   bool cdc_service_stopped_ GUARDED_BY(mutex_){false};
 
-  // True when this service has received a GetChanges request on a valid replication stream.
+  // True when the server is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
 };
 

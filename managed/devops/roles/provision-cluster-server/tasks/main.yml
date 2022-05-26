@@ -1,4 +1,4 @@
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2022 YugaByte, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -76,10 +76,9 @@
     recurse: yes
   with_items: "{{ mount_points.split(',') }}"
 
-- include_tasks: "setup-cgroup.yml"
-  # setting up cgroup on YB DB nodes requires installing additional packages from external repos.
-  when: not air_gap and pg_max_mem_mb > 0
-  tags: yb-prebuilt-ami
+- name: setup-postgres-cgroups
+  include_role:
+    name: setup-cgroup
 
 # Give yugabyte user sudo access to start/stop/restart master and tserver
 - name: Add yugabyte sudo user without password for metric collection operations

@@ -496,7 +496,7 @@ class QLValue {
   }
 
   //----------------------------- serializer / deserializer ---------------------------------
-  CHECKED_STATUS Deserialize(const std::shared_ptr<QLType>& ql_type,
+  Status Deserialize(const std::shared_ptr<QLType>& ql_type,
                              const QLClient& client,
                              Slice* data);
 
@@ -511,7 +511,7 @@ class QLValue {
   // is the coverter's return type. The converter's return type <data_type> is unsigned while
   // <num_type> may be signed or unsigned. <setter> sets the value in QLValue.
   template<typename num_type, typename data_type>
-  CHECKED_STATUS CQLDeserializeNum(
+  Status CQLDeserializeNum(
       size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(num_type),
       Slice* data);
 
@@ -520,7 +520,7 @@ class QLValue {
   // <data_type> is the coverter's return type. The converter's return type <data_type> is an
   // integer type. <setter> sets the value in QLValue.
   template<typename float_type, typename data_type>
-  CHECKED_STATUS CQLDeserializeFloat(
+  Status CQLDeserializeFloat(
       size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(float_type),
       Slice* data);
 

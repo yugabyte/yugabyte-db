@@ -41,7 +41,7 @@ namespace yb {
 
 namespace master {
 
-inline CHECKED_STATUS SetupError(MasterErrorPB* error,
+inline Status SetupError(MasterErrorPB* error,
                                  MasterErrorPB::Code code,
                                  const Status& s) {
   StatusToPB(s, error->mutable_status());
@@ -49,7 +49,7 @@ inline CHECKED_STATUS SetupError(MasterErrorPB* error,
   return s;
 }
 
-inline CHECKED_STATUS CheckIfNoLongerLeader(const Status& s) {
+inline Status CheckIfNoLongerLeader(const Status& s) {
   // TODO (KUDU-591): This is a bit of a hack, as right now
   // there's no way to propagate why a write to a consensus configuration has
   // failed. However, since we use Status::IllegalState()/IsAborted() to
@@ -70,7 +70,7 @@ inline CHECKED_STATUS CheckIfNoLongerLeader(const Status& s) {
 // Service::UnavailableError as the error, set NOT_THE_LEADER as the
 // error code and return true.
 template<class RespClass>
-CHECKED_STATUS CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* resp) {
+Status CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* resp) {
   auto new_status = CheckIfNoLongerLeader(s);
   if (MasterError(new_status) == MasterErrorPB::NOT_THE_LEADER) {
     return SetupError(resp->mutable_error(), MasterErrorPB::NOT_THE_LEADER, new_status);

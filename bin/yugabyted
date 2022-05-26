@@ -66,12 +66,14 @@ YUGABYTE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
 FALSE_CHOICES = ["false", "False", "f", "F", "no", "No", "n", "N", "0"]
 BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
+FAULT_TOLERANCE_CHOICES = ["zone", "region", "cloud"]
 SLACK_LINK = "https://www.yugabyte.com/slack"
 COMMUNITY_REWARDS_LINK = "https://www.yugabyte.com/community-rewards/"
 HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
 YUGABYTED_LINK = "https://docs.yugabyte.com/preview/reference/configuration/yugabyted/"
 YUGABYTED_START = "https://docs.yugabyte.com/preview/reference/configuration/yugabyted/#start"
 DEFAULT_DEMO_DATABASE = "northwind"
+DEFAULT_FAULT_TOLERANCE = "zone"
 SAMPLE_DATA_LINKS = {
     "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
     "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
@@ -122,6 +124,7 @@ PREFIX = {
     'status' : "",
     'version' : "",
     'collect_logs' : "",
+    'configure' : "",
     'connect' : "",
     'connect ycql' : "",
     'connect ysql' : "",
@@ -138,6 +141,7 @@ USAGE = {
     'status' : "yugabyted status [flags]",
     'version' : "yugabyted version [flags]",
     'collect_logs' : "yugabyted collect_logs [flags]",
+    'configure' : "yugabyted configure [flags]",
     'connect' : "yugabyted connect [command] [flags]",
     'connect ycql' : "yugabyted connect ycql [flags]",
     'connect ysql' : "yugabyted connect ysql [flags]",
@@ -157,6 +161,7 @@ EXAMPLE = {
     'status' : "",
     'version' : "",
     'collect_logs' : "",
+    'configure' : "",
 }
 
 EPILOG_COMMON = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
@@ -169,6 +174,7 @@ EPILOG_SPECIFIC = {
     'status' : "",
     'version' : "",
     'collect_logs' : "",
+    'configure' : "",
 }
 
 # YugabyteDB configs.
@@ -186,6 +192,9 @@ DEFAULT_CALLHOME = True
 DEFAULT_YSQL_USER = "yugabyte"
 DEFAULT_YSQL_PASSWORD = "yugabyte"
 DEFAULT_YSQL_DB = "yugabyte"
+DEFAULT_CLOUD_PROVIDER = "cloud1"
+DEFAULT_CLOUD_REGION = "datacenter1"
+DEFAULT_CLOUD_ZONE = "rack1"
 YSQL_PASSWORD_LENGTH_WARNING = "Warning: Your 'YSQL_PASSWORD' length is greater than 99 characters.\
 Please set 'PGPASSWORD' in environment variables to use 'bin/ysqlsh'."
 DEFAULT_YCQL_USER = "cassandra"
@@ -532,6 +541,84 @@ class ControlScript(object):
         else:
             Output.print_and_log("Logs are packaged into {}".format(tarpath))
 
+    def configure(self):
+
+        # to-do: can be removed after multi-region and geo-replicated feature is implemented
+        fault_tolerance = self.configs.temp_data.get("fault_tolerance")
+        if fault_tolerance == "cloud":
+            Output.log_error_and_exit("Cloud based fault tolerance is not supported yet.")
+        elif fault_tolerance == "region":
+            Output.log_error_and_exit("Region based Fault tolerance is not supported yet.")
+
+        join_ip = self.configs.saved_data.get("join")
+        advertise_ip = self.advertise_ip()
+        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                        self.configs.saved_data.get("master_rpc_port"))
+
+        current_masters = self.get_all_masters()
+        current_masters = [ master.split(':')[0] for master in current_masters ]
+        leader_master = self.get_leader_master().split(':')[0]
+
+        leader_master_http_endpoint = "{}:{}".format(leader_master,
+                        self.configs.saved_data.get("master_webserver_port"))
+
+        placement_locations = self.get_all_masters_locations(leader_master_http_endpoint)
+
+        new_masters = self.get_new_valid_masters(current_masters,
+                leader_master, placement_locations)
+
+        masters_to_remove = [ master for master in current_masters if master not in new_masters ]
+        masters_to_add = [ master for master in new_masters if master not in current_masters ]
+
+        if not masters_to_remove and not masters_to_add:
+            Output.log("Desired fault tolerance is already setup. No Masters to move.")
+        else :
+            for i in range(len(masters_to_remove)):
+                self.replace_master(master_addr, masters_to_remove[i], masters_to_add[i])
+
+        current_masters = self.get_all_masters()
+        placement_info = self.configs.temp_data.get("data_placement_constraint")
+        if not placement_info:
+            placement_info = []
+            for master in current_masters:
+                placement_info.append(placement_locations[master.split(":")[0]])
+            placement_info = ",".join(placement_info)
+
+        if not self.is_placement_constraint_valid_length(placement_info):
+            Output.log_error_and_exit("FAILED: Invalid number of placement constraint specified.")
+
+        if not self.is_placement_constraint_valid_values(placement_locations, placement_info):
+            Output.log_error_and_exit("FAILED: Invalid values provided for placement constraint.")
+
+        master_addresses = ",".join(current_masters)
+        rf_value = self.configs.temp_data.get("replication_factor")
+
+        if not YBAdminProxy.modify_placement_info(master_addresses, placement_info, rf_value):
+            Output.log_error_and_exit("FAILED: Setting of placement info of masters")
+        else:
+            Output.log("Configure step was successful.")
+
+        status_details = {}
+        if self.is_master_placement_location_valid(placement_locations, new_masters):
+            success_status = "Universe can survive at least 1 availability {} failure".format(
+                    self.configs.temp_data.get("fault_tolerance"))
+            status_details = [(Output.make_yellow("Status"),
+            "Configuration successful. Primary data placement is geo-redundant"), ]
+            status_details += [
+                (Output.make_yellow("Fault Tolerance"), success_status),
+            ]
+        else:
+            failure_status = Output.make_red("Universe cannot survive even 1 availability " +
+                        "{} failure".format(self.configs.temp_data.get("fault_tolerance")))
+            status_details = [(Output.make_yellow("Status"),
+                "Configuration unsuccessful. " + \
+                "Primary data placement is not geo-redundant"), ]
+            status_details += [
+                (Output.make_yellow("Fault Tolerance"), failure_status),
+            ]
+
+        Output.print_out(self.get_status_string_for_configure(status_details))
+
     #All Pre-requisites check for Linux
     def linux_prereqs_check(self):
         prereqs_failed = set()
@@ -715,6 +802,9 @@ class ControlScript(object):
                 ",".join(METRICS_SNAPSHOT_LIST)),
             "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
             "--ysql_num_shards_per_tserver={}".format(YSQL_NUM_SHARDS_PER_TSERVER),
+            "--placement_cloud={}".format(self.configs.saved_data.get("cloud_provider")),
+            "--placement_region={}".format(self.configs.saved_data.get("cloud_region")),
+            "--placement_zone={}".format(self.configs.saved_data.get("cloud_zone")),
         ]
 
         if not join_ip:
@@ -1178,6 +1268,225 @@ class ControlScript(object):
 
         raise RetryableError()
 
+    # Waits till the newly added master comes in the list of masters of cluster
+    def wait_get_master(self, master, timeout=180):
+        Output.log("Waiting for master with address {} to be added".format(master))
+        try:
+            return retry_op_with_argument(self.get_master_at_addrs, master, timeout)
+        except RuntimeError:
+            Output.log("Failed to find master {} in the masters list. Exception: {}".format(
+                traceback.format_exc()))
+            return False
+
+    # Raises a Retryable error if the master is not in the list of master of the cluster
+    def get_master_at_addrs(self, master):
+        join_ip = self.configs.saved_data.get("join")
+        advertise_ip = self.advertise_ip()
+        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                        self.configs.saved_data.get("master_rpc_port"))
+
+        all_masters_and_roles = { m[1].split(":")[0]: m[2]
+                                    for m in YBAdminProxy.get_masters(master_addr) }
+        if master in all_masters_and_roles and all_masters_and_roles[master] == "FOLLOWER":
+            return True
+
+        raise RetryableError()
+
+    # Waits till the newly removed master doesn't comes in the list of masters of cluster
+    def wait_remove_master(self, master, timeout=180):
+        Output.log("Waiting for master with address {} to be removed".format(master))
+        try:
+            return retry_op_with_argument(self.remove_master_at_addrs, master, timeout)
+        except RuntimeError:
+            Output.log("Newly removed master {} is still present in the masters list." +
+                    " Exception: {}".format(traceback.format_exc()))
+            return False
+
+    # Raises a Retryable error if the newly removed master is in the list of master of the cluster
+    def remove_master_at_addrs(self, master):
+        join_ip = self.configs.saved_data.get("join")
+        advertise_ip = self.advertise_ip()
+        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                        self.configs.saved_data.get("master_rpc_port"))
+
+        all_masters = [ m[1].split(":")[0] for m in YBAdminProxy.get_masters(master_addr) ]
+        if master not in all_masters:
+            return True
+
+        raise RetryableError()
+
+    # Get Leader master of the cluster
+    def get_leader_master(self):
+        join_ip = self.configs.saved_data.get("join")
+        advertise_ip = self.advertise_ip()
+        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                        self.configs.saved_data.get("master_rpc_port"))
+        all_masters_info = YBAdminProxy.get_masters(master_addr)
+        for master_info in all_masters_info:
+            if master_info[2] == "LEADER":
+                return master_info[1]
+
+        Output.log_error_and_exit("Couldn't get Leader master")
+
+    # Get all masters placement locations
+    def get_all_masters_locations(self, master_hostport):
+
+        try:
+            leaderMasterURL = "http://{}/api/v1/tablet-servers".format(master_hostport)
+            response = urlopen(Request(leaderMasterURL))
+            jsonResponseFromMaster = json.load(response)
+            dictOfAllNodes = jsonResponseFromMaster.get("")
+
+            placementInfoOfEveryNode = {}
+            for node in dictOfAllNodes:
+                hostname = re.split('[-:]', node)[0]
+                cloudLocationOfHost = "{}.{}.{}".format(dictOfAllNodes[node]["cloud"],
+                    dictOfAllNodes[node]["region"], dictOfAllNodes[node]["zone"])
+                placementInfoOfEveryNode[hostname] = cloudLocationOfHost
+
+            return placementInfoOfEveryNode
+
+        except HTTPError as http_err:
+            print('HTTP error occurred while fetching cloud location: {}', http_err)
+        except Exception as err:
+            print('Other error occurred while fetching cloud location: {}', err)
+
+    # Get the location of a master in accordance to the fault tolerance
+    def get_cloud_location_per_fault_tolerance(self, master_location):
+        fault_tolerance = self.configs.temp_data.get("fault_tolerance")
+        master_location = master_location.split(".")
+        ft_location = ""
+        if fault_tolerance == "cloud":
+            ft_location = master_location[0]
+        elif fault_tolerance == "region":
+            ft_location = ".".join(master_location[:2])
+        else:
+            ft_location = ".".join(master_location)
+
+        return ft_location
+
+    # # Check if current placement of masters is valid or not
+    # def is_current_masters_valid(self, current_masters, master_locations):
+    #     current_positions = set()
+    #     for master in current_masters:
+    #         current_positions.add(self.get_ft_location(master_locations[master]))
+
+    #     return len(current_positions) == len(current_masters)
+
+    # Get new valid master addresses that does not violate fault tolerance policy
+    # if there are not any masters then raise error and output the same
+    def get_new_valid_masters(self, current_masters, leader_master, master_locations):
+        new_master_locations = dict()
+        new_master_locations[leader_master] = self.get_cloud_location_per_fault_tolerance(
+                                                master_locations[leader_master])
+        self.get_cloud_location_per_fault_tolerance(master_locations[leader_master])
+
+        for master in current_masters:
+            ft_location = self.get_cloud_location_per_fault_tolerance(master_locations[master])
+            if ft_location not in new_master_locations.values():
+                new_master_locations[master] = ft_location
+
+        if len(new_master_locations) == len(current_masters):
+            return new_master_locations.keys()
+
+        for master, location in master_locations.items():
+            ft_location = self.get_cloud_location_per_fault_tolerance(location)
+            if ft_location not in new_master_locations.values():
+                new_master_locations[master] = ft_location
+            if len(new_master_locations) == len(current_masters):
+                break
+
+        new_valid_masters_list = new_master_locations.keys()
+
+        if len(new_valid_masters_list) != len(current_masters):
+            for master in current_masters:
+                if not master in new_valid_masters_list:
+                    new_valid_masters_list.append(master)
+                if len(new_valid_masters_list) == len(current_masters):
+                    break
+
+        return new_valid_masters_list
+
+    # Replace the old master with a new one to maintain fault tolerance policy
+    def replace_master(self, master_addr, old_master, new_master):
+        Output.log("Adding master {} to the cluster.".format(new_master))
+        if not YBAdminProxy.add_master(master_addr, new_master):
+            Output.log_error_and_exit("Failed to add master {} to the cluster."
+                            .format(new_master))
+        if not self.wait_get_master(new_master):
+            Output.log_error_and_exit("Couldn't get master {} in the cluster masters list."
+                            .format(new_master))
+        else:
+            Output.log("Added master {} to the cluster".format(new_master))
+
+        Output.log("Removing master {} from the cluster.".format(old_master))
+        if not YBAdminProxy.remove_master(master_addr, old_master):
+            Output.log_error_and_exit("Failed to remove master {} from the cluster."
+                            .format(old_master))
+        if not self.wait_remove_master(old_master):
+            Output.log_error_and_exit("master {} in the cluster masters list still exists."
+                            .format(old_master))
+        else:
+            Output.log("Removed master {} from the cluster".format(old_master))
+
+    # After Master reconsile step is complete, determine if master placement
+    # is valid per fault tolerance specified in the configure command
+    def is_master_placement_location_valid(self, placement_locations, new_masters):
+
+        fault_tolerance = self.configs.temp_data.get("fault_tolerance")
+        replication_factor = self.configs.temp_data.get("replication_factor")
+
+        master_placement_locations = dict()
+        for master in new_masters:
+            master_placement_locations[master] = placement_locations.get(master)
+
+        # determine the placement location index based on the fault tolerance
+        # default zone fault tolerance.
+        placement_location_index = 2
+        if(fault_tolerance == "region"):
+            placement_location_index = 1
+        if(fault_tolerance == "cloud"):
+            placement_location_index = 0
+
+        placement_location_set = set()
+        for master_node in master_placement_locations:
+            placement_location_temp = master_placement_locations[
+                master_node
+            ].split('.')[placement_location_index]
+            placement_location_set.add(placement_location_temp)
+
+        invalid_placement = True
+        if len(placement_location_set) != int(replication_factor):
+            invalid_placement = False
+
+        return invalid_placement
+
+    # This functions is used to determine if the placement constraint specified in
+    # configure command is valid
+    def is_placement_constraint_valid_values(self, placement_locations, placement_constraint):
+
+        placement_constraint_list = placement_constraint.split(',')
+        placement_locations_list = placement_locations.values()
+        for constraint in placement_constraint_list:
+            if constraint.lower() in placement_locations_list:
+                is_valid = True
+            else:
+                is_valid = False
+                break
+
+        return is_valid
+
+    def is_placement_constraint_valid_length(self, placement_constraint):
+
+        placement_constraint_list = placement_constraint.split(',')
+
+        is_valid = True
+        if len(placement_constraint_list) != 3:
+            is_valid = False
+
+        return is_valid
+
+
     # Verify that the master is in the current list of masters.
     # If not, set it up appropriately.
     def setup_master(self, timeout=180):
@@ -1387,6 +1696,22 @@ class ControlScript(object):
         status += div_line
         return status
 
+    # Returns pretty output table for configure command.
+    def get_status_string_for_configure(self, status_info):
+
+        title = Output.make_bold(Output.make_green(SCRIPT_NAME))
+        extra_len = len(Output.make_bold(Output.make_green("")))
+
+        div_line = "+" + "-" * 98 + "+" + "\n"
+        status = "\n" + div_line
+        status += ("| {:^" + str(96 + extra_len) + "} |\n").format(title)
+        status += div_line
+        for k, v in status_info:
+            extra_len = len(Output.make_yellow(""))
+            status += ("| {:" + str(20 + extra_len) + "}: {:<74} |\n").format(k, v)
+        status += div_line
+        return status
+
     # Callhome loop. Sends data every minute for the first hour, then every hour after.
     def callhome_loop(self):
         num_times_called = 0
@@ -1462,6 +1787,47 @@ class ControlScript(object):
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
 
+        # if args.parser == "configure":
+        #     self.configs.temp_data["placement_locations"] = args.set_placement_to
+
+        if args.parser == "configure":
+            if args.fault_tolerance is not None:
+                if args.fault_tolerance.lower() in FAULT_TOLERANCE_CHOICES:
+                    self.configs.temp_data["fault_tolerance"] = args.fault_tolerance.lower()
+                else:
+                    has_errors = True
+                    Output.print_out(
+                        "Incorrect fault_tolerance value specified. " +
+                        "Please specify one of the following - zone, region or cloud ".format(
+                            args.fault_tolerance.lower()))
+
+            if args.data_placement_constraint is not None:
+                data_constraints = args.data_placement_constraint.split(",")
+                has_errors = False
+                for constraint in data_constraints:
+                    cloud_info = constraint.split(".")
+                    if (len(cloud_info) == 3):
+                        for value in cloud_info:
+                            if not value:
+                                has_errors=True
+                    else:
+                        has_errors = True
+
+                if has_errors:
+                    Output.print_out(
+                        "Incorrect value specified for data_placement_constraint. " +
+                        "Please specify comma sperated value with format " +
+                        "- cloudprovider.region.zone".format(
+                            args.data_placement_constraint))
+                else:
+                    self.configs.temp_data[
+                        "data_placement_constraint"] = args.data_placement_constraint
+
+            if args.rf is not None:
+                self.configs.temp_data["replication_factor"] = str(args.rf)
+            else:
+                self.configs.temp_data["replication_factor"] = str("3")
+
         if args.parser == "start":
             if args.data_dir is not None:
                 config_data_dir = self.configs.saved_data.get("data_dir")
@@ -1479,6 +1845,35 @@ class ControlScript(object):
                     Output.print_out(
                         "Old log directory already exists at {}. New logs will go to {}".format(
                             config_log_dir, args.log_dir))
+
+            if args.cloud_location is not None:
+                cloud_location = args.cloud_location.split(".")
+                if len(cloud_location) == 3:
+                    self.configs.saved_data["cloud_provider"] = cloud_location[0]
+                    self.configs.saved_data["cloud_region"] = cloud_location[1]
+                    self.configs.saved_data["cloud_zone"] = cloud_location[2]
+                else:
+                    has_errors = True
+                    
+            if args.listen is not None:
+                if args.advertise_address is not None and args.listen != args.advertise_address:
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": --listen and --advertise_address flags " +
+                        "are same. --listen is depricated. Can't have different values for them.")
+                    has_errors = True
+                self.configs.saved_data["advertise_address"] = args.listen
+
+            if args.daemon is not None:
+                if args.background is not None and \
+                        self.parse_bool(args.daemon) != self.parse_bool(args.background):
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": --daemon and --background flags " +
+                        "are same. --daemon is depricated. Can't have different values for them.")
+                    has_errors = True
+                args.background = args.daemon
+
+            if args.background is None:
+                args.background = "True"
 
             args.ui = self.parse_bool(args.ui)
             args.background = self.parse_bool(args.background)
@@ -1568,7 +1963,8 @@ class ControlScript(object):
                 ("destroy", "Destroy YugabyteDB cluster and remove data."),
                 ("status", "Print status of YugabyteDB cluster."),
                 ("version", "Release version of YugabyteDB cluster."),
-                ("collect_logs", "Collect and package logs for troubleshooting.")):
+                ("collect_logs", "Collect and package logs for troubleshooting."),
+                ("configure", "Configure multi-zone/multiregion cluster")):
             example = ""
             if EXAMPLE[cmd]:
                 example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
@@ -1615,6 +2011,28 @@ class ControlScript(object):
                 "docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
                 action="store_true", default=False)
 
+        # # Commands that can change muti-zone/multi-region configuration.
+        # for cmd in ("configure",):
+        #     cur_parser = all_parsers[cmd]
+        #     cur_parser.add_argument(
+        #         "--set_placement_to", help="Change the placement information of the nodes",
+        #         metavar="")
+
+        # Commands that can change muti-zone/multi-region configuration.
+        for cmd in ("configure",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--fault_tolerance", help="No more than 1 node in the same " +
+                "fault tolerance can be a master",
+                metavar="")
+            cur_parser.add_argument(
+                "--data_placement_constraint", help="Data placement constriant to be applied " +
+                "on the YugabyteDB Cluster",
+                metavar="")
+            cur_parser.add_argument(
+                "--rf", help="Set the replication factor for each tablet",
+                metavar="")
+
         # Commands that can alter configuration file.
         for cmd in ("start",):
             cur_parser = all_parsers[cmd]
@@ -1635,6 +2053,8 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--webserver_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
+                "--listen", help=argparse.SUPPRESS)
+            cur_parser.add_argument(
                 "--advertise_address",
                 help="IP address or local hostname on which {} will listen.".format(SCRIPT_NAME),
                 metavar="")
@@ -1642,7 +2062,9 @@ class ControlScript(object):
                 "--join", help="IP address to which this process will join".format(SCRIPT_NAME),
                 metavar="")
             cur_parser.add_argument(
-                "--background", choices=BOOL_CHOICES, default="true", metavar="",
+                "--daemon", choices=BOOL_CHOICES, help=argparse.SUPPRESS)
+            cur_parser.add_argument(
+                "--background", choices=BOOL_CHOICES, metavar="",
                 help="Runs {} in the background as a daemon. Does not persist on restart. "
                      "Default true.".format(SCRIPT_NAME))
             cur_parser.add_argument(
@@ -1659,6 +2081,10 @@ class ControlScript(object):
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
                 "--initial_scripts_dir", help=argparse.SUPPRESS)
+            cur_parser.add_argument(
+                "--cloud_location", metavar="",
+                help="Cloud location of the node in form of cloudprovider.region.zone"
+            )
 
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -1787,6 +2213,9 @@ class Configs(object):
             "join": "",
             "ysql_enable_auth": False,
             "use_cassandra_authentication": False,
+            "cloud_provider": DEFAULT_CLOUD_PROVIDER,
+            "cloud_region": DEFAULT_CLOUD_REGION,
+            "cloud_zone": DEFAULT_CLOUD_ZONE,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -1795,6 +2224,9 @@ class Configs(object):
             "ui": False,
             "initial_scripts_dir": "",
             "collect_logs_stdout": False,
+            "data_placement_constraint": "",
+            "fault_tolerance": DEFAULT_FAULT_TOLERANCE,
+            "replication_factor":"",
         }
         self.config_file = config_file
 
@@ -2179,6 +2611,13 @@ class YBAdminProxy(object):
         return (0 == ret_code)
 
     @staticmethod
+    def remove_master(master_addrs, old_master, timeout=10):
+        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs,
+              "change_master_config", "REMOVE_SERVER", old_master, "7100"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (0 == ret_code)
+
+    @staticmethod
     def set_rf(master_addrs, rf, timeout=10):
         cmd = [ YBAdminProxy.path, "--init_master_addrs", master_addrs,
                 "modify_placement_info", "cloud1.datacenter1.rack1", str(rf) ]
@@ -2186,14 +2625,14 @@ class YBAdminProxy(object):
         return (0 == ret_code)
 
     @staticmethod
-    # Returns [ (uuid, ip:port) ] for each master
+    # Returns [ (uuid, ip:port, role) ] for each master
     def get_masters(master_addrs, timeout=10):
         cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "list_all_masters"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         if 0 != ret_code or len(out.splitlines()) <= 1:
             return []
         masters = [ line.split() for line in out.splitlines()[1:] ]
-        return [ (master[0], master[1]) for master in masters ]
+        return [ (master[0], master[1], master[3]) for master in masters ]
 
     # Returns list[tserver uuid] reported by yb-master.
     @staticmethod
@@ -2218,7 +2657,7 @@ class YBAdminProxy(object):
     def get_cluster_rf(master_addrs):
         cluster_config = YBAdminProxy.get_cluster_config(master_addrs)
         if cluster_config:
-            if cluster_config.has_key("replicationInfo"):
+            if "replicationInfo" in cluster_config:
                 return cluster_config["replicationInfo"]["liveReplicas"]["numReplicas"]
             else:
                 return 1
@@ -2250,6 +2689,17 @@ class YBAdminProxy(object):
                 return master_uuid
         return None
 
+    # Sets placement info
+    @staticmethod
+    def modify_placement_info(master_addrs, placement_locations, replication_factor, timeout=10):
+
+        if not replication_factor:
+            replication_factor = "3"
+
+        cmd = [YBAdminProxy.path, "-master_addresses", master_addrs, "modify_placement_info",
+                placement_locations, replication_factor]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (ret_code == 0)
 
 # Proxy for ysqlsh commands.
 class YsqlProxy(object):
@@ -2932,6 +3382,23 @@ def retry_op(func, timeout=180):
     while True:
         try:
             return func()
+        except RetryableError:
+            pass
+        now = time.time()
+        if now - start_time > timeout:
+            break
+        time.sleep(0.5)
+
+    raise RuntimeError("Failed after retrying operation for {} secs.".format(
+        now - start_time))
+
+# Retry the function with argument as long as func throws RetryableError.
+def retry_op_with_argument(func, argument, timeout=180):
+    start_time = time.time()
+    now = start_time
+    while True:
+        try:
+            return func(argument)
         except RetryableError:
             pass
         now = time.time()

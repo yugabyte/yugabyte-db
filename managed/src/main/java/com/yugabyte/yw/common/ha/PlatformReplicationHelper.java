@@ -16,8 +16,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.PlatformInstanceClient;
-import com.yugabyte.yw.common.PlatformInstanceClientFactory;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -126,7 +124,7 @@ public class PlatformReplicationHelper {
   void setBackupScheduleEnabled(boolean enabled) {
     runtimeConfigFactory
         .globalRuntimeConf()
-        .setValue(REPLICATION_SCHEDULE_ENABLED_KEY, Boolean.toString(enabled));
+        .setValue(REPLICATION_SCHEDULE_ENABLED_KEY, Boolean.toString(enabled), false);
   }
 
   boolean isBackupScheduleRunning(Cancellable schedule) {
@@ -157,7 +155,7 @@ public class PlatformReplicationHelper {
   public void setReplicationFrequency(Duration duration) {
     runtimeConfigFactory
         .globalRuntimeConf()
-        .setValue(REPLICATION_FREQUENCY_KEY, String.format("%d ms", duration.toMillis()));
+        .setValue(REPLICATION_FREQUENCY_KEY, String.format("%d ms", duration.toMillis()), false);
   }
 
   JsonNode getBackupInfoJson(long frequency, boolean isRunning) {

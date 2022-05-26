@@ -57,7 +57,7 @@ The **recheck steps** are as follows:
 
 ## Usage
 
-By setting the gflag `yb_enable_read_committed_isolation=true`, the Read Committed isolation in YSQL will actually map to the Read Committed implementation in DocDB. If set to false, it will have the earlier behavior of mapping Read Committed to REPEATABLE READ.
+By setting the tserver gflag `yb_enable_read_committed_isolation=true`, the Read Committed isolation in YSQL will actually map to the Read Committed implementation in DocDB. If set to false, it will have the earlier behavior of mapping Read Committed to REPEATABLE READ.
 
 The following ways can be used to start a Read Committed transaction after setting the gflag:
 

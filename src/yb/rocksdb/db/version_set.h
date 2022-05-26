@@ -751,7 +751,7 @@ class VersionSet {
   ColumnFamilySet* GetColumnFamilySet() { return column_family_set_.get(); }
   const EnvOptions& env_options() { return env_options_; }
 
-  CHECKED_STATUS Import(const std::string& source_dir, SequenceNumber seqno, VersionEdit* edit);
+  Status Import(const std::string& source_dir, SequenceNumber seqno, VersionEdit* edit);
 
   void UnrefFile(ColumnFamilyData* cfd, FileMetaData* f);
 

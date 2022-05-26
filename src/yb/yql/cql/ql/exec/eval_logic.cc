@@ -20,7 +20,7 @@
 namespace yb {
 namespace ql {
 
-CHECKED_STATUS Executor::PTExprToPB(const PTLogic1 *logic_pt, QLExpressionPB *logic_pb) {
+Status Executor::PTExprToPB(const PTLogic1 *logic_pt, QLExpressionPB *logic_pb) {
   QLConditionPB *cond = logic_pb->mutable_condition();
   cond->set_op(logic_pt->ql_op());
 
@@ -28,7 +28,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTLogic1 *logic_pt, QLExpressionPB *lo
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::PTExprToPB(const PTLogic2 *logic_pt, QLExpressionPB *logic_pb) {
+Status Executor::PTExprToPB(const PTLogic2 *logic_pt, QLExpressionPB *logic_pb) {
   QLConditionPB *cond = logic_pb->mutable_condition();
   cond->set_op(logic_pt->ql_op());
 
@@ -37,13 +37,13 @@ CHECKED_STATUS Executor::PTExprToPB(const PTLogic2 *logic_pt, QLExpressionPB *lo
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::PTExprToPB(const PTRelation0 *relation_pt, QLExpressionPB *relation_pb) {
+Status Executor::PTExprToPB(const PTRelation0 *relation_pt, QLExpressionPB *relation_pb) {
   QLConditionPB *cond = relation_pb->mutable_condition();
   cond->set_op(relation_pt->ql_op());
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::PTExprToPB(const PTRelation1 *relation_pt, QLExpressionPB *relation_pb) {
+Status Executor::PTExprToPB(const PTRelation1 *relation_pt, QLExpressionPB *relation_pb) {
   QLConditionPB *cond = relation_pb->mutable_condition();
   cond->set_op(relation_pt->ql_op());
 
@@ -51,7 +51,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTRelation1 *relation_pt, QLExpression
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::PTExprToPB(const PTRelation2 *relation_pt, QLExpressionPB *relation_pb) {
+Status Executor::PTExprToPB(const PTRelation2 *relation_pt, QLExpressionPB *relation_pb) {
   QLConditionPB *cond = relation_pb->mutable_condition();
   cond->set_op(relation_pt->ql_op());
 
@@ -60,7 +60,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTRelation2 *relation_pt, QLExpression
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::PTExprToPB(const PTRelation3 *relation_pt, QLExpressionPB *relation_pb) {
+Status Executor::PTExprToPB(const PTRelation3 *relation_pt, QLExpressionPB *relation_pb) {
   QLConditionPB *cond = relation_pb->mutable_condition();
   cond->set_op(relation_pt->ql_op());
 

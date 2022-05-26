@@ -13,9 +13,10 @@
 
 package org.yb.cdc.ysql;
 
-import org.apache.log4j.Logger;
 import org.junit.*;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.Value;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
@@ -30,7 +31,7 @@ import static org.yb.AssertionWrappers.*;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestNullValues extends CDCBaseClass {
-  private final static Logger LOG = Logger.getLogger(TestNullValues.class);
+  private final static Logger LOG = LoggerFactory.getLogger(TestNullValues.class);
 
   protected int DEFAULT_KEY_VALUE = 1;
 
@@ -70,7 +71,6 @@ public class TestNullValues extends CDCBaseClass {
       // Creating one stream.
       CDCSubscriber testSubscriberProto = new CDCSubscriber(getMasterAddresses());
       testSubscriberProto.createStream("proto");
-      testSubscriberProto.setCheckpoint(0, 0, true);
 
       int dummyInsert = statement.executeUpdate(String.format("insert into test values (%d);",
         DEFAULT_KEY_VALUE));
@@ -315,10 +315,6 @@ public class TestNullValues extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       testSubscriber.createStream("proto");
-
-      // Set initial checkpoint flag as true, this will update the
-      // consumed op_id for the tablet in server.
-      testSubscriber.setCheckpoint(0, 0, true);
 
       // Insert a row with value of one column
       statement.execute("BEGIN;");

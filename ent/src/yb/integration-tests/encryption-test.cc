@@ -117,7 +117,7 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
         current_key_id_, std::string(bytes.begin(), bytes.end())));
   }
 
-  CHECKED_STATUS WaitForAllMastersHaveLatestKeyInMemory() {
+  Status WaitForAllMastersHaveLatestKeyInMemory() {
     return LoggedWaitFor([&]() -> Result<bool> {
       return yb_admin_client_->AllMastersHaveUniverseKeyInMemory(current_key_id_).ok();
     }, 30s, "Wait for all masters to have key in memory");
@@ -129,7 +129,7 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
     ASSERT_OK(yb_admin_client_->IsEncryptionEnabled());
   }
 
-  CHECKED_STATUS WaitForLoadBalanced() {
+  Status WaitForLoadBalanced() {
     SleepFor(MonoDelta::FromSeconds(5));
     return LoggedWaitFor([&]() -> Result<bool> {
       return client_->IsLoadBalanced(3);

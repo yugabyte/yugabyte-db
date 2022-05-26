@@ -820,9 +820,12 @@ static void
 ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 	Relation relation = ybScan->relation;
 	Relation index = ybScan->index;
-	Oid		 dboid = YBCGetDatabaseOid(relation);
 
-	HandleYBStatus(YBCPgNewSelect(dboid, YbGetStorageRelid(relation), &ybScan->prepare_params, &ybScan->handle));
+	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
+								  YbGetStorageRelid(relation),
+								  &ybScan->prepare_params,
+								  YBCIsRegionLocal(relation),
+								  &ybScan->handle));
 
 	if (IsSystemRelation(relation))
 	{
@@ -910,11 +913,11 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 		if (ybScan->key[i].sk_flags & SK_ROW_HEADER)
 		{
 			int j = 0;
-			ScanKey subkeys = (ScanKey) 
+			ScanKey subkeys = (ScanKey)
 					DatumGetPointer(ybScan->key[i].sk_argument);
 			int last_att_no = YBFirstLowInvalidAttributeNumber;
 
-			/* 
+			/*
 			 * We can only push down right now if the primary key columns
 			 * are specified in the correct order and the primary key
 			 * has no hashed columns. We also need to ensure that
@@ -945,7 +948,7 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 				last_att_no = current->sk_attno;
 
 				/* Make sure that there are no hash key columns. */
-				if (index->rd_indoption[current->sk_attno - 1] 
+				if (index->rd_indoption[current->sk_attno - 1]
 					& INDOPTION_HASH)
 				{
 					can_pushdown = false;
@@ -954,7 +957,7 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 				count++;
 			}
 			while((subkeys[j++].sk_flags & SK_ROW_END) == 0);
-			
+
 			/*
 			 * Make sure that the primary key has no hash columns in order
 			 * to push down.
@@ -1002,15 +1005,15 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 				 * applies to the RHS of (row key) <= (row key values)
 				 * expressions.
 				 */
-				bool is_direction_asc = 
+				bool is_direction_asc =
 									(index->rd_indoption[
-										subkeys[0].sk_attno - 1] 
+										subkeys[0].sk_attno - 1]
 										& INDOPTION_DESC) == 0;
 				bool gt = strategy == BTGreaterEqualStrategyNumber
 								|| strategy == BTGreaterStrategyNumber;
 				bool is_inclusive = strategy != BTGreaterStrategyNumber
 										&& strategy != BTLessStrategyNumber;
-				
+
 				bool is_point_scan = (count == index->rd_index->indnatts)
 										&& (strategy == BTEqualStrategyNumber);
 
@@ -2103,6 +2106,7 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
 								  YbGetStorageRelid(relation),
 								  NULL /* prepare_params */,
+								  YBCIsRegionLocal(relation),
 								  &ybc_stmt));
 
 	/* Bind ybctid to identify the current row. */
@@ -2191,9 +2195,10 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy w
 
 	YBCPgStatement ybc_stmt;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-																RelationGetRelid(relation),
-																NULL /* prepare_params */,
-																&ybc_stmt));
+								RelationGetRelid(relation),
+								NULL /* prepare_params */,
+								YBCIsRegionLocal(relation),
+								&ybc_stmt));
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt, BYTEAOID, InvalidOid, ybctid, false);
@@ -2280,7 +2285,11 @@ ybBeginSample(Relation rel, int targrows)
 	/*
 	 * Create new sampler command
 	 */
-	HandleYBStatus(YBCPgNewSample(dboid, relid, targrows, &ybSample->handle));
+	HandleYBStatus(YBCPgNewSample(dboid,
+								  relid,
+								  targrows,
+								  YBCIsRegionLocal(rel),
+								  &ybSample->handle));
 
 	/*
 	 * Set up the scan targets. We need to return all "real" columns.

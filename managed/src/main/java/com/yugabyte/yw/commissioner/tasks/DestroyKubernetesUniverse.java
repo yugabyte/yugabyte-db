@@ -103,6 +103,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           helmDeletes.addSubTask(
               createDestroyKubernetesTask(
                   universe.getUniverseDetails().nodePrefix,
+                  universe.getUniverseDetails().useNewHelmNamingStyle,
                   azName,
                   config,
                   KubernetesCommandExecutor.CommandType.HELM_DELETE,
@@ -113,6 +114,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
         volumeDeletes.addSubTask(
             createDestroyKubernetesTask(
                 universe.getUniverseDetails().nodePrefix,
+                universe.getUniverseDetails().useNewHelmNamingStyle,
                 azName,
                 config,
                 KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
@@ -134,6 +136,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           namespaceDeletes.addSubTask(
               createDestroyKubernetesTask(
                   universe.getUniverseDetails().nodePrefix,
+                  universe.getUniverseDetails().useNewHelmNamingStyle,
                   azName,
                   config,
                   KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
@@ -169,6 +172,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
   protected KubernetesCommandExecutor createDestroyKubernetesTask(
       String nodePrefix,
+      boolean newNamingStyle,
       String az,
       Map<String, String> config,
       KubernetesCommandExecutor.CommandType commandType,
@@ -185,7 +189,8 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       // This assumes that the config is az config. It is true in this
       // particular case, all callers just pass az config.
       // params.namespace remains null if config is not passed.
-      params.namespace = PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config);
+      params.namespace =
+          PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, newNamingStyle);
     }
     params.universeUUID = taskParams().universeUUID;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);

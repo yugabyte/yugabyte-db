@@ -33,6 +33,7 @@
 #define YB_MASTER_SCOPED_LEADER_SHARED_LOCK_H
 
 #include <chrono>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 
@@ -44,7 +45,6 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/rw_mutex.h"
-#include "yb/util/shared_lock.h"
 
 namespace yb {
 namespace master {
@@ -155,7 +155,7 @@ class ScopedLeaderSharedLock {
                                            bool set_error = true);
 
   CatalogManager* catalog_;
-  shared_lock<RWMutex> leader_shared_lock_;
+  std::shared_lock<RWMutex> leader_shared_lock_;
   Status catalog_status_;
   Status leader_status_;
   std::chrono::steady_clock::time_point start_;

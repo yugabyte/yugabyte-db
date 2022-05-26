@@ -64,7 +64,7 @@ import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateUtils;
+import org.apache.commons.lang3.time.DateUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -202,6 +202,34 @@ public class Schedule extends Model {
     this.frequencyTimeUnit = frequencyTimeUnit;
   }
 
+  @Column
+  @ApiModelProperty(value = "Time on which schedule is expected to run", accessMode = READ_ONLY)
+  private Date nextScheduleTaskTime;
+
+  public Date getNextScheduleTaskTime() {
+    return nextScheduleTaskTime;
+  }
+
+  public void updateNextScheduleTaskTime(Date nextScheduleTime) {
+    this.nextScheduleTaskTime = nextScheduleTime;
+    save();
+  }
+
+  @ApiModelProperty(
+      value = "Backlog status of schedule arose due to conflicts",
+      accessMode = READ_ONLY)
+  @Column(nullable = false)
+  private boolean backlogStatus;
+
+  public boolean getBacklogStatus() {
+    return this.backlogStatus;
+  }
+
+  public void updateBacklogStatus(boolean backlogStatus) {
+    this.backlogStatus = backlogStatus;
+    save();
+  }
+
   public String getCronExpression() {
     return cronExpression;
   }
@@ -210,7 +238,7 @@ public class Schedule extends Model {
     this.cronExpression = cronExpression;
   }
 
-  public void setCronExperssionandTaskParams(String cronExpression, ITaskParams params) {
+  public void setCronExpressionAndTaskParams(String cronExpression, ITaskParams params) {
     this.cronExpression = cronExpression;
     this.taskParams = Json.toJson(params);
     save();
@@ -288,6 +316,7 @@ public class Schedule extends Model {
     schedule.frequencyTimeUnit = frequencyTimeUnit;
     schedule.scheduleName =
         scheduleName != null ? scheduleName : "schedule-" + schedule.scheduleUUID;
+    schedule.nextScheduleTaskTime = nextExpectedTaskTime(null, schedule);
     schedule.save();
     return schedule;
   }
@@ -412,9 +441,11 @@ public class Schedule extends Model {
     ExpressionList<Schedule> query =
         find.query().setPersistenceContextScope(PersistenceContextScope.QUERY).where();
     query.eq("customer_uuid", filter.getCustomerUUID());
-
     appendInClause(query, "status", filter.getStatus());
     appendInClause(query, "task_type", filter.getTaskTypes());
+    if (!CollectionUtils.isEmpty(filter.getUniverseUUIDList())) {
+      appendInClause(query, "owner_uuid", filter.getUniverseUUIDList());
+    }
     return query;
   }
 
@@ -447,6 +478,10 @@ public class Schedule extends Model {
   }
 
   private static ScheduleResp toScheduleResp(Schedule schedule) {
+    Date nextScheduleTaskTime = schedule.nextScheduleTaskTime;
+    if (schedule.backlogStatus) {
+      nextScheduleTaskTime = DateUtils.addMinutes(new Date(), Util.YB_SCHEDULER_INTERVAL);
+    }
     ScheduleRespBuilder builder =
         ScheduleResp.builder()
             .scheduleName(schedule.scheduleName)
@@ -457,18 +492,17 @@ public class Schedule extends Model {
             .frequencyTimeUnit(schedule.frequencyTimeUnit)
             .taskType(schedule.taskType)
             .status(schedule.status)
-            .cronExperssion(schedule.cronExpression)
+            .cronExpression(schedule.cronExpression)
             .runningState(schedule.runningState)
-            .failureCount(schedule.failureCount);
+            .failureCount(schedule.failureCount)
+            .nextExpectedTask(nextScheduleTaskTime)
+            .backlogStatus(schedule.backlogStatus);
 
     ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
     Date lastScheduledTime = null;
     if (lastTask != null) {
       lastScheduledTime = lastTask.getScheduledTime();
       builder.prevCompletedTask(lastScheduledTime);
-      builder.nextExpectedTask(nextExpectedTaskTime(lastScheduledTime, schedule));
-    } else {
-      builder.nextExpectedTask(nextExpectedTaskTime(lastScheduledTime, schedule));
     }
 
     JsonNode scheduleTaskParams = schedule.taskParams;
@@ -494,14 +528,14 @@ public class Schedule extends Model {
     return builder.build();
   }
 
-  private static Date nextExpectedTaskTime(Date lastScheduledTime, Schedule schedule) {
+  public static Date nextExpectedTaskTime(Date lastScheduledTime, Schedule schedule) {
     long nextScheduleTime;
     if (schedule.cronExpression == null) {
       if (lastScheduledTime != null) {
         nextScheduleTime = lastScheduledTime.getTime() + schedule.frequency;
       } else {
         // The task will be definitely executed under 2 minutes (scheduler frequency).
-        return DateUtils.addMinutes(new Date(), 2);
+        return new Date();
       }
     } else {
       lastScheduledTime = new Date();
@@ -537,13 +571,11 @@ public class Schedule extends Model {
     }
     BackupInfo backupInfo =
         BackupInfo.builder()
-            .kmsConfigUUID(params.kmsConfigUUID)
             .universeUUID(params.universeUUID)
             .keyspaceList(keySpaceResponseList)
             .storageConfigUUID(params.storageConfigUUID)
             .backupType(params.backupType)
             .timeBeforeDelete(params.timeBeforeDelete)
-            .encryptionAtRestConfig(params.encryptionAtRestConfig)
             .fullBackup(CollectionUtils.isEmpty(params.keyspaceTableList))
             .useTablespaces(params.useTablespaces)
             .expiryTimeUnit(params.expiryTimeUnit)
@@ -570,14 +602,12 @@ public class Schedule extends Model {
     }
     BackupInfo backupInfo =
         BackupInfo.builder()
-            .kmsConfigUUID(params.kmsConfigUUID)
             .universeUUID(params.universeUUID)
             .keyspaceList(keySpaceResponseList)
             .storageConfigUUID(params.storageConfigUUID)
             .backupType(params.backupType)
             .timeBeforeDelete(params.timeBeforeDelete)
             .expiryTimeUnit(params.expiryTimeUnit)
-            .encryptionAtRestConfig(params.encryptionAtRestConfig)
             .fullBackup(StringUtils.isEmpty(params.getKeyspace()))
             .useTablespaces(params.useTablespaces)
             .build();

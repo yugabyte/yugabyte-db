@@ -2,11 +2,9 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
-import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
@@ -102,6 +100,8 @@ public class RestoreBackup extends UniverseTaskBase {
     restoreParams.backupStorageInfoList = new ArrayList<>();
     restoreParams.actionType = actionType;
     restoreParams.backupStorageInfoList.add(backupStorageInfo);
+    restoreParams.disableChecksum = params.disableChecksum;
+    restoreParams.useTablespaces = params.useTablespaces;
 
     return restoreParams;
   }

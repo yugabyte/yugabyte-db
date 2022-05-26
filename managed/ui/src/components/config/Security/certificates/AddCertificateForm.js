@@ -11,6 +11,7 @@ import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { YBModalForm } from '../../../common/forms';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
+import { YBTag } from '../../../common/YBTag';
 import { MODES } from './Certificates';
 import './AddCertificateForm.scss';
 
@@ -593,7 +594,14 @@ export default class AddCertificateForm extends Component {
                 )}
 
                 {isHCVaultEnabled && (
-                  <Tab eventKey="hashicorp" title="Hashicorp">
+                  <Tab
+                    eventKey="hashicorp"
+                    title={
+                      <>
+                        Hashicorp<YBTag>Beta</YBTag>
+                      </>
+                    }
+                  >
                     {this.getHCVaultForm()}
                   </Tab>
                 )}

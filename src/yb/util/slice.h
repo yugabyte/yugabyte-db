@@ -37,6 +37,7 @@
 #define YB_UTIL_SLICE_H_
 
 #include <string>
+#include <string_view>
 
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/stringpiece.h"
@@ -175,6 +176,8 @@ class Slice {
   size_t difference_offset(const Slice& b) const;
 
   void CopyToBuffer(std::string* buffer) const;
+
+  explicit operator std::string_view() const { return std::string_view(cdata(), size()); }
 
   // Return a string that contains the copy of the referenced data.
   std::string ToBuffer() const;

@@ -104,8 +104,6 @@ using std::string;
 using std::unique_ptr;
 using std::vector;
 
-using google::protobuf::RepeatedPtrField;
-using google::protobuf::util::MessageDifferencer;
 using strings::Substitute;
 
 DEFINE_int32(cdc_state_table_num_tablets, 0,
@@ -142,6 +140,9 @@ DEFINE_test_flag(bool, exit_unfinished_merging, false,
 DEFINE_bool(disable_universe_gc, false,
             "Whether to run the GC on universes or not.");
 TAG_FLAG(disable_universe_gc, runtime);
+DEFINE_test_flag(double, crash_during_sys_catalog_restoration, 0.0,
+                 "Probability of crash during the RESTORE_SYS_CATALOG phase.");
+TAG_FLAG(TEST_crash_during_sys_catalog_restoration, runtime);
 
 namespace yb {
 
@@ -155,7 +156,7 @@ namespace enterprise {
 
 namespace {
 
-CHECKED_STATUS CheckStatus(const Status& status, const char* action) {
+Status CheckStatus(const Status& status, const char* action) {
   if (status.ok()) {
     return status;
   }
@@ -165,12 +166,12 @@ CHECKED_STATUS CheckStatus(const Status& status, const char* action) {
   return s;
 }
 
-CHECKED_STATUS CheckLeaderStatus(const Status& status, const char* action) {
+Status CheckLeaderStatus(const Status& status, const char* action) {
   return CheckIfNoLongerLeader(CheckStatus(status, action));
 }
 
 template<class RespClass>
-CHECKED_STATUS CheckLeaderStatusAndSetupError(
+Status CheckLeaderStatusAndSetupError(
     const Status& status, const char* action, RespClass* resp) {
   return CheckIfNoLongerLeaderAndSetupError(CheckStatus(status, action), resp);
 }
@@ -185,7 +186,7 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
  public:
   explicit SnapshotLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  CHECKED_STATUS Visit(const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) override {
+  Status Visit(const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) override {
     if (TryFullyDecodeTxnSnapshotId(snapshot_id)) {
       // Transaction aware snapshots should be already loaded.
       return Status::OK();
@@ -193,7 +194,7 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
     return VisitNonTransactionAwareSnapshot(snapshot_id, metadata);
   }
 
-  CHECKED_STATUS VisitNonTransactionAwareSnapshot(
+  Status VisitNonTransactionAwareSnapshot(
       const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) {
 
     // Setup the snapshot info.
@@ -259,6 +260,9 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
       REQUIRES(catalog_manager_->mutex_) {
     DCHECK(!ContainsKey(catalog_manager_->cdc_stream_map_, stream_id))
         << "CDC stream already exists: " << stream_id;
+
+    // If CDCStream entry exists, then the current cluster is a producer.
+    catalog_manager_->SetCDCServiceEnabled();
 
     scoped_refptr<NamespaceInfo> ns;
     scoped_refptr<TableInfo> table;
@@ -574,12 +578,39 @@ Result<SysRowEntries> CatalogManager::CollectEntries(
   return entries;
 }
 
+Result<SysRowEntries> CatalogManager::CollectEntriesForSequencesDataTable() {
+  auto sequence_entries_result = CollectEntries(
+      CatalogManagerUtil::SequenceDataFilter(),
+      CollectFlags{CollectFlag::kSucceedIfCreateInProgress});
+  // If there are no sequences yet, then we won't be able to find the table.
+  // It is ok and we shouldn't crash. Return an empty SysRowEntries in such a case.
+  if (!sequence_entries_result.ok() && sequence_entries_result.status().IsNotFound()) {
+    LOG(INFO) << "No sequences_data table created yet, so not including it in snapshot";
+    return SysRowEntries();
+  }
+  return sequence_entries_result;
+}
+
 Result<SysRowEntries> CatalogManager::CollectEntriesForSnapshot(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) {
-  return CollectEntries(
+  SysRowEntries entries = VERIFY_RESULT(CollectEntries(
       tables,
       CollectFlags{CollectFlag::kAddIndexes, CollectFlag::kIncludeParentColocatedTable,
-                   CollectFlag::kSucceedIfCreateInProgress});
+                   CollectFlag::kSucceedIfCreateInProgress}));
+  // Include sequences_data table if the filter is on a ysql database.
+  // For sequences, we have a special sequences_data (id=0000ffff00003000800000000000ffff)
+  // table in the system_postgres database.
+  // It is a normal YB table that has data partitioned into tablets and replicated using raft.
+  // These tablets reside on the tservers. This table is created when the first
+  // sequence is created. It stores one row per sequence and also needs to be restored.
+  for (const auto& table : tables) {
+    if (table.namespace_().database_type() == YQL_DATABASE_PGSQL) {
+      auto seq_entries = VERIFY_RESULT(CollectEntriesForSequencesDataTable());
+      entries.mutable_entries()->MergeFrom(seq_entries.entries());
+      break;
+    }
+  }
+  return entries;
 }
 
 server::Clock* CatalogManager::Clock() {
@@ -768,7 +799,7 @@ Status CatalogManager::RestoreNonTransactionAwareSnapshot(const string& snapshot
       sys_catalog_->Upsert(leader_ready_term(), snapshot),
       "updating snapshot in sys-catalog"));
 
-  // CataloManager lock 'lock_' is still locked here.
+  // CatalogManager lock 'lock_' is still locked here.
   current_snapshot_id_ = snapshot_id;
 
   // Restore all entries.
@@ -966,6 +997,7 @@ Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_p
       case SysRowEntryType::SNAPSHOT:  FALLTHROUGH_INTENDED;
       case SysRowEntryType::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::SNAPSHOT_RESTORATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -1910,6 +1942,15 @@ void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& ta
 Status CatalogManager::RestoreSysCatalog(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, Status* complete_status) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
+  bool restore_successful = false;
+  // If sys catalog restoration fails then unblock other RPCs.
+  auto scope_exit = ScopeExit([this, &restore_successful] {
+    if (!restore_successful) {
+      LOG(INFO) << "PITR: Accepting RPCs to the master leader";
+      std::lock_guard<simple_spinlock> l(state_lock_);
+      is_catalog_loaded_ = true;
+    }
+  });
   // Restore master snapshot and load it to RocksDB.
   auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(
       restoration->snapshot_id, restoration->restore_at));
@@ -1934,7 +1975,10 @@ Status CatalogManager::RestoreSysCatalog(
       tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
 
   // Restore the pg_catalog tables.
-  if (FLAGS_enable_ysql) {
+  if (FLAGS_enable_ysql && state.IsYsqlRestoration()) {
+    // Restore sequences_data table.
+    RETURN_NOT_OK(state.PatchSequencesDataObjects());
+
     // We also need to increment the catalog version by 1 so that
     // postgres and tservers can refresh their catalog cache.
     const auto* meta = tablet->metadata();
@@ -1962,22 +2006,45 @@ Status CatalogManager::RestoreSysCatalog(
     RETURN_NOT_OK(status);
   }
 
+  // Crash for tests.
+  MAYBE_FAULT(FLAGS_TEST_crash_during_sys_catalog_restoration);
+
   // Restore the other tables.
   RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch, master_->clock()->Now()));
 
-  // Apply write batch to RocksDB.
-  state.WriteToRocksDB(&write_batch, restoration->write_time, restoration->op_id, tablet);
+  // Updates the restoration state to indicate that sys catalog phase has completed.
+  // Also, initializes the master side perceived list of tables/tablets/namespaces
+  // that need to be restored for verification post sys catalog load.
+  // Also, re-initializes the tablet list since it could have been changed from the
+  // time of snapshot creation.
+  // Also, generates the restoration state entry.
+  // This is to persist the restoration so that on restarts the RESTORE_ON_TABLET
+  // rpcs can be retried.
+  auto restore_kv = VERIFY_RESULT(
+      snapshot_coordinator_.UpdateRestorationAndGetWritePair(restoration));
 
-  // TODO(pitr) Handle master leader failover.
-  RETURN_NOT_OK(ElectedAsLeaderCb());
+  // Apply write batch to RocksDB.
+  state.WriteToRocksDB(
+      &write_batch, restore_kv, restoration->write_time, restoration->op_id, tablet);
+
+  LOG_WITH_PREFIX(INFO) << "PITR: In leader term " << LeaderTerm()
+                        << ", wrote " << write_batch.size() << " entries to rocksdb";
+
+  if (LeaderTerm() >= 0) {
+    RETURN_NOT_OK(ElectedAsLeaderCb());
+  }
+
+  restore_successful = true;
 
   return Status::OK();
 }
 
-Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) {
-  auto entries = VERIFY_RESULT(CollectEntriesForSnapshot(
-      restoration.schedules[0].second.tables().tables()));
-  auto objects_to_restore = restoration.non_system_objects_to_restore;
+Status CatalogManager::VerifyRestoredObjects(
+    const std::unordered_map<std::string, SysRowEntryType>& objects,
+    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) {
+  std::unordered_map<std::string, SysRowEntryType> objects_to_restore = objects;
+  auto entries = VERIFY_RESULT(CollectEntriesForSnapshot(tables));
+  // auto objects_to_restore = restoration.non_system_objects_to_restore;
   VLOG_WITH_PREFIX(1) << "Objects to restore: " << AsString(objects_to_restore);
   // There could be duplicate entries collected, for instance in the case of
   // colocated tables.
@@ -2168,11 +2235,11 @@ rpc::Scheduler& CatalogManager::Scheduler() {
 int64_t CatalogManager::LeaderTerm() {
   auto peer = tablet_peer();
   if (!peer) {
-    return false;
+    return -1;
   }
   auto consensus = peer->shared_consensus();
   if (!consensus) {
-    return false;
+    return -1;
   }
   return consensus->GetLeaderState(/* allow_stale= */ true).term;
 }
@@ -2207,8 +2274,7 @@ void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool
 
   auto tablet_l = tablet->LockForRead();
   auto l = snapshot->LockForWrite();
-  RepeatedPtrField<SysSnapshotEntryPB_TabletSnapshotPB>* tablet_snapshots =
-      l.mutable_data()->pb.mutable_tablet_snapshots();
+  auto* tablet_snapshots = l.mutable_data()->pb.mutable_tablet_snapshots();
   int num_tablets_complete = 0;
 
   for (int i = 0; i < tablet_snapshots->size(); ++i) {
@@ -2280,8 +2346,7 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
 
   auto tablet_l = tablet->LockForRead();
   auto l = snapshot->LockForWrite();
-  RepeatedPtrField<SysSnapshotEntryPB_TabletSnapshotPB>* tablet_snapshots =
-      l.mutable_data()->pb.mutable_tablet_snapshots();
+  auto* tablet_snapshots = l.mutable_data()->pb.mutable_tablet_snapshots();
   int num_tablets_complete = 0;
 
   for (int i = 0; i < tablet_snapshots->size(); ++i) {
@@ -2349,8 +2414,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
 
   auto tablet_l = tablet->LockForRead();
   auto l = snapshot->LockForWrite();
-  RepeatedPtrField<SysSnapshotEntryPB_TabletSnapshotPB>* tablet_snapshots =
-      l.mutable_data()->pb.mutable_tablet_snapshots();
+  auto* tablet_snapshots = l.mutable_data()->pb.mutable_tablet_snapshots();
   int num_tablets_complete = 0;
 
   for (int i = 0; i < tablet_snapshots->size(); ++i) {
@@ -2402,6 +2466,22 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
 Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleRequestPB* req,
                                               CreateSnapshotScheduleResponsePB* resp,
                                               rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing CreateSnapshotSchedule " << req->ShortDebugString();
+
+  ListNamespacesRequestPB list_namespace_req;
+  list_namespace_req.set_database_type(YQL_DATABASE_PGSQL);
+  ListNamespacesResponsePB list_namespace_resp;
+  RETURN_NOT_OK(ListNamespaces(&list_namespace_req, &list_namespace_resp));
+  for (const auto& ns : list_namespace_resp.namespaces()) {
+    ListTablegroupsRequestPB tablegroup_req;
+    tablegroup_req.set_namespace_id(ns.id());
+    ListTablegroupsResponsePB tablegroup_resp;
+    RETURN_NOT_OK(ListTablegroups(&tablegroup_req, &tablegroup_resp, rpc));
+    if (tablegroup_resp.has_error() || tablegroup_resp.tablegroups_size() > 0) {
+      return STATUS(NotSupported, "Not allowed to create snapshot schedule "
+                                  "when one or more tablegroups exist on the database");
+    }
+  }
   auto id = VERIFY_RESULT(snapshot_coordinator_.CreateSchedule(
       *req, leader_ready_term(), rpc->GetClientDeadline()));
   resp->set_snapshot_schedule_id(id.data(), id.size());
@@ -2460,6 +2540,9 @@ Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
 Status CatalogManager::FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& cluster_config,
                                                 const TSHeartbeatRequestPB* req,
                                                 TSHeartbeatResponsePB* resp) {
+  if (cdc_enabled_.load(std::memory_order_acquire)) {
+    resp->set_xcluster_enabled_on_producer(true);
+  }
   resp->set_cluster_config_version(cluster_config.version());
   if (!cluster_config.has_consumer_registry() ||
       req->cluster_config_version() >= cluster_config.version()) {
@@ -2488,8 +2571,7 @@ Status CatalogManager::FillHeartbeatResponseEncryption(
 
 void CatalogManager::SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                              SysSnapshotEntryPB* snapshot_pb) {
-  RepeatedPtrField<SysSnapshotEntryPB_TabletSnapshotPB>* tablet_snapshots =
-      snapshot_pb->mutable_tablet_snapshots();
+  auto* tablet_snapshots = snapshot_pb->mutable_tablet_snapshots();
 
   for (int i = 0; i < tablet_snapshots->size(); ++i) {
     SysSnapshotEntryPB_TabletSnapshotPB* tablet_info = tablet_snapshots->Mutable(i);
@@ -2750,6 +2832,10 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), stream));
     stream_lock.Commit();
   }
+
+  // Now that the stream is set up, mark the entire cluster as a cdc enabled.
+  SetCDCServiceEnabled();
+
   return Status::OK();
 }
 
@@ -3178,6 +3264,67 @@ Status CatalogManager::UpdateCDCStream(const UpdateCDCStreamRequestPB *req,
   return Status::OK();
 }
 
+// Query if Bootstrapping is required for a CDC stream (e.g. Are we missing logs).
+Status CatalogManager::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
+                                           IsBootstrapRequiredResponsePB* resp,
+                                           rpc::RpcContext* rpc) {
+  LOG(INFO) << "IsBootstrapRequired from " << RequestorString(rpc) << ": " << req->DebugString();
+  RSTATUS_DCHECK(req->table_ids_size() > 0, InvalidArgument, "Table ID required");
+  RSTATUS_DCHECK(req->stream_ids_size() == 0 || req->stream_ids_size() == req->table_ids_size(),
+                 InvalidArgument, "Stream ID optional, but must match table IDs if specified");
+  bool streams_given = req->stream_ids_size() > 0;
+
+  std::map<std::shared_ptr<cdc::CDCServiceProxy>, std::list<std::string>> proxy_to_tablet;
+
+  for (int t = 0; t < req->table_ids_size(); ++t) {
+    // Find out the server : tablet mapping of the given table.
+    auto table_id = req->table_ids(t);
+    auto stream_id = streams_given ? req->stream_ids(t) : "";
+    bool bootstrap_required = false;
+    scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTableById(table_id));
+    RSTATUS_DCHECK(table != nullptr, NotFound, "Table ID not found: " + table_id);
+
+    for (const auto& tablet : table->GetTablets()) {
+      auto ts = VERIFY_RESULT(tablet->GetLeader());
+      std::shared_ptr<cdc::CDCServiceProxy> proxy;
+      RETURN_NOT_OK(ts->GetProxy(&proxy));
+      proxy_to_tablet[proxy].push_back(tablet->id());
+    }
+
+    // Make a batch call for IsBootstrapRequired on every relevant TServer.
+    for (auto& pair : proxy_to_tablet) {
+      cdc::IsBootstrapRequiredRequestPB tablet_req;
+      cdc::IsBootstrapRequiredResponsePB tablet_resp;
+      rpc::RpcController tablet_rpc;
+
+      for (auto& tablet_id : pair.second) {
+        tablet_req.add_tablet_ids(tablet_id);
+      }
+      if (!stream_id.empty()) {
+        tablet_req.set_stream_id(stream_id);
+      }
+
+      // TODO: Make this call Async to allow for parallelization and perf speedup.
+      auto& cdc_service = pair.first;
+      RETURN_NOT_OK(cdc_service->IsBootstrapRequired(tablet_req, &tablet_resp, &tablet_rpc));
+      if (tablet_resp.has_error()) {
+        RETURN_NOT_OK(StatusFromPB(tablet_resp.error().status()));
+      }
+      if (tablet_resp.bootstrap_required()) {
+        // Short circuit.  We don't need to continue if we we missing data on just one tablet.
+        bootstrap_required = true;
+        break;
+      }
+    }
+
+    auto new_result = resp->add_results();
+    new_result->set_table_id(table_id);
+    new_result->set_bootstrap_required(bootstrap_required);
+  }
+
+  return Status::OK();
+}
+
 /*
  * UniverseReplication is setup in 4 stages within the Catalog Manager
  * 1. SetupUniverseReplication: Validates user input & requests Producer schema.
@@ -3446,55 +3593,22 @@ Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
   return ts;
 }
 
-Status CatalogManager::IsBootstrapRequired(scoped_refptr<UniverseReplicationInfo> universe,
-                                           const TableId& producer_table,
-                                           const std::unordered_map<TableId, std::string>&
-                                           table_bootstrap_ids) {
+Status CatalogManager::IsBootstrapRequiredOnProducer(
+    scoped_refptr<UniverseReplicationInfo> universe, const TableId& producer_table,
+    const std::unordered_map<TableId, std::string>& table_bootstrap_ids) {
   if (!FLAGS_check_bootstrap_required) {
     return Status::OK();
   }
-  {
-    auto lock = universe->LockForRead();
-    auto master_addresses = lock->pb.producer_master_addresses();
-    auto cdc_rpc = VERIFY_RESULT(universe->GetOrCreateCDCRpcTasks(master_addresses));
+  auto master_addresses = universe->LockForRead()->pb.producer_master_addresses();
+  std::string bootstrap_id;
+  if (table_bootstrap_ids.count(producer_table) > 0) {
+    bootstrap_id = table_bootstrap_ids.at(producer_table);
+  }
 
-    std::string bootstrap_id = (table_bootstrap_ids.count(producer_table) > 0) ?
-      table_bootstrap_ids.at(producer_table) : std::string();
-
-    auto ybclient = cdc_rpc->client();
-    auto table = VERIFY_RESULT(ybclient->OpenTable(producer_table));
-
-    auto future = ybclient->LookupAllTabletsFuture(table,
-        CoarseMonoClock::Now() + MonoDelta::FromSeconds(30));
-
-    auto tablets = VERIFY_RESULT(future.get());
-    std::unordered_map<RemoteTabletServer*,
-                      std::list<RemoteTabletPtr>> ts_to_tablet;
-
-    for (auto& tablet : tablets) {
-      auto ts = VERIFY_RESULT(GetLeaderTServer(tablet));
-      ts_to_tablet[ts].push_back(tablet);
-    }
-
-    for (auto& pair : ts_to_tablet) {
-      auto cdc_service = GetCDCServiceProxy(pair.first);
-
-      cdc::IsBootstrapRequiredRequestPB req;
-      cdc::IsBootstrapRequiredResponsePB resp;
-      if (!bootstrap_id.empty()) req.set_stream_id(bootstrap_id);
-      for (auto& tablet : pair.second) {
-        req.add_tablet_ids(tablet->tablet_id());
-      }
-      rpc::RpcController rpc;
-
-      // TO DO: Make this call Async to allow for parallelization
-      RETURN_NOT_OK(cdc_service->IsBootstrapRequired(req, &resp, &rpc));
-      if (resp.has_error() || resp.bootstrap_required()) {
-        return STATUS(InternalError, Substitute(
-          "Error Missing Data in Logs. Bootstrap is required for producer $0",
-          universe->id()));
-      }
-    }
+  auto cdc_rpc = VERIFY_RESULT(universe->GetOrCreateCDCRpcTasks(master_addresses));
+  if (VERIFY_RESULT(cdc_rpc->client()->IsBootstrapRequired(producer_table, bootstrap_id))) {
+    return STATUS(IllegalState, Substitute(
+      "Error Missing Data in Logs. Bootstrap is required for producer $0", universe->id()));
   }
   return Status::OK();
 }
@@ -3613,9 +3727,9 @@ void CatalogManager::GetTableSchemaCallback(
     return;
   }
 
-  status = IsBootstrapRequired(universe, info->table_id, table_bootstrap_ids);
+  status = IsBootstrapRequiredOnProducer(universe, info->table_id, table_bootstrap_ids);
   if (!status.ok()) {
-    MarkUniverseReplicationFailed(universe, s);
+    MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while checking if bootstrap is required for table " << info->table_id
                << ": " << status;
   }
@@ -3745,9 +3859,10 @@ void CatalogManager::GetTablegroupSchemaCallback(
     return;
   }
 
-  Status status = IsBootstrapRequired(universe, producer_tablegroup_id, table_bootstrap_ids);
+  Status status = IsBootstrapRequiredOnProducer(universe,
+                                                producer_tablegroup_id, table_bootstrap_ids);
   if (!status.ok()) {
-    MarkUniverseReplicationFailed(universe, s);
+    MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while checking if bootstrap is required for table "
                << producer_tablegroup_id << ": " << status;
   }
@@ -3850,19 +3965,18 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     return;
   }
 
-  Status status = IsBootstrapRequired(universe,
-                                      *producer_parent_table_ids.begin(),
-                                      table_bootstrap_ids);
+  Status status = IsBootstrapRequiredOnProducer(universe, *producer_parent_table_ids.begin(),
+                                                table_bootstrap_ids);
   if (!status.ok()) {
-    MarkUniverseReplicationFailed(universe, s);
+    MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while checking if bootstrap is required for table "
                << *producer_parent_table_ids.begin() << ": " << status;
   }
 
   status = AddValidatedTableAndCreateCdcStreams(universe,
-                                                       table_bootstrap_ids,
-                                                       *producer_parent_table_ids.begin(),
-                                                       *consumer_parent_table_ids.begin());
+                                                table_bootstrap_ids,
+                                                *producer_parent_table_ids.begin(),
+                                                *consumer_parent_table_ids.begin());
   if (!status.ok()) {
     LOG(ERROR) << "Found error while adding validated table to system catalog: "
                << *producer_parent_table_ids.begin() << ": " << status;
@@ -5120,6 +5234,10 @@ Result<bool> CatalogManager::IsTablePartOfSomeSnapshotSchedule(const TableInfo& 
   return snapshot_coordinator_.IsTableCoveredBySomeSnapshotSchedule(table_info);
 }
 
+bool CatalogManager::IsPitrActive() {
+  return snapshot_coordinator_.IsPitrActive();
+}
+
 void CatalogManager::SysCatalogLoaded(int64_t term) {
   return snapshot_coordinator_.SysCatalogLoaded(term);
 }
@@ -5174,6 +5292,16 @@ std::shared_ptr<cdc::CDCServiceProxy> CatalogManager::GetCDCServiceProxy(RemoteT
   auto cdc_service = std::make_shared<cdc::CDCServiceProxy>(&ybclient->proxy_cache(), hostport);
 
   return cdc_service;
+}
+
+void CatalogManager::SetCDCServiceEnabled() {
+  cdc_enabled_.store(true, std::memory_order_release);
+}
+
+void CatalogManager::PrepareRestore() {
+  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
+  std::lock_guard<simple_spinlock> l(state_lock_);
+  is_catalog_loaded_ = false;
 }
 
 }  // namespace enterprise

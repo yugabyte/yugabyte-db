@@ -173,7 +173,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
-    ASSERT_TRUE(value.IsNull());
+    ASSERT_TRUE(value.IsNull()) << "Value: " << value.ToString();
 
     ASSERT_OK(row.GetValue(projection.column_id(1), &value));
     ASSERT_FALSE(value.IsNull());

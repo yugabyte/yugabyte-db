@@ -49,9 +49,6 @@ Jsonb::Jsonb(std::string&& jsonb)
     : serialized_jsonb_(std::move(jsonb)) {
 }
 
-void Jsonb::Assign(const std::string& jsonb) {
-  serialized_jsonb_ = jsonb;
-}
 
 void Jsonb::Assign(std::string&& jsonb) {
   serialized_jsonb_ = std::move(jsonb);
@@ -118,7 +115,7 @@ std::pair<size_t, size_t> Jsonb::ComputeOffsetsAndJsonbHeader(size_t num_entries
   return std::make_pair(metadata_offset, jsonb_metadata_size);
 }
 
-CHECKED_STATUS Jsonb::ToJsonbProcessObject(const rapidjson::Value& document,
+Status Jsonb::ToJsonbProcessObject(const rapidjson::Value& document,
                                            std::string* jsonb) {
   DCHECK(document.IsObject());
 
@@ -155,7 +152,7 @@ CHECKED_STATUS Jsonb::ToJsonbProcessObject(const rapidjson::Value& document,
   return Status::OK();
 }
 
-CHECKED_STATUS Jsonb::ProcessJsonValueAndMetadata(const rapidjson::Value& value,
+Status Jsonb::ProcessJsonValueAndMetadata(const rapidjson::Value& value,
                                                   const size_t data_begin_offset,
                                                   std::string* jsonb,
                                                   size_t* metadata_offset) {
@@ -217,7 +214,7 @@ CHECKED_STATUS Jsonb::ProcessJsonValueAndMetadata(const rapidjson::Value& value,
   return Status::OK();
 }
 
-CHECKED_STATUS Jsonb::ToJsonbProcessArray(const rapidjson::Value& document,
+Status Jsonb::ToJsonbProcessArray(const rapidjson::Value& document,
                                           const bool is_scalar,
                                           std::string* jsonb) {
   DCHECK(document.IsArray());
@@ -249,7 +246,7 @@ CHECKED_STATUS Jsonb::ToJsonbProcessArray(const rapidjson::Value& document,
   return Status::OK();
 }
 
-CHECKED_STATUS Jsonb::ToJsonbInternal(const rapidjson::Value& document, std::string* jsonb) {
+Status Jsonb::ToJsonbInternal(const rapidjson::Value& document, std::string* jsonb) {
   if (document.IsObject()) {
     return ToJsonbProcessObject(document, jsonb);
   } else if (document.IsArray()) {
@@ -723,12 +720,13 @@ Status Jsonb::ApplyJsonbOperatorToObject(const Slice& jsonb, const QLJsonOperati
   return STATUS_SUBSTITUTE(NotFound, "Couldn't find key $0 in json document", search_key);
 }
 
-Status Jsonb::ApplyJsonbOperators(
-    const QLJsonColumnOperationsPB& json_ops, QLValuePB* result) const {
+Status Jsonb::ApplyJsonbOperators(const std::string &serialized_json,
+                                  const QLJsonColumnOperationsPB& json_ops,
+                                  QLValuePB* result) {
   const int num_ops = json_ops.json_operations().size();
 
   Slice jsonop_result;
-  Slice operand(serialized_jsonb_);
+  Slice operand(serialized_json);
   JEntry element_metadata;
   for (int i = 0; i < num_ops; i++) {
     const QLJsonOperationPB &op = json_ops.json_operations().Get(i);

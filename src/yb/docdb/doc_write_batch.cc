@@ -198,7 +198,7 @@ Status AppendToKeySafely(
 
 }  // namespace
 
-CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
+Status DocWriteBatch::SetPrimitiveInternal(
     const DocPath& doc_path,
     const ValueControlFields& control_fields,
     const ValueRef& value,
@@ -724,7 +724,7 @@ Status DocWriteBatch::ReplaceCqlInList(
   }
 }
 
-CHECKED_STATUS DocWriteBatch::DeleteSubDoc(
+Status DocWriteBatch::DeleteSubDoc(
     const DocPath& doc_path,
     const ReadHybridTime& read_ht,
     const CoarseTimePoint deadline,

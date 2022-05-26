@@ -312,6 +312,9 @@ Status TabletPeer::InitTabletPeer(
   }
 
   RETURN_NOT_OK(set_cdc_min_replicated_index(meta_->cdc_min_replicated_index()));
+  if (tablet_->transaction_participant()) {
+    tablet_->transaction_participant()->SetRetainOpId(meta_->cdc_sdk_min_checkpoint_op_id());
+  }
 
   TRACE("TabletPeer::Init() finished");
   VLOG_WITH_PREFIX(2) << "Peer Initted";
@@ -1008,6 +1011,17 @@ Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
     RETURN_NOT_OK(set_cdc_min_replicated_index_unlocked(std::numeric_limits<int64_t>::max()));
   }
   return Status::OK();
+}
+
+Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id) {
+  LOG_WITH_PREFIX(INFO) << "Setting CDCSDK min checkpoint opId to "
+                        << cdc_sdk_min_checkpoint_op_id.ToString();
+  RETURN_NOT_OK(meta_->set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_min_checkpoint_op_id));
+  return Status::OK();
+}
+
+OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
+  return meta_->cdc_sdk_min_checkpoint_op_id();
 }
 
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {

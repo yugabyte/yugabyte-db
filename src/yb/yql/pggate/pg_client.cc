@@ -65,7 +65,7 @@ struct PerformData {
   explicit PerformData(Arena* arena) : resp(arena) {
   }
 
-  CHECKED_STATUS Process() {
+  Status Process() {
     auto& responses = *resp.mutable_responses();
     SCHECK_EQ(implicit_cast<size_t>(responses.size()), operations.size(), RuntimeError,
               Format("Wrong number of responses: $0, while $1 expected",
@@ -108,7 +108,7 @@ class PgClient::Impl {
     CHECK(!proxy_);
   }
 
-  CHECKED_STATUS Start(rpc::ProxyCache* proxy_cache,
+  Status Start(rpc::ProxyCache* proxy_cache,
                        rpc::Scheduler* scheduler,
                        const tserver::TServerSharedObject& tserver_shared_object) {
     CHECK_NOTNULL(&tserver_shared_object);
@@ -194,7 +194,7 @@ class PgClient::Impl {
     return result;
   }
 
-  CHECKED_STATUS FinishTransaction(Commit commit, DdlMode ddl_mode) {
+  Status FinishTransaction(Commit commit, DdlMode ddl_mode) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
     req.set_commit(commit);
@@ -216,7 +216,7 @@ class PgClient::Impl {
     return resp.info();
   }
 
-  CHECKED_STATUS SetActiveSubTransaction(
+  Status SetActiveSubTransaction(
       SubTransactionId id, tserver::PgPerformOptionsPB* options) {
     tserver::PgSetActiveSubTransactionRequestPB req;
     req.set_session_id(session_id_);
@@ -231,7 +231,7 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
-  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id) {
+  Status RollbackSubTransaction(SubTransactionId id) {
     tserver::PgRollbackSubTransactionRequestPB req;
     req.set_session_id(session_id_);
     req.set_sub_transaction_id(id);
@@ -242,7 +242,7 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
-  CHECKED_STATUS InsertSequenceTuple(int64_t db_oid,
+  Status InsertSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
                                      uint64_t ysql_catalog_version,
                                      int64_t last_val,
@@ -304,7 +304,7 @@ class PgClient::Impl {
     return std::make_pair(resp.last_val(), resp.is_called());
   }
 
-  CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
+  Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
     tserver::PgDeleteSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);
@@ -316,7 +316,7 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
-  CHECKED_STATUS DeleteDBSequences(int64_t db_oid) {
+  Status DeleteDBSequences(int64_t db_oid) {
     tserver::PgDeleteDBSequencesRequestPB req;
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);
@@ -413,7 +413,7 @@ class PgClient::Impl {
     return resp.version();
   }
 
-  CHECKED_STATUS CreateSequencesDataTable() {
+  Status CreateSequencesDataTable() {
     tserver::PgCreateSequencesDataTableRequestPB req;
     tserver::PgCreateSequencesDataTableResponsePB resp;
 
@@ -434,7 +434,7 @@ class PgClient::Impl {
     return result;
   }
 
-  CHECKED_STATUS BackfillIndex(
+  Status BackfillIndex(
       tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline) {
     tserver::PgBackfillIndexResponsePB resp;
     req->set_session_id(session_id_);
@@ -472,14 +472,14 @@ class PgClient::Impl {
     return result;
   }
 
-  CHECKED_STATUS ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req) {
+  Status ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req) {
     tserver::PgValidatePlacementResponsePB resp;
     RETURN_NOT_OK(proxy_->ValidatePlacement(*req, &resp, PrepareController()));
     return ResponseStatus(resp);
   }
 
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
-  CHECKED_STATUS method( \
+  Status method( \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
       CoarseTimePoint deadline) { \
     tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB) resp; \

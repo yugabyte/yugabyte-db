@@ -20,7 +20,7 @@
 
 namespace yb {
 
-// A wrapper around Boost shared lock that supports thread annotations.
+// A wrapper around std::shared_lock that supports thread annotations.
 template<typename Mutex>
 class SCOPED_CAPABILITY SharedLock {
  public:

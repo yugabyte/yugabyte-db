@@ -4,11 +4,12 @@ package com.yugabyte.yw.models.helpers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.common.collect.ImmutableMultiset;
 import com.google.common.collect.Iterables;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.JsonPath;
@@ -32,7 +33,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
-import java.util.UUID;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -46,6 +46,7 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Scanner;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -53,10 +54,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.crypto.encrypt.Encryptors;
-import org.springframework.security.crypto.encrypt.TextEncryptor;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.security.crypto.encrypt.Encryptors;
+import org.springframework.security.crypto.encrypt.TextEncryptor;
 import play.libs.Json;
 
 @Slf4j
@@ -129,8 +130,7 @@ public class CommonUtils {
   }
 
   public static Map<String, String> maskConfigNew(Map<String, String> config) {
-    return processDataNew(
-        config, CommonUtils::isSensitiveField, (key, value) -> getMaskedValue(key, value));
+    return processDataNew(config, CommonUtils::isSensitiveField, CommonUtils::getMaskedValue);
   }
 
   public static String getMaskedValue(String key, String value) {
@@ -660,5 +660,35 @@ public class CommonUtils {
       scanner.close();
     }
     return data;
+  }
+
+  /**
+   * Compares two collections ignoring items order. Different size of collections gives inequality
+   * of collections.
+   */
+  public static <T> boolean isEqualIgnoringOrder(Collection<T> x, Collection<T> y) {
+    if ((x == null) || (y == null)) {
+      return x == y;
+    }
+
+    if (x.size() != y.size()) {
+      return false;
+    }
+
+    return ImmutableMultiset.copyOf(x).equals(ImmutableMultiset.copyOf(y));
+  }
+
+  /**
+   * Generates log message containing state information of universe and running status of scheduler.
+   */
+  public static String generateStateLogMsg(Universe universe, boolean alreadyRunning) {
+    String stateLogMsg =
+        String.format(
+            "alreadyRunning={} backupInProgress={} updateInProgress={} universePaused={}",
+            alreadyRunning,
+            universe.getUniverseDetails().backupInProgress,
+            universe.getUniverseDetails().updateInProgress,
+            universe.getUniverseDetails().universePaused);
+    return stateLogMsg;
   }
 }

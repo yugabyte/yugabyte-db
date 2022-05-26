@@ -266,7 +266,7 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
-CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
+Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
                                                 const vector<string>& requested_metrics,
                                                 const MetricPrometheusOptions& opts) const {
   bool select_all = MatchMetricInList(id(), requested_metrics);
@@ -317,6 +317,8 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
+  } else if (strcmp(prototype_->name(), "drive") == 0) {
+    prometheus_attr["drive_path"] = attrs["drive_path"];
   } else {
     return Status::OK();
   }

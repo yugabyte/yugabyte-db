@@ -40,7 +40,7 @@ std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema& schem
   return std::make_pair(partition_schema, partitions[0]);
 }
 
-CHECKED_STATUS TabletHarness::Create(bool first_time) {
+Status TabletHarness::Create(bool first_time) {
   std::pair<PartitionSchema, Partition> partition(CreateDefaultPartition(schema_));
 
   // Build the Tablet
@@ -69,7 +69,7 @@ CHECKED_STATUS TabletHarness::Create(bool first_time) {
   return Status::OK();
 }
 
-CHECKED_STATUS TabletHarness::Open() {
+Status TabletHarness::Open() {
   RETURN_NOT_OK(tablet_->Open());
   tablet_->MarkFinishedBootstrapping();
   return tablet_->EnableCompactions(/* non_abortable_ops_pause */ nullptr);

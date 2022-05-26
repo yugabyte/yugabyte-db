@@ -48,7 +48,7 @@ YBCPgMemctx GetCurrentToolYbMemctx() {
 // Currently it is not used in the tools and can be empty.
 static const YBCPgTypeEntity YBCEmptyTypeEntityTable[] = {};
 
-CHECKED_STATUS PrepareInitPgGateBackend() {
+Status PrepareInitPgGateBackend() {
   server::MasterAddresses master_addresses;
   std::string resolved_str;
   RETURN_NOT_OK(server::DetermineMasterAddresses(

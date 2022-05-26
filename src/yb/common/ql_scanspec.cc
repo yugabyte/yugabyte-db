@@ -360,7 +360,7 @@ QLScanSpec::QLScanSpec(const QLConditionPB* condition,
 }
 
 // Evaluate the WHERE condition for the given row.
-CHECKED_STATUS QLScanSpec::Match(const QLTableRow& table_row, bool* match) const {
+Status QLScanSpec::Match(const QLTableRow& table_row, bool* match) const {
   bool cond = true;
   bool if_cond = true;
   if (condition_ != nullptr) {
