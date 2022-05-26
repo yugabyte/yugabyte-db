@@ -18,11 +18,11 @@ The following projects can be used to implement C# applications using the Yugaby
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
-| PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql) <br /> [Hello World App](/preview/quick-start/build-apps/csharp/ysql)<br /> [Reference Page](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and above
+| PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql) <br /> [Hello World App](../../quick-start/build-apps/csharp/ysql)<br /> [Reference Page](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and above
 
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
-| Entity Framework ORM | [Documentation](entityframework) | [Hello World App](/preview/quick-start/build-apps/csharp/ysql-entity-framework/) |
+| Entity Framework ORM | [Documentation](entityframework) | [Hello World App](../../quick-start/build-apps/csharp/ysql-entity-framework/) |
 
 <!-- | Project | Type | Support | Examples |
 | :------ | :--- | :-------| :------- |
@@ -40,7 +40,7 @@ For reference documentation, including using projects with SSL, refer to the [dr
 To develop C# applications for YugabyteDB, you need the following:
 
 - **.NET SDK**\
-  Install .NET SDK 3.1 or later. To download it for your supported OS, visit [Download .NET](https://dotnet.microsoft.com/en-us/download).
+  Install .NET SDK 6.0 or later. To download it for your supported OS, visit [Download .NET](https://dotnet.microsoft.com/en-us/download).
 
 - **Create a C# project**\
    For ease-of-use, use an integrated development environment (IDE) such as Visual Studio. To download and install Visual Studio, visit the [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/) page.
@@ -53,9 +53,9 @@ To develop C# applications for YugabyteDB, you need the following:
 
 - **YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that YugabyteDB Managed requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/install/macos).
 
 ## Next steps
 
 - Learn how to build C# applications using [Entity Framework ORM](entityframework/).
-- Learn how to use [Entity Framework core](/preview/integrations/entity-framework/) with YugabyteDB.
+- Learn how to use [Entity Framework core](../../integrations/entity-framework/) with YugabyteDB.

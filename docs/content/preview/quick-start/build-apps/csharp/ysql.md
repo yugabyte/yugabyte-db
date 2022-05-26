@@ -61,9 +61,9 @@ connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoadin
 
 ## Create a sample C# application
 
-In Visual Studio, create a new C# project and choose [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as template. Follow the instructions to save the project.
+- Create a new C# project, and choose [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as template. Follow the instructions to save the project.
 
-- Add the Npgsql package in your Visual Studio project as follows:
+- Add the Npgsql package to your project as follows:
 
 1. Right-click on **Dependencies** and click **Manage Nuget Packages**.
 1. Search for `Npgsql` and click **Add Package**.
@@ -124,7 +124,7 @@ namespace Yugabyte_CSharp_Demo
 
 ### Run the C# application
 
-Run the application by selecting `Run -> Start Without Debugging`.
+Select `Run -> Start Without Debugging` to run the application.
 
 You should see the following output:
 
@@ -149,25 +149,19 @@ The client driver supports several SSL modes, as follows:
 | verify-ca | Supported <br/> (Self-signed certificates aren't supported.) |
 | verify-full | Supported <br/> (Self-signed certificates aren't supported.) |
 
-{{< note title="SSL mode support" >}}
-
-The Npgsql driver does not support the strings `verify-ca` and `verify-full` when specifying the SSL mode.
-
-The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers. When you specify SSL mode `require`, the driver verifies the certificate by default (like the `verify-ca` or `verify-full` modes), and fails for self-signed certificates. You can override this by specifying "Trust Server Certificate=true", in which case it bypasses walking the certificate chain to validate trust and hence works like other drivers' `require` mode. In this case, the Root-CA certificate is not required to be configured.
-
-{{< /note >}}
+Refer the [Configure SSL/TLS](../../../reference/drivers/csharp/postgres-npgsql-reference/#configure-ssl-tls) section for SSL supported modes with examples for setting up your connection strings.
 
 ### Create a sample C# application with SSL
 
-In Visual Studio, create a new C# project and choose [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as template. Follow the instructions to save the project.
+- Create a new C# project in Visual Studio and choose [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as the template. Follow the instructions to save the project.
 
-First, install the Npgsql driver in your Visual Studio project, replacing the values in the `connStringBuilder` object as appropriate for your cluster::
+- Install the Npgsql driver in your Visual Studio project, replacing the values in the `connStringBuilder` object as appropriate for your cluster::
 
 1. Open your Project Solution View
 1. Right-click on **Packages** and click **Add Packages**
 1. Search for `Npgsql` and click **Add Package**
 
-Next, copy the contents below to your `Program.cs` file, :
+- Copy the following code to your `Program.cs` file:
 
 ```csharp
 using System;
