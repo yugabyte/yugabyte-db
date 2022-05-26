@@ -869,6 +869,12 @@ Stop retaining logs if the space available for the logs falls below this limit, 
 
 Default: `102400`
 
+##### --stream_truncate_record
+
+Enable streaming of TRUNCATE record for a table on which CDC is active.
+
+Default: `false`
+
 ---
 
 ### File expiration based on TTL flags
