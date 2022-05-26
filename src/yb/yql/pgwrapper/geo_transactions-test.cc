@@ -55,7 +55,7 @@ YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionSessionVar);
 constexpr auto kDatabaseName = "yugabyte";
 constexpr auto kTablePrefix = "test";
 const auto kStatusTabletCacheRefreshTimeout = MonoDelta::FromMilliseconds(10000);
-const auto kWaitLoadBalancerTimeout = MonoDelta::FromMilliseconds(30000);
+const auto kWaitLoadBalancerTimeout = MonoDelta::FromMilliseconds(60000);
 
 } // namespace
 
