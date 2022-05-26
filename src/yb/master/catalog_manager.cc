@@ -3858,15 +3858,18 @@ Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool r
   // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
   const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
   const auto pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
-  auto table_storage_id = GetPgsqlTableOid(table->id());
-  {
-    SharedLock lock(mutex_);
-    if (matview_pg_table_ids_map_.find(table->id()) != matview_pg_table_ids_map_.end()) {
-      table_storage_id = GetPgsqlTableOid(matview_pg_table_ids_map_[table->id()]);
-    }
+
+  auto entry_id = table->id();
+  auto relfilenode_id = TableId();
+
+  if (!table->matview_pg_table_id().empty()) {
+    relfilenode_id = entry_id;
+    entry_id = table->matview_pg_table_id();
   }
+
   auto entry_exists = VERIFY_RESULT(
-      ysql_transaction_->PgEntryExists(pg_table_id, table_storage_id));
+      ysql_transaction_->PgEntryExists(pg_table_id, GetPgsqlTableOid(entry_id),
+                                       relfilenode_id));
   auto l = table->LockForWrite();
   auto& metadata = table->mutable_metadata()->mutable_dirty()->pb;
 
@@ -4629,6 +4632,13 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
     metadata->set_is_pg_shared_table(true);
   }
 
+  if (req.is_matview()) {
+    metadata->set_is_matview(true);
+    if (req.has_matview_pg_table_id()) {
+      metadata->set_matview_pg_table_id(req.matview_pg_table_id());
+    }
+  }
+
   return table;
 }
 
@@ -4799,11 +4809,11 @@ Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
 
   const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info->namespace_id()));
   uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->id()));
-  {
-    if (matview_pg_table_ids_map_.find(table_info->id()) != matview_pg_table_ids_map_.end()) {
-      table_oid = VERIFY_RESULT(GetPgsqlTableOid(matview_pg_table_ids_map_[table_info->id()]));
-    }
+
+  if (!table_info->matview_pg_table_id().empty()) {
+      table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->matview_pg_table_id()));
   }
+
   const uint32_t relnamespace_oid = VERIFY_RESULT(
       sys_catalog_->ReadPgClassRelnamespace(database_oid, table_oid));
   return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
@@ -6219,6 +6229,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
   bool has_rel_filter = req->relation_type_filter_size() > 0;
   bool include_user_table = has_rel_filter ? false : true;
   bool include_user_index = has_rel_filter ? false : true;
+  bool include_user_matview = has_rel_filter ? false : true;
   bool include_system_table = req->exclude_system_tables() ? false
       : (has_rel_filter ? false : true);
 
@@ -6229,6 +6240,8 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       include_user_table = true;
     } else if (relation == INDEX_TABLE_RELATION) {
       include_user_index = true;
+    } else if (relation == MATVIEW_TABLE_RELATION) {
+      include_user_matview = true;
     }
   }
 
@@ -6259,6 +6272,11 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
         continue;
       }
       relation_type = INDEX_TABLE_RELATION;
+    } else if (IsMatviewTable(table_info)) {
+      if (!include_user_matview) {
+        continue;
+      }
+      relation_type = MATVIEW_TABLE_RELATION;
     } else if (IsUserTableUnlocked(table_info)) {
       if (!include_user_table) {
         continue;
@@ -6458,6 +6476,10 @@ bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
     }
   }
   return false;
+}
+
+bool CatalogManager::IsMatviewTable(const TableInfo& table) const {
+  return table.GetTableType() == PGSQL_TABLE_TYPE && table.is_matview();
 }
 
 void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid,
@@ -7537,7 +7559,7 @@ Status CatalogManager::VerifyNamespacePgLayer(
   // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
   const auto pg_table_id = GetPgsqlTableId(atoi(kSystemNamespaceId), kPgDatabaseTableOid);
   auto entry_exists = VERIFY_RESULT(
-      ysql_transaction_->PgEntryExists(pg_table_id, GetPgsqlDatabaseOid(ns->id())));
+      ysql_transaction_->PgEntryExists(pg_table_id, GetPgsqlDatabaseOid(ns->id()), TableId()));
   auto l = ns->LockForWrite();
   SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
 
