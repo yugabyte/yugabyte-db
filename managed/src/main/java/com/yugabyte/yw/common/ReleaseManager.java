@@ -445,10 +445,10 @@ public class ReleaseManager {
     String ybReleasePath = appConfig.getString("yb.docker.release");
     String ybHelmChartPath = appConfig.getString("yb.helm.packagePath");
     if (ybReleasesPath != null && !ybReleasesPath.isEmpty()) {
-      moveFiles(ybReleasePath, ybReleasesPath, ybPackagePattern);
-      moveFiles(ybHelmChartPath, ybReleasesPath, ybHelmChartPattern);
-      Map<String, ReleaseMetadata> localReleases = getLocalReleases(ybReleasesPath);
       Map<String, Object> currentReleases = getReleaseMetadata();
+      copyFiles(ybReleasePath, ybReleasesPath, ybPackagePattern, currentReleases.keySet());
+      copyFiles(ybHelmChartPath, ybReleasesPath, ybHelmChartPattern, currentReleases.keySet());
+      Map<String, ReleaseMetadata> localReleases = getLocalReleases(ybReleasesPath);
       localReleases.keySet().removeAll(currentReleases.keySet());
       LOG.debug("Current releases: [ {} ]", currentReleases.keySet().toString());
       LOG.debug("Local releases: [ {} ]", localReleases.keySet());
@@ -503,13 +503,16 @@ public class ReleaseManager {
   }
 
   /**
-   * This method moves files that match a specific regex to a destination directory.
+   * This method copies release files that match a specific regex to a destination directory.
    *
    * @param sourceDir (str): Source directory to move files from
    * @param destinationDir (str): Destination directory to move files to
    * @param fileRegex (str): Regular expression specifying files to move
+   * @param skipVersions : Set of versions to ignore while copying. version is the first matching
+   *     group from fileRegex
    */
-  private static void moveFiles(String sourceDir, String destinationDir, Pattern fileRegex) {
+  private static void copyFiles(
+      String sourceDir, String destinationDir, Pattern fileRegex, Set<String> skipVersions) {
     if (sourceDir == null || sourceDir.isEmpty()) {
       return;
     }
@@ -521,17 +524,22 @@ public class ReleaseManager {
           .filter(Matcher::matches)
           .forEach(
               match -> {
+                String version = match.group(1);
+                if (skipVersions.contains(version)) {
+                  LOG.debug("Skipping re-copy of release files for {}", version);
+                  return;
+                }
                 File releaseFile = new File(match.group());
-                File destinationFolder = new File(destinationDir, match.group(1));
+                File destinationFolder = new File(destinationDir, version);
                 File destinationFile = new File(destinationFolder, releaseFile.getName());
                 if (!destinationFolder.exists()) {
                   destinationFolder.mkdir();
                 }
                 try {
-                  Files.move(releaseFile.toPath(), destinationFile.toPath(), REPLACE_EXISTING);
+                  Files.copy(releaseFile.toPath(), destinationFile.toPath(), REPLACE_EXISTING);
                 } catch (IOException e) {
                   throw new RuntimeException(
-                      "Unable to move release file "
+                      "Unable to copy release file "
                           + releaseFile.toPath()
                           + " to "
                           + destinationFile);
