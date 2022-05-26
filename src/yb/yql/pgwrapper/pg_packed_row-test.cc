@@ -320,5 +320,45 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Serial)) {
   ASSERT_OK(conn.Execute("CREATE TABLE sbtest1(id SERIAL, PRIMARY KEY (id))"));
 }
 
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackDuringCompaction)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_packed_row_columns) = 0;
+
+  const auto kNumKeys = 10;
+  const auto kKeys = Range(1, kNumKeys + 1);
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 INT NOT NULL) SPLIT INTO 1 TABLETS"));
+
+  std::string all_rows;
+  for (auto i : kKeys) {
+    auto expr = Format("$0, $0, -$0", i);
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, v1, v2) VALUES ($0)", expr));
+    if (!all_rows.empty()) {
+      all_rows += "; ";
+    }
+    all_rows += expr;
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_packed_row_columns) = 10;
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+
+  for (const auto& peer : peers) {
+    if (!peer->tablet()->doc_db().regular) {
+      continue;
+    }
+    auto count = peer->tablet()->TEST_CountRegularDBRecords();
+    LOG(INFO) << peer->LogPrefix() << "records: " << count;
+    ASSERT_EQ(count, kNumKeys);
+  }
+
+  auto fetched_rows = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY key"));
+  ASSERT_EQ(fetched_rows, all_rows);
+}
+
 } // namespace pgwrapper
 } // namespace yb
