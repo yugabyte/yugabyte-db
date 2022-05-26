@@ -337,6 +337,14 @@ bool TableInfo::colocated() const {
   return LockForRead()->pb.colocated();
 }
 
+std::string TableInfo::matview_pg_table_id() const {
+  return LockForRead()->pb.matview_pg_table_id();
+}
+
+bool TableInfo::is_matview() const {
+  return LockForRead()->pb.is_matview();
+}
+
 std::string TableInfo::indexed_table_id() const {
   return LockForRead()->indexed_table_id();
 }
