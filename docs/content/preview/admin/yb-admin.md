@@ -1375,7 +1375,7 @@ yb-admin -master_addresses <target_master_addresses> \
 * *target_master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *source_universe_uuid*: The UUID of the source universe.
 * *replication_name*: The name of the replication to be altered.
-* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
+* *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
 
 #### delete_universe_replication <source_universe_uuid>
 
