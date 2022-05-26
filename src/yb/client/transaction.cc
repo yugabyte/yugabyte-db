@@ -560,6 +560,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   Result<bool> StartPromotionToGlobalIfNecessary(
       internal::InFlightOpsGroupsWithMetadata* ops_info) REQUIRES(mutex_) {
+    if (!ready_) {
+      return false;
+    }
+
     auto op = FindOpWithLocalityViolation(ops_info);
     if (!op) {
       return false;
