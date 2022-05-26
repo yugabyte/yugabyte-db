@@ -75,7 +75,7 @@ DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
 DEFINE_int32(max_packed_row_columns, -1,
-             "Max number of columns in packed row. -1 to disable.");
+             "Max number of columns in packed row. -1 to disable row packing.");
 
 namespace yb {
 namespace docdb {
