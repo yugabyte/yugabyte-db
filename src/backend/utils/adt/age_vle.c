@@ -149,7 +149,7 @@ static void cache_VLE_local_context(VLE_local_context *vlelctx);
 static VLE_local_context *get_cached_VLE_local_context(int64 vle_grammar_node_id)
 {
     VLE_local_context *vlelctx = global_vle_local_contexts;
-    VLE_local_context *prev = global_vle_local_contexts;
+    VLE_local_context *prev = NULL;
     VLE_local_context *next = NULL;
     int cache_size = 0;
 
@@ -162,10 +162,16 @@ static VLE_local_context *get_cached_VLE_local_context(int64 vle_grammar_node_id
             /* set the next pointer to the context that follows */
             next = vlelctx->next;
 
-            /* clear (unlink) the previous context's next pointer, if needed */
+            /*
+             * Clear (unlink) the previous context's next pointer, if needed.
+             * Also clear prev as we are at the end of avaiable cached contexts
+             * and just purging them off. Remember, this forms a loop that will
+             * exit the while after purging.
+             */
             if (prev != NULL)
             {
                 prev->next = NULL;
+                prev = NULL;
             }
 
             /* free the context */
@@ -217,7 +223,7 @@ static VLE_local_context *get_cached_VLE_local_context(int64 vle_grammar_node_id
                  * If the context is good and isn't at the head of the cache,
                  * promote it to the head.
                  */
-                if (ggctx != NULL && vlelctx != prev)
+                if (ggctx != NULL && vlelctx != global_vle_local_contexts)
                 {
                     /* adjust the links to cut out the node */
                     prev->next = vlelctx->next;
