@@ -376,6 +376,10 @@ Status ReadQuery::DoPerform() {
     write.set_unused_tablet_id(""); // For backward compatibility.
     write_batch.set_deprecated_may_have_metadata(true);
     write.set_batch_idx(req_->batch_idx());
+    if (req_->has_subtransaction() && req_->subtransaction().has_subtransaction_id()) {
+      write_batch.mutable_subtransaction()->set_subtransaction_id(
+          req_->subtransaction().subtransaction_id());
+    }
     // TODO(dtxn) write request id
 
     RETURN_NOT_OK(leader_peer.peer->tablet()->CreateReadIntents(

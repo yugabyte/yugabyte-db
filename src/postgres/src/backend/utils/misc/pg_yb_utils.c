@@ -578,10 +578,10 @@ YBCSetActiveSubTransaction(SubTransactionId id)
 }
 
 void
-YBCRollbackSubTransaction(SubTransactionId id)
+YBCRollbackToSubTransaction(SubTransactionId id)
 {
 	if (YBSavepointsEnabled())
-		HandleYBStatus(YBCPgRollbackSubTransaction(id));
+		HandleYBStatus(YBCPgRollbackToSubTransaction(id));
 }
 
 bool
