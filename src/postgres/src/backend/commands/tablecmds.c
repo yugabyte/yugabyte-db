@@ -10584,6 +10584,7 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.tg_trigger = &trig;
 		trigdata.tg_trigtuplebuf = YbFKTriggerScanGetBuffer(fk_scan);
 		trigdata.tg_newtuplebuf = InvalidBuffer;
+		trigdata.disable_fk_check = false;
 
 		fcinfo.context = (Node *) &trigdata;
 

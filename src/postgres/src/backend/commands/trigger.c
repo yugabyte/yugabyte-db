@@ -2471,6 +2471,7 @@ ExecBSInsertTriggers(EState *estate, ResultRelInfo *relinfo)
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
+	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_trigtuplebuf = InvalidBuffer;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
@@ -2531,6 +2532,7 @@ ExecBRInsertTriggers(EState *estate, ResultRelInfo *relinfo,
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
+	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
@@ -2612,6 +2614,7 @@ ExecIRInsertTriggers(EState *estate, ResultRelInfo *relinfo,
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
+	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
@@ -2686,6 +2689,7 @@ ExecBSDeleteTriggers(EState *estate, ResultRelInfo *relinfo)
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
+	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_trigtuplebuf = InvalidBuffer;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
@@ -2780,6 +2784,7 @@ ExecBRDeleteTriggers(EState *estate, EPQState *epqstate,
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
+	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
@@ -2865,6 +2870,7 @@ ExecIRDeleteTriggers(EState *estate, ResultRelInfo *relinfo,
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
+	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
@@ -2925,6 +2931,7 @@ ExecBSUpdateTriggers(EState *estate, ResultRelInfo *relinfo)
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
+	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_trigtuplebuf = InvalidBuffer;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
@@ -3030,6 +3037,7 @@ ExecBRUpdateTriggers(EState *estate, EPQState *epqstate,
 	LocTriggerData.tg_relation = relinfo->ri_RelationDesc;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
+	LocTriggerData.disable_fk_check = false;
 	updatedCols = GetUpdatedColumns(relinfo, estate);
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
@@ -3145,6 +3153,7 @@ ExecIRUpdateTriggers(EState *estate, ResultRelInfo *relinfo,
 	LocTriggerData.tg_relation = relinfo->ri_RelationDesc;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
+	LocTriggerData.disable_fk_check = false;
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
 		Trigger    *trigger = &trigdesc->triggers[i];
@@ -3215,6 +3224,7 @@ ExecBSTruncateTriggers(EState *estate, ResultRelInfo *relinfo)
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
+	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_trigtuplebuf = InvalidBuffer;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
@@ -4364,6 +4374,7 @@ AfterTriggerExecute(AfterTriggerEvent event,
 	 * query level, they'll go into new transition tables.
 	 */
 	LocTriggerData.tg_oldtable = LocTriggerData.tg_newtable = NULL;
+	LocTriggerData.disable_fk_check = false;
 	if (evtshared->ats_table)
 	{
 		if (LocTriggerData.tg_trigger->tgoldtable)
