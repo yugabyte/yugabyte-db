@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -12,33 +12,44 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 
 @Slf4j
-public class DestroyKubernetesUniverse extends DestroyUniverse {
+public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
 
   @Inject
-  public DestroyKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
+  public ReadOnlyKubernetesClusterDelete(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
+  }
+
+  public static class Params extends UniverseDefinitionTaskParams {
+    public UUID clusterUUID;
+    public Boolean isForceDelete = false;
+  }
+
+  public Params params() {
+    return (Params) taskParams;
   }
 
   @Override
   public void run() {
     try {
-
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = null;
@@ -48,17 +59,35 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
         universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       }
 
+      List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
+      if (CollectionUtils.isEmpty(roClusters)) {
+        String msg =
+            String.format(
+                "Unable to delete ReadOnly cluster from universe %s as "
+                    + "it doesn't have any ReadOnly clusters.",
+                universe.name);
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
+
       preTaskActions();
+
+      // We support only one readonly cluster, so using the first one in the list.
+      Cluster cluster = roClusters.get(0);
+      UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+      UUID providerUUID = UUID.fromString(userIntent.provider);
 
       Map<String, String> universeConfig = universe.getConfig();
       boolean runHelmDelete = universeConfig.containsKey(Universe.HELM2_LEGACY);
 
-      // Cleanup the kms_history table
-      createDestroyEncryptionAtRestTask()
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+      PlacementInfo pi = cluster.placementInfo;
 
-      // Try to unify this with the edit remove pods/deployments flow. Currently delete is
-      // tied down to a different base class which makes params porting not straight-forward.
+      Provider provider = Provider.get(providerUUID);
+
+      Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
+
+      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+
       SubTaskGroup helmDeletes =
           getTaskExecutor()
               .createSubTaskGroup(
@@ -80,72 +109,52 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
                   executor);
       namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
-      for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
-        UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
-        UUID providerUUID = UUID.fromString(userIntent.provider);
+      boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
-        PlacementInfo pi = cluster.placementInfo;
+      for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+        UUID azUUID = entry.getKey();
+        String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
 
-        Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+        Map<String, String> config = entry.getValue();
 
-        Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
-        boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+        String namespace = config.get("KUBENAMESPACE");
 
-        for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
-          UUID azUUID = entry.getKey();
-          String azName = isMultiAz ? AvailabilityZone.getOrBadRequest(azUUID).code : null;
-
-          Map<String, String> config = entry.getValue();
-
-          String namespace = config.get("KUBENAMESPACE");
-
-          if (runHelmDelete || namespace != null) {
-            // Delete the helm deployments.
-            helmDeletes.addSubTask(
-                createDestroyKubernetesTask(
-                    universe.getUniverseDetails().nodePrefix,
-                    universe.getUniverseDetails().useNewHelmNamingStyle,
-                    azName,
-                    config,
-                    KubernetesCommandExecutor.CommandType.HELM_DELETE,
-                    providerUUID,
-                    cluster.clusterType == ClusterType.ASYNC));
-          }
-
-          // Delete the PVCs created for this AZ.
-          volumeDeletes.addSubTask(
+        if (runHelmDelete || namespace != null) {
+          // Delete the helm deployments.
+          helmDeletes.addSubTask(
               createDestroyKubernetesTask(
                   universe.getUniverseDetails().nodePrefix,
-                  universe.getUniverseDetails().useNewHelmNamingStyle,
                   azName,
                   config,
-                  KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
+                  KubernetesCommandExecutor.CommandType.HELM_DELETE,
                   providerUUID,
-                  cluster.clusterType == ClusterType.ASYNC));
+                  newNamingStyle,
+                  /*isReadOnlyCluster*/ true));
+        }
 
-          // TODO(bhavin192): delete the pull secret as well? As of now,
-          // we depend on the fact that, deleting the namespace will
-          // delete the pull secret. That won't be the case with
-          // providers which have KUBENAMESPACE paramter in the AZ
-          // config. How to find the pull secret name? Should we delete
-          // it when we have multiple releases in one namespace?. It is
-          // possible that same provider is creating multiple releases
-          // in one namespace. Tracked here:
-          // https://github.com/yugabyte/yugabyte-db/issues/7012
+        // Delete the PVCs created for this AZ.
+        volumeDeletes.addSubTask(
+            createDestroyKubernetesTask(
+                universe.getUniverseDetails().nodePrefix,
+                azName,
+                config,
+                KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
+                providerUUID,
+                newNamingStyle,
+                /*isReadOnlyCluster*/ true));
 
-          // Delete the namespaces of the deployments only if those were
-          // created by us.
-          if (namespace == null) {
-            namespaceDeletes.addSubTask(
-                createDestroyKubernetesTask(
-                    universe.getUniverseDetails().nodePrefix,
-                    universe.getUniverseDetails().useNewHelmNamingStyle,
-                    azName,
-                    config,
-                    KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
-                    providerUUID,
-                    cluster.clusterType == ClusterType.ASYNC));
-          }
+        // Delete the namespaces of the deployments only if those were
+        // created by us.
+        if (namespace == null) {
+          namespaceDeletes.addSubTask(
+              createDestroyKubernetesTask(
+                  universe.getUniverseDetails().nodePrefix,
+                  azName,
+                  config,
+                  KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
+                  providerUUID,
+                  newNamingStyle,
+                  /*isReadOnlyCluster*/ true));
         }
       }
 
@@ -153,35 +162,43 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       getRunnableTask().addSubTaskGroup(volumeDeletes);
       getRunnableTask().addSubTaskGroup(namespaceDeletes);
 
-      // Create tasks to remove the universe entry from the Universe table.
-      createRemoveUniverseEntryTask()
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+      // Remove the cluster entry from the universe db entry.
+      createDeleteClusterFromUniverseTask(params().clusterUUID)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+
+      // Remove the async_replicas in the cluster config on master leader.
+      createPlacementInfoTask(null /* blacklistNodes */)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
       // Update the swamper target file.
-      createSwamperTargetUpdateTask(true /* removeFile */);
+      createSwamperTargetUpdateTask(false /* removeFile */);
+
+      // Marks the update of this universe as a success only if all the tasks before it succeeded.
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      // If for any reason destroy fails we would just unlock the universe for update
-      try {
-        unlockUniverseForUpdate();
-      } catch (Throwable t1) {
-        // Ignore the error
-      }
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
+    } finally {
+      // Mark the update of the universe as done. This will allow future edits/updates to the
+      // universe to happen.
+      unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
   }
 
+  // TODO this method is present in DestroyKubernetesUniverse.java also
+  // RFC: Should we consider creating a base class and move it there?
   protected KubernetesCommandExecutor createDestroyKubernetesTask(
       String nodePrefix,
-      boolean newNamingStyle,
       String az,
       Map<String, String> config,
       KubernetesCommandExecutor.CommandType commandType,
       UUID providerUUID,
+      boolean newNamingStyle,
       boolean isReadOnlyCluster) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.commandType = commandType;
