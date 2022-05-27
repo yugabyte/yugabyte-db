@@ -11,15 +11,18 @@
 // under the License.
 //
 
+#include <boost/algorithm/string/join.hpp>
 #include "yb/cdc/cdc_service.proxy.h"
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/partition.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/tablet-split-itest-base.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
@@ -46,6 +49,10 @@ DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int64(db_write_buffer_size);
 
 namespace yb {
+using client::kv_table_test::Partitioning;
+using master::GetTableLocationsRequestPB;
+using master::GetTableLocationsResponsePB;
+using master::TableIdentifierPB;
 
 class CdcTabletSplitITest : public TabletSplitITest {
  public:
@@ -90,7 +97,7 @@ class CdcTabletSplitITest : public TabletSplitITest {
     // Create an identical table on the new cluster.
     client::kv_table_test::CreateTable(
         client::Transactional(GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL),
-        1,  // num_tablets
+        NumTablets(),  // num_tablets
         cluster_client.get(),
         table);
     return cluster;
@@ -167,16 +174,28 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_table_));
     consumer_client_ = ASSERT_RESULT(consumer_cluster_->CreateClient());
 
+    SetupReplication();
+  }
+
+  void SetupReplication() {
+    SwitchToProducer();
     ASSERT_OK(tools::RunAdminToolCommand(
         consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
         cluster_->GetMasterAddresses(), table_->id()));
   }
 
+  void DeleteReplication() {
+    SwitchToProducer();
+    ASSERT_OK(tools::RunAdminToolCommand(
+        consumer_cluster_->GetMasterAddresses(), "delete_universe_replication",
+        kProducerClusterId));
+  }
+
  protected:
   void DoBeforeTearDown() override {
+    DeleteReplication();
+
     SwitchToConsumer();
-    ASSERT_OK(tools::RunAdminToolCommand(
-        cluster_->GetMasterAddresses(), "delete_universe_replication", kProducerClusterId));
 
     // Since delete_universe_replication is async, wait until consumers are empty before shutdown.
     // TODO: remove this once #12068 is fixed.
@@ -270,6 +289,86 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     return WaitForTabletSplitCompletion(expected_non_split_tablets, expected_split_tablets);
   }
 
+  auto GetTabletLocations() {
+    GetTableLocationsRequestPB consumer_table_req;
+    consumer_table_req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
+    GetTableLocationsResponsePB consumer_table_resp;
+    TableIdentifierPB table_identifer;
+    table_identifer.set_table_id(table_->id());
+    *(consumer_table_req.mutable_table()) = table_identifer;
+
+    auto catalog_mgr = EXPECT_RESULT(catalog_manager());
+    EXPECT_OK(catalog_mgr->GetTableLocations(&consumer_table_req, &consumer_table_resp));
+    return consumer_table_resp.tablet_locations();
+  }
+
+  auto GetConsumerMap() {
+    master::SysClusterConfigEntryPB cluster_info;
+    auto& cm = EXPECT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    EXPECT_OK(cm.GetClusterConfig(&cluster_info));
+    auto producer_map = cluster_info.mutable_consumer_registry()->mutable_producer_map();
+    auto it = producer_map->find(kProducerClusterId);
+    EXPECT_NE(it, producer_map->end());
+    EXPECT_EQ(it->second.stream_map().size(), 1);
+    return it->second.stream_map().begin()->second.consumer_producer_tablet_map();
+  }
+
+  void ValidateOverlap() {
+    const auto timeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+    SwitchToProducer();
+    auto producer_tablet_locations = GetTabletLocations();
+    int producer_tablet_count = producer_tablet_locations.size();
+
+    SwitchToConsumer();
+    ASSERT_OK(cdc::CorrectlyPollingAllTablets(cluster_.get(), producer_tablet_count, timeout));
+    auto consumer_tablet_locations = GetTabletLocations();
+    int consumer_tablet_count = consumer_tablet_locations.size();
+
+    auto tablet_map = GetConsumerMap();
+    LOG(INFO) << "Consumer Map: \n";
+    for (const auto& elem : tablet_map) {
+      std::vector<string> start_keys, end_keys;
+      std::transform(
+          elem.second.start_key().begin(), elem.second.start_key().end(),
+          std::back_inserter(start_keys),
+          [](std::string s) -> string { return Slice(s).ToDebugHexString(); });
+      std::transform(
+          elem.second.end_key().begin(), elem.second.end_key().end(), std::back_inserter(end_keys),
+          [](std::string s) -> string { return Slice(s).ToDebugHexString(); });
+
+      LOG(INFO) << elem.first << ", [" << boost::algorithm::join(elem.second.tablets(), ",")
+                << "], [" << boost::algorithm::join(start_keys, ",") << "], ["
+                << boost::algorithm::join(end_keys, ",") << "]\n";
+    }
+    ASSERT_LE(tablet_map.size(), min(producer_tablet_count, consumer_tablet_count));
+
+    int producer_tablets = 0;
+    for (auto& mapping : tablet_map) {
+      auto consumer_tablet = std::find_if(
+          consumer_tablet_locations.begin(), consumer_tablet_locations.end(),
+          [&](const auto& tablet) { return tablet.tablet_id() == mapping.first; });
+      ASSERT_NE(consumer_tablet, consumer_tablet_locations.end());
+
+      for (auto& mapped_producer_tablet : mapping.second.tablets()) {
+        producer_tablets++;
+        auto producer_tablet = std::find_if(
+            producer_tablet_locations.begin(), producer_tablet_locations.end(),
+            [&](const auto& tablet) { return tablet.tablet_id() == mapped_producer_tablet; });
+        ASSERT_NE(producer_tablet, producer_tablet_locations.end());
+
+        ASSERT_GT(
+            PartitionSchema::GetOverlap(
+                consumer_tablet->partition().partition_key_start(),
+                consumer_tablet->partition().partition_key_end(),
+                producer_tablet->partition().partition_key_start(),
+                producer_tablet->partition().partition_key_end()),
+            0);
+      }
+    }
+
+    ASSERT_EQ(producer_tablets, producer_tablet_count);
+  }
+
   // Only one set of these is valid at any time.
   // The other cluster is accessible via cluster_ / client_ / table_.
   std::unique_ptr<MiniCluster> consumer_cluster_;
@@ -282,6 +381,67 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
 
   const string kProducerClusterId = "producer";
 };
+
+class xClusterTabletMapTest : public XClusterTabletSplitITest,
+                              public testing::WithParamInterface<Partitioning> {
+ public:
+  void SetUp() override {}
+
+  void RunSetUp(int producer_tablet_count, int consumer_tablet_count) {
+    FLAGS_cdc_state_table_num_tablets = 1;
+    TabletSplitITest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+
+    SetNumTablets(producer_tablet_count);
+    Schema schema;
+    BuildSchema(GetParam(), &schema);
+    schema.mutable_table_properties()->SetTransactional(
+        GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL);
+    ASSERT_OK(client::kv_table_test::CreateTable(schema, NumTablets(), client_.get(), &table_));
+
+    SetNumTablets(consumer_tablet_count);
+    // Also create the consumer cluster.
+    // First create the new cluster.
+    MiniClusterOptions opts;
+    opts.num_tablet_servers = 3;
+    opts.cluster_id = "consumer";
+    consumer_cluster_ = std::make_unique<MiniCluster>(opts);
+    ASSERT_OK(consumer_cluster_->Start());
+    ASSERT_OK(consumer_cluster_->WaitForTabletServerCount(3));
+    consumer_client_ = ASSERT_RESULT(consumer_cluster_->CreateClient());
+
+    // Create an identical table on the new cluster.
+    ASSERT_OK(client::kv_table_test::CreateTable(
+        schema,
+        NumTablets(),  // num_tablets
+        consumer_client_.get(),
+        &consumer_table_));
+
+    SetupReplication();
+    ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows, 1));
+  }
+};
+
+TEST_P(xClusterTabletMapTest, SingleTableCountMapTest) {
+  RunSetUp(1, 1);
+  ValidateOverlap();
+}
+
+TEST_P(xClusterTabletMapTest, SameTableCountMapTest) {
+  RunSetUp(4, 4);
+  ValidateOverlap();
+}
+
+TEST_P(xClusterTabletMapTest, MoreProducerTablets) {
+  RunSetUp(8, 2);
+  ValidateOverlap();
+}
+
+TEST_P(xClusterTabletMapTest, MoreConsumerTablets) {
+  RunSetUp(3, 8);
+  ValidateOverlap();
+}
 
 TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
   // Perform a split on the consumer side and ensure replication still works.
@@ -297,6 +457,8 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
 
   // Perform a split on the CONSUMER cluster.
   ASSERT_OK(SplitTabletAndValidate(split_hash_code, kDefaultNumRows));
+
+  ValidateOverlap();
 
   SwitchToProducer();
 
@@ -323,6 +485,8 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnProducer) {
   ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
 
   ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
+
+  ValidateOverlap();
 }
 
 TEST_F(XClusterTabletSplitITest, MultipleSplitsDuringPausedReplication) {
@@ -379,6 +543,8 @@ TEST_F(XClusterTabletSplitITest, MultipleSplitsInSequence) {
   // Write some more rows and check that everything is replicated correctly.
   ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
   ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
+
+  ValidateOverlap();
 }
 
 TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
@@ -428,6 +594,8 @@ TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
   size_t num_rows = ASSERT_RESULT(SelectRowsCount(producer_session, table_));
 
   ASSERT_OK(CheckForNumRowsOnConsumer(num_rows));
+
+  ValidateOverlap();
 }
 
 TEST_F(XClusterTabletSplitITest, ConsumerClusterFailureWhenProcessingSplitOp) {
@@ -701,5 +869,18 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnConsumer)
 
   producer_cluster->Shutdown();
 }
+
+namespace {
+template <typename T>
+std::string TestParamToString(const testing::TestParamInfo<T>& param_info) {
+  return ToString(param_info.param);
+}
+}  // namespace
+
+INSTANTIATE_TEST_CASE_P(
+    xClusterTabletMapTestITest,
+    xClusterTabletMapTest,
+    ::testing::ValuesIn(client::kv_table_test::kPartitioningArray),
+    TestParamToString<Partitioning>);
 
 }  // namespace yb
