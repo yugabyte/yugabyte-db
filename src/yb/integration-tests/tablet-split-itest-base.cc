@@ -334,6 +334,19 @@ void TabletSplitITestBase<MiniClusterType>::CheckTableKeysInRange(const size_t n
   ASSERT_EQ(keys.size(), num_keys);
 }
 
+template <class MiniClusterType>
+Result<bool> TabletSplitITestBase<MiniClusterType>::IsSplittingComplete(
+    yb::master::MasterAdminProxy* master_proxy) {
+  rpc::RpcController controller;
+  controller.set_timeout(kRpcTimeout);
+  master::IsTabletSplittingCompleteRequestPB is_tablet_splitting_complete_req;
+  master::IsTabletSplittingCompleteResponsePB is_tablet_splitting_complete_resp;
+
+  RETURN_NOT_OK(master_proxy->IsTabletSplittingComplete(is_tablet_splitting_complete_req,
+      &is_tablet_splitting_complete_resp, &controller));
+  return is_tablet_splitting_complete_resp.is_tablet_splitting_complete();
+}
+
 template class TabletSplitITestBase<MiniCluster>;
 template class TabletSplitITestBase<ExternalMiniCluster>;
 
@@ -751,7 +764,8 @@ Status TabletSplitExternalMiniClusterITest::SplitTablet(const std::string& table
   rpc::RpcController rpc;
   rpc.set_timeout(30s * kTimeMultiplier);
 
-  RETURN_NOT_OK(cluster_->GetMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
+  RETURN_NOT_OK(
+      cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }

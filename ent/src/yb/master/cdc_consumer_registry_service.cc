@@ -238,12 +238,12 @@ Status UpdateTabletMappingOnConsumerSplit(
   // children.
   auto producer_tablets = (*mutable_map)[split_tablet_ids.source];
   DCHECK(producer_tablets.start_key_size() == 0 && producer_tablets.end_key_size() == 0);
-  mutable_map->erase(split_tablet_ids.source);
-  for (int i = 0; i < producer_tablets.tablets().size(); ++i) {
-    if (i % 2) {
-      *(*mutable_map)[split_tablet_ids.children.first].add_tablets() = producer_tablets.tablets(i);
-    } else {
-      *(*mutable_map)[split_tablet_ids.children.second].add_tablets() = producer_tablets.tablets(i);
+  // Only process this tablet if it present, if not we have already processed it.
+  if (mutable_map->erase(split_tablet_ids.source)) {
+    for (int i = 0; i < producer_tablets.tablets().size(); ++i) {
+      const auto& child = (i % 2) ? split_tablet_ids.children.first
+                                  : split_tablet_ids.children.second;
+      *(*mutable_map)[child].add_tablets() = producer_tablets.tablets(i);
     }
   }
 
