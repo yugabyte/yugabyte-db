@@ -54,7 +54,7 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 | Feature | Sandbox | Dedicated |
 | :----------- | :---------- | :---------- |
 | Cluster | Single Node | Any |
-| vCPU/Storage | Up to 2 vCPU / 4 GB RAM / 10 GB storage | Any |
+| vCPU/Storage | Up to 2 vCPU / 4 GB Memory / 10 GB storage | Any |
 | [Regions](../release-notes/#cloud-provider-regions) | All | All |
 | Upgrades | Automatic | Automatic with customizable [maintenance windows](../cloud-clusters/cloud-maintenance/) |
 | [VPC Peering](../cloud-basics/cloud-vpcs/) | No | Yes |
