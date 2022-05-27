@@ -278,7 +278,7 @@ extern void YBCAbortTransaction();
 
 extern void YBCSetActiveSubTransaction(SubTransactionId id);
 
-extern void YBCRollbackSubTransaction(SubTransactionId id);
+extern void YBCRollbackToSubTransaction(SubTransactionId id);
 
 /*
  * Return true if we want to allow PostgreSQL's own locking. This is needed

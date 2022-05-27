@@ -696,13 +696,15 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
   return pg_client_.SetActiveSubTransaction(id, options_ptr);
 }
 
-Status PgSession::RollbackSubTransaction(SubTransactionId id) {
-  // TODO(savepoints) -- send async RPC to transaction status tablet, or rely on heartbeater to
-  // eventually send this metadata.
+Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
   // SubTransactionMetadata.
+  // TODO(read committed): performance improvement -
+  // don't wait for ops which have already been sent ahead by pg_session i.e., to the batcher, then
+  // rpc layer and beyond. For such ops, rely on aborted sub txn list in status tablet to invalidate
+  // writes which will be asynchronously written to txn participants.
   RETURN_NOT_OK(FlushBufferedOperations());
-  return pg_client_.RollbackSubTransaction(id);
+  return pg_client_.RollbackToSubTransaction(id);
 }
 
 void PgSession::ResetHasWriteOperationsInDdlMode() {
