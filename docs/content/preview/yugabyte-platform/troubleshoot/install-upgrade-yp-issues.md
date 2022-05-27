@@ -67,25 +67,28 @@ done
 
 ## Configure load balancer for Helm charts
 
-If you experience issues accessing YugabyteDB Anywhere through a load balancer, you can define the Cross-Origin Resource Sharing (CORS) domain configuration by setting the [additionAllowedCorsOrigins](https://github.com/yugabyte/charts/blob/master/stable/yugaware/values.yaml#L66) value to the new domain involved. For example, you would add the following to the appropriate Helm command: 
+You might experience the following issues related to your load balancer configuration:
 
-```properties
- --set additionAllowedCorsOrigins:'https://mylbdomain'
-```
+- If there are issues with accessing YugabyteDB Anywhere through a load balancer, you can define the Cross-Origin Resource Sharing (CORS) domain configuration by setting the [additionAllowedCorsOrigins](https://github.com/yugabyte/charts/blob/master/stable/yugaware/values.yaml#L66) value to the new domain involved. For example, you would add the following to the appropriate Helm command: 
 
-If the default Amazon Web Services (AWS) load balancer brought up in Amazon Elastic Kubernetes Service (EKS) by the YugabyteDB Anywhere Helm chart is not suitable for your setup, you can use the following settings to customize the [AWS load balancer controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.2/guide/service/annotations/) behavior:
+  ```properties
+   --set additionAllowedCorsOrigins:'https://mylbdomain'
+  ```
 
-- `aws-load-balancer-scheme` can be set to `internal` or `internet-facing` string value.
-- `aws-load-balancer-backend-protocol` and `aws-load-balancer-healthcheck-protocol` should be set to the `http` string value.
+- If the default Amazon Web Services (AWS) load balancer brought up in Amazon Elastic Kubernetes Service (EKS) by the YugabyteDB Anywhere Helm chart is not suitable for your setup, you can use the following settings to customize the [AWS load balancer controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.2/guide/service/annotations/) behavior:
+  - `aws-load-balancer-scheme` can be set to `internal` or `internet-facing` string value.
+  - `aws-load-balancer-backend-protocol` and `aws-load-balancer-healthcheck-protocol` should be set to the `http` string value.
 
-Consider the following sample configuration:
+  Consider the following sample configuration:
 
-```properties
-service.beta.kubernetes.io/aws-load-balancer-type: "ip"
-service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
-service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "http"
-```
+  ```properties
+  service.beta.kubernetes.io/aws-load-balancer-type: "ip"
+  service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+  service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+  service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "http"
+  ```
+
+
 
 <!-- 
 
