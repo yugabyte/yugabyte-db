@@ -634,31 +634,6 @@ class IndexInfoBuilder {
   IndexInfoPB& index_info_;
 };
 
-template<class Lock>
-Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock) {
-  // This covers both in progress and fully deleted objects.
-  if (lock->started_deleting()) {
-    return STATUS_EC_FORMAT(
-        NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
-        "The object '$0.$1' does not exist", lock->namespace_id(), lock->name());
-  }
-  if (!lock->visible_to_client()) {
-    return STATUS_EC_FORMAT(
-        ServiceUnavailable, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
-        "The object '$0.$1' is not running", lock->namespace_id(), lock->name());
-  }
-  return Status::OK();
-}
-
-template<class Lock, class RespClass>
-Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock, RespClass* resp) {
-  auto status = CheckIfTableDeletedOrNotVisibleToClient(lock);
-  if (!status.ok()) {
-    return SetupError(resp->mutable_error(), status);
-  }
-  return Status::OK();
-}
-
 #define VERIFY_NAMESPACE_FOUND(expr, resp) RESULT_CHECKER_HELPER( \
     expr, \
     if (!__result.ok()) { \
@@ -2381,7 +2356,7 @@ Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& index
             << yb::ToString(index_info);
   TRACE("Locking indexed table");
   auto l = DCHECK_NOTNULL(indexed_table)->LockForWrite();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // Make sure that the index appears to not have been added to the table until the tservers apply
   // the alter and respond back.
@@ -2728,18 +2703,27 @@ Status CatalogManager::DoSplitTablet(
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
       CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
 
-  std::array<TabletId, kNumSplitParts> new_tablet_ids;
+  std::array<TabletId, kNumSplitParts> new_tablet_ids_sorted;
   for (int i = 0; i < kNumSplitParts; ++i) {
-    if (i < source_tablet_lock->pb.split_tablet_ids_size()) {
-      // Post-split tablet `i` has been already registered.
-      new_tablet_ids[i] = source_tablet_lock->pb.split_tablet_ids(i);
-    } else {
+    TabletId child_tablet_id;
+    for (const auto& split_tablet_id : source_tablet_lock->pb.split_tablet_ids()) {
+      const auto child_tablet = VERIFY_RESULT(GetTabletInfo(split_tablet_id));
+      const auto child_partition = child_tablet->LockForRead()->pb.partition();
+      if (child_partition.partition_key_start() == new_tablets_partition[i].partition_key_start()) {
+        child_tablet_id = split_tablet_id;
+        break;
+      }
+    }
+
+    if (child_tablet_id.empty()) {
       auto new_tablet_info = VERIFY_RESULT(RegisterNewTabletForSplit(
           source_tablet_info.get(), new_tablets_partition[i],
           &source_table_lock, &source_tablet_lock));
 
-      new_tablet_ids[i] = new_tablet_info->id();
+      child_tablet_id = new_tablet_info->id();
     }
+
+    new_tablet_ids_sorted[i] = child_tablet_id;
   }
   source_tablet_lock.Commit();
   source_table_lock.Commit();
@@ -2748,7 +2732,7 @@ Status CatalogManager::DoSplitTablet(
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
   RETURN_NOT_OK(SendSplitTabletRequest(
-      source_tablet_info, new_tablet_ids, split_encoded_key, split_partition_key));
+      source_tablet_info, new_tablet_ids_sorted, split_encoded_key, split_partition_key));
 
   return Status::OK();
 }
@@ -3329,7 +3313,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
 
     TRACE("Locking indexed table");
-    RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(indexed_table->LockForRead(), resp));
+    RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(
+        indexed_table->LockForRead(), resp));
   }
 
   // Determine if this table should be colocated with its database.
@@ -4211,7 +4196,7 @@ Status CatalogManager::GetGlobalTransactionStatusTablets(
   auto global_txn_table = VERIFY_RESULT(GetGlobalTransactionStatusTable());
 
   auto l = global_txn_table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   for (const auto& tablet : global_txn_table->GetTablets()) {
     TabletLocationsPB locs_pb;
@@ -4375,7 +4360,7 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
 Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   TRACE("Locking table");
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l));
   const auto& pb = l->pb;
 
   // 2. Verify if the create is in-progress.
@@ -4845,7 +4830,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
 
   TRACE(Substitute("Locking object with id $0", table_id));
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // Truncate on a colocated table should not hit master because it should be handled by a write
   // DML that creates a table-level tombstone.
@@ -4937,7 +4922,8 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
   }
 
   TRACE("Locking table");
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(table->LockForRead(), resp));
+  RETURN_NOT_OK(
+      CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(table->LockForRead(), resp));
 
   resp->set_done(!table->HasTasks(MonitoredTask::Type::ASYNC_TRUNCATE_TABLET));
   return Status::OK();
@@ -5750,7 +5736,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   TRACE("Locking table");
   auto l = table->LockForWrite();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   bool has_changes = false;
   auto& table_pb = l.mutable_data()->pb;
@@ -5931,7 +5917,7 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // 2. Verify if the alter is in-progress.
   TRACE("Verify if there is an alter operation in progress for $0", table->ToString());
@@ -6025,7 +6011,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   if (l->pb.has_fully_applied_schema()) {
     // An AlterTable is in progress; fully_applied_schema is the last
@@ -6156,7 +6142,7 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
   {
     TRACE("Locking table");
     auto l = parent_colocated_table->LockForRead();
-    RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+    RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
   }
 
   if (!parent_colocated_table->colocated() || !parent_colocated_table->IsColocatedDbParentTable()) {
@@ -10176,7 +10162,7 @@ Status CatalogManager::GetTableLocations(
   }
 
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   vector<scoped_refptr<TabletInfo>> tablets;
   table->GetTabletsInRange(req, &tablets);

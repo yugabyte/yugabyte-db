@@ -25,6 +25,8 @@ class UniverseKeyRegistryPB;
 namespace master {
 namespace enterprise {
 
+struct KeyRange;
+
 YB_DEFINE_ENUM(CreateObjects, (kOnlyTables)(kOnlyIndexes));
 
 class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorContext {
@@ -282,6 +284,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                    ExternalTableSnapshotDataMap* table_map);
 
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
+
+  Result<std::map<std::string, KeyRange>> GetTableKeyRanges(const TableId& table_id);
 
   Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
