@@ -115,7 +115,7 @@ size_t NumProducerTabletsPolled(MiniCluster* cluster) {
 }
 
 Status CorrectlyPollingAllTablets(
-    MiniCluster* cluster, uint32_t num_producer_tablets, MonoDelta timeout) {
+    MiniCluster* cluster, size_t num_producer_tablets, MonoDelta timeout) {
   return LoggedWaitFor(
       [&]() -> Result<bool> {
         static int i = 0;
