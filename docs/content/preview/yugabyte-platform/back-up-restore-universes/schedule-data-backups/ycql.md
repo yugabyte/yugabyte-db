@@ -34,44 +34,39 @@ You can use YugabyteDB Anywhere to perform regularly scheduled backups of Yugaby
 
 To back up your universe YCQL data immediately, see [Back up universe YCQL data](../../back-up-universe-data/ycql).
 
-## Schedule a backup
+## Create a scheduled backup policy
 
-You can schedule a backup of your universe YCQL data as follows:
+Before scheduling a backup of your universe YCQL data, create a policy, as follows:
 
-1. Navigate to **Universes**.
+- Navigate to **Universes**.
+- Select the name of the universe for which you want to schedule backups.
+- Select the **Tables** tab and click **Actions** to verify that backups are enabled. If disabled, click **Enable Backup**.
+- Select the **Backups** tab and then select **Scheduled Backup Policies**. 
+- Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
 
-1. Select the name of the universe for which you want to schedule backups.
+<br><br>
 
-1. Click the **Tables** tab and verify that backups are enabled. If disabled, click **Enable Backup**.
+![Create Backup form](/images/yp/scheduled-backup-ycql.png)<br><br>
 
-1. Select the **Backups** tab and then click **Create Scheduled Backup** to open the **Create Backup** dialog shown in the following illustration:
-    <br/>
-    <br/>
+- Provide the backup policy name.
+- Specify the interval between backups or select **Use cron expression (UTC)**.
+- Set the API type as YCQL. 
+- Select the database to back up. 
+- Specify whether you want to back up all tables in the keyspace to which the database belongs or only  certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up.
+- Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
+- Optionally, specify the number of threads that should be available for the backup process.
+- Click **Create**.
 
-    ![Create Backup form](/images/yp/scheduled-backup-ycql.png)<br>,br>
+Subsequent backups are created based on the value you specified for **Set backup intervals** or **Use cron expression**.
 
-1. Enter the **Backup frequency** (interval in milliseconds) or a **Cron expression (UTC)***. For details on valid `cron` expression formats, hover over the question mark (`?`) icon.
+## Disable backups
 
-1. Select the **YCQL** tab and enter values for the following fields:
+You can disable all backups, including scheduled ones, as follows:
 
-    - **Storage**: Select the storage type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
-    - **Keyspace**: Select your keyspace from the drop-down list of predefined keyspaces.
-    - **Tables to backup**: Select either **All Tables in Keyspace** or the specific tables to back up.
-    - **Parallel Threads**: Enter or select the number of threads. The default is `8`.
-    - **Number of Days to Retain Backup**: Default is unspecified which means to retain indefinitely.
+1. Navigate to the universe's **Tables** tab.
+2. Click **Actions > Disable Backup**.
 
-1. Click **OK**. <br>
-
-    The initial backup begins immediately.
-
-Subsequent backups are created based on the value you specified for **Backup frequency** or **Cron expression**.
-
-## Disable scheduled backups
-
-You can temporarily disable all scheduled backups as follows:
-
-1. Navigate to your universe and select **Tables**.
-1. Click **Disable Backups**.
+<!--  
 
 ## Delete a scheduled backup
 
@@ -80,3 +75,4 @@ You can permanently remove a scheduled backup, as follows:
 1. Navigate to your universe and select the **Backups** tab.
 1. Find the scheduled backup and click **Options**.
 1. Click **Delete schedule**.
+    -->
