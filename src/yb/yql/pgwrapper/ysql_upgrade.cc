@@ -217,7 +217,52 @@ Status YsqlUpgradeHelper::AnalyzeMigrationFiles() {
     int major_version = std::stoi(version_match[1]);
     int minor_version = version_match[3].length() > 0 ? std::stoi(version_match[3]) : 0;
     Version version{major_version, minor_version};
+
+    // Make sure another file with the same version wasn't already read.
+    SCHECK(migration_filenames_map_.find(version) == migration_filenames_map_.end(),
+           InternalError,
+           Format("Migration '$0' uses the same version number as another file", filename));
     migration_filenames_map_[version] = filename;
+  }
+
+  // Check that there are no gaps in migration version numbers.
+  // Good: 1.0, 2.0, 3.0, 3.1, 3.2
+  // Bad:  1.0, 2.0, 4.0
+  // Bad:  1.0, 2.0, 3.0, 3.2
+  // Bad:  1.0, 2.0, 3.0, 4.1
+  // Bad:  1.0, 2.0, 3.0, 3.1, 4.0
+  // Bad:  1.0, 2.0, 3.0, 3.1, 4.1
+  Version prev_version{0, 0};
+  bool using_minor_versions = false;
+  for (const auto& entry : migration_filenames_map_) {
+    const auto& curr_version = entry.first;
+    const auto& filename = entry.second;
+
+    DCHECK(curr_version > prev_version)
+        << "Expected new version to be greater than previous version: " << curr_version << " vs "
+        << prev_version << ", filename: " << entry.second;
+    if (using_minor_versions) {
+      // Since previous increment was on minor version, expect a minor version increment.
+      SCHECK((curr_version.first == prev_version.first &&
+              curr_version.second == prev_version.second + 1),
+             InternalError,
+             Format("Migration '$0' is not exactly one minor version away from previous version $1",
+                    filename, prev_version));
+    } else {
+      // Could be a major or minor version increment.
+      SCHECK(((curr_version.first == prev_version.first &&
+               curr_version.second == prev_version.second + 1) ||
+              (curr_version.first == prev_version.first + 1 &&
+               curr_version.second == prev_version.second)),
+                InternalError,
+                Format("Migration '$0' is not exactly one major or minor version away from previous"
+                       " version $1",
+                       filename, prev_version));
+      if (curr_version.first == prev_version.first) {
+        using_minor_versions = true;
+      }
+    }
+    prev_version = curr_version;
   }
 
   latest_version_ = std::prev(migration_filenames_map_.end())->first;
