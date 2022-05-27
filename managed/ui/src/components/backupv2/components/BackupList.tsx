@@ -199,6 +199,8 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
 
   const [showDetails, setShowDetails] = useState<IBackup | null>(null);
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
+  const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
+
   const [restoreDetails, setRestoreDetails] = useState<IBackup | null>(null);
   const [cancelBackupDetails, setCancelBackupDetails] = useState<IBackup | null>(null);
 
@@ -280,7 +282,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           onActionButtonClick={() => {
             setShowBackupCreateModal(true);
           }}
-          disabled={tablesInUniverse?.data.length === 0}
+          disabled={tablesInUniverse?.data.length === 0 || currentUniverse?.data?.universeConfig?.takeBackups === 'false'}
         />
         <BackupCreateModal
           visible={showBackupCreateModal}
@@ -409,7 +411,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
                 }}
                 btnClass="btn btn-orange backup-now-button"
                 btnIcon="fa fa-upload"
-                disabled={tablesInUniverse?.data.length === 0}
+                disabled={tablesInUniverse?.data.length === 0 || currentUniverse?.data?.universeConfig?.takeBackups === 'false'}
               />
               <DropdownButton
                 className="actions-btn"
