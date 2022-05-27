@@ -282,7 +282,7 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 		    (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 		     errmsg("program limit exceeded"),
-		     errdetail("Too much concurent opened files"),
+		     errdetail("Too many files opened concurrently"),
 		     errhint("You can only open a maximum of ten files for each session")));
 	}
 
