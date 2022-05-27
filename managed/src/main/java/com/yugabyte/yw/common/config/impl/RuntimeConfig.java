@@ -37,7 +37,7 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
   }
 
   RuntimeConfig(M scope, Config config) {
-    super(config);
+    super(config.resolve());
     this.scope = scope;
   }
 

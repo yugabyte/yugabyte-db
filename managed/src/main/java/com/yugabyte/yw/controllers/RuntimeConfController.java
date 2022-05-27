@@ -17,6 +17,7 @@ import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigRenderOptions;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -161,7 +162,8 @@ public class RuntimeConfController extends AuthenticatedController {
       LOG.trace(
           "key: {} overriddenInScope: {} includeInherited: {}", k, isOverridden, includeInherited);
 
-      String value = fullConfig.getValue(k).render();
+      String value = fullConfig.getValue(k).render(ConfigRenderOptions.concise());
+      value = unwrap(value);
       if (sensitiveKeys.contains(k)) {
         value = CommonUtils.getMaskedValue(k, value);
       }
@@ -176,6 +178,13 @@ public class RuntimeConfController extends AuthenticatedController {
     }
 
     return PlatformResults.withData(scopedConfig);
+  }
+
+  private String unwrap(String maybeQuoted) {
+    if (maybeQuoted.startsWith("\"") && maybeQuoted.endsWith("\"")) {
+      return maybeQuoted.substring(1, maybeQuoted.length() - 1);
+    }
+    return maybeQuoted;
   }
 
   @ApiOperation(

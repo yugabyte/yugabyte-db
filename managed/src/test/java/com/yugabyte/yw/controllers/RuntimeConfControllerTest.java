@@ -261,7 +261,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     final String actualValue =
         internal_getConfig_universe_inherited(
             scopeType, presetIntervalValue, scopeUUID, GC_CHECK_INTERVAL_KEY);
-    compareToExpectedValue(expectedIntervalValue, actualValue, "\"1 hour\"");
+    compareToExpectedValue(expectedIntervalValue, actualValue, "1 hour");
   }
 
   // Same test as above except the config is set as external Script object with retention  key
@@ -338,12 +338,14 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
       new Object[] {ScopeType.CUSTOMER, "", ""},
       new Object[] {ScopeType.PROVIDER, "", ""},
       new Object[] {ScopeType.UNIVERSE, "", ""},
-      new Object[] {ScopeType.GLOBAL, "\"33 days\"", "\"33 days\""},
-      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "\"44 seconds\""},
-      new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "\"22 hours\""},
-      // Set without escape quotes should be allowed for string objects backward compatibility
-      // We will Json stringify response for proper escaping during "GET"
-      new Object[] {ScopeType.UNIVERSE, "11\"", "\"11\\\"\""},
+      // We will return any strings as unquoted even if they were set as quoted
+      new Object[] {ScopeType.GLOBAL, "\"33 days\"", "33 days"},
+      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "44 seconds"},
+      new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "22 hours"},
+      // Set without quotes should be allowed for string objects backward compatibility
+      // Even when set with quotes we will return string without redundant quotes.
+      // But we will do proper escaping for special characters
+      new Object[] {ScopeType.UNIVERSE, "11\"", "11\\\""},
     };
   }
 
@@ -359,5 +361,22 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
       // Set without escape quotes should not be allowed within a json object
       new Object[] {ScopeType.UNIVERSE, "\"11\\\"\"", "\"11\\\"\""},
     };
+  }
+
+  @Test
+  public void configResolution() {
+    RuntimeConfigFactory runtimeConfigFactory =
+        app.injector().instanceOf(RuntimeConfigFactory.class);
+    assertFalse(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean("yb.upgrade.vmImage"));
+    setCloudEnabled(defaultUniverse.universeUUID);
+    assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean("yb.upgrade.vmImage"));
+  }
+
+  private void setCloudEnabled(UUID scopeUUID) {
+    Http.RequestBuilder request =
+        fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, "yb.cloud.enabled"))
+            .header("X-AUTH-TOKEN", authToken)
+            .bodyText("true");
+    route(app, request);
   }
 }
