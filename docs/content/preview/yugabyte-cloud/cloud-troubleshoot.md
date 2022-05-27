@@ -71,7 +71,7 @@ The database admin credentials are separate from your YugabyteDB Managed credent
 
 If you are a database user who was added to the database by an administrator, ask your administrator to either re-send your credentials or [change your database password](../cloud-secure-clusters/add-users/).
 
-Verify the case of the user name. Like SQL, YSQL is case-insensitive. When adding roles, YSQL automatically converts the name to lowercase. For example, the following command:
+Verify the case of the user name. Similarly to SQL and CQL, YSQL and YCQL are case-insensitive. When adding roles, names are automatically converted to lowercase. For example, the following command:
 
 ```sql
 CREATE ROLE Alice LOGIN PASSWORD 'Password';

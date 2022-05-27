@@ -68,7 +68,7 @@ For application development and testing, you can set fault tolerance to **None**
 
 ### Sizing
 
-The size of the cluster is based on the number of vCPUs. The basic configuration for YugabyteDB Managed clusters includes 2 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs, and 2GB of RAM per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
+The size of the cluster is based on the number of vCPUs. The basic configuration for YugabyteDB Managed clusters includes 2 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs, and 4GB of memory per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
 
 Depending on your performance requirements, you can increase the number of vCPUs per node, as well as the total number of nodes. You can also increase the disk size per node. However, once increased, you can't lower the disk size per node.
 
