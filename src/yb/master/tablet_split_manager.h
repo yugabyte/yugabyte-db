@@ -17,7 +17,6 @@
 #include <unordered_set>
 
 #include "yb/master/master_fwd.h"
-#include "yb/master/tablet_split_complete_handler.h"
 
 namespace yb {
 namespace master {
@@ -25,7 +24,7 @@ namespace master {
 YB_STRONGLY_TYPED_BOOL(IgnoreTtlValidation);
 YB_STRONGLY_TYPED_BOOL(IgnoreDisabledList);
 
-class TabletSplitManager : public TabletSplitCompleteHandlerIf {
+class TabletSplitManager {
  public:
   TabletSplitManager(TabletSplitCandidateFilterIf* filter,
                      TabletSplitDriverIf* driver,
@@ -45,8 +44,8 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
   // Perform one round of tablet splitting. This method is not thread-safe.
   void MaybeDoSplitting(const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map);
 
-  void ProcessSplitTabletResult(const TableId& split_table_id,
-                                const SplitTabletIds& split_tablet_ids);
+  Status ProcessSplitTabletResult(
+      const TableId& split_table_id, const SplitTabletIds& split_tablet_ids);
 
   // Validate whether a candidate table is eligible for a split.
   // Any temporarily disabled tablets are assumed ineligible by default.

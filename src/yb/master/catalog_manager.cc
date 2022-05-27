@@ -2715,6 +2715,16 @@ Status CatalogManager::DoSplitTablet(
   source_table_lock.Commit();
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_registering_split_children);
 
+  // Handle xCluster metadata updates for local splits. Handle after registration but before
+  // sending the split rpcs so that this is retried as part of the tablet split retry logic.
+  SplitTabletIds split_tablet_ids {
+    .source = source_tablet_info->tablet_id(),
+    .children = { new_tablet_ids_sorted[0], new_tablet_ids_sorted[1] }
+  };
+  RETURN_NOT_OK(tablet_split_manager_.ProcessSplitTabletResult(
+      source_tablet_info->table()->id(),
+      split_tablet_ids));
+
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
   RETURN_NOT_OK(SendSplitTabletRequest(
@@ -9170,8 +9180,7 @@ Status CatalogManager::SendSplitTabletRequest(
   VLOG(2) << "Scheduling SplitTablet request to leader tserver for source tablet ID: "
           << tablet->tablet_id() << ", after-split tablet IDs: " << AsString(new_tablet_ids);
   auto call = std::make_shared<AsyncSplitTablet>(
-      master_, AsyncTaskPool(), tablet, new_tablet_ids, split_encoded_key, split_partition_key,
-      &tablet_split_manager_);
+      master_, AsyncTaskPool(), tablet, new_tablet_ids, split_encoded_key, split_partition_key);
   tablet->table()->AddTask(call);
   return ScheduleTask(call);
 }

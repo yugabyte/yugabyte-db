@@ -319,13 +319,13 @@ Status TwoDCOutputClient::ProcessSplitOp(const cdc::CDCRecordPB& record) {
   split_info.set_split_encoded_key(record.split_tablet_request().split_encoded_key());
   split_info.set_split_partition_key(record.split_tablet_request().split_partition_key());
 
-  RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
-      producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
-
   if (PREDICT_FALSE(FLAGS_TEST_xcluster_consumer_fail_after_process_split_op)) {
     return STATUS(
         InternalError, "Fail due to FLAGS_TEST_xcluster_consumer_fail_after_process_split_op");
   }
+
+  RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
+      producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
 
   // Increment processed records, and check for completion.
   bool done;

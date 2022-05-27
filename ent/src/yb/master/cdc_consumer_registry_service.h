@@ -67,6 +67,7 @@ Status UpdateTabletMappingOnProducerSplit(
     bool* found_source,
     bool* found_all_split_childs,
     cdc::StreamEntryPB* stream_entry);
+
 } // namespace enterprise
 } // namespace master
 } // namespace yb

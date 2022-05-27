@@ -338,6 +338,12 @@ class CDCServiceImpl : public CDCServiceIf {
   // Update enum map in cache.
   Status UpdateEnumMapInCacheUnlocked(const NamespaceName& ns_name) REQUIRES(mutex_);
 
+  Status UpdateChildrenTabletsOnSplitOp(
+      const std::string& stream_id,
+      const std::string& tablet_id,
+      std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
+      const client::YBSessionPtr& session);
+
   rpc::Rpcs rpcs_;
 
   tserver::TSTabletManager* tablet_manager_;

@@ -315,7 +315,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     // Add the CDC stream to the CDC stream map.
     catalog_manager_->cdc_stream_map_[stream->id()] = stream;
     if (table) {
-      catalog_manager_->cdc_stream_tables_count_map_[metadata.table_id(0)]++;
+      catalog_manager_->cdc_stream_tables_count_map_[table->id()]++;
     }
 
     l.Commit();
@@ -2685,11 +2685,13 @@ Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_id
   LOG(INFO) << "Deleting CDC streams for tables:" << tid_stream.str();
 
   std::vector<scoped_refptr<CDCStreamInfo>> streams;
-  for (const auto& tid : table_ids) {
-    auto newstreams = FindCDCStreamsForTable(tid);
-    streams.insert(streams.end(), newstreams.begin(), newstreams.end());
+  if (!table_ids.empty()) {
+    SharedLock lock(mutex_);
+    for (const auto& tid : table_ids) {
+      auto newstreams = FindCDCStreamsForTableUnlocked(tid);
+      streams.insert(streams.end(), newstreams.begin(), newstreams.end());
+    }
   }
-
   if (streams.empty()) {
     return Status::OK();
   }
@@ -2725,11 +2727,9 @@ Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& 
   return MarkCDCStreamsForMetadataCleanup(streams, SysCDCStreamEntryPB::DELETING_METADATA);
 }
 
-std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable(
+std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTableUnlocked(
     const TableId& table_id) const {
   std::vector<scoped_refptr<CDCStreamInfo>> streams;
-  SharedLock lock(mutex_);
-
   for (const auto& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
     // for xCluster the first entry will be the table_id
@@ -4452,17 +4452,16 @@ Status CatalogManager::UpdateXClusterConsumerOnTabletSplit(
     // Fetch the stream entry so we can update the mappings.
     auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
     auto producer_entry = FindOrNull(*producer_map, universe_id);
+    // If we can't find the entries, then the stream has been deleted.
     if (!producer_entry) {
-      return STATUS_FORMAT(NotFound,
-                           "Unable to find the producer entry for universe $0",
-                           universe_id);
+      LOG(WARNING) << "Unable to find the producer entry for universe " << universe_id;
+      continue;
     }
     auto stream_entry = FindOrNull(*producer_entry->mutable_stream_map(), stream_id);
     if (!stream_entry) {
-      return STATUS_FORMAT(NotFound,
-                           "Unable to find the stream entry for universe $0, stream $1",
-                           universe_id,
-                           stream_id);
+      LOG(WARNING) << "Unable to find the producer entry for universe " << universe_id
+                   << ", stream " << stream_id;
+      continue;
     }
     DCHECK(stream_entry->consumer_table_id() == consumer_table_id);
 
@@ -4484,7 +4483,11 @@ Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
     const TableId& producer_table_id,
     const SplitTabletIds& split_tablet_ids) {
   // First check if this table has any streams associated with it.
-  auto streams = FindCDCStreamsForTable(producer_table_id);
+  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  {
+    SharedLock lock(mutex_);
+    streams = FindCDCStreamsForTableUnlocked(producer_table_id);
+  }
 
   if (!streams.empty()) {
     // For each stream, need to add in the children entries to the cdc_state table.
@@ -4499,31 +4502,6 @@ Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
     std::shared_ptr<client::YBSession> session = ybclient->NewSession();
 
     for (const auto& stream : streams) {
-      // First fetch the parent opid.
-      string parent_op_id = OpId(0, 0).ToString();
-
-      const auto read_op = cdc_table.NewReadOp();
-      auto* const read_req = read_op->mutable_request();
-      QLAddStringHashValue(read_req, split_tablet_ids.source);
-
-      auto cond = read_req->mutable_where_expr()->mutable_condition();
-      cond->set_op(QLOperator::QL_OP_AND);
-      QLAddStringCondition(
-          cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream->id());
-      read_req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
-      read_req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
-      cdc_table.AddColumns({master::kCdcCheckpoint}, read_req);
-
-      // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-      RETURN_NOT_OK(session->TEST_ReadSync(read_op));
-      auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
-      if (row_block->row_count() == 1) {
-        parent_op_id = row_block->row(0).column(0).string_value();
-      } else {
-        LOG(WARNING) << "Unable to find op_id in cdc_state table for tablet: "
-            << split_tablet_ids.source << ", stream: " << stream->id();
-      }
-
       for (const auto& child_tablet_id :
            {split_tablet_ids.children.first, split_tablet_ids.children.second}) {
         const auto insert_op = cdc_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
@@ -4532,7 +4510,7 @@ Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
         condition->set_op(QL_OP_NOT_EXISTS);
         QLAddStringHashValue(insert_req, child_tablet_id);
         QLAddStringRangeValue(insert_req, stream->id());
-        cdc_table.AddStringColumnValue(insert_req, master::kCdcCheckpoint, parent_op_id);
+        cdc_table.AddStringColumnValue(insert_req, master::kCdcCheckpoint, OpId().ToString());
         cdc_table.AddTimestampColumnValue(
             insert_req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
         session->Apply(insert_op);
@@ -5475,6 +5453,11 @@ bool CatalogManager::IsTableCdcConsumer(const TableInfo& table_info) const {
 CatalogManager::XClusterConsumerTableStreamInfoMap
     CatalogManager::GetXClusterStreamInfoForConsumerTable(const TableId& table_id) const {
   SharedLock lock(mutex_);
+  return GetXClusterStreamInfoForConsumerTableUnlocked(table_id);
+}
+
+CatalogManager::XClusterConsumerTableStreamInfoMap
+    CatalogManager::GetXClusterStreamInfoForConsumerTableUnlocked(const TableId& table_id) const {
   auto it = xcluster_consumer_tables_to_stream_map_.find(table_id);
   if (it == xcluster_consumer_tables_to_stream_map_.end()) {
     return {};

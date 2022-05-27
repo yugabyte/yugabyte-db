@@ -1051,40 +1051,29 @@ TEST_F(AutomaticTabletSplitITest, IsTabletSplittingComplete) {
 
   auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
       proxy_cache_.get(), client_->GetMasterLeaderAddress());
-  rpc::RpcController controller;
-  controller.set_timeout(kRpcTimeout);
-  master::IsTabletSplittingCompleteRequestPB is_tablet_splitting_complete_req;
-  master::IsTabletSplittingCompleteResponsePB is_tablet_splitting_complete_resp;
-
-  auto IsSplittingComplete = [&]() -> Result<bool> {
-    RETURN_NOT_OK(master_admin_proxy->IsTabletSplittingComplete(is_tablet_splitting_complete_req,
-        &is_tablet_splitting_complete_resp, &controller));
-    controller.Reset();
-    return is_tablet_splitting_complete_resp.is_tablet_splitting_complete();
-  };
 
   // No splits at the beginning.
-  ASSERT_TRUE(ASSERT_RESULT(IsSplittingComplete()));
+  ASSERT_TRUE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get())));
 
   // Create a split task by pausing when trying to get split key. IsTabletSplittingComplete should
   // include this ongoing task.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
   std::this_thread::sleep_for(FLAGS_catalog_manager_bg_task_wait_ms * 2ms);
-  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete()));
+  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get())));
 
   // Now let the split occur on master but not tserver.
   // IsTabletSplittingComplete should include splits that are only complete on master.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
-  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete()));
+  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get())));
 
   // Verify that the split finishes, and that IsTabletSplittingComplete returns true even though
   // compactions are not done.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0;
   ASSERT_OK(WaitForTabletSplitCompletion(2));
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return VERIFY_RESULT(IsSplittingComplete());
+    return VERIFY_RESULT(IsSplittingComplete(master_admin_proxy.get()));
   }, MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms * 2),
     "IsTabletSplittingComplete did not return true."));
 }

@@ -1268,7 +1268,9 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   // Read the latest changes from the Log.
   if (record.source_type == XCLUSTER) {
     s = cdc::GetChangesForXCluster(
-        stream_id, req->tablet_id(), op_id, record, tablet_peer, mem_tracker,
+        stream_id, req->tablet_id(), op_id, record, tablet_peer, session,
+        std::bind(&CDCServiceImpl::UpdateChildrenTabletsOnSplitOp, this, stream_id,
+        req->tablet_id(), std::placeholders::_1, session), mem_tracker,
         &msgs_holder, resp, &last_readable_index, get_changes_deadline);
   } else {
     std::string commit_timestamp;
@@ -3052,6 +3054,60 @@ void CDCServiceImpl::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req
     }
   }
   context.RespondSuccess();
+}
+
+Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOp(
+    const std::string& stream_id,
+    const std::string& tablet_id,
+    std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
+    const client::YBSessionPtr& session) {
+  const auto split_req = split_op_msg->split_request();
+  const auto parent_tablet = split_req.tablet_id();
+  const vector<string> children_tablets = {split_req.new_tablet1_id(), split_req.new_tablet2_id()};
+
+  auto cdc_state_table = VERIFY_RESULT(GetCdcStateTable());
+  // First check if the children tablet entries exist yet in cdc_state.
+  for (const auto& child_tablet : children_tablets) {
+    const auto op = cdc_state_table->NewReadOp();
+    auto* const req = op->mutable_request();
+    QLAddStringHashValue(req, child_tablet);
+
+    auto cond = req->mutable_where_expr()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx,
+        QL_OP_EQUAL, stream_id);
+    req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
+    req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
+    cdc_state_table->AddColumns({master::kCdcCheckpoint}, req);
+
+    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+    RETURN_NOT_OK(RefreshCacheOnFail(session->TEST_ReadSync(op)));
+
+    auto row_block = ql::RowsResult(op.get()).GetRowBlock();
+    SCHECK(row_block->row_count() == 1, NotFound,
+           Format("Error finding entry in cdc_state table for tablet: $0, stream $1.",
+                  child_tablet, stream_id));
+  }
+
+  // If we found both entries then lets update their checkpoints to this split_op's op id.
+  for (const auto& child_tablet : children_tablets) {
+    const auto op = cdc_state_table->NewUpdateOp();
+    auto* const req = op->mutable_request();
+    QLAddStringHashValue(req, child_tablet);
+    QLAddStringRangeValue(req, stream_id);
+
+    cdc_state_table->AddStringColumnValue(
+        req, master::kCdcCheckpoint, consensus::OpIdToString(split_op_msg->id()));
+    cdc_state_table->AddTimestampColumnValue(
+        req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
+    // Only perform upserts on tservers for cdc_state.
+    auto* condition = req->mutable_if_expr()->mutable_condition();
+    condition->set_op(QL_OP_EXISTS);
+    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+    RETURN_NOT_OK(RefreshCacheOnFail(session->TEST_ApplyAndFlush(op)));
+  }
+
+  return Status::OK();
 }
 
 }  // namespace cdc
