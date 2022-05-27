@@ -781,10 +781,10 @@ class TransactionState {
     }
     last_touch_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
-    // TODO -- consider swapping instead of copying here.
-    if (data.state.aborted().set_size() > aborted_.set_size()) {
-      aborted_ = data.state.aborted();
-    }
+
+    // TODO(savepoints) -- consider swapping instead of copying here.
+    aborted_ = data.state.aborted();
+
     return Status::OK();
   }
 

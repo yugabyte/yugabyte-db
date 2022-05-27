@@ -4156,6 +4156,8 @@ DefineSavepoint(const char *name)
 			/* Normal subtransaction start */
 			PushTransaction();
 			s = CurrentTransactionState;	/* changed by push */
+			elog(DEBUG2, "new sub txn created by savepoint, subtxn_id: %d",
+					 s->subTransactionId);
 
 			/*
 			 * Savepoint names, like the TransactionState block itself, live
@@ -4442,7 +4444,7 @@ RollbackToSavepoint(const char *name)
 		elog(FATAL, "RollbackToSavepoint: unexpected state %s",
 			 BlockStateAsString(xact->blockState));
 
-	YBCRollbackSubTransaction(target->subTransactionId);
+	YBCRollbackToSubTransaction(target->subTransactionId);
 }
 
 /*
@@ -4493,6 +4495,8 @@ BeginInternalSubTransaction(const char *name)
 			/* Normal subtransaction start */
 			PushTransaction();
 			s = CurrentTransactionState;	/* changed by push */
+			elog(DEBUG2, "new sub txn created internally, subtxn_id: %d",
+					 s->subTransactionId);
 
 			/*
 			 * Savepoint names, like the TransactionState block itself, live
@@ -4539,7 +4543,6 @@ BeginInternalSubTransaction(const char *name)
  */
 void
 BeginInternalSubTransactionForReadCommittedStatement() {
-	elog(DEBUG2, "Begin internal sub txn for statement in READ COMMITTED isolation");
 
 	YBFlushBufferedOperations();
 	TransactionState s = CurrentTransactionState;
@@ -4556,6 +4559,7 @@ BeginInternalSubTransactionForReadCommittedStatement() {
 	/* Normal subtransaction start */
 	PushTransaction();
 	s = CurrentTransactionState;	/* changed by push */
+	elog(DEBUG2, "new internal sub txn in READ COMMITTED subtxn_id: %d", s->subTransactionId);
 
 	s->name = MemoryContextStrdup(TopTransactionContext, YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME);
 
@@ -5158,7 +5162,7 @@ AbortSubTransaction(void)
 		AtEOSubXact_ApplyLauncher(false, s->nestingLevel);
 	}
 
-	YBCRollbackSubTransaction(s->subTransactionId);
+	YBCRollbackToSubTransaction(s->subTransactionId);
 
 	/*
 	 * Restore the upper transaction's read-only state, too.  This should be
