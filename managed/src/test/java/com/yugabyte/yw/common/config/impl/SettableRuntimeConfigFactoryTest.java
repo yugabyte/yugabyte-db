@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.config.impl;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
@@ -41,6 +42,7 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public static final String YB_CUSTOMER_RUNTIME_ONLY_KEY = "yb.runtime.customer";
   public static final String YB_PROVIDER_RUNTIME_ONLY_KEY = "yb.runtime.provider";
   public static final String YB_UNIVERSE_RUNTIME_ONLY_KEY = "yb.runtime.universe";
+  private static final String YB_CLOUD_ENABLED_KEY = "yb.cloud.enabled";
 
   // Key not defined in any scope
   public static final String YB_NOT_PRESENT_KEY = "yb.not.present";
@@ -55,10 +57,16 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   }
 
   // app config
-  private static final Map<String, String> staticConfigMap =
+  private static final Map<String, Object> staticConfigMap =
       ImmutableMap.of(
-          YB_STATIC_ONLY_KEY, Scope.STATIC.toString(),
-          YB_OVERRIDDEN_KEY, Scope.STATIC.toString());
+          SettableRuntimeConfigFactory.RUNTIME_CONFIG_INCLUDED_OBJECTS,
+          ImmutableList.of("yb.external_script"),
+          YB_STATIC_ONLY_KEY,
+          Scope.STATIC.toString(),
+          YB_OVERRIDDEN_KEY,
+          Scope.STATIC.toString(),
+          YB_CLOUD_ENABLED_KEY,
+          Boolean.TRUE);
 
   // overrides in global scope:
   private static final Set<String> globalConfigSet =
