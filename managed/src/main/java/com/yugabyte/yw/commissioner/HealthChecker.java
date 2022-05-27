@@ -24,7 +24,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.HealthManager;
@@ -89,7 +88,7 @@ public class HealthChecker {
 
   private static final String YB_TSERVER_PROCESS = "yb-tserver";
 
-  private static final String MAX_NUM_THREADS_KEY = "yb.health.max_num_parallel_checks";
+  @VisibleForTesting static final String MAX_NUM_THREADS_KEY = "yb.health.max_num_parallel_checks";
 
   private final play.Configuration config;
 
@@ -426,13 +425,8 @@ public class HealthChecker {
     final String emailDestinations;
   }
 
-  @VisibleForTesting
-  Config getRuntimeConfig() {
-    return this.runtimeConfigFactory.globalRuntimeConf();
-  }
-
   private int getThreadpoolParallelism() {
-    return this.getRuntimeConfig().getInt(HealthChecker.MAX_NUM_THREADS_KEY);
+    return this.runtimeConfigFactory.globalRuntimeConf().getInt(HealthChecker.MAX_NUM_THREADS_KEY);
   }
 
   @VisibleForTesting

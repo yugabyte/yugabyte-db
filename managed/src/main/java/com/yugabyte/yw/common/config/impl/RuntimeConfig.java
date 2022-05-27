@@ -37,45 +37,61 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
   }
 
   RuntimeConfig(M scope, Config config) {
-    super(config);
+    super(config.resolve());
     this.scope = scope;
   }
 
   /**
-   * @return modify single path in underlying scoped config in the database and return modified
-   *     config view.
+   * @return modify single leaf path as any ref in underlying scoped config in the database and
+   *     return modified config view.
    */
-  public RuntimeConfig<M> setValue(String path, String value) {
+  public RuntimeConfig<M> setValue(String path, String strValue) {
+    return setValueOrObj(path, strValue, false);
+  }
+
+  /**
+   * @return modify single leaf path as HOCON string in underlying scoped config in the database and
+   *     return modified config view.
+   */
+  public RuntimeConfig<M> setObject(String path, String strValue) {
+    return setValueOrObj(path, strValue, true);
+  }
+
+  private RuntimeConfig<M> setValueOrObj(String path, String strValue, boolean isObject) {
     if (scope == null) {
-      RuntimeConfigEntry.upsertGlobal(path, value);
+      RuntimeConfigEntry.upsertGlobal(path, strValue);
     } else if (scope instanceof Customer) {
-      RuntimeConfigEntry.upsert((Customer) scope, path, value);
+      RuntimeConfigEntry.upsert((Customer) scope, path, strValue);
     } else if (scope instanceof Universe) {
-      RuntimeConfigEntry.upsert((Universe) scope, path, value);
+      RuntimeConfigEntry.upsert((Universe) scope, path, strValue);
     } else if (scope instanceof Provider) {
-      RuntimeConfigEntry.upsert((Provider) scope, path, value);
+      RuntimeConfigEntry.upsert((Provider) scope, path, strValue);
     } else {
       throw new UnsupportedOperationException("Unsupported Scope: " + scope);
     }
-    super.setValueInternal(path, ConfigValueFactory.fromAnyRef(value));
-    LOG.trace("After setValue {}", this);
+    if (isObject) {
+      super.setObjInternal(path, strValue);
+    } else {
+      super.setValueInternal(path, ConfigValueFactory.fromAnyRef(strValue));
+    }
+    LOG.trace("After setValue {}", delegate());
     return this;
   }
 
   public RuntimeConfig<M> deleteEntry(String path) {
     if (scope == null) {
-      RuntimeConfigEntry.get(GLOBAL_SCOPE_UUID, path).delete();
+      RuntimeConfigEntry.getOrBadRequest(GLOBAL_SCOPE_UUID, path).delete();
     } else if (scope instanceof Customer) {
-      RuntimeConfigEntry.get(((Customer) scope).uuid, path).delete();
+      RuntimeConfigEntry.getOrBadRequest(((Customer) scope).uuid, path).delete();
     } else if (scope instanceof Universe) {
-      RuntimeConfigEntry.get(((Universe) scope).universeUUID, path).delete();
+      RuntimeConfigEntry.getOrBadRequest(((Universe) scope).universeUUID, path).delete();
     } else if (scope instanceof Provider) {
-      RuntimeConfigEntry.get(((Provider) scope).uuid, path).delete();
+      RuntimeConfigEntry.getOrBadRequest(((Provider) scope).uuid, path).delete();
     } else {
       throw new UnsupportedOperationException("Unsupported Scope: " + scope);
     }
     super.deleteValueInternal(path);
-    LOG.trace("After setValue {}", this);
+    LOG.trace("After setValue {}", delegate());
     return this;
   }
 }

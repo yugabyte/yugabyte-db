@@ -33,7 +33,6 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -54,7 +53,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Model;
 import io.prometheus.client.CollectorRegistry;
 import java.util.Collections;
 import java.util.HashMap;
@@ -110,8 +108,6 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @InjectMocks private MetricService metricService;
 
-  @Mock Config mockRuntimeConfig;
-
   @Mock RuntimeConfigFactory mockruntimeConfigFactory;
   @Mock Config mockConfigUniverseScope;
 
@@ -142,10 +138,10 @@ public class HealthCheckerTest extends FakeDBApplication {
     report = spy(new HealthCheckerReport());
     healthMetrics = new HealthCheckMetrics(testRegistry);
 
-    when(mockRuntimeConfig.getInt("yb.health.max_num_parallel_checks")).thenReturn(11);
-
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
+    when(mockruntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfigUniverseScope);
     when(mockConfigUniverseScope.getBoolean("yb.health.logOutput")).thenReturn(false);
+    when(mockConfigUniverseScope.getInt(HealthChecker.MAX_NUM_THREADS_KEY)).thenReturn(11);
 
     // Finally setup the mocked instance.
     healthChecker =
@@ -159,12 +155,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             metricService,
             mockruntimeConfigFactory,
             null,
-            healthMetrics) {
-          @Override
-          RuntimeConfig<Model> getRuntimeConfig() {
-            return new RuntimeConfig<>(mockRuntimeConfig);
-          }
-        };
+            healthMetrics);
   }
 
   private Universe setupUniverse(String name) {
