@@ -764,5 +764,9 @@ Result<PerformFuture> PgSession::RunAsync(
   return runner.Flush();
 }
 
+Result<bool> PgSession::CheckIfPitrActive() {
+  return pg_client_.CheckIfPitrActive();
+}
+
 }  // namespace pggate
 }  // namespace yb

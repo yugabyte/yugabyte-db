@@ -48,6 +48,7 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
       (DisableTabletSplitting)
       (IsTabletSplittingComplete)
       (SplitTablet)
+      (CheckIfPitrActive)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(

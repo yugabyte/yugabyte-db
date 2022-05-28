@@ -582,6 +582,8 @@ void YBCStopSysTablePrefetching();
 void YBCRegisterSysTableForPrefetching(
     YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid);
 
+YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

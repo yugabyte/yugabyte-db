@@ -731,6 +731,8 @@ class YBClient {
   // Check if placement information is satisfiable.
   Status ValidateReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
+  Result<bool> CheckIfPitrActive();
+
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                          const std::string& partition_key,
                          CoarseTimePoint deadline,

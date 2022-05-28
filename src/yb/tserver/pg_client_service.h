@@ -54,6 +54,7 @@ namespace tserver {
     (TruncateTable) \
     (UpdateSequenceTuple) \
     (ValidatePlacement) \
+    (CheckIfPitrActive) \
     /**/
 
 using TransactionPoolProvider = std::function<client::TransactionPool*()>;
