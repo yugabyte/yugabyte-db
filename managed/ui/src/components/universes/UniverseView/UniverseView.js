@@ -14,7 +14,7 @@ import {
   getUniverseStatus,
   getUniverseStatusIcon,
   hasPendingTasksForUniverse,
-  status
+  universeState
 } from '../helpers/universeHelpers';
 import {
   YBCost,
@@ -115,10 +115,10 @@ const tableDataValueToKey = {
 
 const toggleTooltip = (view) => <Tooltip id="tooltip">Switch to {view} view.</Tooltip>;
 
-const { UNKNOWN, WARNING, ...filterStatuses } = status;
+const { UNKNOWN, WARNING, ...filterStatuses } = universeState;
 const filterStatusesArr = Object.values(filterStatuses).map((status) => ({
-  value: status.statusText,
-  label: status.statusText
+  value: status.text,
+  label: status.text
 }));
 
 const TABLE_MIN_PAGE_SIZE = 10;
@@ -490,8 +490,8 @@ export const UniverseView = (props) => {
             universe,
             universePendingTasks[universe.universeUUID]
           );
-          universe.status = universeStatus.status;
-          universe.statusText = universeStatus.status.statusText;
+          universe.status = universeStatus.state;
+          universe.statusText = universeStatus.state.text;
           return universe;
         })
       : [];
