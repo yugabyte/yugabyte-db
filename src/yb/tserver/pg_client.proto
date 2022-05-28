@@ -65,6 +65,7 @@ service PgClientService {
   rpc ReadSequenceTuple(PgReadSequenceTupleRequestPB) returns (PgReadSequenceTupleResponsePB);
   rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB) returns (PgDeleteSequenceTupleResponsePB);
   rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB);
+  rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -489,4 +490,11 @@ message PgDeleteDBSequencesRequestPB {
 
 message PgDeleteDBSequencesResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgCheckIfPitrActiveRequestPB {}
+
+message PgCheckIfPitrActiveResponsePB {
+  bool is_pitr_active = 1;
+  AppStatusPB status = 2;
 }

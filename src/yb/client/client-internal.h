@@ -395,6 +395,8 @@ class YBClient::Data {
   Status ValidateReplicationInfo(
         const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline);
 
+  Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
+
   template <class ProxyClass, class ReqClass, class RespClass>
   using SyncLeaderMasterFunc = void (ProxyClass::*)(
       const ReqClass &req, RespClass *response, rpc::RpcController *controller,

@@ -1205,6 +1205,15 @@ void YBCRegisterSysTableForPrefetching(
       index_oid == kPgInvalidOid ? PgObjectId() : PgObjectId(database_oid, index_oid));
 }
 
+YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
+  auto res = pgapi->CheckIfPitrActive();
+  if (res.ok()) {
+    *is_active = *res;
+    return YBCStatusOK();
+  }
+  return ToYBCStatus(res.status());
+}
+
 } // extern "C"
 
 } // namespace pggate

@@ -11172,5 +11172,12 @@ Status CatalogManager::TryRemoveFromTablegroup(const TableId& table_id) {
   return Status::OK();
 }
 
+Status CatalogManager::CheckIfPitrActive(
+    const CheckIfPitrActiveRequestPB* req, CheckIfPitrActiveResponsePB* resp) {
+  LOG(INFO) << "Servicing CheckIfPitrActive request";
+  resp->set_is_pitr_active(IsPitrActive());
+  return Status::OK();
+}
+
 }  // namespace master
 }  // namespace yb

@@ -1992,6 +1992,11 @@ Status YBClient::ValidateReplicationInfo(const ReplicationInfoPB& replication_in
   return data_->ValidateReplicationInfo(replication_info, deadline);
 }
 
+Result<bool> YBClient::CheckIfPitrActive() {
+  auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
+  return data_->CheckIfPitrActive(deadline);
+}
+
 Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
                                                       bool exclude_ysql) {
   ListTablesRequestPB req;
