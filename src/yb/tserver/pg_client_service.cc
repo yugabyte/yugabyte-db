@@ -331,6 +331,18 @@ class PgClientServiceImpl::Impl {
     return client().ValidateReplicationInfo(replication_info);
   }
 
+  Status CheckIfPitrActive(
+      const PgCheckIfPitrActiveRequestPB& req, PgCheckIfPitrActiveResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto res = client().CheckIfPitrActive();
+    if (!res.ok()) {
+      StatusToPB(res.status(), resp->mutable_status());
+    } else {
+      resp->set_is_pitr_active(*res);
+    }
+    return Status::OK();
+  }
+
   void Perform(
       const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
     auto status = DoPerform(req, resp, context);
