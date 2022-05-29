@@ -48,7 +48,7 @@ Add database users as follows:
 
 {{< note title="Database users and case sensitivity" >}}
 
-Like SQL, both YSQL and YCQL are case-insensitive by default. When specifying an identifier, such as the name of a table or role, YSQL/YCQL automatically converts the identifier to lowercase. For example, `CREATE ROLE Alice` creates the role "alice". To use a case-sensitive name for an identifier, enclose the name in quotes. For example, to create the role "Alice", use `CREATE ROLE "Alice"`.
+Like SQL and CQL, both YSQL and YCQL are case-insensitive by default. When specifying an identifier, such as the name of a table or role, YSQL and YCQL automatically convert the identifier to lowercase. For example, `CREATE ROLE Alice` creates the role "alice". To use a case-sensitive name for an identifier, enclose the name in quotes. For example, to create the role "Alice", use `CREATE ROLE "Alice"`.
 
 {{< /note >}}
 
