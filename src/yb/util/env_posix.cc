@@ -989,7 +989,7 @@ class PosixEnv : public Env {
     return false;
   }
 
-  CHECKED_STATUS GetChildren(const std::string& dir,
+  Status GetChildren(const std::string& dir,
                              ExcludeDots exclude_dots,
                              std::vector<std::string>* result) override {
     TRACE_EVENT1("io", "PosixEnv::GetChildren", "path", dir);
@@ -1086,7 +1086,7 @@ class PosixEnv : public Env {
         fname, "PosixEnv::GetBlockSize", [](const struct stat& sbuf) { return sbuf.st_blksize; });
   }
 
-  CHECKED_STATUS LinkFile(const std::string& src,
+  Status LinkFile(const std::string& src,
                           const std::string& target) override {
     if (link(src.c_str(), target.c_str()) != 0) {
       if (errno == EXDEV) {
@@ -1410,11 +1410,11 @@ class PosixEnv : public Env {
     return limits;
   }
 
-  CHECKED_STATUS SetUlimit(int resource, ResourceLimit value) override {
+  Status SetUlimit(int resource, ResourceLimit value) override {
     return SetUlimit(resource, value, strings::Substitute("resource no. $0", resource));
   }
 
-  CHECKED_STATUS SetUlimit(
+  Status SetUlimit(
       int resource, ResourceLimit value, const std::string& resource_name) override {
 
     auto limits = VERIFY_RESULT(GetUlimit(resource));

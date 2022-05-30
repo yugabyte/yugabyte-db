@@ -72,7 +72,7 @@ class LogReader {
   // LogReader.
   //
   // 'index' may be nullptr, but if it is, ReadReplicatesInRange() may not be used.
-  static CHECKED_STATUS Open(Env *env,
+  static Status Open(Env *env,
                              const scoped_refptr<LogIndex>& index,
                              std::string log_prefix,
                              const std::string& tablet_wal_path,
@@ -82,9 +82,9 @@ class LogReader {
 
   // Returns the biggest prefix of segments, from the current sequence, guaranteed
   // not to include any replicate messages with indexes >= 'index'.
-  CHECKED_STATUS GetSegmentPrefixNotIncluding(int64_t index, SegmentSequence* segments) const;
+  Status GetSegmentPrefixNotIncluding(int64_t index, SegmentSequence* segments) const;
 
-  CHECKED_STATUS GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_replicated_index,
+  Status GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_replicated_index,
                                               SegmentSequence* segments) const;
 
   // Return the minimum replicate index that is retained in the currently available
@@ -97,7 +97,7 @@ class LogReader {
 
   // Copies a snapshot of the current sequence of segments into 'segments'.
   // 'segments' will be cleared first.
-  CHECKED_STATUS GetSegmentsSnapshot(SegmentSequence* segments) const;
+  Status GetSegmentsSnapshot(SegmentSequence* segments) const;
 
   // Reads all ReplicateMsgs from 'starting_at' to 'up_to' both inclusive.
   // The caller takes ownership of the returned ReplicateMsg objects.
@@ -110,7 +110,7 @@ class LogReader {
   // The parameters starting_op_segment_seq_num, modified_schema, schema_version are used to read
   // appropriate schema corresponding to the from_op_id in the segment header or from the segment
   // itself if there is a DDL log
-  CHECKED_STATUS ReadReplicatesInRange(
+  Status ReadReplicatesInRange(
       const int64_t starting_at,
       const int64_t up_to,
       int64_t max_bytes_to_read,
@@ -156,14 +156,14 @@ class LogReader {
   // Index entries in 'segment's footer will be added to the index.
   // If the segment has no footer it will be scanned so this should not be used
   // for new segments.
-  CHECKED_STATUS AppendSegment(const scoped_refptr<ReadableLogSegment>& segment);
+  Status AppendSegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Same as above but for segments without any entries.
   // Used by the Log to add "empty" segments.
-  CHECKED_STATUS AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& segment);
+  Status AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Removes segments with sequence numbers less than or equal to 'seg_seqno' from this reader.
-  CHECKED_STATUS TrimSegmentsUpToAndIncluding(uint64_t seg_seqno);
+  Status TrimSegmentsUpToAndIncluding(uint64_t seg_seqno);
 
   // Replaces the last segment in the reader with 'segment'.
   // Used to replace a segment that was still in the process of being written
@@ -171,14 +171,14 @@ class LogReader {
   // Requires that the last segment in 'segments_' has the same sequence
   // number as 'segment'.
   // Expects 'segment' to be properly closed and to have footer.
-  CHECKED_STATUS ReplaceLastSegment(const scoped_refptr<ReadableLogSegment>& segment);
+  Status ReplaceLastSegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Appends 'segment' to the segment sequence.
   // Assumes that the segment was scanned, if no footer was found.
   // To be used only internally, clients of this class with private access (i.e. friends)
   // should use the thread safe version, AppendSegment(), which will also scan the segment
   // if no footer is present.
-  CHECKED_STATUS AppendSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment);
+  Status AppendSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Used by Log to update its LogReader on how far it is possible to read
   // the current segment. Requires that the reader has at least one segment
@@ -188,7 +188,7 @@ class LogReader {
 
   // Read the LogEntryBatch pointed to by the provided index entry.
   // 'tmp_buf' is used as scratch space to avoid extra allocation.
-  CHECKED_STATUS ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
+  Status ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
                                           faststring* tmp_buf,
                                           LogEntryBatchPB* batch) const;
 
@@ -198,10 +198,10 @@ class LogReader {
             const scoped_refptr<MetricEntity>& tablet_metric_entity);
 
   // Reads the headers of all segments in 'path_'.
-  CHECKED_STATUS Init(const std::string& path);
+  Status Init(const std::string& path);
 
   // Initializes an 'empty' reader for tests, i.e. does not scan a path looking for segments.
-  CHECKED_STATUS InitEmptyReaderForTests();
+  Status InitEmptyReaderForTests();
 
   // Determines if a file is older than the time specified by FLAGS_log_max_seconds_to_retain.
   bool ViolatesMaxTimePolicy(const scoped_refptr<ReadableLogSegment>& segment) const;

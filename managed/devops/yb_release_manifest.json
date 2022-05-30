@@ -13,10 +13,10 @@
     "yb-server-provision.yml",
     "send_sudo_pass.yml",
     "yb_custom_ami_builder.yml",
-    "remote_role.yml"
+    "remote_role.yml",
+    "setup-cgroup.yml"
   ],
   "bin": [
-    "bin/cluster_health.py",
     "bin/common.sh",
     "bin/install_ansible_requirements.sh",
     "bin/install_python_requirements.sh",

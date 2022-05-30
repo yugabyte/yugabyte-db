@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -686,9 +687,7 @@ public class Universe extends Model {
     for (NodeDetails node : serverNodes) {
       // Only get secondary if dual net legacy is false.
       boolean shouldGetSecondary =
-          this.getConfig().getOrDefault(DUAL_NET_LEGACY, "true").equals("false")
-              ? getSecondary
-              : false;
+          this.getConfig().getOrDefault(DUAL_NET_LEGACY, "true").equals("false") && getSecondary;
       String nodeIp =
           shouldGetSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
       // In case the secondary IP is null, just re-assign to primary.
@@ -757,6 +756,21 @@ public class Universe extends Model {
    */
   public Collection<NodeDetails> getNodesInCluster(UUID clusterUUID) {
     return getUniverseDetails().getNodesInCluster(clusterUUID);
+  }
+
+  /**
+   * Get deployment mode of node (on-prem/kubernetes/cloud provider)
+   *
+   * @param node - node to get info on
+   * @return Get deployment details
+   */
+  public Common.CloudType getNodeDeploymentMode(NodeDetails node) {
+    if (node == null) {
+      throw new RuntimeException("node must be nonnull");
+    }
+    UniverseDefinitionTaskParams.Cluster cluster =
+        getUniverseDetails().getClusterByUuid(node.placementUuid);
+    return cluster.userIntent.providerType;
   }
 
   /**

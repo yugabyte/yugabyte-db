@@ -120,7 +120,7 @@ class BlockBasedTable : public TableReader {
   // bloom filter only filter index could be prefetched.
   // skip_filters Disables loading/accessing the filter block. Overrides prefetch_filter, so filter
   //   will be skipped if both are set.
-  static CHECKED_STATUS Open(
+  static Status Open(
       const ImmutableCFOptions& ioptions,
       const EnvOptions& env_options,
       const BlockBasedTableOptions& table_options,
@@ -147,14 +147,14 @@ class BlockBasedTable : public TableReader {
 
   // @param skip_filters Disables loading/accessing the filter block.
   // key should be internal key in case bloom filters are used.
-  CHECKED_STATUS Get(
+  Status Get(
       const ReadOptions& readOptions, const Slice& key, GetContext* get_context,
       bool skip_filters = false) override;
 
   // Pre-fetch the disk blocks that correspond to the key range specified by
   // (kbegin, kend). The call will return return error status in the event of
   // IO or iteration error.
-  CHECKED_STATUS Prefetch(const Slice* begin, const Slice* end) override;
+  Status Prefetch(const Slice* begin, const Slice* end) override;
 
   // Given a key, return an approximate byte offset in the file where
   // the data for that key begins (or would begin if the key were
@@ -177,7 +177,7 @@ class BlockBasedTable : public TableReader {
   size_t ApproximateMemoryUsage() const override;
 
   // convert SST file to a human readable form
-  CHECKED_STATUS DumpTable(WritableFile* out_file) override;
+  Status DumpTable(WritableFile* out_file) override;
 
   // input_iter: if it is not null, update this one and return it as Iterator
   InternalIterator* NewDataBlockIterator(
@@ -206,7 +206,7 @@ class BlockBasedTable : public TableReader {
   class IndexIteratorHolder;
 
   // Returns filter block handle for fixed-size bloom filter using filter index and filter key.
-  CHECKED_STATUS GetFixedSizeFilterBlockHandle(const Slice& filter_key,
+  Status GetFixedSizeFilterBlockHandle(const Slice& filter_key,
       BlockHandle* filter_block_handle) const;
 
   // Returns key to be added to filter or verified against filter based on internal_key.
@@ -246,7 +246,7 @@ class BlockBasedTable : public TableReader {
   // block_cache_compressed.
   // On success, Status::OK with be returned and @block will be populated with
   // pointer to the block as well as its block handle.
-  static CHECKED_STATUS GetDataBlockFromCache(
+  static Status GetDataBlockFromCache(
       const Slice& block_cache_key, const Slice& compressed_block_cache_key,
       Cache* block_cache, Cache* block_cache_compressed, Statistics* statistics,
       const ReadOptions& read_options, BlockBasedTable::CachableEntry<Block>* block,
@@ -261,7 +261,7 @@ class BlockBasedTable : public TableReader {
   //
   // REQUIRES: raw_block is heap-allocated. PutDataBlockToCache() will be
   // responsible for releasing its memory if error occurs.
-  static CHECKED_STATUS PutDataBlockToCache(
+  static Status PutDataBlockToCache(
       const Slice& block_cache_key, const Slice& compressed_block_cache_key,
       Cache* block_cache, Cache* block_cache_compressed,
       const ReadOptions& read_options, Statistics* statistics,
@@ -281,18 +281,18 @@ class BlockBasedTable : public TableReader {
   // Optionally, user can pass a preloaded meta_index_iter for the index that
   // need to access extra meta blocks for index construction. This parameter
   // helps avoid re-reading meta index block if caller already created one.
-  CHECKED_STATUS CreateDataBlockIndexReader(
+  Status CreateDataBlockIndexReader(
       std::unique_ptr<IndexReader>* index_reader,
       InternalIterator* preloaded_meta_index_iter = nullptr);
 
   bool NonBlockBasedFilterKeyMayMatch(FilterBlockReader* filter, const Slice& filter_key) const;
 
-  CHECKED_STATUS ReadPropertiesBlock(InternalIterator* meta_iter);
+  Status ReadPropertiesBlock(InternalIterator* meta_iter);
 
-  CHECKED_STATUS SetupFilter(InternalIterator* meta_iter);
+  Status SetupFilter(InternalIterator* meta_iter);
 
   // Read the meta block from sst.
-  static CHECKED_STATUS ReadMetaBlock(
+  static Status ReadMetaBlock(
       Rep* rep, std::unique_ptr<Block>* meta_block, std::unique_ptr<InternalIterator>* iter);
 
   // Create the filter from the filter block.
@@ -300,7 +300,7 @@ class BlockBasedTable : public TableReader {
       size_t* filter_size = nullptr);
 
   // CreateFilterIndexReader from sst
-  CHECKED_STATUS CreateFilterIndexReader(std::unique_ptr<IndexReader>* filter_index_reader);
+  Status CreateFilterIndexReader(std::unique_ptr<IndexReader>* filter_index_reader);
 
   // Helper function to setup the cache key's prefix for block of file passed within a reader
   // instance. Used for both data and metadata files.
@@ -312,8 +312,8 @@ class BlockBasedTable : public TableReader {
   explicit BlockBasedTable(Rep* rep) : rep_(rep) {}
 
   // Helper functions for DumpTable()
-  CHECKED_STATUS DumpIndexBlock(WritableFile* out_file);
-  CHECKED_STATUS DumpDataBlocks(WritableFile* out_file);
+  Status DumpIndexBlock(WritableFile* out_file);
+  Status DumpDataBlocks(WritableFile* out_file);
 };
 
 }  // namespace rocksdb

@@ -63,7 +63,7 @@ void VerifyCompactionResult(
 #ifndef NDEBUG
   for (auto& level : cf_meta.levels) {
     for (auto& file : level.files) {
-      assert(overlapping_file_numbers.find(file.name) ==
+      assert(overlapping_file_numbers.find(file.Name()) ==
              overlapping_file_numbers.end());
     }
   }
@@ -417,13 +417,13 @@ TEST_P(DBTestUniversalCompactionWithParam, CompactFilesOnUniversalCompaction) {
   std::vector<std::string> compaction_input_file_names;
   for (auto file : cf_meta.levels[0].files) {
     if (rnd.OneIn(2)) {
-      compaction_input_file_names.push_back(file.name);
+      compaction_input_file_names.push_back(file.Name());
     }
   }
 
   if (compaction_input_file_names.size() == 0) {
     compaction_input_file_names.push_back(
-        cf_meta.levels[0].files[0].name);
+        cf_meta.levels[0].files[0].Name());
   }
 
   // expect fail since universal compaction only allow L0 output
@@ -448,10 +448,10 @@ TEST_P(DBTestUniversalCompactionWithParam, CompactFilesOnUniversalCompaction) {
   // Pick the first and the last file, expect everything is
   // compacted into one single file.
   compaction_input_file_names.push_back(
-      cf_meta.levels[0].files[0].name);
+      cf_meta.levels[0].files[0].Name());
   compaction_input_file_names.push_back(
       cf_meta.levels[0].files[
-          cf_meta.levels[0].files.size() - 1].name);
+          cf_meta.levels[0].files.size() - 1].Name());
   ASSERT_OK(dbfull()->CompactFiles(
       CompactionOptions(), handles_[1],
       compaction_input_file_names, 0));

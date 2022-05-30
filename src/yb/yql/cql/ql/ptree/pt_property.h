@@ -61,7 +61,7 @@ class PTProperty : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override = 0;
+  virtual Status Analyze(SemContext *sem_context) override = 0;
 
   MCSharedPtr<MCString> lhs() const {
     return lhs_;
@@ -71,19 +71,19 @@ class PTProperty : public TreeNode {
     return rhs_;
   }
 
-  static CHECKED_STATUS GetIntValueFromExpr(PTExprPtr expr,
+  static Status GetIntValueFromExpr(PTExprPtr expr,
                                             const string& property_name,
                                             int64_t *val);
 
-  static CHECKED_STATUS GetDoubleValueFromExpr(PTExprPtr expr,
+  static Status GetDoubleValueFromExpr(PTExprPtr expr,
                                                const string& property_name,
                                                long double *val);
 
-  static CHECKED_STATUS GetBoolValueFromExpr(PTExprPtr expr,
+  static Status GetBoolValueFromExpr(PTExprPtr expr,
                                              const string& property_name,
                                              bool *val);
 
-  static CHECKED_STATUS GetStringValueFromExpr(PTExprPtr expr,
+  static Status GetStringValueFromExpr(PTExprPtr expr,
                                                bool to_lower_case,
                                                const string& property_name,
                                                string *val);
@@ -127,7 +127,7 @@ class PTPropertyListNode : public TreeListNode<PTProperty> {
     return MCMakeShared<PTPropertyListNode>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 };
 
 } // namespace ql

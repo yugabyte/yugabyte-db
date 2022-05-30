@@ -312,6 +312,9 @@ Status TabletPeer::InitTabletPeer(
   }
 
   RETURN_NOT_OK(set_cdc_min_replicated_index(meta_->cdc_min_replicated_index()));
+  if (tablet_->transaction_participant()) {
+    tablet_->transaction_participant()->SetRetainOpId(meta_->cdc_sdk_min_checkpoint_op_id());
+  }
 
   TRACE("TabletPeer::Init() finished");
   VLOG_WITH_PREFIX(2) << "Peer Initted";
@@ -708,18 +711,6 @@ Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
   return Status::OK();
 }
 
-void TabletPeer::GetLastCDCedData(RemoveIntentsData* data) {
-  if (consensus_ != nullptr) {
-    data->op_id.index = consensus_->GetLastCDCedOpId().index;
-    data->op_id.term = consensus_->GetLastCDCedOpId().term;
-  }
-
-  if((tablet_ != nullptr) && (tablet_->mvcc_manager() != nullptr)) {
-    // for now use this hybrid time, ideally it should be of last_updated_time
-    data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
-  }
-}
-
 void TabletPeer::UpdateClock(HybridTime hybrid_time) {
   clock_->Update(hybrid_time);
 }
@@ -860,6 +851,12 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
 }
 
 Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) const {
+  if (PREDICT_FALSE(!log_)) {
+    auto status = STATUS(Uninitialized, "Log not ready (tablet peer not yet initialized?)");
+    LOG(DFATAL) << status;
+    return status;
+  }
+
   // First, we anchor on the last OpId in the Log to establish a lower bound
   // and avoid racing with the other checks. This limits the Log GC candidate
   // segments before we check the anchors.
@@ -1014,6 +1011,17 @@ Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
     RETURN_NOT_OK(set_cdc_min_replicated_index_unlocked(std::numeric_limits<int64_t>::max()));
   }
   return Status::OK();
+}
+
+Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id) {
+  LOG_WITH_PREFIX(INFO) << "Setting CDCSDK min checkpoint opId to "
+                        << cdc_sdk_min_checkpoint_op_id.ToString();
+  RETURN_NOT_OK(meta_->set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_min_checkpoint_op_id));
+  return Status::OK();
+}
+
+OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
+  return meta_->cdc_sdk_min_checkpoint_op_id();
 }
 
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {

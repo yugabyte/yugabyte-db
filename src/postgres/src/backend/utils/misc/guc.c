@@ -2074,7 +2074,19 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_upsert_mode,
 		false,
 		NULL, NULL, NULL
-    },
+	},
+
+	{
+		{"yb_planner_custom_plan_for_partition_pruning", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("If enabled, choose custom plan over generic plan "
+						 " for prepared statements based on the number of "
+						 "partition pruned."),
+			NULL
+		},
+		&enable_choose_custom_plan_for_partition_pruning,
+		true,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -3397,6 +3409,18 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_index_state_flags_update_delay,
 		1000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_planner_custom_plan_threshold", PGC_USERSET, QUERY_TUNING,
+			gettext_noop("The number of times to force custom plan generation "
+						 "for prepared statements before considering a "
+						 "generic plan."),
+			NULL
+		},
+		&yb_test_planner_custom_plan_threshold,
+		5, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -8225,7 +8249,7 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 			 i < sizeof(YbDbAdminVariables) / sizeof(YbDbAdminVariables[0]);
 			 i++)
 		{
-			if (strcmp(YbDbAdminVariables[i], stmt->name) == 0)
+			if (stmt->name && strcmp(YbDbAdminVariables[i], stmt->name) == 0)
 			{
 				YbDbAdminCanSet = true;
 				break;

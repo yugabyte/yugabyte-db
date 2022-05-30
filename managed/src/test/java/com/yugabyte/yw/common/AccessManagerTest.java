@@ -38,6 +38,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -106,7 +107,8 @@ public class AccessManagerTest extends FakeDBApplication {
               false,
               false,
               false,
-              null));
+              null,
+              false));
     } else {
       response.code = 0;
       response.message =
@@ -125,7 +127,8 @@ public class AccessManagerTest extends FakeDBApplication {
               false,
               false,
               false,
-              null));
+              null,
+              false));
     }
   }
 
@@ -172,7 +175,7 @@ public class AccessManagerTest extends FakeDBApplication {
 
     if (commandType.equals("add-key")) {
       return Json.toJson(
-          accessManager.addKey(regionUUID, "foo", SSH_PORT, false, false, false, null));
+          accessManager.addKey(regionUUID, "foo", SSH_PORT, false, false, false, null, false));
     } else if (commandType.equals("list-keys")) {
       return accessManager.listKeys(regionUUID);
     } else if (commandType.equals("create-vault")) {
@@ -508,7 +511,8 @@ public class AccessManagerTest extends FakeDBApplication {
             + TMP_KEYS_PATH
             + "/"
             + defaultProvider.uuid
-            + " --delete_remote";
+            + " --delete_remote"
+            + " --ignore_auth_failure";
     String commandStr = String.join(" ", command.getValue());
     assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
     assertTrue(cloudCredentials.getValue().isEmpty());
@@ -557,7 +561,7 @@ public class AccessManagerTest extends FakeDBApplication {
           "/tmp/yugaware_tests/amt/keys/"
               + defaultProvider.uuid
               + "/"
-              + Util.getFileName(configName),
+              + com.yugabyte.yw.common.utils.FileUtils.getFileName(configName),
           configFile);
       List<String> lines = Files.readAllLines(Paths.get(configFile));
       assertEquals("hello world", lines.get(0));

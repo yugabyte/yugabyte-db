@@ -664,6 +664,20 @@ Status KeyEntryValue::DecodeFromKey(Slice* slice) {
   return DecodeKey(slice, this);
 }
 
+Result<KeyEntryValue> KeyEntryValue::FullyDecodeFromKey(const Slice& slice) {
+  auto slice_copy = slice;
+  KeyEntryValue result;
+  RETURN_NOT_OK(result.DecodeFromKey(&slice_copy));
+  if (!slice_copy.empty()) {
+    return STATUS_FORMAT(
+        Corruption,
+        "Extra data after decoding key entry value: $0 - $1",
+        slice.WithoutSuffix(slice_copy.size()).ToDebugHexString(),
+        slice_copy.ToDebugHexString());
+  }
+  return result;
+}
+
 Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
   // A copy for error reporting.
   const auto input_slice = *slice;
@@ -933,8 +947,8 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
         return STATUS_FORMAT(Corruption, "Not enough bytes for UUID: $0", slice->size());
       }
       if (out) {
-        RETURN_NOT_OK((new(&out->uuid_val_) Uuid())->FromSlice(
-            *slice, boost::uuids::uuid::static_size()));
+        out->uuid_val_ = VERIFY_RESULT(Uuid::FromSlice(
+            slice->Prefix(boost::uuids::uuid::static_size())));
       }
       slice->remove_prefix(boost::uuids::uuid::static_size());
       type_ref = type;
@@ -946,8 +960,7 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       if (out) {
         string bytes;
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
-        new(&out->uuid_val_) Uuid();
-        RETURN_NOT_OK(out->uuid_val_.DecodeFromComparable(bytes));
+        new(&out->uuid_val_) Uuid(VERIFY_RESULT(Uuid::FromComparable(bytes)));
       } else {
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
       }
@@ -959,8 +972,7 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       if (out) {
         string bytes;
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
-        new(&out->uuid_val_) Uuid();
-        RETURN_NOT_OK(out->uuid_val_.DecodeFromComparable(bytes));
+        new(&out->uuid_val_) Uuid(VERIFY_RESULT(Uuid::FromComparable(bytes)));
       } else {
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
       }
@@ -1215,9 +1227,7 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes to decode Uuid: $0, need $1",
             slice.size(), kUuidSize);
       }
-      Slice slice_temp(slice.data(), slice.size());
-      new(&uuid_val_) Uuid();
-      RETURN_NOT_OK(uuid_val_.DecodeFromComparableSlice(slice_temp));
+      new(&uuid_val_) Uuid(VERIFY_RESULT(Uuid::FromComparable(slice)));
       type_ = value_type;
       return Status::OK();
     }
@@ -1538,8 +1548,12 @@ bool PrimitiveValue::IsPrimitive() const {
   return IsPrimitiveValueType(type_);
 }
 
+bool PrimitiveValue::IsTombstone() const {
+  return type_ == ValueEntryType::kTombstone;
+}
+
 bool PrimitiveValue::IsTombstoneOrPrimitive() const {
-  return IsPrimitiveValueType(type_) || type_ == ValueEntryType::kTombstone;
+  return IsPrimitive() || IsTombstone();
 }
 
 bool KeyEntryValue::IsInfinity() const {
@@ -2258,7 +2272,23 @@ KeyEntryValue KeyEntryValue::FromQLValuePB(const QLValuePB& value, SortingType s
   return DoFromQLValuePB(value, sorting_type);
 }
 
+KeyEntryValue KeyEntryValue::FromQLValuePBForKey(const QLValuePB& value, SortingType sorting_type) {
+  if (IsNull(value)) {
+    return KeyEntryValue::NullValue(sorting_type);
+  }
+  return DoFromQLValuePB(value, sorting_type);
+}
+
 KeyEntryValue KeyEntryValue::FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type) {
+  return DoFromQLValuePB(value, sorting_type);
+}
+
+KeyEntryValue KeyEntryValue::FromQLValuePBForKey(
+    const LWQLValuePB& value,
+    SortingType sorting_type) {
+  if (IsNull(value)) {
+    return KeyEntryValue::NullValue(sorting_type);
+  }
   return DoFromQLValuePB(value, sorting_type);
 }
 

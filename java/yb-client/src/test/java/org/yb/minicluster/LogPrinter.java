@@ -31,7 +31,7 @@ import org.yb.util.EnvAndSysPropertyUtil;
  * Helper runnable that can log what the processes are sending on their stdout and stderr that
  * we'd otherwise miss.
  */
-public class LogPrinter {
+public class LogPrinter implements AutoCloseable {
 
   private static final Logger LOG = LoggerFactory.getLogger(MiniYBDaemon.class);
 
@@ -137,9 +137,16 @@ public class LogPrinter {
             // Sleep for a short time and give the child process a chance to generate more output.
             Thread.sleep(10);
           }
+        } catch (IOException ex) {
+          if (ex.getMessage().toLowerCase().contains("stream closed")) {
+            // This probably means we're stopping, OK to ignore.
+            LOG.info(withPrefix(ex.getMessage()));
+          } else {
+            throw ex;
+          }
         } catch (InterruptedException iex) {
           // This probably means we're stopping, OK to ignore.
-          LOG.info(withPrefix(iex.getMessage()), iex);
+          LOG.info(withPrefix(iex.getMessage()));
         } catch (Throwable t) {
           LOG.warn(withPrefix(t.getMessage()), t);
         }
@@ -192,6 +199,11 @@ public class LogPrinter {
         l.reportErrorsAtEnd();
       }
     }
+  }
+
+  @Override
+  public void close() throws Exception {
+    stop();
   }
 
   public String getError() {

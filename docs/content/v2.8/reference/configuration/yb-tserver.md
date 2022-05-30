@@ -184,18 +184,6 @@ The directory to write `yb-tserver` log files.
 
 Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
 
-##### --logemaillevel
-
-Email log messages logged at this level, or higher. Values: `0` (all), 1, 2, `3` (FATAL), `999` (none)
-
-Default: `999`
-
-##### --logmailer
-
-The mailer used to send logging email messages.
-
-Default: `"/bin/mail"`
-
 ##### --logtostderr
 
 Write log messages to `stderr` instead of `logfiles`.

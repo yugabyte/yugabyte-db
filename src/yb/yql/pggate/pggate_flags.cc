@@ -32,9 +32,6 @@ DEFINE_int32(pggate_ybclient_reactor_threads, 2,
              "The number of reactor threads to be used for processing ybclient "
              "requests originating in the PostgreSQL proxy server");
 
-DEFINE_string(pggate_proxy_bind_address, "",
-              "Address to which the PostgreSQL proxy server is bound.");
-
 DEFINE_string(pggate_master_addresses, "",
               "Addresses of the master servers to which the PostgreSQL proxy server connects.");
 
@@ -136,3 +133,6 @@ DEFINE_bool(yb_enable_read_committed_isolation, false,
             "READ UNCOMMITTED are mapped internally. If false (default), both map to the stricter "
             "REPEATABLE READ implementation. If true, both use the new READ COMMITTED "
             "implementation instead.");
+
+DEFINE_test_flag(bool, yb_lwlock_crash_after_acquire_pg_stat_statements_reset, false,
+             "Issue sigkill for crash test after acquiring a LWLock in pg_stat_statements reset.");

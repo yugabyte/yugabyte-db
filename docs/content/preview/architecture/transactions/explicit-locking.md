@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section explains how explicit locking works in YugabyteDB. The transactions layer of YugabyteDB can support both optimistic and pessimistic locks.
+YugabyteDB supports explicit locking. The transactions layer of YugabyteDB supports both optimistic and pessimistic locks.
 
 ## Concurrency control
 
@@ -20,19 +20,19 @@ This section explains how explicit locking works in YugabyteDB. The transactions
 
 The two primary mechanisms to achieve concurrency control are *optimistic* and *pessimistic*. Concurrency control in YugabyteDB can accommodate both of these depending on the scenario.
 
-DocDB exposes the ability to write [provisional records]() which is exercised by the query layer. Provisional records are used to order persist locks on rows in order to detect conflicts. Provisional records have a *priority* associated with them, which is a number. When two transactions conflict, the transaction with the lower priority is aborted.
+DocDB exposes the ability to write [provisional records](../distributed-txns/#provisional-records) which is exercised by the query layer. Provisional records are used to order persist locks on rows in order to detect conflicts. Provisional records have a *priority* associated with them, which is a number. When two transactions conflict, the transaction with the lower priority is aborted.
 
 ### Optimistic concurrency control
 
 [Optimistic locking](https://en.wikipedia.org/wiki/Optimistic_concurrency_control) delays the checking of whether a transaction meets the isolation and other integrity rules until its end, without blocking any of the operations performed as a part of the transaction. In scenarios where there are two concurrent transactions that conflict with each other (meaning a commit of the changes made by both these transactions would violate integrity constraints), one of these transactions is aborted. An aborted transaction could immediately be restarted and re-executed, or surfaced as an error to the end user.
 
-In scenarios where not too many transactions conflict with each other, optimistic concurrency control is a good strategy. This is generally the case in high-volume systems. For example, most web applications have short-lived connections to the database.
+In scenarios where only a few transactions conflict with each other, optimistic concurrency control is a good strategy. This is generally the case in high-volume systems. For example, most web applications have short-lived connections to the database.
 
 YugabyteDB opts for optimistic concurrency in the case of simple transactions. This is achieved by assigning a random priority to each of the transactions. In the case of a conflict, the transaction with a lower priority is aborted. Some transactions that get aborted due to a conflict are internally retried while others result in an error to the end application.
 
 ### Pessimistic concurrency control
 
-* **Pessimistic** - Block an operation of a transaction, if it may cause violation of the rules, until the possibility of violation disappears. Blocking operations is typically involved with performance reduction.
+**Pessimistic**: block an operation of a transaction, if it may cause violation of the rules, until the possibility of violation disappears. Blocking operations is typically involved with performance reduction.
 
 [Pessimistic locking](https://en.wikipedia.org/wiki/Record_locking) blocks a transaction if any of its operations would violate relational integrity if it executed. This means that as long as the first transaction that locked a row has not completed (either `COMMIT` or `ABORT`), no other transaction would be able to lock that row.
 
@@ -66,7 +66,7 @@ There is no limit on the number of rows that can be locked at a time. Row locks 
 
 #### FOR UPDATE
 
-The `FOR UPDATE` lock causes the rows retrieved by the `SELECT` statement to be locked as though for an update. This prevents these rows from being subsequently locked, modified or deleted by other transactions until the current transaction ends. The following operations performed on a previously locked row as a part of other transactions will fail: `UPDATE`, `DELETE`, `SELECT FOR UPDATE`, `SELECT FOR NO KEY UPDATE`, `SELECT FOR SHARE` or `SELECT FOR KEY SHARE`.
+The `FOR UPDATE` lock causes the rows retrieved by the `SELECT` statement to be locked as though for an update. This prevents these rows from being subsequently locked, modified or deleted by other transactions until the current transaction ends. The following operations performed on a previously locked row as a part of other transactions will fail: `UPDATE`, `DELETE`, `SELECT FOR UPDATE`, `SELECT FOR NO KEY UPDATE`, `SELECT FOR SHARE`, or `SELECT FOR KEY SHARE`.
 
 {{< note title="Note" >}}
 
@@ -103,7 +103,7 @@ yugabyte=# CREATE TABLE t (k VARCHAR, v VARCHAR);
 yugabyte=# INSERT INTO t VALUES ('k1', 'v1');
 ```
 
-Next, connect two different instances of the ysqlsh shell to YugabyteDB. We will refer to these as `session #1` and `session #2` below.
+Next, connect two different instances of the ysqlsh shell to YugabyteDB. These are referred to as `session #1` and `session #2`.
 
 1. Run the following in `session #1` first. This example uses an explicit row-level lock using `SELECT FOR UPDATE`, which uses pessimistic concurrency control.
 

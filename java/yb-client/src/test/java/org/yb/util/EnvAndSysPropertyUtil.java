@@ -50,7 +50,7 @@ public final class EnvAndSysPropertyUtil {
     String envVarValue = System.getenv(envVarName);
     String systemPropertyValue = System.getProperty(systemPropertyName);
     if (envVarValue != null && systemPropertyValue != null &&
-        !envVarValue.equals(systemPropertyName) &&
+        !envVarValue.equals(systemPropertyValue) &&
         discrepanciesReportedForEnvVars.add(envVarName)) {
       LOG.warn(
           String.format(

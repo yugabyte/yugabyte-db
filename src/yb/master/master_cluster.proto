@@ -165,6 +165,7 @@ message RemovedMasterUpdateResponsePB {
 
 message SetPreferredZonesRequestPB {
   repeated CloudInfoPB preferred_zones = 1;
+  repeated CloudInfoListPB multi_preferred_zones = 2;
 }
 
 message SetPreferredZonesResponsePB {

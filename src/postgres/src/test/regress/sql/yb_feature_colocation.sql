@@ -12,6 +12,7 @@ DROP TABLE tab_noco;
 
 CREATE DATABASE colocation_test colocated = true;
 \c colocation_test
+CREATE TABLE e (id int PRIMARY KEY, first_name TEXT) WITH (colocated = true) SPLIT INTO 10 TABLETS;
 
 -- CREATE TABLE
 

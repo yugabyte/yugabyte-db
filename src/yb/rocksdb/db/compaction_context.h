@@ -15,6 +15,7 @@
 
 #include <vector>
 
+#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/status.h"
 
@@ -50,11 +51,16 @@ class CompactionContext {
   // represented as pairs of Slices denoting the beginning and end of the range in user space.
   virtual std::vector<std::pair<Slice, Slice>> GetLiveRanges() const = 0;
 
+  // Update file meta data after compaction. For instance could be used to patch frontiers.
+  virtual Status UpdateMeta(FileMetaData* meta) = 0;
+
   virtual ~CompactionContext() = default;
 };
 
 struct CompactionContextOptions {
-  bool is_full_compaction;
+  // In YugabyteDB we use only level0, so for code simplicity pass level0 inputs only.
+  const std::vector<FileMetaData*>& level0_inputs;
+  BoundaryValuesExtractor* boundary_extractor;
 };
 
 }  // namespace rocksdb

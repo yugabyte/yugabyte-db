@@ -209,13 +209,13 @@ const LiveQueriesComponent = ({ location }) => {
               </h2>
             </div>
             {failedQueries}
-            {hasQueryData && (
-              <div className="pull-right">
-                <YBButtonLink
-                  btnIcon="fa fa-refresh"
-                  btnClass="btn btn-default refresh-btn"
-                  onClick={getLiveQueries}
-                />
+            <div className="pull-right">
+              <YBButtonLink
+                btnIcon="fa fa-refresh"
+                btnClass="btn btn-default refresh-btn"
+                onClick={getLiveQueries}
+              />
+              {hasQueryData && (
                 <div>
                   <div className="live-queries__dropdown-label">Show live queries</div>
                   <Dropdown id="queries-filter-dropdown" pullRight={true}>
@@ -233,8 +233,8 @@ const LiveQueriesComponent = ({ location }) => {
                     </Dropdown.Menu>
                   </Dropdown>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         }
         body={

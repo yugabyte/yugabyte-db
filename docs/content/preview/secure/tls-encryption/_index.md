@@ -1,7 +1,7 @@
 ---
-title: Encryption in Transit on YugabyteDB Clusters
-headerTitle: Encryption in Transit
-linkTitle: Encryption in Transit
+title: Encryption in transit on YugabyteDB Clusters
+headerTitle: Encryption in transit
+linkTitle: Encryption in transit
 description: Enable encryption in transit (using TLS) to protect network communication.
 headcontent: Enable encryption in transit (using TLS) to protect network communication.
 image: /images/section_icons/secure/tls-encryption.png

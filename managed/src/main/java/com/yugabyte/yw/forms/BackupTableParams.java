@@ -43,6 +43,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Full Table type backup")
   public Boolean isFullBackup = false;
 
+  @ApiModelProperty(value = "Disable checksum")
+  public Boolean disableChecksum = false;
+
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
 
@@ -91,6 +94,9 @@ public class BackupTableParams extends TableManagerParams {
   // The number of concurrent commands to run on nodes over SSH
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
   public int parallelism = 8;
+
+  @ApiModelProperty(value = "Don't add -m flag during gsutil upload dir command")
+  public boolean disableParallelism = false;
 
   // The associated schedule UUID (if applicable)
   @ApiModelProperty(value = "Schedule UUID")
@@ -147,4 +153,8 @@ public class BackupTableParams extends TableManagerParams {
   public void setFullBackup(boolean isFullBackup) {
     this.isFullBackup = isFullBackup;
   }
+
+  @JsonIgnore public List<UUID> targetAsyncReplicationRelationships;
+
+  @JsonIgnore public List<UUID> sourceAsyncReplicationRelationships;
 }

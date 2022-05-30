@@ -34,6 +34,7 @@ DECLARE_bool(load_balancer_ignore_cloud_info_similarity);
 
 namespace yb {
 namespace master {
+using std::shared_ptr;
 
 const string default_cloud = "aws";
 const string default_region = "us-west-1";
@@ -155,7 +156,8 @@ template<class ClusterLoadBalancerMockedClass>
 class TestLoadBalancerBase {
  public:
   TestLoadBalancerBase(ClusterLoadBalancerMockedClass* cb, const string& table_id)
-      : cb_(cb), blacklist_(cb->blacklist_),
+      : cb_(cb),
+        blacklist_(cb->blacklist_),
         leader_blacklist_(cb->leader_blacklist_),
         ts_descs_(cb->ts_descs_),
         affinitized_zones_(cb->affinitized_zones_),
@@ -259,6 +261,23 @@ class TestLoadBalancerBase {
     cb_->ResetTableStatePtr(cur_table_uuid_, nullptr);
   }
 
+  void StopTsHeartbeat(std::shared_ptr<TSDescriptor> ts_desc) {
+    ts_desc->last_heartbeat_ = MonoTime::kMin;
+  }
+
+  void ResumeTsHeartbeat(std::shared_ptr<TSDescriptor> ts_desc) {
+    ts_desc->last_heartbeat_ = MonoTime::Now();
+  }
+
+  void AddLeaderBlacklist(const ::std::string& host_uuid) {
+    leader_blacklist_.add_hosts()->set_host(host_uuid);
+  }
+
+  void ClearLeaderBlacklist() {
+    leader_blacklist_.Clear();
+    cb_->state_->leader_blacklisted_servers_.clear();
+  }
+
   Result<bool> HandleLeaderMoves(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts)
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
@@ -278,7 +297,7 @@ class TestLoadBalancerBase {
     ASSERT_OK(AnalyzeTablets());
 
     // Leader blacklist ts2
-    leader_blacklist_.add_hosts()->set_host(ts_descs_[2]->permanent_uuid());
+    AddLeaderBlacklist(ts_descs_[2]->permanent_uuid());
     LOG(INFO) << "Leader distribution: 2 1 1. Leader Blacklist: ts2";
 
     ResetState();
@@ -299,8 +318,7 @@ class TestLoadBalancerBase {
     LOG(INFO) << "Leader distribution: 2 2 0";
 
     // Clear leader blacklist.
-    leader_blacklist_.Clear();
-    cb_->state_->leader_blacklisted_servers_.clear();
+    ClearLeaderBlacklist();
     LOG(INFO) << "Leader distribution: 2 2 0. Leader Blacklist cleared.";
 
     ASSERT_OK(AnalyzeTablets());
@@ -959,7 +977,7 @@ class TestLoadBalancerBase {
     ResetState();
     replication_info_.Clear();
     blacklist_.Clear();
-    leader_blacklist_.Clear();
+    ClearLeaderBlacklist();
     tablet_map_.clear();
     TSDescriptorVector old_ts_descs;
     old_ts_descs.swap(ts_descs_);
@@ -1101,7 +1119,7 @@ class TestLoadBalancerBase {
   BlacklistPB& leader_blacklist_;
   TableId cur_table_uuid_;
   TSDescriptorVector& ts_descs_;
-  AffinitizedZonesSet& affinitized_zones_;
+  vector<AffinitizedZonesSet>& affinitized_zones_;
   TabletInfoMap& tablet_map_;
   TableInfoMap& table_map_;
   ReplicationInfoPB& replication_info_;

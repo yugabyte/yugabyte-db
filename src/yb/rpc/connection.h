@@ -167,7 +167,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   Reactor* reactor() const { return reactor_; }
 
-  CHECKED_STATUS DumpPB(const DumpRunningRpcsRequestPB& req,
+  Status DumpPB(const DumpRunningRpcsRequestPB& req,
                         RpcConnectionPB* resp);
 
   // Do appropriate actions after adding outbound call.
@@ -176,11 +176,11 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // An incoming packet has completed on the client side. This parses the
   // call response, looks up the CallAwaitingResponse, and calls the
   // client callback.
-  CHECKED_STATUS HandleCallResponse(CallData* call_data);
+  Status HandleCallResponse(CallData* call_data);
 
   ConnectionContext& context() { return *context_; }
 
-  CHECKED_STATUS Start(ev::loop_ref* loop);
+  Status Start(ev::loop_ref* loop);
 
   // Try to parse already received data.
   void ParseReceived();
@@ -192,7 +192,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   }
 
  private:
-  CHECKED_STATUS DoWrite();
+  Status DoWrite();
 
   // Does actual outbound data queueing. Invoked in appropriate reactor thread.
   size_t DoQueueOutboundData(OutboundDataPtr call, bool batch);

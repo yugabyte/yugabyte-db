@@ -108,7 +108,7 @@ class TSDescriptor {
   MonoDelta TimeSinceHeartbeat() const;
 
   // Register this tablet server.
-  CHECKED_STATUS Register(const NodeInstancePB& instance,
+  Status Register(const NodeInstancePB& instance,
                           const TSRegistrationPB& registration,
                           CloudInfoPB local_cloud_info,
                           rpc::ProxyCache* proxy_cache);
@@ -140,8 +140,6 @@ class TSDescriptor {
 
   std::string placement_uuid() const;
 
-  template<typename Lambda>
-  bool DoesRegistrationMatch(Lambda predicate) const;
   bool IsRunningOn(const HostPortPB& hp) const;
   bool IsBlacklisted(const BlacklistSet& blacklist) const;
 
@@ -150,7 +148,7 @@ class TSDescriptor {
 
   // Return an RPC proxy to a service.
   template <class TProxy>
-  CHECKED_STATUS GetProxy(std::shared_ptr<TProxy>* proxy) {
+  Status GetProxy(std::shared_ptr<TProxy>* proxy) {
     return GetOrCreateProxy(proxy, &proxies_.get<TProxy>());
   }
 
@@ -299,7 +297,7 @@ class TSDescriptor {
   virtual bool IsLiveAndHasReported() const;
 
  protected:
-  virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
+  virtual Status RegisterUnlocked(const NodeInstancePB& instance,
                                           const TSRegistrationPB& registration,
                                           CloudInfoPB local_cloud_info,
                                           rpc::ProxyCache* proxy_cache);
@@ -307,7 +305,7 @@ class TSDescriptor {
   mutable rw_spinlock lock_;
  private:
   template <class TProxy>
-  CHECKED_STATUS GetOrCreateProxy(std::shared_ptr<TProxy>* result,
+  Status GetOrCreateProxy(std::shared_ptr<TProxy>* result,
                                   std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
@@ -427,6 +425,18 @@ Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
   return Status::OK();
 }
 
+struct cloud_equal_to {
+  bool operator()(const yb::CloudInfoPB& x, const yb::CloudInfoPB& y) const {
+    return x.placement_cloud() == y.placement_cloud() &&
+           x.placement_region() == y.placement_region() && x.placement_zone() == y.placement_zone();
+  }
+};
+
+struct cloud_hash {
+  std::size_t operator()(const yb::CloudInfoPB& ci) const {
+    return std::hash<std::string>{}(TSDescriptor::generate_placement_id(ci));
+  }
+};
 } // namespace master
 } // namespace yb
 

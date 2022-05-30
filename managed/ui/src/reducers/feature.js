@@ -9,11 +9,13 @@ const initialStateFeatureInTest = {
   enableXCluster: false,
   enableGeoPartitioning: false,
   enableHCVault: true,
-  enableHCVaultEAT: false,
+  enableHCVaultEAT: true,
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false,
   backupv2: false,
-  enableOIDC: false
+  enableOIDC: false,
+  supportBundle: false,
+  enableThirdpartyUpgrade: false
 };
 
 const initialStateFeatureReleased = {
@@ -25,11 +27,13 @@ const initialStateFeatureReleased = {
   enableXCluster: true,
   enableGeoPartitioning: false,
   enableHCVault: true,
-  enableHCVaultEAT: false,
+  enableHCVaultEAT: true,
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false,
-  backupv2: false,
-  enableOIDC: false
+  backupv2: true,
+  enableOIDC: false,
+  supportBundle: true,
+  enableThirdpartyUpgrade: false
 };
 
 export const FeatureFlag = (

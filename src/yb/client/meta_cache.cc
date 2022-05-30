@@ -574,6 +574,17 @@ void RemoteTablet::GetRemoteTabletServers(
   }
 }
 
+bool RemoteTablet::IsLocalRegion() {
+  auto tservers = GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue);
+  for (const auto &tserver : tservers) {
+    LOG(INFO) << "TSERVER" << tserver->ToString();
+    if (!tserver->IsLocalRegion()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
   bool found = false;
   std::lock_guard<rw_spinlock> lock(mutex_);
@@ -721,7 +732,7 @@ class LookupRpc : public internal::ClientMasterRpcBase, public RequestCleanup {
 
   // Subclasses can override VerifyResponse for implementing additional response checks. Called
   // from Finished if there are no errors passed in response.
-  virtual CHECKED_STATUS VerifyResponse() { return Status::OK(); }
+  virtual Status VerifyResponse() { return Status::OK(); }
 
   int64_t request_no() const {
     return request_no_;
@@ -745,7 +756,7 @@ class LookupRpc : public internal::ClientMasterRpcBase, public RequestCleanup {
                                     ProcessedTablesMap::mapped_type* processed_table) = 0;
 
  private:
-  virtual CHECKED_STATUS ProcessTabletLocations(
+  virtual Status ProcessTabletLocations(
      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
      boost::optional<PartitionListVersion> table_partition_list_version) = 0;
 
@@ -807,11 +818,11 @@ void LookupRpc::SendRpc() {
 
 namespace {
 
-CHECKED_STATUS GetFirstErrorForTabletById(const master::GetTabletLocationsResponsePB& resp) {
+Status GetFirstErrorForTabletById(const master::GetTabletLocationsResponsePB& resp) {
   return resp.errors_size() > 0 ? StatusFromPB(resp.errors(0).status()) : Status::OK();
 }
 
-CHECKED_STATUS GetFirstErrorForTabletById(const master::GetTableLocationsResponsePB& resp) {
+Status GetFirstErrorForTabletById(const master::GetTableLocationsResponsePB& resp) {
   // There are no per-tablet lookup errors inside GetTableLocationsResponsePB.
   return Status::OK();
 }

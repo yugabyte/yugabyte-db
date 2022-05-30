@@ -85,3 +85,4 @@ ERROR:  currval of sequence "s2" is not yet defined in this session
 - [`DROP SEQUENCE`](../../the-sql-language/statements/ddl_drop_sequence/)
 - [`lastval()`](../func_lastval)
 - [`nextval()`](../func_nextval)
+- [`setval()`](../func_setval)

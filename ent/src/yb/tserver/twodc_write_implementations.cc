@@ -49,7 +49,7 @@ using namespace yb::size_literals;
 namespace tserver {
 namespace enterprise {
 
-CHECKED_STATUS CombineExternalIntents(
+Status CombineExternalIntents(
     const tablet::TransactionStatePB& transaction_state,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
     google::protobuf::RepeatedPtrField<docdb::KeyValuePairPB> *out) {
@@ -95,15 +95,14 @@ CHECKED_STATUS CombineExternalIntents(
 
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_state.transaction_id()));
   SCHECK_EQ(transaction_state.tablets().size(), 1, InvalidArgument, "Wrong tablets number");
-  Uuid status_tablet;
-  RETURN_NOT_OK(status_tablet.FromHexString(transaction_state.tablets()[0]));
+  auto status_tablet = VERIFY_RESULT(Uuid::FromHexString(transaction_state.tablets()[0]));
 
   Provider provider(status_tablet, &pairs, out->Add());
   docdb::CombineExternalIntents(txn_id, &provider);
   return Status::OK();
 }
 
-CHECKED_STATUS AddRecord(
+Status AddRecord(
     const cdc::CDCRecordPB& record,
     docdb::KeyValueWriteBatchPB* write_batch) {
   if (record.operation() == cdc::CDCRecordPB::APPLY) {

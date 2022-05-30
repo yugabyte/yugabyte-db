@@ -73,6 +73,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
+#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/tablet/operations/write_operation.h"
@@ -186,6 +187,10 @@ void SysCatalogTable::StartShutdown() {
   if (peer) {
     CHECK(peer->StartShutdown());
   }
+
+  if (multi_raft_manager_) {
+    multi_raft_manager_->StartShutdown();
+  }
 }
 
 void SysCatalogTable::CompleteShutdown() {
@@ -196,6 +201,9 @@ void SysCatalogTable::CompleteShutdown() {
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();
   tablet_prepare_pool_->Shutdown();
+  if (multi_raft_manager_) {
+    multi_raft_manager_->CompleteShutdown();
+  }
 }
 
 Status SysCatalogTable::ConvertConfigToMasterAddresses(
@@ -323,8 +331,8 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   DCHECK_EQ(1, partitions.size());
 
   auto table_info = std::make_shared<tablet::TableInfo>(
-      kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE, schema, IndexMap(),
-      boost::none /* index_info */, 0 /* schema_version */, partition_schema);
+      tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
+      schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition_schema);
   string data_root_dir = fs_manager->GetDataRootDirs()[0];
   fs_manager->SetTabletPathByDataPath(kSysCatalogTabletId, data_root_dir);
   auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
@@ -660,7 +668,7 @@ Status SysCatalogTable::WaitUntilRunning() {
   return Status::OK();
 }
 
-CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
+Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   if (PREDICT_FALSE(FLAGS_TEST_sys_catalog_write_rejection_percentage > 0) &&
       RandomUniformInt(1, 99) <= FLAGS_TEST_sys_catalog_write_rejection_percentage) {
     return STATUS(InternalError, "Injected random failure for testing.");
@@ -915,11 +923,25 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
       pb->mutable_cloud_info()->set_placement_zone(block.zone);
       pb->set_min_num_replicas(block.min_num_replicas);
 
-      if (block.leader_preference == 1) {
-        auto new_zone = replication_info.add_affinitized_leaders();
-        new_zone->set_placement_cloud(block.cloud);
-        new_zone->set_placement_region(block.region);
-        new_zone->set_placement_zone(block.zone);
+      if (block.leader_preference < 0) {
+        return STATUS(InvalidArgument, "leader_preference cannot be negative");
+      } else if (static_cast<size_t>(block.leader_preference) > placement.placement_infos.size()) {
+        return STATUS(
+            InvalidArgument,
+            "Priority value cannot be more than the number of zones in the preferred list since "
+            "each priority should be associated with at least one zone from the list");
+      } else if (block.leader_preference > 0) {
+        // Contiguity has already been validated at YSQL layer
+        while (replication_info.multi_affinitized_leaders_size() < block.leader_preference) {
+          replication_info.add_multi_affinitized_leaders();
+        }
+
+        auto zone_set =
+            replication_info.mutable_multi_affinitized_leaders(block.leader_preference - 1);
+        auto ci = zone_set->add_zones();
+        ci->set_placement_cloud(block.cloud);
+        ci->set_placement_region(block.region);
+        ci->set_placement_zone(block.zone);
       }
     }
     live_replicas->set_num_replicas(placement.num_replicas);
@@ -980,7 +1002,7 @@ Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
     const uint32_t tablespace_oid = tablespace_oid_col->uint32_value();
 
     const TablegroupId tablegroup_id = GetPgsqlTablegroupId(database_oid, tablegroup_oid);
-    const TableId parent_table_id = tablegroup_id + kTablegroupParentTableIdSuffix;
+    const TableId parent_table_id = GetTablegroupParentTableId(tablegroup_id);
     boost::optional<TablespaceId> tablespace_id = boost::none;
 
     // If no valid tablespace found, then this tablegroup has no placement info
@@ -1018,7 +1040,7 @@ Status SysCatalogTable::ReadPgClassInfo(
   const Schema& schema = table_info->schema();
 
   Schema projection;
-  std::vector<GStringPiece> col_names = {"oid", "reltablespace", "relkind"};
+  std::vector<GStringPiece> col_names = {"oid", "relname", "reltablespace", "relkind"};
 
   if (is_colocated_database) {
     VLOG(5) << "Scanning pg_class for colocated database oid " << database_oid;
@@ -1029,6 +1051,7 @@ Status SysCatalogTable::ReadPgClassInfo(
                                                &projection,
                                                schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
+  const auto relname_col_id = VERIFY_RESULT(projection.ColumnIdByName("relname")).rep();
   const auto relkind_col_id = VERIFY_RESULT(projection.ColumnIdByName("relkind")).rep();
   const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("reltablespace")).rep();
 
@@ -1065,6 +1088,9 @@ Status SysCatalogTable::ReadPgClassInfo(
       return STATUS(Corruption, "Could not read oid column from pg_class");
     }
     const uint32_t oid = oid_col->uint32_value();
+
+    const auto& relname_col = row.GetValue(relname_col_id);
+    const std::string table_name = relname_col->string_value();
 
     // Skip rows that pertain to relation types that do not have use for tablespaces.
     const auto& relkind_col = row.GetValue(relkind_col_id);
@@ -1108,7 +1134,8 @@ Status SysCatalogTable::ReadPgClassInfo(
 
     if (is_colocated_table) {
       // This is a colocated table. This cannot have a tablespace associated with it.
-      VLOG(5) << "Table oid: " << oid << " skipped as it is colocated";
+      VLOG(5) << "Table { oid: " << oid << ", name: " << table_name << " }"
+              << " skipped as it is colocated";
       continue;
     }
 
@@ -1119,7 +1146,8 @@ Status SysCatalogTable::ReadPgClassInfo(
     }
 
     const uint32 tablespace_oid = tablespace_oid_col->uint32_value();
-    VLOG(1) << "Table oid: " << oid << " Tablespace oid: " << tablespace_oid;
+    VLOG(1) << "Table { oid: " << oid << ", name: " << table_name << " }"
+            << " has tablespace oid " << tablespace_oid;
 
     boost::optional<TablespaceId> tablespace_id = boost::none;
     // If the tablespace oid is kInvalidOid then it means this table was created

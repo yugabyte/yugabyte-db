@@ -42,6 +42,8 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/gutil/macros.h"
 
 #include "yb/integration-tests/mini_cluster_base.h"
@@ -96,6 +98,10 @@ struct MiniClusterOptions {
 
   // Cluster id used to create fs path when we create tests with multiple clusters.
   std::string cluster_id{};
+
+  // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
+  // set to a non-zero value, this value is used instead.
+  int transaction_table_num_tablets = 0;
 };
 
 // An in-process cluster with a MiniMaster and a configurable
@@ -112,25 +118,25 @@ class MiniCluster : public MiniClusterBase {
 
   // Start a cluster with a Master and 'num_tablet_servers' TabletServers.
   // All servers run on the loopback interface with ephemeral ports.
-  CHECKED_STATUS Start(
+  Status Start(
       const std::vector<tserver::TabletServerOptions>& extra_tserver_options =
       std::vector<tserver::TabletServerOptions>());
 
   // Like the previous method but performs initialization synchronously, i.e.
   // this will wait for all TS's to be started and initialized. Tests should
   // use this if they interact with tablets immediately after Start();
-  CHECKED_STATUS StartSync();
+  Status StartSync();
 
   // Stop and restart the mini cluster synchronously. The cluster's persistent state will be kept.
-  CHECKED_STATUS RestartSync();
+  Status RestartSync();
 
   void Shutdown();
-  CHECKED_STATUS FlushTablets(
+  Status FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
-  CHECKED_STATUS CompactTablets();
-  CHECKED_STATUS SwitchMemtables();
-  CHECKED_STATUS CleanTabletLogs();
+  Status CompactTablets(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+  Status SwitchMemtables();
+  Status CleanTabletLogs();
 
   // Shuts down masters only.
   void ShutdownMasters();
@@ -138,17 +144,17 @@ class MiniCluster : public MiniClusterBase {
   // Setup a consensus configuration of distributed masters, with count specified in
   // 'options'. Requires that a reserve RPC port is specified in
   // 'options' for each master.
-  CHECKED_STATUS StartMasters();
+  Status StartMasters();
 
   // Add a new TS to the cluster. The new TS is started.
   // Requires that the master is already running.
-  CHECKED_STATUS AddTabletServer(const tserver::TabletServerOptions& extra_opts);
+  Status AddTabletServer(const tserver::TabletServerOptions& extra_opts);
 
   // Same as above, but get options from flags.
-  CHECKED_STATUS AddTabletServer();
+  Status AddTabletServer();
 
-  CHECKED_STATUS AddTServerToBlacklist(const tserver::MiniTabletServer& ts);
-  CHECKED_STATUS ClearBlacklist();
+  Status AddTServerToBlacklist(const tserver::MiniTabletServer& ts);
+  Status ClearBlacklist();
 
   // If this cluster is configured for a single non-distributed
   // master, return the single master. Exits with a CHECK failure if
@@ -203,20 +209,20 @@ class MiniCluster : public MiniClusterBase {
   // Requires that the master has started;
   // Returns a bad Status if the tablet does not reach the required count
   // within kTabletReportWaitTimeSeconds.
-  CHECKED_STATUS WaitForReplicaCount(const std::string& tablet_id,
+  Status WaitForReplicaCount(const std::string& tablet_id,
                                      int expected_count,
                                      master::TabletLocationsPB* locations);
 
   // Wait until the number of registered tablet servers reaches the given
   // count. Returns Status::TimedOut if the desired count is not achieved
   // within kRegistrationWaitTimeSeconds.
-  CHECKED_STATUS WaitForTabletServerCount(size_t count);
-  CHECKED_STATUS WaitForTabletServerCount(
+  Status WaitForTabletServerCount(size_t count);
+  Status WaitForTabletServerCount(
       size_t count, std::vector<std::shared_ptr<master::TSDescriptor>>* descs);
 
   // Wait for all tablet servers to be registered. Returns Status::TimedOut if the desired count is
   // not achieved within kRegistrationWaitTimeSeconds.
-  CHECKED_STATUS WaitForAllTabletServers();
+  Status WaitForAllTabletServers();
 
   uint16_t AllocateFreePort() {
     return port_picker_.AllocateFreePort();
@@ -298,28 +304,28 @@ Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
     MiniCluster* cluster, const TableId& table_id, size_t num_active_leaders,
     MonoDelta timeout = std::chrono::seconds(30) * kTimeMultiplier);
 
-CHECKED_STATUS WaitUntilTabletHasLeader(
+Status WaitUntilTabletHasLeader(
     MiniCluster* cluster, const std::string& tablet_id, MonoTime deadline);
 
-CHECKED_STATUS WaitForLeaderOfSingleTablet(
+Status WaitForLeaderOfSingleTablet(
     MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
     const std::string& description);
 
-CHECKED_STATUS WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta deadline);
+Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta deadline);
 
 YB_STRONGLY_TYPED_BOOL(ForceStepDown);
 
-CHECKED_STATUS StepDown(
+Status StepDown(
     tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
     ForceStepDown force_step_down);
 
 // Waits until all tablet peers of the specified cluster are in the Running state.
 // And total number of those peers equals to the number of tablet servers for each known tablet.
-CHECKED_STATUS WaitAllReplicasReady(MiniCluster* cluster, MonoDelta timeout);
+Status WaitAllReplicasReady(MiniCluster* cluster, MonoDelta timeout);
 
 // Waits until all tablet peers of specified cluster have the specified index in their log.
 // And total number of those peers equals to the number of tablet servers for each known tablet.
-CHECKED_STATUS WaitAllReplicasHaveIndex(MiniCluster* cluster, int64_t index, MonoDelta timeout);
+Status WaitAllReplicasHaveIndex(MiniCluster* cluster, int64_t index, MonoDelta timeout);
 
 std::thread RestartsThread(
     MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag);
@@ -333,7 +339,7 @@ int NumRunningFlushes(MiniCluster* cluster);
 Result<scoped_refptr<master::TableInfo>> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name);
 
-CHECKED_STATUS WaitForInitDb(MiniCluster* cluster);
+Status WaitForInitDb(MiniCluster* cluster);
 
 using TabletPeerFilter = std::function<bool(const tablet::TabletPeer*)>;
 size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter = TabletPeerFilter());
@@ -341,14 +347,14 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter = Table
 tserver::MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id);
 
 void ShutdownAllTServers(MiniCluster* cluster);
-CHECKED_STATUS StartAllTServers(MiniCluster* cluster);
+Status StartAllTServers(MiniCluster* cluster);
 void ShutdownAllMasters(MiniCluster* cluster);
-CHECKED_STATUS StartAllMasters(MiniCluster* cluster);
+Status StartAllMasters(MiniCluster* cluster);
 
 YB_DEFINE_ENUM(Connectivity, (kOn)(kOff));
 
-CHECKED_STATUS BreakConnectivity(MiniCluster* cluster, size_t idx1, size_t idx2);
-CHECKED_STATUS SetupConnectivity(
+Status BreakConnectivity(MiniCluster* cluster, size_t idx1, size_t idx2);
+Status SetupConnectivity(
     MiniCluster* cluster, size_t idx1, size_t idx2, Connectivity connectivity);
 Result<size_t> ServerWithLeaders(MiniCluster* cluster);
 
@@ -356,9 +362,8 @@ Result<size_t> ServerWithLeaders(MiniCluster* cluster);
 // for already created tablets.
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_sec);
 
-CHECKED_STATUS WaitAllReplicasSynchronizedWithLeader(
+Status WaitAllReplicasSynchronizedWithLeader(
     MiniCluster* cluster, CoarseTimePoint deadline);
-
 }  // namespace yb
 
 #endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H_ */

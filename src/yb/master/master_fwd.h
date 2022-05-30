@@ -27,6 +27,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_backup.fwd.h"
+#include "yb/master/tablet_split_fwd.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
@@ -74,19 +75,17 @@ class SnapshotState;
 class SysCatalogTable;
 class SysConfigInfo;
 class SysRowEntries;
-class TabletSplitCompleteHandlerIf;
-class TabletSplitManager;
 class TSDescriptor;
 class TSManager;
 class UDTypeInfo;
 class XClusterSplitDriverIf;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
+class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
 
 struct CDCConsumerStreamInfo;
-struct SplitTabletIds;
 struct TableDescription;
 struct TabletReplica;
 struct TabletReplicaDriveInfo;
@@ -121,6 +120,9 @@ using LeaderStepDownFailureTimes = std::unordered_map<TabletServerId, MonoTime>;
 using TabletReplicaMap = std::unordered_map<std::string, TabletReplica>;
 using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 using TabletInfoMap = std::map<TabletId, scoped_refptr<TabletInfo>>;
+struct cloud_hash;
+struct cloud_equal_to;
+using AffinitizedZonesSet = std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to>;
 using BlacklistSet = std::unordered_set<HostPort, HostPortHash>;
 using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
 

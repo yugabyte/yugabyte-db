@@ -24,7 +24,6 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
@@ -389,12 +388,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       createConfigureServerTasks(
           allTservers,
-          false /* isShell */,
-          true /* updateMasterAddrs */,
-          false /*isMaster*/,
-          false /* isSystemdUpgrade */,
-          VmUpgradeTaskType.None,
-          ignoreUseCustomImageConfig);
+          params -> {
+            params.updateMasterAddrsOnly = true;
+            params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          });
       createSetFlagInMemoryTasks(
               allTservers,
               ServerType.TSERVER,
@@ -420,12 +417,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Update the same set of master addresses.
       createConfigureServerTasks(
           allMasters,
-          false /* isShell */,
-          true /* updateMasterAddrs */,
-          true /* isMaster */,
-          false /* isSystemdUpgrade */,
-          VmUpgradeTaskType.None,
-          ignoreUseCustomImageConfig);
+          params -> {
+            params.updateMasterAddrsOnly = true;
+            params.isMaster = true;
+            params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          });
       createSetFlagInMemoryTasks(
               allMasters,
               ServerType.MASTER,
@@ -433,6 +429,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               null /* no gflag to update */,
               true /* updateMasterAddrs */)
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+
+      // Update the master addresses on the target universes whose source universe belongs to
+      // this task.
+      createXClusterConfigUpdateMasterAddressesTask();
     }
 
     // Finally send destroy to the old set of nodes and remove them from this universe.

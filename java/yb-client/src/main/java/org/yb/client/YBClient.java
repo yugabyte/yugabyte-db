@@ -66,7 +66,7 @@ import org.yb.util.Pair;
  * <p>
  * This class acts as a wrapper around {@link AsyncYBClient}. The {@link Deferred} objects are
  * joined against using the default admin operation timeout
- * (see {@link org.yb.client.YBClient.YBClientBuilder#defaultAdminOperationTimeoutMs(long)} (long)}).
+ * (see {@link org.yb.client.YBClient.YBClientBuilder#defaultAdminOperationTimeoutMs(long)}(long)}).
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
@@ -1530,11 +1530,33 @@ public class YBClient implements AutoCloseable {
   }
 
   public SetCheckpointResponse commitCheckpoint(YBTable table, String streamId,
-                                             String tabletId,
-                                             long term,
-                                             long index) throws Exception {
-    Deferred<SetCheckpointResponse> d = asyncClient
-      .setCheckpoint(table, streamId, tabletId, term, index);
+                                                String tabletId,
+                                                long term,
+                                                long index,
+                                                boolean initialCheckpoint) throws Exception {
+    Deferred<SetCheckpointResponse> d = asyncClient.setCheckpoint(table, streamId, tabletId, term,
+      index, initialCheckpoint);
+    d.addErrback(new Callback<Exception, Exception>() {
+      @Override
+      public Exception call(Exception o) throws Exception {
+        o.printStackTrace();
+        throw o;
+      }
+    });
+    d.addCallback(setCheckpointResponse -> {
+      return setCheckpointResponse;
+    });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetCheckpointResponse bootstrapTablet(YBTable table, String streamId,
+                                               String tabletId,
+                                               long term,
+                                               long index,
+                                               boolean initialCheckpoint,
+                                               boolean bootstrap) throws Exception {
+    Deferred<SetCheckpointResponse> d = asyncClient.setCheckpointWithBootstrap(table, streamId,
+        tabletId, term, index, initialCheckpoint, bootstrap);
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
       public Exception call(Exception o) throws Exception {

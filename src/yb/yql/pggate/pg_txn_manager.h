@@ -56,23 +56,23 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   virtual ~PgTxnManager();
 
-  CHECKED_STATUS BeginTransaction();
-  CHECKED_STATUS CalculateIsolation(bool read_only_op,
+  Status BeginTransaction();
+  Status CalculateIsolation(bool read_only_op,
                                     TxnPriorityRequirement txn_priority_requirement,
                                     uint64_t* in_txn_limit = nullptr);
-  CHECKED_STATUS RecreateTransaction();
-  CHECKED_STATUS RestartTransaction();
-  CHECKED_STATUS ResetTransactionReadPoint();
-  CHECKED_STATUS RestartReadPoint();
-  CHECKED_STATUS CommitTransaction();
-  CHECKED_STATUS AbortTransaction();
-  CHECKED_STATUS SetPgIsolationLevel(int isolation);
+  Status RecreateTransaction();
+  Status RestartTransaction();
+  Status ResetTransactionReadPoint();
+  Status RestartReadPoint();
+  Status CommitTransaction();
+  Status AbortTransaction();
+  Status SetPgIsolationLevel(int isolation);
   PgIsolationLevel GetPgIsolationLevel();
-  CHECKED_STATUS SetReadOnly(bool read_only);
-  CHECKED_STATUS EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
-  CHECKED_STATUS SetDeferrable(bool deferrable);
-  CHECKED_STATUS EnterSeparateDdlTxnMode();
-  CHECKED_STATUS ExitSeparateDdlTxnMode(Commit commit);
+  Status SetReadOnly(bool read_only);
+  Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
+  Status SetDeferrable(bool deferrable);
+  Status EnterSeparateDdlTxnMode();
+  Status ExitSeparateDdlTxnMode(Commit commit);
 
   bool IsDdlMode() const { return ddl_mode_; }
   bool IsTxnInProgress() const { return txn_in_progress_; }
@@ -94,7 +94,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   std::string TxnStateDebugStr() const;
 
-  CHECKED_STATUS FinishTransaction(Commit commit);
+  Status FinishTransaction(Commit commit);
 
   // ----------------------------------------------------------------------------------------------
 

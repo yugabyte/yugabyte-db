@@ -1,7 +1,7 @@
 ---
 title: Scale and configure clusters
 linkTitle: Scale and configure clusters
-description: Scale YugabyteDB Managed clusters and configure IP allow lists for the cluster.
+description: Scale YugabyteDB Managed clusters.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -14,6 +14,8 @@ showAsideToc: true
 ---
 
 YugabyteDB Managed supports both horizontal and vertical scaling of clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
+
+{{< youtube id="yL4WR6wpjPs" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
 
 You can scale the following cluster properties:
 
@@ -52,7 +54,7 @@ The **Infrastructure** section on the cluster **Settings** tab summarizes the cl
 To scale a cluster:
 
 1. On the **Clusters** page, select your cluster.
-1. On the **Settings** tab or under **More Links**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
     ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 

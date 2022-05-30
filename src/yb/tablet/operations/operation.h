@@ -91,12 +91,12 @@ class Operation {
   // Executes the prepare phase of this transaction. The actual actions of this phase depend on the
   // transaction type, but usually are limited to what can be done without actually changing shared
   // data structures (such as the RocksDB memtable) and without side-effects.
-  virtual CHECKED_STATUS Prepare() = 0;
+  virtual Status Prepare() = 0;
 
   // Applies replicated operation, the actual actions of this phase depend on the
   // operation type, but usually this is the method where data-structures are changed.
   // Also it should notify callback if necessary.
-  CHECKED_STATUS Replicated(int64_t leader_term);
+  Status Replicated(int64_t leader_term);
 
   // Abort operation. Release resources and notify callbacks.
   void Aborted(const Status& status, bool was_pending);
@@ -214,10 +214,10 @@ class Operation {
   // Actual implementation of Replicated.
   // complete_status could be used to change completion status, i.e. callback will be invoked
   // with this status.
-  virtual CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) = 0;
+  virtual Status DoReplicated(int64_t leader_term, Status* complete_status) = 0;
 
   // Actual implementation of Aborted, should return status that should be passed to callback.
-  virtual CHECKED_STATUS DoAborted(const Status& status) = 0;
+  virtual Status DoAborted(const Status& status) = 0;
 
   // A private version of this transaction's transaction state so that we can use base
   // Operation methods on destructors.

@@ -398,7 +398,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                 self.wait_for_host(args, use_default_port),
                 args.custom_ssh_port,
                 default_port=use_default_port)
-            host_info['ssh_user'] = DEFAULT_SSH_USER
+            host_info['ssh_user'] = self.extra_vars.get("ssh_user", DEFAULT_SSH_USER)
             retries = 0
             while not self.cloud.wait_for_startup_script(args, host_info) and retries < 5:
                 retries += 1
@@ -676,6 +676,12 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(ChangeInstanceTypeMethod, self).__init__(base_command, "change_instance_type")
 
+    def add_extra_args(self):
+        super(ChangeInstanceTypeMethod, self).add_extra_args()
+        self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
+                                 help="Max memory for postgress process.")
+        self.parser.add_argument("--air_gap", action="store_true", default=False, help="Run airgapped install.")
+
     def prepare(self):
         super(ChangeInstanceTypeMethod, self).prepare()
 
@@ -685,7 +691,14 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Instance {} not found".format(args.search_pattern))
 
+        self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
+        self.update_ansible_vars_with_args(args)
         self._resize_instance(args, self._host_info(args, host_info))
+
+    def update_ansible_vars_with_args(self, args):
+      super(ChangeInstanceTypeMethod, self).update_ansible_vars_with_args(args)
+      self.extra_vars["pg_max_mem_mb"] = args.pg_max_mem_mb
+      self.extra_vars["air_gap"] = args.air_gap
 
     def _validate_args(self, args):
         # Make sure "instance_type" exists in args
@@ -709,6 +722,9 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         finally:
             self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
             logging.info('Instance {} is started'.format(args.search_pattern))
+
+        # Make sure we are using the updated cgroup value if instance type is changing.
+        self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
 
 
 class CronCheckMethod(AbstractInstancesMethod):
@@ -751,6 +767,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         super(ConfigureInstancesMethod, self).prepare()
 
         self.parser.add_argument('--package', default=None)
+        self.parser.add_argument('--num_releases_to_keep', type=int,
+                                 help="Number of releases to keep after upgrade.")
         self.parser.add_argument('--yb_process_type', default=None,
                                  choices=self.VALID_PROCESS_TYPES)
         self.parser.add_argument('--extra_gflags', default=None)
@@ -852,6 +870,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         if args.package is not None:
             self.extra_vars["package"] = args.package
+
+        if args.num_releases_to_keep is not None:
+            self.extra_vars["num_releases_to_keep"] = args.num_releases_to_keep
 
         if args.extra_gflags is not None:
             self.extra_vars["extra_gflags"] = json.loads(args.extra_gflags)
@@ -1224,7 +1245,9 @@ class AbstractAccessMethod(AbstractMethod):
         self.parser.add_argument("--key_file_path", required=True, help="Key file path")
         self.parser.add_argument("--public_key_file", required=False, help="Public key filename")
         self.parser.add_argument("--private_key_file", required=False, help="Private key filename")
-        self.parser.add_argument("--delete_remote", action="store_true")
+        self.parser.add_argument("--delete_remote", action="store_true", help="Delete from cloud")
+        self.parser.add_argument("--ignore_auth_failure", action="store_true",
+                                 help="Ignore cloud auth failure")
 
     def validate_key_files(self, args):
         public_key_file = args.public_key_file

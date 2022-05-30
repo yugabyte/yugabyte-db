@@ -84,6 +84,7 @@ The following table lists common meta-commands that can be used in Cloud Shell.
 | \c [database name] | Connect to a database. For example, `\c yb_demo`. |
 | \l | List all databases. |
 | \d | Display tables, views, and sequences. |
+| \d [name] | List columns with their types and attributes for the named table, view, materialized view, index, sequence, or foreign table. |
 | \dt | Display tables. |
 | \dv | Display views. |
 | \dm | Display materialized views. |

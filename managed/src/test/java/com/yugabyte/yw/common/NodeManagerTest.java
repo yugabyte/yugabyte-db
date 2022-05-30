@@ -839,6 +839,11 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         }
 
+        if (configureParams.ybSoftwareVersion != null) {
+          expectedCommand.add("--num_releases_to_keep");
+          expectedCommand.add("3");
+        }
+
         Map<String, String> gflags = new HashMap<>(configureParams.gflags);
 
         if (configureParams.type == Everything) {
@@ -1035,6 +1040,8 @@ public class NodeManagerTest extends FakeDBApplication {
         ChangeInstanceType.Params citTaskParams = (ChangeInstanceType.Params) params;
         expectedCommand.add("--instance_type");
         expectedCommand.add(citTaskParams.instanceType);
+        expectedCommand.add("--pg_max_mem_mb");
+        expectedCommand.add("0");
         break;
       case Transfer_XCluster_Certs:
         TransferXClusterCerts.Params txccTaskParams = (TransferXClusterCerts.Params) params;
@@ -1045,7 +1052,7 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(txccTaskParams.rootCertPath.toString());
         }
         expectedCommand.add("--replication_config_name");
-        expectedCommand.add(txccTaskParams.replicationConfigName);
+        expectedCommand.add(txccTaskParams.replicationGroupName);
         if (txccTaskParams.producerCertsDirOnTarget != null) {
           expectedCommand.add("--producer_certs_dir");
           expectedCommand.add(txccTaskParams.producerCertsDirOnTarget.toString());
@@ -1153,7 +1160,7 @@ public class NodeManagerTest extends FakeDBApplication {
       } else {
         params.action = TransferXClusterCerts.Params.Action.REMOVE;
       }
-      params.replicationConfigName = "universe-uuid_MyRepl1";
+      params.replicationGroupName = "universe-uuid_MyRepl1";
       if (isCustomProducerCertsDir) {
         params.producerCertsDirOnTarget = new File("custom-producer-dir");
       }
@@ -3453,7 +3460,6 @@ public class NodeManagerTest extends FakeDBApplication {
               universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
           userIntent.enableNodeToNodeEncrypt = true;
         });
-
     nodeManager.nodeCommand(NodeManager.NodeCommandType.Precheck, nodeTaskParams);
     ArgumentCaptor<List> arg = ArgumentCaptor.forClass(List.class);
     verify(shellProcessHandler).run(arg.capture(), any(), anyString());

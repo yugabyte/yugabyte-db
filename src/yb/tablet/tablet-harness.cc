@@ -40,7 +40,7 @@ std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema& schem
   return std::make_pair(partition_schema, partitions[0]);
 }
 
-CHECKED_STATUS TabletHarness::Create(bool first_time) {
+Status TabletHarness::Create(bool first_time) {
   std::pair<PartitionSchema, Partition> partition(CreateDefaultPartition(schema_));
 
   // Build the Tablet
@@ -51,8 +51,8 @@ CHECKED_STATUS TabletHarness::Create(bool first_time) {
   RETURN_NOT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
 
   auto table_info = std::make_shared<TableInfo>(
-      "YBTableTest", "test", "YBTableTest", options_.table_type, schema_, IndexMap(), boost::none,
-      0 /* schema_version */, partition.first);
+      Primary::kTrue, "YBTableTest", "test", "YBTableTest", options_.table_type, schema_,
+      IndexMap(), boost::none, 0 /* schema_version */, partition.first);
   auto metadata = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
     .fs_manager = fs_manager_.get(),
     .table_info = table_info,
@@ -69,7 +69,7 @@ CHECKED_STATUS TabletHarness::Create(bool first_time) {
   return Status::OK();
 }
 
-CHECKED_STATUS TabletHarness::Open() {
+Status TabletHarness::Open() {
   RETURN_NOT_OK(tablet_->Open());
   tablet_->MarkFinishedBootstrapping();
   return tablet_->EnableCompactions(/* non_abortable_ops_pause */ nullptr);

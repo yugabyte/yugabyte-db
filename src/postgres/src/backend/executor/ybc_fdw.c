@@ -306,9 +306,10 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	node->fdw_state = (void *) ybc_state;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-				   YbGetStorageRelid(relation),
-				   NULL /* prepare_params */,
-				   &ybc_state->handle));
+								  YbGetStorageRelid(relation),
+								  NULL /* prepare_params */,
+								  YBCIsRegionLocal(relation),
+								  &ybc_state->handle));
 	ybc_state->exec_params = &estate->yb_exec_params;
 
 	ybc_state->exec_params->rowmark = -1;

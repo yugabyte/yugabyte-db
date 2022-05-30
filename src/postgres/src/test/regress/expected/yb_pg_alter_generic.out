@@ -289,7 +289,7 @@ CREATE ROLE regress_alter_generic_user5 NOSUPERUSER;
 CREATE OPERATOR FAMILY alt_opf5 USING btree;
 SET ROLE regress_alter_generic_user5;
 ALTER OPERATOR FAMILY alt_opf5 USING btree ADD OPERATOR 1 < (int4, int2), FUNCTION 1 btint42cmp(int4, int2);
-ERROR:  must be superuser to alter an operator family
+ERROR:  must be superuser or yb_extension role member to alter an operator family
 RESET ROLE;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DROP OPERATOR FAMILY alt_opf5 USING btree;
@@ -529,25 +529,12 @@ SELECT nspname, prsname
 (3 rows)
 
 ---
---- Validate yb_db_admin role can ALTER function
----
-CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql
-  AS 'SELECT $1 + 1';
-SET SESSION AUTHORIZATION yb_db_admin;
-ALTER FUNCTION alt_func1(int) OWNER TO regress_alter_generic_user2;
-ALTER FUNCTION alt_func1(int) RENAME TO func_renamed;
-ALTER FUNCTION func_renamed(int) SET SCHEMA alt_nsp1;
--- validate regress_alter_generic_user2 can operate on function
-ALTER FUNCTION func_renamed(int) OWNER TO regress_alter_generic_user1;
-ALTER FUNCTION func_renamed(int) RENAME TO func_renamed2;
-ALTER FUNCTION func_renamed2(int) SET SCHEMA alt_nsp1;
----
 --- Cleanup resources
 ---
 RESET SESSION AUTHORIZATION;
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA alt_nsp1 CASCADE;
-NOTICE:  drop cascades to 24 other objects
+NOTICE:  drop cascades to 23 other objects
 DROP SCHEMA alt_nsp2 CASCADE;
 NOTICE:  drop cascades to 5 other objects
 DROP USER regress_alter_generic_user1;

@@ -157,9 +157,9 @@ class Heartbeater::Thread {
   Status ConnectToMaster();
   int GetMinimumHeartbeatMillis() const;
   int GetMillisUntilNextHeartbeat() const;
-  CHECKED_STATUS DoHeartbeat();
-  CHECKED_STATUS TryHeartbeat();
-  CHECKED_STATUS SetupRegistration(master::TSRegistrationPB* reg);
+  Status DoHeartbeat();
+  Status TryHeartbeat();
+  Status SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
   bool IsCurrentThread() const;
 
@@ -495,6 +495,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
           SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
     }
 
+    // Check whether the cluster is a producer of a CDC stream.
+    if (resp.has_xcluster_enabled_on_producer() &&
+        resp.xcluster_enabled_on_producer()) {
+      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->SetCDCServiceEnabled());
+    }
+
     // At this point we know resp is a successful heartbeat response from the master so set it as
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
     // below (hence using the nested scope for resp until here).
@@ -531,7 +537,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
                         << last_hb_response_.ysql_catalog_version()
                         << ", breaking version: "
                         << (last_hb_response_.has_ysql_last_breaking_catalog_version()
-                            ? Format("$1", last_hb_response_.ysql_last_breaking_catalog_version())
+                            ? Format("$0", last_hb_response_.ysql_last_breaking_catalog_version())
                             : "(none)");
     }
     if (last_hb_response_.has_ysql_last_breaking_catalog_version()) {

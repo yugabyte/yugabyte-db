@@ -59,7 +59,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
       : PgDocOp(pg_session, &dummy_table), data_(move(data)) {
   }
 
-  CHECKED_STATUS GetResult(std::list<PgDocResult> *rowsets) override {
+  Status GetResult(std::list<PgDocResult> *rowsets) override {
     if (data_) {
       for (const auto& d : *data_) {
         rowsets->emplace_back(d);
@@ -69,7 +69,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
     return Status::OK();
   }
 
-  CHECKED_STATUS ExecuteInit(const PgExecParameters* exec_params) override {
+  Status ExecuteInit(const PgExecParameters* exec_params) override {
     return Status::OK();
   }
 
@@ -82,7 +82,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
   }
 
  protected:
-  CHECKED_STATUS DoPopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) override {
+  Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) override {
     return Status::OK();
   }
 
@@ -96,10 +96,6 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
   }
 
  private:
-  CHECKED_STATUS SendRequestImpl(bool force_non_bufferable) override {
-    return STATUS(InternalError, "SendRequestImpl is not defined for PgDocReadOpCached");
-  }
-
   Result<std::list<PgDocResult>> ProcessResponseImpl(
       const rpc::CallResponsePtr& response) override {
     return STATUS(InternalError, "ProcessResponseImpl is not defined for PgDocReadOpCached");
@@ -201,9 +197,31 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table)
-    : pg_session_(pg_session), table_(*table) {
+PgDocResponse::PgDocResponse(PerformFuture future)
+    : holder_(std::move(future)) {}
+
+PgDocResponse::PgDocResponse(ProviderPtr provider)
+    : holder_(std::move(provider)) {}
+
+bool PgDocResponse::Valid() const {
+  return std::holds_alternative<PerformFuture>(holder_)
+      ? std::get<PerformFuture>(holder_).Valid()
+      : static_cast<bool>(std::get<ProviderPtr>(holder_));
 }
+
+Result<rpc::CallResponsePtr> PgDocResponse::Get() {
+  if (std::holds_alternative<PerformFuture>(holder_)) {
+    return std::get<PerformFuture>(holder_).Get();
+  }
+  // Detach provider pointer after first usage to make PgDocResponse::Valid return false.
+  auto provider = std::move(std::get<ProviderPtr>(holder_));
+  return provider->Get();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, const Sender& sender)
+    : pg_session_(pg_session), table_(*table), sender_(sender) {}
 
 PgDocOp::~PgDocOp() {
   // Wait for result in case request was sent.
@@ -233,8 +251,7 @@ Result<RequestSent> PgDocOp::Execute(bool force_non_bufferable) {
   // This refers to the sequence of operations between this layer and the underlying tablet
   // server / DocDB layer, not to the sequence of operations between the PostgreSQL layer and this
   // layer.
-  exec_status_ = SendRequest(force_non_bufferable);
-  RETURN_NOT_OK(exec_status_);
+  RETURN_NOT_OK(SendRequest(force_non_bufferable));
   return RequestSent(response_.Valid());
 }
 
@@ -245,8 +262,7 @@ Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
   if (!end_of_data_) {
     // Send request now in case prefetching was suppressed.
     if (suppress_next_result_prefetching_ && !response_.Valid()) {
-      exec_status_ = SendRequest(true /* force_non_bufferable */);
-      RETURN_NOT_OK(exec_status_);
+      RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
     }
 
     DCHECK(response_.Valid());
@@ -258,8 +274,7 @@ Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
     rowsets->splice(rowsets->end(), rows);
     // Prefetch next portion of data if needed.
     if (!(end_of_data_ || suppress_next_result_prefetching_)) {
-      exec_status_ = SendRequest(true /* force_non_bufferable */);
-      RETURN_NOT_OK(exec_status_);
+      RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
     }
   }
 
@@ -339,9 +354,9 @@ Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
 
   // Send at most "parallelism_level_" number of requests at one time.
   size_t send_count = std::min(parallelism_level_, active_op_count_);
-  response_ = VERIFY_RESULT(pg_session_->RunAsync(
-      pgsql_ops_.data(), send_count, *table_, &GetReadTime(), force_non_bufferable));
-
+  response_ = VERIFY_RESULT(sender_(
+      pg_session_.get(), pgsql_ops_.data(), send_count,
+      *table_, &GetReadTime(), force_non_bufferable));
   return Status::OK();
 }
 
@@ -437,8 +452,8 @@ Status PgDocOp::CreateRequests() {
   return CompleteRequests();
 }
 
-Status PgDocOp::PopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) {
-  RETURN_NOT_OK(DoPopulateDmlByYbctidOps(ybctids));
+Status PgDocOp::PopulateDmlByYbctidOps(const YbctidGenerator& generator) {
+  RETURN_NOT_OK(DoPopulateDmlByYbctidOps(generator));
   request_population_completed_ = true;
   return CompleteRequests();
 }
@@ -450,13 +465,25 @@ Status PgDocOp::CompleteRequests() {
   return Status::OK();
 }
 
+Result<PgDocResponse> PgDocOp::DefaultSender(
+    PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
+    uint64_t* read_time, bool force_non_bufferable) {
+  return PgDocResponse(VERIFY_RESULT(
+      session->RunAsync(ops, ops_count, table, read_time, force_non_bufferable)));
+}
+
 //-------------------------------------------------------------------------------------------------
 
 PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
                          PgTable* table,
                          PgsqlReadOpPtr read_op)
-    : PgDocOp(pg_session, table), read_op_(std::move(read_op)) {
-}
+    : PgDocOp(pg_session, table), read_op_(std::move(read_op)) {}
+
+PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
+                         PgTable* table,
+                         PgsqlReadOpPtr read_op,
+                         const Sender& sender)
+    : PgDocOp(pg_session, table, sender), read_op_(std::move(read_op)) {}
 
 Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   SCHECK(pgsql_ops_.empty(),
@@ -489,9 +516,9 @@ Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl(
 }
 
 Result<bool> PgDocReadOp::DoCreateRequests() {
-  // All information from the SQL request has been collected and setup. This code populate
+  // All information from the SQL request has been collected and setup. This code populates
   // Protobuf requests before sending them to DocDB. For performance reasons, requests are
-  // constructed differently for different statement.
+  // constructed differently for different statements.
   if (read_op_->read_request().has_sampling_state()) {
     VLOG(1) << __PRETTY_FUNCTION__ << ": Preparing sampling requests ";
     return PopulateSamplingOps();
@@ -524,7 +551,7 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   }
 }
 
-Status PgDocReadOp::DoPopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) {
+Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
   // This function is called only when ybctids were returned from INDEX.
   //
   // NOTE on a typical process.
@@ -549,11 +576,14 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) 
   // Begin a batch of ybctids.
   end_of_data_ = false;
   // Assign ybctid values.
-  for (const Slice& ybctid : ybctids) {
+  while (true) {
+    auto ybctid = generator();
+    if (ybctid.empty()) {
+      break;
+    }
     // Find partition. The partition index is the boundary order minus 1.
     // - For hash partitioning, we use hashcode to find the right index.
     // - For range partitioning, we pass partition key to seek the index.
-    SCHECK(ybctid.size() > 0, InternalError, "Invalid ybctid value");
     // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
     // the following lines?
     const size_t partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
@@ -573,7 +603,7 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) 
 
       // For every read operation set partition boundary. In case a tablet is split between
       // preparing requests and executing them, docDB will return a paging state for pggate to
-      // contiunue till the end of current tablet is reached.
+      // continue till the end of current tablet is reached.
       std::string upper_bound;
       if (partition < partition_keys.size() - 1) {
         upper_bound = partition_keys[partition + 1];

@@ -67,7 +67,7 @@ struct EncryptionParams {
 
   static std::unique_ptr<EncryptionParams> NewEncryptionParams();
 
-  static CHECKED_STATUS IsValidKeySize(size_t size);
+  static Status IsValidKeySize(size_t size);
 
   bool Equals(const EncryptionParams& other);
 };
@@ -127,7 +127,7 @@ Result<bool> GetEncryptionInfoFromFile(HeaderManager* header_manager,
   return true;
 }
 
-CHECKED_STATUS CompleteCreateEncryptionInfoForWrite(
+Status CompleteCreateEncryptionInfoForWrite(
     const std::string& header, std::unique_ptr<EncryptionParams> encryption_params,
     std::unique_ptr<BlockAccessCipherStream>* stream, uint32_t* header_size);
 

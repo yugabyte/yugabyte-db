@@ -26,3 +26,7 @@ message CloudInfoPB {
   optional string placement_region = 2;
   optional string placement_zone = 3;
 }
+
+message CloudInfoListPB {
+  repeated CloudInfoPB zones = 1;
+}

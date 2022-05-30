@@ -42,13 +42,16 @@ public class ResizeNodeParams extends UpgradeTaskParams {
           "Only ROLLING_UPGRADE option is supported for resizing node (changing VM type).");
     }
 
-    UserIntent newUserIntent = getPrimaryCluster().userIntent;
-    UserIntent currentUserIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    for (Cluster cluster : clusters) {
+      UserIntent newUserIntent = cluster.userIntent;
+      UserIntent currentUserIntent =
+          universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
 
-    String errorStr =
-        checkResizeIsPossible(currentUserIntent, newUserIntent, isSkipInstanceChecking());
-    if (errorStr != null) {
-      throw new IllegalArgumentException(errorStr);
+      String errorStr =
+          checkResizeIsPossible(currentUserIntent, newUserIntent, isSkipInstanceChecking());
+      if (errorStr != null) {
+        throw new IllegalArgumentException(errorStr);
+      }
     }
   }
 

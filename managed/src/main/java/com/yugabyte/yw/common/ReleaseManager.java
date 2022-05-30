@@ -5,6 +5,7 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -22,8 +23,10 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -255,14 +258,25 @@ public class ReleaseManager {
 
   public Map<String, String> getReleaseFiles(String releasesPath, Predicate<Path> fileFilter) {
     Map<String, String> fileMap = new HashMap<>();
+    Set<String> duplicateKeys = new HashSet<>();
     try {
-      fileMap =
-          Files.walk(Paths.get(releasesPath))
-              .filter(fileFilter)
-              .collect(
-                  Collectors.toMap(
-                      p -> p.getName(p.getNameCount() - 2).toString(),
-                      p -> p.toAbsolutePath().toString()));
+      Files.walk(Paths.get(releasesPath))
+          .filter(fileFilter)
+          .forEach(
+              p -> {
+                String key = p.getName(p.getNameCount() - 2).toString();
+                String value = p.toAbsolutePath().toString();
+                if (!fileMap.containsKey(key)) {
+                  fileMap.put(key, value);
+                } else if (!duplicateKeys.contains(key)) {
+                  LOG.warn(
+                      String.format(
+                          "Skipping %s - it contains multiple releases of same architecture type",
+                          key));
+                  duplicateKeys.add(key);
+                }
+              });
+      duplicateKeys.forEach(k -> fileMap.remove(k));
     } catch (IOException e) {
       LOG.error(e.getMessage());
     }
@@ -418,7 +432,7 @@ public class ReleaseManager {
     if (isPresentLocally) {
       // delete specific release's directory recursively.
       File releaseDirectory = new File(ybReleasesPath, version);
-      if (!Util.deleteDirectory(releaseDirectory)) {
+      if (!FileUtils.deleteDirectory(releaseDirectory)) {
         String errorMsg =
             "Failed to delete release directory: " + releaseDirectory.getAbsolutePath();
         throw new RuntimeException(errorMsg);

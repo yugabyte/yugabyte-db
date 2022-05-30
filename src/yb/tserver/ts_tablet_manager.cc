@@ -1588,6 +1588,8 @@ void TSTabletManager::StartShutdown() {
       shutting_down_peers_.push_back(peer);
     }
   }
+
+  multi_raft_manager_->StartShutdown();
 }
 
 void TSTabletManager::CompleteShutdown() {
@@ -1625,6 +1627,8 @@ void TSTabletManager::CompleteShutdown() {
 
     state_ = MANAGER_SHUTDOWN;
   }
+
+  multi_raft_manager_->CompleteShutdown();
 }
 
 std::string TSTabletManager::LogPrefix() const {

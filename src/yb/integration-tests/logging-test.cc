@@ -69,6 +69,10 @@ TEST(LoggingTest, TestThrottledLogging) {
   EXPECT_THAT(msgs[0], testing::ContainsRegex("test$"));
   // The second one should have suppressed at least three digits worth of log messages.
   EXPECT_THAT(msgs[1], testing::ContainsRegex("\\[suppressed [0-9]{3,} similar messages\\]"));
+
+  // Just compilation check.
+  YB_LOG_EVERY_N_SECS(INFO, 1) << "test" << THROTTLE_MSG;
+  YB_LOG_EVERY_N_SECS(INFO, 1) << "test" << THROTTLE_MSG;
 }
 
 TEST(LoggingTest, VModule) {

@@ -333,6 +333,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				create_extension_opt_item alter_extension_opt_item
 
 %type <ival>	opt_lock lock_type cast_context
+%type <ival>	opt_concurrently
 %type <ival>	vacuum_option_list vacuum_option_elem
 				analyze_option_list analyze_option_elem
 %type <defelt>	drop_option
@@ -470,7 +471,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <node>	overlay_placing substr_from substr_for
 
 %type <boolean> opt_instead
-%type <boolean> opt_unique opt_concurrently opt_verbose opt_full opt_concurrently_matview
+%type <boolean> opt_unique opt_verbose opt_full opt_concurrently_matview
 %type <boolean> opt_freeze opt_analyze opt_default opt_recheck
 %type <defelt>	opt_binary opt_oids copy_delimiter
 
@@ -912,6 +913,7 @@ stmt :
 			| CreateExtensionStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
+			| CreatePLangStmt
 			| CreateMatViewStmt
 			| CreateOpClassStmt
 			| CreateOpFamilyStmt
@@ -932,6 +934,7 @@ stmt :
 			| DropOpClassStmt
 			| DropOpFamilyStmt
 			| DropOwnedStmt
+			| DropPLangStmt
 			| DropRoleStmt
 			| DropStmt
 			| DropTableSpaceStmt
@@ -1001,12 +1004,10 @@ stmt :
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePublicationStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreatePLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropPLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
@@ -4560,6 +4561,9 @@ opt_concurrently_matview:
 					$$ = true;
 				}
 			| NONCONCURRENTLY
+				{
+					$$ = false;
+				}
 			| /*EMPTY*/
 				{
 					$$ = false;
@@ -4718,7 +4722,6 @@ NumericOnly_list:	NumericOnly						{ $$ = list_make1($1); }
 CreatePLangStmt:
 			CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE NonReservedWord_or_Sconst
 			{
-				parser_ybc_not_support(@1, "CREATE LANGUAGE");
 				CreatePLangStmt *n = makeNode(CreatePLangStmt);
 				n->replace = $2;
 				n->plname = $6;
@@ -4732,7 +4735,6 @@ CreatePLangStmt:
 			| CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE NonReservedWord_or_Sconst
 			  HANDLER handler_name opt_inline_handler opt_validator
 			{
-				parser_ybc_not_support(@1, "CREATE LANGUAGE");
 				CreatePLangStmt *n = makeNode(CreatePLangStmt);
 				n->replace = $2;
 				n->plname = $6;
@@ -4776,7 +4778,6 @@ opt_validator:
 DropPLangStmt:
 			DROP opt_procedural LANGUAGE NonReservedWord_or_Sconst opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP LANGUAGE");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_LANGUAGE;
 					n->objects = list_make1(makeString($4));
@@ -4787,7 +4788,6 @@ DropPLangStmt:
 				}
 			| DROP opt_procedural LANGUAGE IF_P EXISTS NonReservedWord_or_Sconst opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP LANGUAGE");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_LANGUAGE;
 					n->objects = list_make1(makeString($6));
@@ -8022,16 +8022,17 @@ opt_unique:
 opt_concurrently:
 			CONCURRENTLY
 				{
-					parser_ybc_not_support(@1, "CREATE INDEX CONCURRENTLY");
-					$$ = true;
+					$$ = YB_CONCURRENCY_EXPLICIT_ENABLED;
 				}
 			| NONCONCURRENTLY
 				{
-					$$ = false;
+					$$ = YB_CONCURRENCY_DISABLED;
 				}
 			| /*EMPTY*/
 				{
-					$$ = !*YBCGetGFlags()->ysql_disable_index_backfill;
+					$$ = *YBCGetGFlags()->ysql_disable_index_backfill
+						? YB_CONCURRENCY_DISABLED
+						: YB_CONCURRENCY_IMPLICIT_ENABLED;
 				}
 		;
 
@@ -9511,7 +9512,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER INDEX qualified_name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER INDEX", 1130);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_INDEX;
 					n->relation = $3;
@@ -9522,7 +9522,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER INDEX IF_P EXISTS qualified_name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER INDEX", 1130);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_INDEX;
 					n->relation = $5;

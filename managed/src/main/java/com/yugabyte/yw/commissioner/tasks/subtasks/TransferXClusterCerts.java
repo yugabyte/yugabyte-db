@@ -32,9 +32,9 @@ public class TransferXClusterCerts extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     // The path to the source root certificate on the Platform host.
     public File rootCertPath;
-    // The replication config name used in the coreDB. It must have
+    // The replication group name used in the coreDB. It must have
     // <srcUniverseUuid>_<configName> format.
-    public String replicationConfigName;
+    public String replicationGroupName;
     // The target universe will look into this directory for mismatched certificates.
     public File producerCertsDirOnTarget;
 
@@ -65,7 +65,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
         + "("
         + taskParams.rootCertPath
         + ", "
-        + taskParams.replicationConfigName
+        + taskParams.replicationGroupName
         + ")";
   }
 
@@ -84,7 +84,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
           String.format("file \"%s\" does not exist", params.rootCertPath));
     }
 
-    if (StringUtils.isBlank(params.replicationConfigName)) {
+    if (StringUtils.isBlank(params.replicationGroupName)) {
       throw new IllegalArgumentException("taskParams().replicationConfigName must have a value");
     }
 

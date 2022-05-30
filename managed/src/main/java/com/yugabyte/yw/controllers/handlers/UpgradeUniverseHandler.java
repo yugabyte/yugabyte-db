@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
@@ -183,6 +184,22 @@ public class UpgradeUniverseHandler {
 
     return submitUpgradeTask(
         TaskType.ResizeNode, CustomerTask.TaskType.ResizeNode, requestParams, customer, universe);
+  }
+
+  public UUID thirdpartySoftwareUpgrade(
+      ThirdpartySoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
+    // Verify request params
+    requestParams.verifyParams(universe);
+    // Update request params with additional metadata for upgrade task
+    requestParams.universeUUID = universe.universeUUID;
+    requestParams.expectedUniverseVersion = universe.version;
+
+    return submitUpgradeTask(
+        TaskType.ThirdpartySoftwareUpgrade,
+        CustomerTask.TaskType.ThirdpartySoftwareUpgrade,
+        requestParams,
+        customer,
+        universe);
   }
 
   // Enable/Disable TLS on Cluster

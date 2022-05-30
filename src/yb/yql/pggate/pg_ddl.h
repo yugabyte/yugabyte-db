@@ -52,7 +52,7 @@ class PgCreateDatabase : public PgDdl {
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_DATABASE; }
 
   // Execute.
-  CHECKED_STATUS Exec();
+  Status Exec();
 
  private:
   tserver::PgCreateDatabaseRequestPB req_;
@@ -66,7 +66,7 @@ class PgDropDatabase : public PgDdl {
   StmtOp stmt_op() const override { return StmtOp::STMT_DROP_DATABASE; }
 
   // Execute.
-  CHECKED_STATUS Exec();
+  Status Exec();
 
  private:
   const char *database_name_;
@@ -85,7 +85,7 @@ class PgAlterDatabase : public PgDdl {
   void RenameDatabase(const char *newname);
 
   // Execute.
-  CHECKED_STATUS Exec();
+  Status Exec();
 
  private:
   tserver::PgAlterDatabaseRequestPB req_;
@@ -107,7 +107,7 @@ class PgCreateTablegroup : public PgDdl {
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLEGROUP; }
 
   // Execute.
-  CHECKED_STATUS Exec();
+  Status Exec();
 
  private:
   tserver::PgCreateTablegroupRequestPB req_;
@@ -123,7 +123,7 @@ class PgDropTablegroup : public PgDdl {
   StmtOp stmt_op() const override { return StmtOp::STMT_DROP_TABLEGROUP; }
 
   // Execute.
-  CHECKED_STATUS Exec();
+  Status Exec();
 
  private:
   tserver::PgDropTablegroupRequestPB req_;
@@ -143,10 +143,11 @@ class PgCreateTable : public PgDdl {
                 bool is_shared_table,
                 bool if_not_exist,
                 bool add_primary_key,
-                const bool colocated,
+                bool is_colocated_via_database,
                 const PgObjectId& tablegroup_oid,
                 const ColocationId colocation_id,
                 const PgObjectId& tablespace_oid,
+                bool is_matview,
                 const PgObjectId& matview_pg_table_oid);
 
   void SetupIndex(
@@ -154,7 +155,7 @@ class PgCreateTable : public PgDdl {
 
   StmtOp stmt_op() const override;
 
-  CHECKED_STATUS AddColumn(const char *attr_name,
+  Status AddColumn(const char *attr_name,
                            int attr_num,
                            int attr_ybtype,
                            bool is_hash,
@@ -164,7 +165,7 @@ class PgCreateTable : public PgDdl {
                          is_hash, is_range, sorting_type);
   }
 
-  CHECKED_STATUS AddColumn(const char *attr_name,
+  Status AddColumn(const char *attr_name,
                            int attr_num,
                            const YBCPgTypeEntity *attr_type,
                            bool is_hash,
@@ -175,19 +176,19 @@ class PgCreateTable : public PgDdl {
   }
 
   // Specify the number of tablets explicitly.
-  CHECKED_STATUS SetNumTablets(int32_t num_tablets);
+  Status SetNumTablets(int32_t num_tablets);
 
-  CHECKED_STATUS AddSplitBoundary(PgExpr **exprs, int expr_count);
+  Status AddSplitBoundary(PgExpr **exprs, int expr_count);
 
   void UseTransaction() {
     req_.set_use_transaction(true);
   }
 
   // Execute.
-  virtual CHECKED_STATUS Exec();
+  virtual Status Exec();
 
  protected:
-  virtual CHECKED_STATUS AddColumnImpl(
+  virtual Status AddColumnImpl(
       const char *attr_name, int attr_num, int attr_ybtype, int pg_type_oid, bool is_hash,
       bool is_range, SortingType sorting_type = SortingType::kNotSpecified);
 
@@ -203,7 +204,7 @@ class PgDropTable : public PgDdl {
   StmtOp stmt_op() const override { return StmtOp::STMT_DROP_TABLE; }
 
   // Execute.
-  CHECKED_STATUS Exec();
+  Status Exec();
 
  protected:
   const PgObjectId table_id_;
@@ -218,7 +219,7 @@ class PgTruncateTable : public PgDdl {
   StmtOp stmt_op() const override { return StmtOp::STMT_TRUNCATE_TABLE; }
 
   // Execute.
-  CHECKED_STATUS Exec();
+  Status Exec();
 
  private:
   tserver::PgTruncateTableRequestPB req_;
@@ -232,7 +233,7 @@ class PgDropIndex : public PgDropTable {
   StmtOp stmt_op() const override { return StmtOp::STMT_DROP_INDEX; }
 
   // Execute.
-  CHECKED_STATUS Exec();
+  Status Exec();
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -244,17 +245,17 @@ class PgAlterTable : public PgDdl {
   PgAlterTable(PgSession::ScopedRefPtr pg_session,
                const PgObjectId& table_id);
 
-  CHECKED_STATUS AddColumn(const char *name,
+  Status AddColumn(const char *name,
                            const YBCPgTypeEntity *attr_type,
                            int order);
 
-  CHECKED_STATUS RenameColumn(const char *oldname, const char *newname);
+  Status RenameColumn(const char *oldname, const char *newname);
 
-  CHECKED_STATUS DropColumn(const char *name);
+  Status DropColumn(const char *name);
 
-  CHECKED_STATUS RenameTable(const char *db_name, const char *newname);
+  Status RenameTable(const char *db_name, const char *newname);
 
-  CHECKED_STATUS Exec();
+  Status Exec();
 
   virtual ~PgAlterTable();
 

@@ -101,7 +101,7 @@ class TransactionCoordinator {
   };
 
   // Process new transaction state.
-  CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
+  Status ProcessReplicated(const ReplicatedData& data);
 
   struct AbortedData {
     const TransactionStatePB& state;
@@ -126,7 +126,7 @@ class TransactionCoordinator {
   // And like most of other Shutdowns in our codebase it wait until shutdown completes.
   void Shutdown();
 
-  CHECKED_STATUS GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
+  Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
                            CoarseTimePoint deadline,
                            tserver::GetTransactionStatusResponsePB* response);
 

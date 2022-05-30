@@ -19,6 +19,7 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.TriggerHealthCheckResult;
@@ -260,7 +261,7 @@ public class UniverseInfoController extends AuthenticatedController {
           Path targetFile = Paths.get(storagePath + "/" + tarFileName);
           File file =
               universeInfoHandler.downloadNodeLogs(customer, universe, node, targetFile).toFile();
-          InputStream is = Util.getInputStreamOrFail(file);
+          InputStream is = FileUtils.getInputStreamOrFail(file);
           file.delete(); // TODO: should this be done in finally?
           // return the file to client
           response().setHeader("Content-Disposition", "attachment; filename=" + file.getName());

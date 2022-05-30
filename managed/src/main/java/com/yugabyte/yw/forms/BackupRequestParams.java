@@ -46,12 +46,18 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Is SSE")
   public boolean sse = false;
 
+  @ApiModelProperty(value = "Disable checksum")
+  public Boolean disableChecksum = false;
+
   @ApiModelProperty(value = "Backup info")
   public List<KeyspaceTable> keyspaceTableList;
 
   // The number of concurrent commands to run on nodes over SSH
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
   public int parallelism = 8;
+
+  @ApiModelProperty(value = "Don't add -m flag during gsutil upload dir command")
+  public boolean disableParallelism = false;
 
   @ApiModelProperty(value = "Customer UUID")
   public UUID customerUUID = null;

@@ -90,8 +90,8 @@ YBTableCreator& YBTableCreator::num_tablets(int32_t count) {
   return *this;
 }
 
-YBTableCreator& YBTableCreator::colocated(const bool colocated) {
-  colocated_ = colocated;
+YBTableCreator& YBTableCreator::is_colocated_via_database(bool is_colocated_via_database) {
+  is_colocated_via_database_ = is_colocated_via_database;
   return *this;
 }
 
@@ -107,6 +107,11 @@ YBTableCreator& YBTableCreator::colocation_id(ColocationId colocation_id) {
 
 YBTableCreator& YBTableCreator::tablespace_id(const std::string& tablespace_id) {
   tablespace_id_ = tablespace_id;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::is_matview(bool is_matview) {
+  is_matview_ = is_matview;
   return *this;
 }
 
@@ -241,7 +246,7 @@ Status YBTableCreator::Create() {
   req.set_name(table_name_.table_name());
   table_name_.SetIntoNamespaceIdentifierPB(req.mutable_namespace_());
   req.set_table_type(table_type_);
-  req.set_colocated(colocated_);
+  req.set_is_colocated_via_database(is_colocated_via_database_);
 
   if (!creator_role_name_.empty()) {
     req.set_creator_role_name(creator_role_name_);
@@ -266,6 +271,10 @@ Status YBTableCreator::Create() {
 
   if (!tablespace_id_.empty()) {
     req.set_tablespace_id(tablespace_id_);
+  }
+
+  if (is_matview_) {
+    req.set_is_matview(*is_matview_);
   }
 
   if (!matview_pg_table_id_.empty()) {

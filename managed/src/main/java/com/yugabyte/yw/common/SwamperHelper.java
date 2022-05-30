@@ -10,8 +10,8 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.Util.writeFile;
-import static com.yugabyte.yw.common.Util.writeJsonFile;
+import static com.yugabyte.yw.common.utils.FileUtils.writeFile;
+import static com.yugabyte.yw.common.utils.FileUtils.writeJsonFile;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;

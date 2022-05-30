@@ -13,10 +13,11 @@
 
 package org.yb.cdc;
 
-import org.apache.log4j.Logger;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.util.CDCSubscriber;
 import org.yb.client.GetDBStreamInfoResponse;
@@ -26,7 +27,7 @@ import static org.yb.AssertionWrappers.*;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestDBStreamInfo extends CDCBaseClass {
-  private final static Logger LOG = Logger.getLogger(TestDBStreamInfo.class);
+  private final static Logger LOG = LoggerFactory.getLogger(TestDBStreamInfo.class);
 
   @Before
   public void setUp() throws Exception {

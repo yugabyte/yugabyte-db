@@ -31,8 +31,6 @@ namespace yb {
 namespace tools {
 namespace enterprise {
 
-using std::cerr;
-using std::endl;
 using std::string;
 using std::vector;
 
@@ -62,7 +60,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
 
   std::string options = "";
-  for (auto flag : kListSnapshotsFlagList) {
+  for (auto flag : ListSnapshotsFlagList()) {
     options += Format(" [$0]", flag);
   }
   Register(
@@ -75,7 +73,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
           ToUpperCase(args[i], &uppercase_flag);
 
           bool found = false;
-          for (auto flag : kListSnapshotsFlagList) {
+          for (auto flag : ListSnapshotsFlagList()) {
             if (uppercase_flag == ToString(flag)) {
               flags.Set(flag);
               found = true;
@@ -144,6 +142,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         // This is just a paranoid check, should never happen.
         if (tables.size() != 1 || !tables[0].has_namespace()) {
           return STATUS(InvalidArgument, "Expecting exactly one keyspace argument");
+        }
+        if (interval > retention) {
+          return STATUS(InvalidArgument, "Interval cannot be greater than retention");
+        }
+        if (tables[0].namespace_type() != YQL_DATABASE_CQL &&
+            tables[0].namespace_type() != YQL_DATABASE_PGSQL) {
+          return STATUS(
+              InvalidArgument, "Snapshot schedule can only be setup on YCQL or YSQL namespace");
         }
         return client->CreateSnapshotSchedule(tables[0], interval, retention);
       });
@@ -319,7 +325,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "set_preferred_zones", " <cloud.region.zone> [<cloud.region.zone>]...",
+      "set_preferred_zones", " <cloud.region.zone[:priority]> [<cloud.region.zone>[:priority]]...",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -662,7 +668,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               "Unable to bootstrap CDC producer");
         return Status::OK();
       });
-}
+}  // NOLINT -- a long function but that is OK
 
 }  // namespace enterprise
 }  // namespace tools

@@ -44,7 +44,7 @@ void SetInt8Value(const int8_t int8_value, QLExpressionPB* expr_pb) {
   expr_pb->mutable_value()->set_int8_value(int8_value);
 }
 
-CHECKED_STATUS SetColumnId(
+Status SetColumnId(
     const Schema& schema_with_ids, const std::string& column_name, QLColumnValuePB* col_pb) {
   auto column_id = VERIFY_RESULT(schema_with_ids.ColumnIdByName(column_name));
   col_pb->set_column_id(column_id.rep());
@@ -157,7 +157,7 @@ Status FillSysCatalogWriteRequest(
   if (IsWrite(op_type)) {
     faststring metadata_buf;
 
-    pb_util::SerializeToString(new_pb, &metadata_buf);
+    RETURN_NOT_OK(pb_util::SerializeToString(new_pb, &metadata_buf));
 
     return FillSysCatalogWriteRequest(
         type, item_id, Slice(metadata_buf.data(), metadata_buf.size()), op_type, schema_with_ids,
