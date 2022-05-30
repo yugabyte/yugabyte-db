@@ -202,6 +202,7 @@ PLy_procedure_create(HeapTuple procTup, Oid fn_oid, bool is_trigger)
 		proc->globals = NULL;
 		proc->calldepth = 0;
 		proc->argstack = NULL;
+		proc->yb_catalog_version = YBGetActiveCatalogCacheVersion();
 
 		/*
 		 * get information required for output conversion of the return value,
@@ -424,7 +425,8 @@ PLy_procedure_valid(PLyProcedure *proc, HeapTuple procTup)
 		return false;
 
 	/* If the pg_proc tuple has changed, it's not valid */
-	if (!(proc->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
+	if (!(IsYugaByteEnabled() ? proc->yb_catalog_version == YBGetActiveCatalogCacheVersion() :
+		  proc->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
 		  ItemPointerEquals(&proc->fn_tid, &procTup->t_self)))
 		return false;
 
