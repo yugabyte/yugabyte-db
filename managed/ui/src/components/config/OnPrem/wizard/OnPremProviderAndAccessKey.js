@@ -7,7 +7,6 @@ import { YBInputField, YBButton, YBTextArea, YBNumericInput } from '../../../com
 import constants from './OnPremWizardConstants.json';
 import YBToggle from '../../../common/forms/fields/YBToggle';
 import { NTPConfig } from '../../PublicCloud/views/NTPConfig';
-import { YBTag } from '../../../common/YBTag';
 
 export default class OnPremProviderAndAccessKey extends Component {
   constructor(props) {
@@ -166,7 +165,7 @@ export default class OnPremProviderAndAccessKey extends Component {
             <Col lg={10}>
               <Row>
                 <Col lg={2} className='no-padding onprem-ntp'>
-                  <div className="form-item-custom-label">NTP Setup<YBTag>Beta</YBTag></div>
+                  <div className="form-item-custom-label">NTP Setup</div>
                 </Col>
                 <Col lg={10} className='no-padding'>
                   <NTPConfig onChange={change} hideOnPremProvider initialValues={initialValues} disabled={isEditProvider}/>

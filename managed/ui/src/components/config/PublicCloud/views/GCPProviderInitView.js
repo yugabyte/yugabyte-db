@@ -17,7 +17,6 @@ import { isNonEmptyObject, isNonEmptyString, trimString } from '../../../../util
 import { reduxForm, FieldArray } from 'redux-form';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 import { NTPConfig, NTP_TYPES } from './NTPConfig';
-import { YBTag } from '../../../common/YBTag';
 
 const validationIsRequired = (value) => (value && value.trim() !== '' ? undefined : 'Required');
 
@@ -359,7 +358,7 @@ class GCPProviderInitView extends Component {
                 {regionInput}
               <Row>
                 <Col lg={3}>
-                  <div className="form-item-custom-label">NTP Setup<YBTag>Beta</YBTag></div>
+                  <div className="form-item-custom-label">NTP Setup</div>
                 </Col>
                 <Col lg={7}>
                   <NTPConfig onChange={this.updateFormField} hideHelp={true}/>
