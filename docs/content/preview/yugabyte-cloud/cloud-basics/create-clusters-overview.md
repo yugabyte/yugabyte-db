@@ -30,6 +30,28 @@ The following best practices are recommended for production clusters.
 
 ## In depth
 
+### Topology
+
+A YugabyteDB cluster consists of three or more nodes that communicate with each other and across which data is distributed. You can place the nodes of a YugabyteDB cluster across different zones in a single region, and across regions. The topology you choose depends on your requirements for latency, availability, and geo-distribution.
+
+#### Single Region
+
+Single-region clusters are not resilient to region-level outages.
+
+- Single availability zone. Resilient to node outages.
+- Multiple availability zones. Resilient to node and availability zone outages.
+
+Cloud providers like AWS and Google Cloud design zones to minimize the risk of correlated failures caused by physical infrastructure outages like power, cooling, or networking. In other words, single failure events usually affect only a single zone. By deploying nodes across zones in a region, you get resilience to a zone failure as well as high availability.
+
+#### Multiple Region
+
+Multi-region clusters are resilient to region-level outages.
+
+- Synchronous replication. Cluster nodes are deployed in separate regions. Data is synchronously replicated across multiple regions.
+- Geo partitioned. Cluster nodes are deployed in separate regions. Data is pinned to specific geographic regions. Allows fine-grained control over pinning rows in a user table to specific geographic locations.
+- Cross-cluster. Two clusters are deployed in separate regions. Data is shared between the clusters, either in one direction, or asynchronously.
+- Read replica. Multiple clusters are deployed in separate regions. Data is written in a single region, and copied to the other regions, where it can be read. The primary cluster gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest.
+
 ### Provider and region
 
 #### Provider
