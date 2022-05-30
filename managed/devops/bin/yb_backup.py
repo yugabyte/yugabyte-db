@@ -539,7 +539,10 @@ class GcsBackupStorage(AbstractBackupStorage):
         return self._command_list_prefix() + ["cp", src, dest]
 
     def upload_dir_cmd(self, src, dest):
-        return self._command_list_prefix() + ["-m", "rsync", "-r", src, dest]
+        if self.options.args.disable_parallelism:
+            return self._command_list_prefix() + ["rsync", "-r", src, dest]
+        else:
+            return self._command_list_prefix() + ["-m", "rsync", "-r", src, dest]
 
     def download_dir_cmd(self, src, dest):
         return self._command_list_prefix() + ["-m", "rsync", "-r", src, dest]
@@ -651,16 +654,12 @@ class KubernetesDetails():
     def __init__(self, server_fqdn, config_map):
         self.namespace = server_fqdn.split('.')[2]
         self.pod_name = server_fqdn.split('.')[0]
-        # The pod names are yb-master-n/yb-tserver-n where n is the pod number
-        # and yb-master/yb-tserver are the container names.
-
-        # TODO(bhavin192): need to change in case of multiple releases
-        # in one namespace. Something like find the word 'master' in
-        # the name.
-
-        self.container = self.pod_name.rsplit('-', 1)[0]
+        # The pod names are <helm fullname>yb-<master|tserver>-n where
+        # n is the pod number. <helm fullname> can be blank. And
+        # yb-master/yb-tserver are the container names.
+        self.container = "yb-master" if self.pod_name.find("master") > 0 else "yb-tserver"
         self.env_config = os.environ.copy()
-        self.env_config["KUBECONFIG"] = config_map[self.namespace]
+        self.env_config["KUBECONFIG"] = config_map[server_fqdn]
 
 
 def get_instance_profile_credentials():
@@ -893,7 +892,7 @@ class YBBackup:
         self.live_tserver_ip = ''
         self.tmp_dir_name = ''
         self.server_ips_with_uploaded_cloud_cfg = {}
-        self.k8s_namespace_to_cfg = {}
+        self.k8s_pod_fqdn_to_cfg = {}
         self.timer = BackupTimer()
         self.tserver_ip_to_web_port = {}
         self.ip_to_ssh_key_map = {}
@@ -1099,6 +1098,10 @@ class YBBackup:
                  'This also affects the amount of outgoing s3cmd sync traffic when copying a '
                  'backup to S3.')
         parser.add_argument(
+            '--disable_parallelism', action='store_true', default=False,
+            help="If specified as False, we add the parallelism flag '-m' during gsutil. "
+                 "If speciifed as True, the '-m' flag is not added.")
+        parser.add_argument(
             '--storage_type', choices=list(BACKUP_STORAGE_ABSTRACTIONS.keys()),
             default=S3BackupStorage.storage_type(),
             help="Storage backing for backups, eg: s3, nfs, gcs, ..")
@@ -1248,8 +1251,8 @@ class YBBackup:
             self.ip_to_ssh_key_map = json.loads(self.args.ip_to_ssh_key_path)
 
         if self.is_k8s():
-            self.k8s_namespace_to_cfg = json.loads(self.args.k8s_config)
-            if self.k8s_namespace_to_cfg is None:
+            self.k8s_pod_fqdn_to_cfg = json.loads(self.args.k8s_config)
+            if self.k8s_pod_fqdn_to_cfg is None:
                 raise BackupException("Couldn't load k8s configs")
 
         self.args.local_ysql_dumpall_binary = replace_last_substring(
@@ -1797,7 +1800,7 @@ class YBBackup:
     def upload_file_from_local(self, dest_ip, src, dest):
         output = ''
         if self.is_k8s():
-            k8s_details = KubernetesDetails(dest_ip, self.k8s_namespace_to_cfg)
+            k8s_details = KubernetesDetails(dest_ip, self.k8s_pod_fqdn_to_cfg)
             output += self.run_program([
                 'kubectl',
                 'cp',
@@ -1844,7 +1847,7 @@ class YBBackup:
     def download_file_to_local(self, src_ip, src, dest):
         output = ''
         if self.is_k8s():
-            k8s_details = KubernetesDetails(src_ip, self.k8s_namespace_to_cfg)
+            k8s_details = KubernetesDetails(src_ip, self.k8s_pod_fqdn_to_cfg)
             output += self.run_program([
                 'kubectl',
                 'cp',
@@ -1915,7 +1918,7 @@ class YBBackup:
             cmd = "{} {}".format(bash_env_args, cmd)
 
         if self.is_k8s():
-            k8s_details = KubernetesDetails(server_ip, self.k8s_namespace_to_cfg)
+            k8s_details = KubernetesDetails(server_ip, self.k8s_pod_fqdn_to_cfg)
             return self.run_program([
                 'kubectl',
                 'exec',

@@ -167,12 +167,6 @@ Default: `true`
 
 ### Logging flags
 
-##### --alsologtoemail
-
-Sends log messages to these email addresses in addition to logfiles.
-
-Default: `""`
-
 ##### --colorlogtostderr
 
 Color messages logged to `stderr` (if supported by terminal).
@@ -192,20 +186,6 @@ Default: `0`
 Buffer log messages for at most this many seconds.
 
 Default: `30`
-
-##### --logemaillevel
-
-Email log messages logged at this level, or higher. 
-
-Values: `0` (all); `1` (WARN), `2` (ERROR), `3` (FATAL), `999` (none)
-
-Default: `999`
-
-##### --logmailer
-
-The mailer used to send logging email messages.
-
-Default: `"/bin/mail"
 
 ##### --logtostderr
 

@@ -30,7 +30,7 @@ class PrometheusWriter {
 
   // Write to the a single metric entry for non-table level metrics.
   template <typename T>
-  CHECKED_STATUS WriteSingleEntryNonTable(
+  Status WriteSingleEntryNonTable(
       const MetricEntity::AttributeMap& attr, const std::string& name, const T& value) {
     auto it = attr.find("table_id");
     if (it != attr.end()) {
@@ -43,7 +43,7 @@ class PrometheusWriter {
   }
 
   template<typename T>
-  CHECKED_STATUS WriteSingleEntry(
+  Status WriteSingleEntry(
       const MetricEntity::AttributeMap& attr, const std::string& name, const T& value,
       AggregationFunction aggregation_function) {
     auto it = attr.find("table_id");
@@ -77,7 +77,7 @@ class PrometheusWriter {
     return Status::OK();
   }
 
-  CHECKED_STATUS FlushAggregatedValues(const uint32_t& max_tables_metrics_breakdowns,
+  Status FlushAggregatedValues(const uint32_t& max_tables_metrics_breakdowns,
                                        std::string priority_regex);
 
  private:
@@ -85,7 +85,7 @@ class PrometheusWriter {
   // FlushSingleEntry() was a function template with type of "value" as template
   // var T. To allow NMSWriter to override FlushSingleEntry(), the type of "value"
   // has been instantiated to int64_t.
-  virtual CHECKED_STATUS FlushSingleEntry(const MetricEntity::AttributeMap& attr,
+  virtual Status FlushSingleEntry(const MetricEntity::AttributeMap& attr,
                                           const std::string& name, const int64_t& value);
 
   void InvalidAggregationFunction(AggregationFunction aggregation_function);
@@ -109,7 +109,7 @@ class NMSWriter : public PrometheusWriter {
   explicit NMSWriter(EntityMetricsMap* table_metrics, MetricsMap* server_metrics);
 
  private:
-  CHECKED_STATUS FlushSingleEntry(
+  Status FlushSingleEntry(
       const MetricEntity::AttributeMap& attr, const std::string& name,
       const int64_t& value) override;
 

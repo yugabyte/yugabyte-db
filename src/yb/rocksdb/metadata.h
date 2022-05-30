@@ -33,6 +33,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/byte_buffer.h"
 #include "yb/util/clone_ptr.h"
 #include "yb/util/slice.h"
 #include "yb/util/enums.h"
@@ -56,11 +57,6 @@ struct SstFileMetaData;
 // The metadata that describes a column family.
 struct ColumnFamilyMetaData {
   ColumnFamilyMetaData() : size(0), name("") {}
-  ColumnFamilyMetaData(const std::string& _name, uint64_t _size,
-                       const std::vector<LevelMetaData>&& _levels)
-      : size(_size),
-        name(_name),
-        levels(_levels) {}
 
   // The size of this column family in bytes, which is equal to the sum of
   // the file size of its "levels".
@@ -195,23 +191,66 @@ inline bool operator==(const UserFrontiers& lhs, const UserFrontiers& rhs) {
 
 typedef uint32_t UserBoundaryTag;
 
-class UserBoundaryValue {
- public:
-  virtual UserBoundaryTag Tag() = 0;
-  virtual yb::Slice Encode() = 0;
-  virtual int CompareTo(const UserBoundaryValue& rhs) = 0;
- protected:
-  ~UserBoundaryValue() {}
+struct UserBoundaryValueRef {
+  UserBoundaryTag tag;
+  Slice value;
+
+  Slice AsSlice() const {
+    return value;
+  }
 };
 
-typedef std::shared_ptr<UserBoundaryValue> UserBoundaryValuePtr;
-typedef boost::container::small_vector_base<UserBoundaryValuePtr> UserBoundaryValues;
+struct UserBoundaryValue {
+  static constexpr size_t kBufferSize = 128;
+  using Value = yb::ByteBuffer<kBufferSize>;
+
+  UserBoundaryTag tag;
+  Value value;
+
+  UserBoundaryValue() = default;
+
+  UserBoundaryValue(UserBoundaryTag tag_, const Slice& value_)
+      : tag(tag_), value(value_) {
+  }
+
+  explicit UserBoundaryValue(const UserBoundaryValueRef& ref)
+      : tag(ref.tag), value(ref.value) {
+  }
+
+  yb::Slice AsSlice() const {
+    return value.AsSlice();
+  }
+
+  int CompareTo(const Slice& rhs) {
+    return AsSlice().compare(rhs);
+  }
+
+  int CompareTo(const UserBoundaryValueRef& rhs) {
+    return CompareTo(rhs.AsSlice());
+  }
+
+  int CompareTo(const UserBoundaryValue& rhs) {
+    return CompareTo(rhs.AsSlice());
+  }
+};
+
+typedef boost::container::small_vector_base<UserBoundaryValue> UserBoundaryValues;
+typedef boost::container::small_vector_base<UserBoundaryValueRef> UserBoundaryValueRefs;
 
 struct FileBoundaryValuesBase {
   SequenceNumber seqno; // Boundary sequence number in file.
   UserFrontierPtr user_frontier;
   // We expect that there will be just a few user values, so use small_vector for it.
-  boost::container::small_vector<UserBoundaryValuePtr, 10> user_values;
+  boost::container::small_vector<UserBoundaryValue, 10> user_values;
+
+  std::string ToString() const;
+};
+
+struct FileBoundaryValueRefs {
+  SequenceNumber seqno; // Boundary sequence number in file.
+  UserFrontierPtr user_frontier;
+  // We expect that there will be just a few user values, so use small_vector for it.
+  boost::container::small_vector<UserBoundaryValueRef, 10> user_values;
 
   std::string ToString() const;
 };
@@ -221,36 +260,35 @@ struct FileBoundaryValues : FileBoundaryValuesBase {
   KeyType key; // Boundary key in the file.
 };
 
-inline UserBoundaryValuePtr UserValueWithTag(const UserBoundaryValues& values,
-                                             UserBoundaryTag tag) {
+inline const UserBoundaryValue* TEST_UserValueWithTag(const UserBoundaryValues& values,
+                                                      UserBoundaryTag tag) {
   for (const auto& value : values) {
-    if (value->Tag() == tag)
-      return value;
+    if (value.tag == tag)
+      return &value;
   }
-  return UserBoundaryValuePtr();
+  return nullptr;
 }
 
-inline void UpdateUserValue(UserBoundaryValues* values,
-                            const UserBoundaryValuePtr& new_value,
-                            UpdateUserValueType type) {
-  int compare_sign = static_cast<int>(type);
-  auto tag = new_value->Tag();
-  for (auto& value : *values) {
-    if (value->Tag() == tag) {
-      if (value->CompareTo(*new_value) * compare_sign > 0) {
-        value = new_value;
-      }
-      return;
-    }
-  }
-  values->push_back(new_value);
-}
+void UpdateUserValue(
+    UserBoundaryValues* values, UserBoundaryTag tag, const Slice& new_value,
+    UpdateUserValueType type);
+
+void UpdateUserValue(
+    UserBoundaryValues* values, const UserBoundaryValueRef& new_value, UpdateUserValueType type);
+
+void UpdateUserValue(
+    UserBoundaryValues* values, const UserBoundaryValue& new_value, UpdateUserValueType type);
+
+void UpdateUserValues(
+    const UserBoundaryValueRefs& source, UpdateUserValueType type, UserBoundaryValues* values);
+
+void UpdateUserValues(
+    const UserBoundaryValues& source, UpdateUserValueType type, UserBoundaryValues* values);
 
 // The metadata that describes a SST fileset.
 struct SstFileMetaData {
   typedef FileBoundaryValues<std::string> BoundaryValues;
 
-  SstFileMetaData() = default;
   SstFileMetaData(uint64_t name_id_,
                   const std::string& _path,
                   uint64_t _total_size,
@@ -258,6 +296,7 @@ struct SstFileMetaData {
                   uint64_t _uncompressed_size,
                   const BoundaryValues& _smallest,
                   const BoundaryValues& _largest,
+                  bool _imported,
                   bool _being_compacted)
       : total_size(_total_size),
         base_size(_base_size),
@@ -266,6 +305,7 @@ struct SstFileMetaData {
         db_path(_path),
         smallest(_smallest),
         largest(_largest),
+        imported(_imported),
         being_compacted(_being_compacted) {
   }
 
@@ -291,6 +331,24 @@ struct SstFileMetaData {
 
 // The full set of metadata associated with each SST file.
 struct LiveFileMetaData : SstFileMetaData {
+  LiveFileMetaData(
+      const std::string& _column_family_name,
+      int _level,
+      uint64_t _name_id,
+      const std::string& _path,
+      uint64_t _total_size,
+      uint64_t _base_size,
+      uint64_t _uncompressed_size,
+      const BoundaryValues& _smallest,
+      const BoundaryValues& _largest,
+      bool _imported,
+      bool _being_compacted)
+      : SstFileMetaData(
+            _name_id, _path, _total_size, _base_size, _uncompressed_size, _smallest, _largest,
+            _imported, _being_compacted),
+        column_family_name(_column_family_name),
+        level(_level) {}
+
   std::string column_family_name;  // Name of the column family
   int level;                       // Level at which this file resides.
 

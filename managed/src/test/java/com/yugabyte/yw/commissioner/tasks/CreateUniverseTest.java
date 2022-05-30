@@ -58,8 +58,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.CreateTable,
           TaskType.CreateAlertDefinitions,
+          TaskType.CreateTable,
           TaskType.ChangeAdminPassword,
           TaskType.UniverseUpdateSucceeded);
 
@@ -74,8 +74,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.CreateTable,
           TaskType.CreateAlertDefinitions,
+          TaskType.CreateTable,
           TaskType.ChangeAdminPassword,
           TaskType.UniverseUpdateSucceeded);
 

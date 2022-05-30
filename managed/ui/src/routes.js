@@ -92,6 +92,15 @@ const autoLogin = (params) => {
   browserHistory.push('/');
 };
 
+export const setCookiesFromLocalStorage = () => {
+  const storageItems = ['authToken', 'apiToken', 'customerId', 'userId', 'asdfasd'];
+  storageItems.forEach((item) => {
+    if (localStorage.getItem(item)) {
+      Cookies.set(item, localStorage.getItem(item));
+    }
+  });
+};
+
 /**
  * Checks that url query parameters contains only authToken, customerUUID,
  * and userUUID. If additional parameters are in url, returns false

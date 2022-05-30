@@ -14,7 +14,8 @@ const initialStateFeatureInTest = {
   enablePathStyleAccess: false,
   backupv2: false,
   enableOIDC: false,
-  supportBundle: false
+  supportBundle: false,
+  enableThirdpartyUpgrade: false
 };
 
 const initialStateFeatureReleased = {
@@ -29,9 +30,10 @@ const initialStateFeatureReleased = {
   enableHCVaultEAT: true,
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false,
-  backupv2: false,
+  backupv2: true,
   enableOIDC: false,
-  supportBundle: true
+  supportBundle: true,
+  enableThirdpartyUpgrade: false
 };
 
 export const FeatureFlag = (

@@ -238,7 +238,7 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
   }
 }
 
-CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
+Status CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
     const scoped_refptr<TabletInfo>& tablet) {
   static const auto stringify_partition_key = [](const Slice& key) {
     return key.empty() ? "{empty}" : key.ToDebugString();
@@ -326,7 +326,7 @@ bool CatalogManagerUtil::IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudIn
   return ComputeCloudInfoSimilarity(ci1, ci2) == ZONE_MATCH;
 }
 
-CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement_info) {
+Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement_info) {
   // Check for duplicates.
   std::unordered_set<string> cloud_info_string;
 
@@ -402,7 +402,7 @@ CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& p
   return Status::OK();
 }
 
-CHECKED_STATUS ValidateAndAddPreferredZone(
+Status ValidateAndAddPreferredZone(
     const PlacementInfoPB& placement_info, const CloudInfoPB& cloud_info,
     std::set<string>* visited_zones, CloudInfoListPB* zone_set) {
   auto cloud_info_str = TSDescriptor::generate_placement_id(cloud_info);
@@ -428,7 +428,7 @@ CHECKED_STATUS ValidateAndAddPreferredZone(
   return Status::OK();
 }
 
-CHECKED_STATUS CatalogManagerUtil::SetPreferredZones(
+Status CatalogManagerUtil::SetPreferredZones(
     const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info) {
   replication_info->clear_affinitized_leaders();
   replication_info->clear_multi_affinitized_leaders();

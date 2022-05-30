@@ -110,7 +110,7 @@ bool IsRangeOperation(const QLWriteRequestPB& request, const Schema& schema);
 // is the coverter's return type. The converter's return type <data_type> is unsigned while
 // <num_type> may be signed or unsigned.
 template<typename num_type, typename data_type>
-static inline CHECKED_STATUS CQLDecodeNum(
+static inline Status CQLDecodeNum(
     const size_t len, data_type (*converter)(const void*), Slice* data, num_type* val) {
 
   static_assert(sizeof(data_type) == sizeof(num_type), "inconsistent num type size");
@@ -130,7 +130,7 @@ static inline CHECKED_STATUS CQLDecodeNum(
 // type. <converter> converts the number from network byte-order to machine order and <data_type>
 // is the coverter's return type. The converter's return type <data_type> is an integer type.
 template<typename float_type, typename data_type>
-static inline CHECKED_STATUS CQLDecodeFloat(
+static inline Status CQLDecodeFloat(
     const size_t len, data_type (*converter)(const void*), Slice* data, float_type* val) {
   // Make sure float and double are exactly sizeof uint32_t and uint64_t.
   static_assert(sizeof(float_type) == sizeof(data_type), "inconsistent floating point type size");
@@ -140,7 +140,7 @@ static inline CHECKED_STATUS CQLDecodeFloat(
   return Status::OK();
 }
 
-static inline CHECKED_STATUS CQLDecodeBytes(size_t len, Slice* data, std::string* val) {
+static inline Status CQLDecodeBytes(size_t len, Slice* data, std::string* val) {
   RETURN_NOT_ENOUGH(data, len);
   val->assign(data->cdata(), len);
   data->remove_prefix(len);

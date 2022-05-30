@@ -64,7 +64,6 @@ public class DelegatingConfig implements Config {
 
   protected void setValueInternal(String path, ConfigValue newValue) {
     delegate.set(delegate().withValue(path, newValue));
-    delegate.set(delegate().withValue(path, newValue));
   }
 
   protected void setObjInternal(String path, String strObj) {
@@ -370,5 +369,10 @@ public class DelegatingConfig implements Config {
   @Override
   public List<Duration> getDurationList(String path) {
     return delegate().getDurationList(path);
+  }
+
+  @Override
+  public String toString() {
+    return SettableRuntimeConfigFactory.toRedactedString(delegate());
   }
 }

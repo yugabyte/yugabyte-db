@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.google.api.client.util.Preconditions.checkState;
 import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -29,6 +30,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -82,9 +84,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // For onprem universes, allocate an available node
       // from the provider's node_instance table.
       if (wasDecommissioned && userIntent.providerType.equals(CloudType.onprem)) {
-        NodeInstance nodeInstance =
-            currentNode.nodeUuid == null ? null : NodeInstance.get(currentNode.nodeUuid);
-        if (nodeInstance == null || !nodeInstance.isInUse()) {
+        Optional<NodeInstance> nodeInstance = NodeInstance.maybeGetByName(currentNode.nodeName);
+        if (nodeInstance.isPresent()) {
+          // Illegal state if it is unused because both node name and in-use fields are updated
+          // together.
+          checkState(nodeInstance.get().isInUse(), "Node name is set but the node is not in use");
+        } else {
           // Reserve a node if it is not assigned yet, and persist the universe details and node
           // reservation in transaction so that universe is aware of the reservation.
           Map<UUID, List<String>> onpremAzToNodes =
@@ -141,7 +146,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
       // Re-install software.
       // TODO: Remove the need for version for existing instance, NodeManger needs changes.
-      createConfigureServerTasks(nodeSet, true /* isShell */)
+      createConfigureServerTasks(nodeSet, params -> params.isMasterInShellMode = true)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
       // All necessary nodes are created. Data moving will coming soon.

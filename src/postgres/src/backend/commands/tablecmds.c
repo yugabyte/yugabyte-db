@@ -10581,6 +10581,7 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.tg_trigger = &trig;
 		trigdata.tg_trigtuplebuf = YbFKTriggerScanGetBuffer(fk_scan);
 		trigdata.tg_newtuplebuf = InvalidBuffer;
+		trigdata.disable_fk_check = false;
 
 		fcinfo.context = (Node *) &trigdata;
 
@@ -16901,10 +16902,10 @@ CloneRowTriggersToPartition(Relation parent, Relation partition)
 		trigStmt->initdeferred = trigForm->tginitdeferred;
 		trigStmt->constrrel = NULL; /* passed separately */
 
-		CreateTrigger(trigStmt, NULL, RelationGetRelid(partition),
-					  trigForm->tgconstrrelid, InvalidOid, InvalidOid,
-					  trigForm->tgfoid, HeapTupleGetOid(tuple), qual,
-					  false, true);
+		CreateTriggerFiringOn(trigStmt, NULL, RelationGetRelid(partition),
+							  trigForm->tgconstrrelid, InvalidOid, InvalidOid,
+							  trigForm->tgfoid, HeapTupleGetOid(tuple), qual,
+							  false, true, trigForm->tgenabled);
 
 		MemoryContextReset(perTupCxt);
 	}

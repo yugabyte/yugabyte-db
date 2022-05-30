@@ -352,9 +352,6 @@ class FailedEmuEnv : public EnvWrapper {
 
 class FsManagerTestDriveFault : public YBTest {
  public:
-  FsManagerTestDriveFault()
-      : metric_entity_(METRIC_ENTITY_server.Instantiate(&metric_registry_, "FsManagerTest")) {}
-
   void SetUp() override {
     FailedEmuEnv* new_env = new FailedEmuEnv();
     env_.reset(new_env);
@@ -382,7 +379,7 @@ class FsManagerTestDriveFault : public YBTest {
     opts.wal_paths = wal_paths;
     opts.data_paths = data_paths;
     opts.server_type = kServerType;
-    opts.metric_entity = metric_entity_;
+    opts.metric_registry = &metric_registry_;
     fs_manager_ = std::make_unique<FsManager>(env_.get(), opts);
   }
 
@@ -395,7 +392,6 @@ class FsManagerTestDriveFault : public YBTest {
  private:
   std::unique_ptr<FsManager> fs_manager_;
   MetricRegistry metric_registry_;
-  scoped_refptr<MetricEntity> metric_entity_;
 };
 
 TEST_F(FsManagerTestDriveFault, SingleDriveFault) {

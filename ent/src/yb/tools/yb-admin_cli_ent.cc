@@ -31,8 +31,6 @@ namespace yb {
 namespace tools {
 namespace enterprise {
 
-using std::cerr;
-using std::endl;
 using std::string;
 using std::vector;
 
@@ -144,6 +142,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         // This is just a paranoid check, should never happen.
         if (tables.size() != 1 || !tables[0].has_namespace()) {
           return STATUS(InvalidArgument, "Expecting exactly one keyspace argument");
+        }
+        if (interval > retention) {
+          return STATUS(InvalidArgument, "Interval cannot be greater than retention");
+        }
+        if (tables[0].namespace_type() != YQL_DATABASE_CQL &&
+            tables[0].namespace_type() != YQL_DATABASE_PGSQL) {
+          return STATUS(
+              InvalidArgument, "Snapshot schedule can only be setup on YCQL or YSQL namespace");
         }
         return client->CreateSnapshotSchedule(tables[0], interval, retention);
       });

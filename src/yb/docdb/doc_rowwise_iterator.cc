@@ -52,6 +52,7 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -84,16 +85,16 @@ class ScanChoices {
   virtual bool FinishedWithScanChoices() const { return finished_; }
 
   // Go to the next scan target if any.
-  virtual CHECKED_STATUS DoneWithCurrentTarget() = 0;
+  virtual Status DoneWithCurrentTarget() = 0;
 
   // Go (directly) to the new target (or the one after if new_target does not
   // exist in the desired list/range). If the new_target is larger than all scan target options it
   // means we are done.
-  virtual CHECKED_STATUS SkipTargetsUpTo(const Slice& new_target) = 0;
+  virtual Status SkipTargetsUpTo(const Slice& new_target) = 0;
 
   // If the given doc_key isn't already at the desired target, seek appropriately to go to the
   // current target.
-  virtual CHECKED_STATUS SeekToCurrentTarget(IntentAwareIterator* db_iter) = 0;
+  virtual Status SeekToCurrentTarget(IntentAwareIterator* db_iter) = 0;
 
  protected:
   const bool is_forward_scan_;
@@ -149,16 +150,16 @@ class DiscreteScanChoices : public ScanChoices {
     }
   }
 
-  CHECKED_STATUS DoneWithCurrentTarget() override;
-  CHECKED_STATUS SkipTargetsUpTo(const Slice& new_target) override;
-  CHECKED_STATUS SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
+  Status DoneWithCurrentTarget() override;
+  Status SkipTargetsUpTo(const Slice& new_target) override;
+  Status SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
 
  protected:
   // Utility function for (multi)key scans. Updates the target scan key by incrementing the option
   // index for one column. Will handle overflow by setting current column index to 0 and
   // incrementing the previous column instead. If it overflows at first column it means we are done,
   // so it clears the scan target idxs array.
-  CHECKED_STATUS IncrementScanTargetAtColumn(size_t start_col);
+  Status IncrementScanTargetAtColumn(size_t start_col);
 
   // Utility function for (multi)key scans to initialize the range portion of the current scan
   // target, scan target with the first option.
@@ -454,9 +455,9 @@ class HybridScanChoices : public ScanChoices {
                           doc_spec.range_bounds()) {
   }
 
-  CHECKED_STATUS SkipTargetsUpTo(const Slice& new_target) override;
-  CHECKED_STATUS DoneWithCurrentTarget() override;
-  CHECKED_STATUS SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
+  Status SkipTargetsUpTo(const Slice& new_target) override;
+  Status DoneWithCurrentTarget() override;
+  Status SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
 
  protected:
   // Utility function for (multi)key scans. Updates the target scan key by
@@ -465,7 +466,7 @@ class HybridScanChoices : public ScanChoices {
   // index to 0 and incrementing the previous column instead. If it overflows
   // at first column it means we are done, so it clears the scan target idxs
   // array.
-  CHECKED_STATUS IncrementScanTargetAtColumn(int start_col);
+  Status IncrementScanTargetAtColumn(int start_col);
 
  private:
   KeyBytes prev_scan_target_;
@@ -655,19 +656,15 @@ Status HybridScanChoices::SkipTargetsUpTo(const Slice& new_target) {
 // scan direction is also the next tuple in the filter space and start_col
 // is given as the last column
 Status HybridScanChoices::IncrementScanTargetAtColumn(int start_col) {
-
-  VLOG(2) << __PRETTY_FUNCTION__
-          << " Incrementing at " << start_col;
+  VLOG_WITH_FUNC(2) << "Incrementing at " << start_col;
 
   // Increment start col, move backwards in case of overflow.
   int col_idx = start_col;
   // lower and upper here are taken relative to the scan order
   auto &lower_extremal_vector = is_forward_scan_
-                          ? range_cols_scan_options_lower_
-                            : range_cols_scan_options_upper_;
+      ? range_cols_scan_options_lower_ : range_cols_scan_options_upper_;
   auto &upper_extremal_vector = is_forward_scan_
-                                ? range_cols_scan_options_upper_
-                                  : range_cols_scan_options_lower_;
+      ? range_cols_scan_options_upper_ : range_cols_scan_options_lower_;
   DocKeyDecoder t_decoder(current_scan_target_);
   RETURN_NOT_OK(t_decoder.DecodeToRangeGroup());
 
@@ -765,30 +762,29 @@ Status HybridScanChoices::DoneWithCurrentTarget() {
   // if this is a forward scan it doesn't matter what we do
   // if this is a backwards scan then dont clear current_scan_target and we
   // stay live
-  VLOG(2) << "After " << __PRETTY_FUNCTION__ << " current_scan_target_ is "
-          << DocKey::DebugSliceToString(current_scan_target_);
+  VLOG_WITH_FUNC(2)
+      << "Current_scan_target_ is " << DocKey::DebugSliceToString(current_scan_target_);
+  VLOG_WITH_FUNC(2) << "Moving on to next target";
 
-  VLOG(2) << __PRETTY_FUNCTION__ << " moving on to next target";
   DCHECK(!FinishedWithScanChoices());
 
   if (is_options_done_) {
-      // It could be possible that we finished all our options but are not
-      // done because we haven't hit the bound key yet. This would usually be
-      // the case if we are moving onto the next hash key where we will
-      // restart our range options.
-      const KeyBytes &bound_key = is_forward_scan_ ?
-                                    upper_doc_key_ : lower_doc_key_;
-      finished_ = bound_key.empty() ? false
-                    : is_forward_scan_
-                        == (current_scan_target_.CompareTo(bound_key) >= 0);
-      VLOG(4) << "finished_ = " << finished_;
+    // It could be possible that we finished all our options but are not
+    // done because we haven't hit the bound key yet. This would usually be
+    // the case if we are moving onto the next hash key where we will
+    // restart our range options.
+    const KeyBytes &bound_key = is_forward_scan_ ?
+                                  upper_doc_key_ : lower_doc_key_;
+    finished_ = bound_key.empty() ? false
+                  : is_forward_scan_
+                      == (current_scan_target_.CompareTo(bound_key) >= 0);
+    VLOG(4) << "finished_ = " << finished_;
   }
 
 
-  VLOG(4) << "current_scan_target_ is "
-          << DocKey::DebugSliceToString(current_scan_target_)
-          << " and prev_scan_target_ is "
-          << DocKey::DebugSliceToString(prev_scan_target_);
+  VLOG_WITH_FUNC(4)
+      << "current_scan_target_ is " << DocKey::DebugSliceToString(current_scan_target_)
+      << " and prev_scan_target_ is " << DocKey::DebugSliceToString(prev_scan_target_);
 
   // The below condition is either indicative of the special case
   // where IncrementScanTargetAtColumn didn't change the target due
@@ -801,8 +797,8 @@ Status HybridScanChoices::DoneWithCurrentTarget() {
   // In all other cases, IncrementScanTargetAtColumn has updated
   // current_scan_target_ to the new value that we want to seek to.
   // Hence, we shouldn't clear it in those cases
-  if ((prev_scan_target_ == current_scan_target_) || is_options_done_) {
-      current_scan_target_.Clear();
+  if (prev_scan_target_ == current_scan_target_ || is_options_done_) {
+    current_scan_target_.Clear();
   }
 
   return Status::OK();
@@ -812,7 +808,7 @@ Status HybridScanChoices::DoneWithCurrentTarget() {
 // current_scan_target_ and prev_scan_target_ (relevant in backwards
 // scans)
 Status HybridScanChoices::SeekToCurrentTarget(IntentAwareIterator* db_iter) {
-  VLOG(2) << __PRETTY_FUNCTION__ << " Advancing iterator towards target";
+  VLOG(2) << __func__ << ", pos: " << db_iter->DebugPosToString();
 
   if (!FinishedWithScanChoices()) {
     // if current_scan_target_ is valid we use it to determine
@@ -879,9 +875,9 @@ class RangeBasedScanChoices : public ScanChoices {
     }
   }
 
-  CHECKED_STATUS SkipTargetsUpTo(const Slice& new_target) override;
-  CHECKED_STATUS DoneWithCurrentTarget() override;
-  CHECKED_STATUS SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
+  Status SkipTargetsUpTo(const Slice& new_target) override;
+  Status DoneWithCurrentTarget() override;
+  Status SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
 
  private:
   std::vector<KeyEntryValue> lower_, upper_;
@@ -1246,8 +1242,8 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       has_next_status_ = dockey_sizes.status();
       return has_next_status_;
     }
-    row_hash_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->first);
-    row_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->second);
+    row_hash_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->hash_part_size);
+    row_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->doc_key_size);
 
     // e.g in cotable, row may point outside table bounds
     if (!DocKeyBelongsTo(row_key_, doc_read_context_.schema) ||
@@ -1257,8 +1253,8 @@ Result<bool> DocRowwiseIterator::HasNext() const {
     }
 
     // Prepare the DocKey to get the SubDocument. Trim the DocKey to contain just the primary key.
-    Slice sub_doc_key = row_key_;
-    VLOG(4) << " sub_doc_key part of iter_key_ is " << DocKey::DebugSliceToString(sub_doc_key);
+    Slice doc_key = row_key_;
+    VLOG(4) << " sub_doc_key part of iter_key_ is " << DocKey::DebugSliceToString(doc_key);
 
     bool is_static_column = IsNextStaticColumn();
     if (scan_choices_ && !is_static_column) {
@@ -1280,15 +1276,16 @@ Result<bool> DocRowwiseIterator::HasNext() const {
     }
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
-          db_iter_.get(), deadline_, doc_read_context_.schema_packing_storage);
-      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(sub_doc_key));
+          db_iter_.get(), deadline_, &projection_subkeys_,
+          doc_read_context_.schema_packing_storage);
+      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(doc_key));
       if (!ignore_ttl_) {
         doc_reader_->SetTableTtl(doc_read_context_.schema);
       }
     }
 
     row_ = SubDocument();
-    auto doc_found_res = doc_reader_->Get(sub_doc_key, &projection_subkeys_, &row_);
+    auto doc_found_res = doc_reader_->Get(doc_key, &row_);
     if (!doc_found_res.ok()) {
       has_next_status_ = doc_found_res.status();
       return has_next_status_;
@@ -1301,6 +1298,7 @@ Result<bool> DocRowwiseIterator::HasNext() const {
     }
     has_next_status_ = AdvanceIteratorToNextDesiredRow();
     RETURN_NOT_OK(has_next_status_);
+    VLOG(4) << __func__ << ", iter: " << db_iter_->valid();
   }
   row_ready_ = true;
   return true;
@@ -1313,7 +1311,7 @@ string DocRowwiseIterator::ToString() const {
 namespace {
 
 // Set primary key column values (hashed or range columns) in a QL row value map.
-CHECKED_STATUS SetQLPrimaryKeyColumnValues(const Schema& schema,
+Status SetQLPrimaryKeyColumnValues(const Schema& schema,
                                            const size_t begin_index,
                                            const size_t column_count,
                                            const char* column_type,
@@ -1409,7 +1407,7 @@ bool DocRowwiseIterator::LivenessColumnExists() const {
   return subdoc != nullptr && subdoc->value_type() != ValueEntryType::kInvalid;
 }
 
-CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) const {
+Status DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) const {
   if (db_iter_ == nullptr) {
     return STATUS(Corruption, "Iterator not initialized.");
   }

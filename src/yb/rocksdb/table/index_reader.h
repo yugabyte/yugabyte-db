@@ -84,7 +84,7 @@ class BinarySearchIndexReader : public IndexReader {
   // `BinarySearchIndexReader`.
   // On success, index_reader will be populated; otherwise it will remain
   // unmodified.
-  static CHECKED_STATUS Create(
+  static Status Create(
       RandomAccessFileReader* file, const Footer& footer, const BlockHandle& index_handle, Env* env,
       const ComparatorPtr& comparator, std::unique_ptr<IndexReader>* index_reader,
       const std::shared_ptr<yb::MemTracker>& mem_tracker);
@@ -130,7 +130,7 @@ class BinarySearchIndexReader : public IndexReader {
 // key.
 class HashIndexReader : public IndexReader {
  public:
-  static CHECKED_STATUS Create(
+  static Status Create(
       const SliceTransform* hash_key_extractor, const Footer& footer, RandomAccessFileReader* file,
       Env* env, const ComparatorPtr& comparator, const BlockHandle& index_handle,
       InternalIterator* meta_index_iter, std::unique_ptr<IndexReader>* index_reader,

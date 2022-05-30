@@ -75,11 +75,11 @@ class SemContext : public ProcessContext {
 
   //------------------------------------------------------------------------------------------------
   // Symbol table support.
-  CHECKED_STATUS MapSymbol(const MCString& name, PTColumnDefinition *entry);
-  CHECKED_STATUS MapSymbol(const MCString& name, PTAlterColumnDefinition *entry);
-  CHECKED_STATUS MapSymbol(const MCString& name, PTCreateTable *entry);
-  CHECKED_STATUS MapSymbol(const MCString& name, ColumnDesc *entry);
-  CHECKED_STATUS MapSymbol(const MCString& name, PTTypeField *entry);
+  Status MapSymbol(const MCString& name, PTColumnDefinition *entry);
+  Status MapSymbol(const MCString& name, PTAlterColumnDefinition *entry);
+  Status MapSymbol(const MCString& name, PTCreateTable *entry);
+  Status MapSymbol(const MCString& name, ColumnDesc *entry);
+  Status MapSymbol(const MCString& name, PTTypeField *entry);
 
   // Access functions to current processing symbol.
   SymbolEntry *current_processing_id() {
@@ -91,7 +91,7 @@ class SemContext : public ProcessContext {
 
   //------------------------------------------------------------------------------------------------
   // Load table schema into symbol table.
-  CHECKED_STATUS LookupTable(const client::YBTableName& name,
+  Status LookupTable(const client::YBTableName& name,
                              const YBLocation& loc,
                              bool write_table,
                              const PermissionType permission_type,
@@ -235,39 +235,39 @@ class SemContext : public ProcessContext {
 
   void set_void_primary_key_condition(bool val);
 
-  CHECKED_STATUS HasKeyspacePermission(const PermissionType permission,
+  Status HasKeyspacePermission(const PermissionType permission,
                                        const NamespaceName& keyspace_name);
 
   // Check whether the current role has the specified permission on the keyspace. Returns an
   // UNAUTHORIZED error message if not found.
-  CHECKED_STATUS CheckHasKeyspacePermission(const YBLocation& loc,
+  Status CheckHasKeyspacePermission(const YBLocation& loc,
                                             const PermissionType permission,
                                             const NamespaceName& keyspace_name);
 
   // Check whether the current role has the specified permission on the keyspace or table. Returns
   // an UNAUTHORIZED error message if not found.
-  CHECKED_STATUS CheckHasTablePermission(const YBLocation& loc,
+  Status CheckHasTablePermission(const YBLocation& loc,
                                          const PermissionType permission,
                                          const NamespaceName& keyspace_name,
                                          const TableName& table_name);
 
   // Convenience method.
-  CHECKED_STATUS CheckHasTablePermission(const YBLocation& loc,
+  Status CheckHasTablePermission(const YBLocation& loc,
                                          const PermissionType permission,
                                          client::YBTableName table_name);
 
   // Check whether the current role has the specified permission on the role. Returns an
   // UNAUTHORIZED error message if not found.
-  CHECKED_STATUS CheckHasRolePermission(const YBLocation& loc,
+  Status CheckHasRolePermission(const YBLocation& loc,
                                         const PermissionType permission,
                                         const RoleName& role_name);
 
   // Check whether the current role has the specified permission on 'ALL KEYSPACES'.
-  CHECKED_STATUS CheckHasAllKeyspacesPermission(const YBLocation& loc,
+  Status CheckHasAllKeyspacesPermission(const YBLocation& loc,
                                                 const PermissionType permission);
 
   // Check whether the current role has the specified permission on 'ALL ROLES'.
-  CHECKED_STATUS CheckHasAllRolesPermission(const YBLocation& loc,
+  Status CheckHasAllRolesPermission(const YBLocation& loc,
                                             const PermissionType permission);
 
   bool IsUncoveredIndexSelect() const;
@@ -275,7 +275,7 @@ class SemContext : public ProcessContext {
   bool IsPartialIndexSelect() const;
 
  private:
-  CHECKED_STATUS LoadSchema(const std::shared_ptr<client::YBTable>& table,
+  Status LoadSchema(const std::shared_ptr<client::YBTable>& table,
                             MCVector<ColumnDesc>* col_descs = nullptr);
 
   // Find symbol.

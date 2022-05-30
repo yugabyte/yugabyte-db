@@ -137,7 +137,7 @@ string PTTableProperty::name() const {
   return order_expr_->QLName();
 }
 
-CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
+Status PTTableProperty::Analyze(SemContext *sem_context) {
 
   if (property_type_ == PropertyType::kCoPartitionTable) {
     RETURN_NOT_OK(copartition_table_name_->AnalyzeName(sem_context, ObjectType::TABLE));
@@ -312,7 +312,7 @@ void PTTableProperty::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
 }
 
-CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
+Status PTTablePropertyListNode::Analyze(SemContext *sem_context) {
   // Set to ensure we don't have duplicate table properties.
   std::set<string> table_properties;
   std::unordered_map<string, PTTableProperty::SharedPtr> order_tnodes;
@@ -474,7 +474,7 @@ PTTablePropertyMap::PTTablePropertyMap(MemoryContext *memctx,
 PTTablePropertyMap::~PTTablePropertyMap() {
 }
 
-CHECKED_STATUS PTTablePropertyMap::Analyze(SemContext *sem_context) {
+Status PTTablePropertyMap::Analyze(SemContext *sem_context) {
   // Verify we have a valid property name in the lhs.
   const auto &property_name = lhs_->c_str();
   auto iterator = kPropertyDataTypes.find(property_name);

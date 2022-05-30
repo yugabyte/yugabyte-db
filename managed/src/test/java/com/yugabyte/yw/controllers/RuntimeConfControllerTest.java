@@ -252,7 +252,8 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   @Test
   @Parameters(method = "scopeAndPresetParams")
-  public void getConfig_universe_inherited(ScopeType scopeType, String presetIntervalValue) {
+  public void getConfig_universe_inherited(
+      ScopeType scopeType, String presetIntervalValue, String expectedIntervalValue) {
     UUID scopeUUID = getScopeUUIDForType(scopeType);
     if (!presetIntervalValue.isEmpty()) {
       setGCInterval(presetIntervalValue, scopeUUID);
@@ -260,13 +261,15 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     final String actualValue =
         internal_getConfig_universe_inherited(
             scopeType, presetIntervalValue, scopeUUID, GC_CHECK_INTERVAL_KEY);
-    compareToPresetValue(presetIntervalValue, actualValue, "\"1 hour\"");
+    compareToExpectedValue(expectedIntervalValue, actualValue, "\"1 hour\"");
   }
 
-  // Same test as above except the config is set as taskGC object with interval key embeded
+  // Same test as above except the config is set as external Script object with retention  key
+  // embeded
   @Test
-  @Parameters(method = "scopeAndPresetParams")
-  public void getConfig_universe_inherited_obj(ScopeType scopeType, String presetIntervalValue) {
+  @Parameters(method = "scopeAndPresetParamsObj")
+  public void getConfig_universe_inherited_obj(
+      ScopeType scopeType, String presetIntervalValue, String expectedIntervalValue) {
     UUID scopeUUID = getScopeUUIDForType(scopeType);
     String newRetention = "32 days";
     if (!presetIntervalValue.isEmpty()) {
@@ -276,7 +279,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
         internal_getConfig_universe_inherited(
             scopeType, presetIntervalValue, scopeUUID, EXT_SCRIPT_KEY);
     final Config configObj = ConfigFactory.parseString(actualObjValue);
-    compareToPresetValue(presetIntervalValue, configObj.getValue("schedule").render(), "\"\"");
+    compareToExpectedValue(expectedIntervalValue, configObj.getValue("schedule").render(), "\"\"");
   }
 
   private String internal_getConfig_universe_inherited(
@@ -306,7 +309,8 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     return configEntriesMap.get(checkKey);
   }
 
-  private void compareToPresetValue(String presetIntervalValue, String value, String defaultValue) {
+  private void compareToExpectedValue(
+      String presetIntervalValue, String value, String defaultValue) {
     if (presetIntervalValue.isEmpty()) {
       assertEquals(defaultValue, value);
     } else {
@@ -330,14 +334,30 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   public Object[] scopeAndPresetParams() {
     return new Object[] {
-      new Object[] {ScopeType.GLOBAL, ""},
-      new Object[] {ScopeType.CUSTOMER, ""},
-      new Object[] {ScopeType.PROVIDER, ""},
-      new Object[] {ScopeType.UNIVERSE, ""},
-      new Object[] {ScopeType.GLOBAL, "\"33 days\""},
-      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\""},
-      new Object[] {ScopeType.PROVIDER, "\"22 hours\""},
-      new Object[] {ScopeType.UNIVERSE, "\"11 minutes\""},
+      new Object[] {ScopeType.GLOBAL, "", ""},
+      new Object[] {ScopeType.CUSTOMER, "", ""},
+      new Object[] {ScopeType.PROVIDER, "", ""},
+      new Object[] {ScopeType.UNIVERSE, "", ""},
+      new Object[] {ScopeType.GLOBAL, "\"33 days\"", "\"33 days\""},
+      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "\"44 seconds\""},
+      new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "\"22 hours\""},
+      // Set without escape quotes should be allowed for string objects backward compatibility
+      // We will Json stringify response for proper escaping during "GET"
+      new Object[] {ScopeType.UNIVERSE, "11\"", "\"11\\\"\""},
+    };
+  }
+
+  public Object[] scopeAndPresetParamsObj() {
+    return new Object[] {
+      new Object[] {ScopeType.GLOBAL, "", ""},
+      new Object[] {ScopeType.CUSTOMER, "", ""},
+      new Object[] {ScopeType.PROVIDER, "", ""},
+      new Object[] {ScopeType.UNIVERSE, "", ""},
+      new Object[] {ScopeType.GLOBAL, "\"33 days\"", "\"33 days\""},
+      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "\"44 seconds\""},
+      new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "\"22 hours\""},
+      // Set without escape quotes should not be allowed within a json object
+      new Object[] {ScopeType.UNIVERSE, "\"11\\\"\"", "\"11\\\"\""},
     };
   }
 }

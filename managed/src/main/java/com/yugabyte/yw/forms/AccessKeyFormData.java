@@ -38,4 +38,9 @@ public class AccessKeyFormData {
   public boolean setUpChrony = false;
 
   public List<String> ntpServers;
+
+  // Indicates whether the provider was created before or after PLAT-3009.
+  // True if it was created after, else it was created before.
+  // This should be true so that all new providers are marked as true by default.
+  public boolean showSetUpChrony = true;
 }

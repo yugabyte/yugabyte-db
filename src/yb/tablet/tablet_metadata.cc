@@ -400,7 +400,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
 }
 
 template <class TablesMap>
-CHECKED_STATUS MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
+Status MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
                                  const TablesMap& tables) {
   std::string table_name = "<unknown_table_name>";
   if (!table_id.empty()) {
@@ -552,7 +552,8 @@ RaftGroupMetadata::RaftGroupMetadata(
       wal_dir_(wal_dir),
       tablet_data_state_(data.tablet_data_state),
       colocated_(data.colocated),
-      cdc_min_replicated_index_(std::numeric_limits<int64_t>::max()) {
+      cdc_min_replicated_index_(std::numeric_limits<int64_t>::max()),
+      cdc_sdk_min_checkpoint_op_id_(OpId::Invalid()) {
   CHECK(data.table_info->schema().has_column_ids());
   CHECK_GT(data.table_info->schema().num_key_columns(), 0);
   kv_store_.tables.emplace(primary_table_id_, data.table_info);
@@ -624,6 +625,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
       tombstone_last_logged_opid_ = OpId();
     }
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
+    cdc_sdk_min_checkpoint_op_id_ = OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id());
     is_under_twodc_replication_ = superblock.is_under_twodc_replication();
     hidden_ = superblock.hidden();
     auto restoration_hybrid_time = HybridTime::FromPB(superblock.restoration_hybrid_time());
@@ -730,6 +732,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_primary_table_id(primary_table_id_);
   pb.set_colocated(colocated_);
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
+  cdc_sdk_min_checkpoint_op_id_.ToPB(pb.mutable_cdc_sdk_min_checkpoint_op_id());
   pb.set_is_under_twodc_replication(is_under_twodc_replication_);
   pb.set_hidden(hidden_);
   if (restoration_hybrid_time_) {
@@ -852,7 +855,7 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
   }
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
-  auto [iter, inserted] = tables.emplace(table_id, new_table_info);
+  auto[iter, inserted] = tables.emplace(table_id, new_table_info);
   if (!inserted) {
     const auto& existing_table = *iter->second;
     VLOG_WITH_PREFIX(1) << "Updating to Schema version " << schema_version
@@ -964,6 +967,19 @@ Status RaftGroupMetadata::set_cdc_min_replicated_index(int64 cdc_min_replicated_
 int64_t RaftGroupMetadata::cdc_min_replicated_index() const {
   std::lock_guard<MutexType> lock(data_mutex_);
   return cdc_min_replicated_index_;
+}
+
+OpId RaftGroupMetadata::cdc_sdk_min_checkpoint_op_id() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return cdc_sdk_min_checkpoint_op_id_;
+}
+
+Status RaftGroupMetadata::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id) {
+  {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
+  }
+  return Flush();
 }
 
 Status RaftGroupMetadata::SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication) {
@@ -1138,7 +1154,7 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::CotablePacking(
   auto res = GetTableInfo(cotable_id.ToHexString());
   if (!res.ok()) {
     return STATUS_FORMAT(
-        Corruption, "Cannot find table info for: $0, raft group id: $1",
+        NotFound, "Cannot find table info for: $0, raft group id: $1",
         cotable_id, raft_group_id_);
   }
   return TableInfo::Packing(*res, schema_version, history_cutoff);
@@ -1149,7 +1165,7 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::ColocationPacking(
   auto it = kv_store_.colocation_to_table.find(colocation_id);
   if (it == kv_store_.colocation_to_table.end()) {
     return STATUS_FORMAT(
-        Corruption, "Cannot find table info for colocation: $0, raft group id: $1",
+        NotFound, "Cannot find table info for colocation: $0, raft group id: $1",
         colocation_id, raft_group_id_);
   }
   return TableInfo::Packing(it->second, schema_version, history_cutoff);
@@ -1203,7 +1219,7 @@ namespace {
 // Each MigrateSuperblockForDXXXX could be removed after all YugabyteDB installations are
 // upgraded to have revision DXXXX.
 
-CHECKED_STATUS MigrateSuperblockForD5900(RaftGroupReplicaSuperBlockPB* superblock) {
+Status MigrateSuperblockForD5900(RaftGroupReplicaSuperBlockPB* superblock) {
   // In previous version of superblock format we stored primary table metadata in superblock's
   // top-level fields (deprecated table_* and other). TableInfo objects were stored inside
   // RaftGroupReplicaSuperBlockPB.tables.
@@ -1311,6 +1327,10 @@ const std::string& RaftGroupMetadata::indexed_table_id(const TableId& table_id) 
       primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
   const auto* index_info = table_info->index_info.get();
   return index_info ? index_info->indexed_table_id() : kEmptyString;
+}
+
+bool RaftGroupMetadata::is_index(const TableId& table_id) const {
+  return !indexed_table_id(table_id).empty();
 }
 
 bool RaftGroupMetadata::is_local_index(const TableId& table_id) const {

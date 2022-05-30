@@ -23,6 +23,8 @@ public enum TaskType {
 
   CreateKubernetesUniverse("CreateKubernetesUniverse"),
 
+  ReadOnlyKubernetesClusterCreate("ReadOnlyKubernetesClusterCreate"),
+
   DestroyUniverse("DestroyUniverse"),
 
   PauseUniverse("PauseUniverse"),
@@ -316,7 +318,9 @@ public enum TaskType {
 
   CreateTableSpacesInUniverse("CreateTableSpacesInUniverse"),
 
-  CreateTableSpaces("subtasks.CreateTableSpaces");
+  CreateTableSpaces("subtasks.CreateTableSpaces"),
+
+  ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade");
 
   private String relativeClassPath;
 

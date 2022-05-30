@@ -384,6 +384,9 @@ public class Audit extends Model {
     @EnumValue("Get Universe Resources")
     GetUniverseResources,
 
+    @EnumValue("Third-party Software Upgrade")
+    ThirdpartySoftwareUpgrade,
+
     @EnumValue("Create TableSpaces")
     CreateTableSpaces,
   }

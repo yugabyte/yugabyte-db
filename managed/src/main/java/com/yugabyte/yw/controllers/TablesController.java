@@ -13,7 +13,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
@@ -94,6 +96,9 @@ public class TablesController extends AuthenticatedController {
 
   private static final String PARTITION_QUERY_PATH = "queries/fetch_table_partitions.sql";
 
+  private static final String MASTER_LEADER_TIMEOUT_CONFIG_PATH =
+      "yb.wait_for_master_leader_timeout";
+
   Commissioner commissioner;
 
   private final YBClientService ybService;
@@ -106,6 +111,8 @@ public class TablesController extends AuthenticatedController {
 
   private final Environment environment;
 
+  private final Config config;
+
   @Inject
   public TablesController(
       Commissioner commissioner,
@@ -113,6 +120,7 @@ public class TablesController extends AuthenticatedController {
       MetricQueryHelper metricQueryHelper,
       CustomerConfigService customerConfigService,
       NodeUniverseManager nodeUniverseManager,
+      Config config,
       Environment environment) {
     this.commissioner = commissioner;
     this.ybService = service;
@@ -120,6 +128,7 @@ public class TablesController extends AuthenticatedController {
     this.customerConfigService = customerConfigService;
     this.nodeUniverseManager = nodeUniverseManager;
     this.environment = environment;
+    this.config = config;
   }
 
   @ApiOperation(
@@ -378,6 +387,7 @@ public class TablesController extends AuthenticatedController {
     ListTablesResponse response;
     try {
       client = ybService.getClient(masterAddresses, certificate);
+      checkLeaderMasterAvailability(client);
       response = client.getTablesList();
     } catch (Exception e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
@@ -388,6 +398,15 @@ public class TablesController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Table list can not be empty");
     }
     return response;
+  }
+
+  private void checkLeaderMasterAvailability(YBClient client) {
+    long waitForLeaderTimeoutMs = config.getDuration(MASTER_LEADER_TIMEOUT_CONFIG_PATH).toMillis();
+    try {
+      client.waitForMasterLeader(waitForLeaderTimeoutMs);
+    } catch (Exception e) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Could not find the master leader");
+    }
   }
 
   /**

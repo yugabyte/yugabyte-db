@@ -170,7 +170,7 @@ class ThreadPoolBuilder {
   const MonoDelta& idle_timeout() const { return idle_timeout_; }
 
   // Instantiate a new ThreadPool with the existing builder arguments.
-  CHECKED_STATUS Build(std::unique_ptr<ThreadPool>* pool) const;
+  Status Build(std::unique_ptr<ThreadPool>* pool) const;
 
  private:
   friend class ThreadPool;
@@ -233,35 +233,35 @@ class ThreadPool {
   void Shutdown();
 
   // Submit a function using the yb Closure system.
-  CHECKED_STATUS SubmitClosure(const Closure& task);
+  Status SubmitClosure(const Closure& task);
 
   // Submit a function binded using std::bind(&FuncName, args...)
-  CHECKED_STATUS SubmitFunc(const std::function<void()>& func);
-  CHECKED_STATUS SubmitFunc(std::function<void()>&& func);
+  Status SubmitFunc(const std::function<void()>& func);
+  Status SubmitFunc(std::function<void()>&& func);
 
-  CHECKED_STATUS SubmitFunc(std::function<void()>& func) { // NOLINT
+  Status SubmitFunc(std::function<void()>& func) { // NOLINT
     const auto& const_func = func;
     return SubmitFunc(const_func);
   }
 
   template <class F>
-  CHECKED_STATUS SubmitFunc(F&& f) {
+  Status SubmitFunc(F&& f) {
     return Submit(std::make_shared<RunnableImpl<F>>(std::forward<F>(f)));
   }
 
   template <class F>
-  CHECKED_STATUS SubmitFunc(const F& f) {
+  Status SubmitFunc(const F& f) {
     return Submit(std::make_shared<RunnableImpl<F>>(f));
   }
 
   template <class F>
-  CHECKED_STATUS SubmitFunc(F& f) { // NOLINT
+  Status SubmitFunc(F& f) { // NOLINT
     const auto& const_f = f;
     return SubmitFunc(const_f);
   }
 
   // Submit a Runnable class
-  CHECKED_STATUS Submit(const std::shared_ptr<Runnable>& task);
+  Status Submit(const std::shared_ptr<Runnable>& task);
 
   // Wait until all the tasks are completed.
   void Wait();
@@ -302,13 +302,13 @@ class ThreadPool {
   explicit ThreadPool(const ThreadPoolBuilder& builder);
 
   // Initialize the thread pool by starting the minimum number of threads.
-  CHECKED_STATUS Init();
+  Status Init();
 
   // Dispatcher responsible for dequeueing and executing the tasks
   void DispatchThread(bool permanent);
 
   // Create new thread. Required that lock_ is held.
-  CHECKED_STATUS CreateThreadUnlocked();
+  Status CreateThreadUnlocked();
 
  private:
   FRIEND_TEST(TestThreadPool, TestThreadPoolWithNoMinimum);
@@ -520,7 +520,7 @@ class TaskRunner {
  public:
   TaskRunner() = default;
 
-  CHECKED_STATUS Init(int concurrency);
+  Status Init(int concurrency);
 
   template <class F>
   void Submit(F&& f) {
@@ -534,7 +534,7 @@ class TaskRunner {
     }
   }
 
-  CHECKED_STATUS Wait();
+  Status Wait();
 
  private:
   void CompleteTask(const Status& status);

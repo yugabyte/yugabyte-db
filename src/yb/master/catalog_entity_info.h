@@ -267,7 +267,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void GetLeaderStepDownFailureTimes(MonoTime forget_failures_before,
                                      LeaderStepDownFailureTimes* dest);
 
-  CHECKED_STATUS CheckRunning() const;
+  Status CheckRunning() const;
 
   bool InitiateElection() {
     bool expected = false;
@@ -282,7 +282,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   ~TabletInfo();
   TSDescriptor* GetLeaderUnlocked() const REQUIRES_SHARED(lock_);
-  CHECKED_STATUS GetLeaderNotFoundStatus() const REQUIRES_SHARED(lock_);
+  Status GetLeaderNotFoundStatus() const REQUIRES_SHARED(lock_);
 
   const TabletId tablet_id_;
   const scoped_refptr<TableInfo> table_;
@@ -401,10 +401,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   const NamespaceId namespace_id() const;
   const NamespaceName namespace_name() const;
 
-  const CHECKED_STATUS GetSchema(Schema* schema) const;
+  const Status GetSchema(Schema* schema) const;
 
   // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   bool colocated() const;
+
+  std::string matview_pg_table_id() const;
+  // True if the table is a materialized view.
+  bool is_matview() const;
 
   // Return the table's ID. Does not require synchronization.
   virtual const std::string& id() const override { return table_id_; }
@@ -499,7 +503,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return is_backfilling_;
   }
 
-  CHECKED_STATUS SetIsBackfilling();
+  Status SetIsBackfilling();
 
   void ClearIsBackfilling() {
     std::lock_guard<decltype(lock_)> l(lock_);
@@ -513,7 +517,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void SetCreateTableErrorStatus(const Status& status);
 
   // Get the Status of the last error from the current CreateTable.
-  CHECKED_STATUS GetCreateTableErrorStatus() const;
+  Status GetCreateTableErrorStatus() const;
 
   std::size_t NumLBTasks() const;
   std::size_t NumTasks() const;
@@ -548,6 +552,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Set the tablespace to use during table creation. This will determine
   // where the tablets of the newly created table should reside.
   void SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id);
+
+  void SetMatview();
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;

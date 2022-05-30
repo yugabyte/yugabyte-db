@@ -677,4 +677,18 @@ public class CommonUtils {
 
     return ImmutableMultiset.copyOf(x).equals(ImmutableMultiset.copyOf(y));
   }
+
+  /**
+   * Generates log message containing state information of universe and running status of scheduler.
+   */
+  public static String generateStateLogMsg(Universe universe, boolean alreadyRunning) {
+    String stateLogMsg =
+        String.format(
+            "alreadyRunning={} backupInProgress={} updateInProgress={} universePaused={}",
+            alreadyRunning,
+            universe.getUniverseDetails().backupInProgress,
+            universe.getUniverseDetails().updateInProgress,
+            universe.getUniverseDetails().universePaused);
+    return stateLogMsg;
+  }
 }

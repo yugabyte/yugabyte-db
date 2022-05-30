@@ -1182,12 +1182,17 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
   rpc::RpcController rpc;
   cdc::IsBootstrapRequiredRequestPB req;
   cdc::IsBootstrapRequiredResponsePB resp;
-  req.set_stream_id(stream_resp.streams(0).stream_id());
+  auto stream_id = stream_resp.streams(0).stream_id();
+  req.set_stream_id(stream_id);
   req.add_tablet_ids(tablet_ids[0]);
 
   ASSERT_OK(producer_cdc_proxy->IsBootstrapRequired(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error());
   ASSERT_FALSE(resp.bootstrap_required());
+
+  auto should_bootstrap = ASSERT_RESULT(producer_cluster_.client_->IsBootstrapRequired(
+                                          producer_tables[0]->id(), stream_id));
+  ASSERT_FALSE(should_bootstrap);
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
@@ -1225,13 +1230,18 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
   // Write some data.
   WriteWorkload(0, 50, &producer_cluster_, table->name());
 
+  auto tablet_ids = ListTabletIdsForTable(producer_cluster(), table->id());
+  ASSERT_EQ(tablet_ids.size(), 1);
+  auto tablet_to_flush = *tablet_ids.begin();
+
   std::unique_ptr<client::YBClient> client;
   std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
   client = ASSERT_RESULT(consumer_cluster()->CreateClient());
   producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
       &client->proxy_cache(),
       HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
-  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+  ASSERT_OK(WaitFor([this, tablet_to_flush]() -> Result<bool> {
+    LOG(INFO) << "Cleaning tablet logs";
     RETURN_NOT_OK(producer_cluster()->CleanTabletLogs());
     auto leaders = ListTabletPeers(producer_cluster(), ListPeersFilter::kLeaders);
     if (leaders.empty()) {
@@ -1240,10 +1250,13 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
     // locate the leader with the expected logs
     tablet::TabletPeerPtr tablet_peer = leaders.front();
     for (auto leader : leaders) {
-      if (leader->GetLatestLogEntryOpId().index == 51) {
+      LOG(INFO) << leader->tablet_id() << " @OpId " << leader->GetLatestLogEntryOpId().index;
+      if (leader->tablet_id() == tablet_to_flush) {
         tablet_peer = leader;
+        break;
       }
     }
+    SCHECK(tablet_peer, InternalError, "Missing tablet peer with the WriteWorkload");
 
     RETURN_NOT_OK(producer_cluster()->FlushTablets());
     RETURN_NOT_OK(producer_cluster()->CleanTabletLogs());
@@ -1261,35 +1274,35 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
   // locate the leader with the expected logs
   tablet::TabletPeerPtr tablet_peer = leaders.front();
   for (auto leader : leaders) {
-    if (leader->GetLatestLogEntryOpId().index == 51) {
+    if (leader->tablet_id() == tablet_to_flush) {
       tablet_peer = leader;
+      break;
     }
   }
 
-  // Setup replication.
-  FLAGS_check_bootstrap_required = false;
-  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
-                                     kUniverseId, producer_tables));
-  // Verify everything is setup correctly.
-  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
-      &get_universe_replication_resp));
-
-
-  master::ListCDCStreamsResponsePB stream_resp;
-  ASSERT_OK(GetCDCStreamForTable(table->id(), &stream_resp));
-
+  // IsBootstrapRequired for this specific tablet should fail.
   rpc::RpcController rpc;
   cdc::IsBootstrapRequiredRequestPB req;
   cdc::IsBootstrapRequiredResponsePB resp;
-  req.set_stream_id(stream_resp.streams(0).stream_id());
   req.add_tablet_ids(tablet_peer->log()->tablet_id());
 
   ASSERT_OK(producer_cdc_proxy->IsBootstrapRequired(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error());
   ASSERT_TRUE(resp.bootstrap_required());
 
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  // The high level API should also fail.
+  auto should_bootstrap = ASSERT_RESULT(producer_client()->IsBootstrapRequired(table->id()));
+  ASSERT_TRUE(should_bootstrap);
+
+  // Setup replication should fail if this check is enabled.
+  FLAGS_check_bootstrap_required = true;
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+                                     kUniverseId, producer_tables));
+  master::IsSetupUniverseReplicationDoneResponsePB is_resp;
+  ASSERT_OK(VerifyUniverseReplicationFailed(consumer_cluster(), consumer_client(),
+                                            kUniverseId, &is_resp));
+  ASSERT_TRUE(is_resp.has_replication_error());
+  ASSERT_TRUE(StatusFromPB(is_resp.replication_error()).IsIllegalState());
 }
 
 // TODO adapt rest of twodc-test.cc tests.
@@ -1582,7 +1595,7 @@ void PrepareSetCheckpointRequest(
   set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_index(0);
 }
 
-CHECKED_STATUS SetInitialCheckpoint(const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
+Status SetInitialCheckpoint(const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
     YBClient* client,
     const CDCStreamId& stream_id,
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {

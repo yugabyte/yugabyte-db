@@ -280,6 +280,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListTables);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
+YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletLocations);
@@ -305,6 +306,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCDBStreamInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateCDCStream);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsBootstrapRequired);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
 
 YBClient::Data::Data()
@@ -1071,7 +1073,7 @@ Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
               alter_name, table_id, _1, _2));
 }
 
-CHECKED_STATUS YBClient::Data::FlushTablesHelper(YBClient* client,
+Status YBClient::Data::FlushTablesHelper(YBClient* client,
                                                 const CoarseTimePoint deadline,
                                                 const FlushTablesRequestPB& req) {
   FlushTablesResponsePB resp;
@@ -1091,7 +1093,7 @@ CHECKED_STATUS YBClient::Data::FlushTablesHelper(YBClient* client,
   return Status::OK();
 }
 
-CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
+Status YBClient::Data::FlushTables(YBClient* client,
                                            const vector<YBTableName>& table_names,
                                            bool add_indexes,
                                            const CoarseTimePoint deadline,
@@ -1106,7 +1108,7 @@ CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
   return FlushTablesHelper(client, deadline, req);
 }
 
-CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
+Status YBClient::Data::FlushTables(YBClient* client,
                                            const vector<TableId>& table_ids,
                                            bool add_indexes,
                                            const CoarseTimePoint deadline,
@@ -2384,6 +2386,22 @@ Status YBClient::Data::ValidateReplicationInfo(
   }
 
   return Status::OK();
+}
+
+Result<bool> YBClient::Data::CheckIfPitrActive(CoarseTimePoint deadline) {
+  CheckIfPitrActiveRequestPB req;
+  CheckIfPitrActiveResponsePB resp;
+
+  Status status = SyncLeaderMasterRpc(
+      deadline, req, &resp, "CheckIfPitrActive",
+      &master::MasterAdminProxy::CheckIfPitrActiveAsync);
+  RETURN_NOT_OK(status);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return resp.is_pitr_active();
 }
 
 HostPort YBClient::Data::leader_master_hostport() const {

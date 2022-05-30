@@ -82,6 +82,16 @@ YB_STRONGLY_TYPED_BOOL(HybridTimeRequired)
 // doc key, but could be used during read, for instance kLowest and kHighest.
 YB_STRONGLY_TYPED_BOOL(AllowSpecial)
 
+// Key in DocDB is named - SubDocKey. It consist of DocKey (i.e. row identifier) and
+// subkeys (i.e. column id + possible sub values).
+// DocKey consists of hash part followed by range part.
+// hash_part_size - size of hash part of the key.
+// doc_key_size - size of hash part + range part of the key.
+struct DocKeySizes {
+  size_t hash_part_size;
+  size_t doc_key_size;
+};
+
 class DocKey {
  public:
   // Constructs an empty document key with no hash component.
@@ -179,7 +189,7 @@ class DocKey {
   // Decodes a document key from the given RocksDB key.
   // slice (in/out) - a slice corresponding to a RocksDB key. Any consumed bytes are removed.
   // part_to_decode specifies which part of key to decode.
-  CHECKED_STATUS DecodeFrom(
+  Status DecodeFrom(
       Slice* slice,
       DocKeyPart part_to_decode = DocKeyPart::kWholeDocKey,
       AllowSpecial allow_special = AllowSpecial::kFalse);
@@ -192,7 +202,7 @@ class DocKey {
       AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Splits given RocksDB key into vector of slices that forms range_group of document key.
-  static CHECKED_STATUS PartiallyDecode(Slice* slice,
+  static Status PartiallyDecode(Slice* slice,
                                         boost::container::small_vector_base<Slice>* out);
 
   // Decode just the hash code of a DocKey.
@@ -205,12 +215,12 @@ class DocKey {
   static Result<std::pair<size_t, bool>> EncodedSizeAndHashPresent(Slice slice, DocKeyPart part);
 
   // Returns size of encoded hash part and whole part of DocKey.
-  static Result<std::pair<size_t, size_t>> EncodedHashPartAndDocKeySizes(
+  static Result<DocKeySizes> EncodedHashPartAndDocKeySizes(
       Slice slice, AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Decode the current document key from the given slice, but expect all bytes to be consumed, and
   // return an error status if that is not the case.
-  CHECKED_STATUS FullyDecodeFrom(const Slice& slice);
+  Status FullyDecodeFrom(const Slice& slice);
 
   // Converts the document key to a human-readable representation.
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
@@ -285,7 +295,7 @@ class DocKey {
   friend class DecodeFromCallback;
 
   template<class Callback>
-  static CHECKED_STATUS DoDecode(DocKeyDecoder* decoder,
+  static Status DoDecode(DocKeyDecoder* decoder,
                                  DocKeyPart part_to_decode,
                                  AllowSpecial allow_special,
                                  const Callback& callback);
@@ -395,12 +405,12 @@ class DocKeyDecoder {
 
   Result<bool> DecodeHashCode(AllowSpecial allow_special);
 
-  CHECKED_STATUS DecodeKeyEntryValue(
+  Status DecodeKeyEntryValue(
       KeyEntryValue* out = nullptr, AllowSpecial allow_special = AllowSpecial::kFalse);
 
-  CHECKED_STATUS DecodeKeyEntryValue(AllowSpecial allow_special);
+  Status DecodeKeyEntryValue(AllowSpecial allow_special);
 
-  CHECKED_STATUS ConsumeGroupEnd();
+  Status ConsumeGroupEnd();
 
   bool GroupEnded() const;
 
@@ -416,7 +426,7 @@ class DocKeyDecoder {
     return &input_;
   }
 
-  CHECKED_STATUS DecodeToRangeGroup();
+  Status DecodeToRangeGroup();
 
  private:
   Slice input_;
@@ -512,7 +522,7 @@ class SubDocKey {
     AppendSubKeysAndMaybeHybridTime(subkeys_and_maybe_hybrid_time...);
   }
 
-  CHECKED_STATUS FromDocPath(const DocPath& doc_path);
+  Status FromDocPath(const DocPath& doc_path);
 
   // Return the subkeys within this SubDocKey
   const std::vector<KeyEntryValue>& subkeys() const {
@@ -576,20 +586,20 @@ class SubDocKey {
   // @param allow_special
   //     Whether it is allowed to have special value types in slice, that are used during seek.
   //     If such value type is found, decoding is stopped w/o error.
-  CHECKED_STATUS DecodeFrom(Slice* slice,
+  Status DecodeFrom(Slice* slice,
                             HybridTimeRequired require_hybrid_time = HybridTimeRequired::kTrue,
                             AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Similar to DecodeFrom, but requires that the entire slice is decoded, and thus takes a const
   // reference to a slice. This still respects the require_hybrid_time parameter, but in case a
   // hybrid_time is omitted, we don't allow any extra bytes to be present in the slice.
-  CHECKED_STATUS FullyDecodeFrom(
+  Status FullyDecodeFrom(
       const Slice& slice,
       HybridTimeRequired hybrid_time_required = HybridTimeRequired::kTrue);
 
   // Splits given RocksDB key into vector of slices that forms range_group of document key and
   // hybrid_time.
-  static CHECKED_STATUS PartiallyDecode(Slice* slice,
+  static Status PartiallyDecode(Slice* slice,
                                         boost::container::small_vector_base<Slice>* out);
 
   // Splits the given RocksDB sub key into a vector of slices that forms the range group of document
@@ -606,7 +616,7 @@ class SubDocKey {
   // encoded_length(hash_value, h1, h2, r1)
   // encoded_length(hash_value, h1, h2, r1, r2)
   // encoded_length(hash_value, h1, h2, r1, r2, s1) <------- (includes kGroupEnd of the range part).
-  static CHECKED_STATUS DecodePrefixLengths(
+  static Status DecodePrefixLengths(
       Slice slice, boost::container::small_vector_base<size_t>* out);
 
   // Fills out with ends of SubDocKey components.  First item in out will be size of ID part
@@ -641,7 +651,7 @@ class SubDocKey {
   //
   // If out is not empty, then it will be interpreted as partial result for this decoding operation
   // and the appropriate prefix will be skipped.
-  static CHECKED_STATUS DecodeDocKeyAndSubKeyEnds(
+  static Status DecodeDocKeyAndSubKeyEnds(
       Slice slice, boost::container::small_vector_base<size_t>* out);
 
   // Attempts to decode a subkey at the beginning of the given slice, consuming the corresponding
@@ -649,7 +659,7 @@ class SubDocKey {
   // empty or encountering an encoded hybrid time.
   static Result<bool> DecodeSubkey(Slice* slice);
 
-  CHECKED_STATUS FullyDecodeFromKeyWithOptionalHybridTime(const Slice& slice);
+  Status FullyDecodeFromKeyWithOptionalHybridTime(const Slice& slice);
 
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
   static std::string DebugSliceToString(Slice slice);

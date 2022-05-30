@@ -226,6 +226,7 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 	HandleYBStatus(YBCPgNewInsert(dboid,
 	                              YbGetStorageRelid(rel),
 	                              is_single_row_txn,
+	                              YBCIsRegionLocal(rel),
 	                              &insert_stmt));
 
 	/* Get the ybctid for the tuple and bind to statement */
@@ -485,6 +486,7 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 	HandleYBStatus(YBCPgNewInsert(dboid,
 								  relid,
 								  is_non_distributed_txn_write,
+								  YBCIsRegionLocal(index),
 								  &insert_stmt));
 
 	callback(insert_stmt, indexstate, index, values, isnull,
@@ -537,6 +539,7 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate,
 	HandleYBStatus(YBCPgNewDelete(dboid,
 								  YbGetStorageRelid(rel),
 								  estate->yb_es_is_single_row_modify_txn,
+								  YBCIsRegionLocal(rel),
 								  &delete_stmt));
 
 	/*
@@ -684,6 +687,7 @@ void YBCExecuteDeleteIndex(Relation index,
 	HandleYBStatus(YBCPgNewDelete(dboid,
 								  relid,
 								  false /* is_single_row_txn */,
+								  YBCIsRegionLocal(index),
 								  &delete_stmt));
 
 	callback(delete_stmt, indexstate, index, values, isnull,
@@ -733,6 +737,7 @@ bool YBCExecuteUpdate(Relation rel,
 	HandleYBStatus(YBCPgNewUpdate(dboid,
 								  relid,
 								  estate->yb_es_is_single_row_modify_txn,
+								  YBCIsRegionLocal(rel),
 								  &update_stmt));
 
 	/*
@@ -976,6 +981,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	HandleYBStatus(YBCPgNewDelete(dboid,
 								  relid,
 								  false /* is_single_row_txn */,
+								  YBCIsRegionLocal(rel),
 								  &delete_stmt));
 
 	/* Bind ybctid to identify the current row. */
@@ -1017,6 +1023,7 @@ void YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple, 
 	HandleYBStatus(YBCPgNewUpdate(dboid,
 								  relid,
 								  false /* is_single_row_txn */,
+								  YBCIsRegionLocal(rel),
 								  &update_stmt));
 
 	AttrNumber minattr = YBGetFirstLowInvalidAttributeNumber(rel);

@@ -57,7 +57,6 @@ import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
-import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -235,9 +234,6 @@ public class NodeManagerTest extends FakeDBApplication {
     Iterator<NodeDetails> iter = universe.getNodes().iterator();
     if (iter.hasNext()) {
       params.nodeUuid = iter.next().nodeUuid;
-    }
-    if (params.getProvider().getCloudCode() == CloudType.onprem) {
-      setupNodeInstance(testData, params);
     }
     params.universeUUID = universe.universeUUID;
     params.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
@@ -843,6 +839,11 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         }
 
+        if (configureParams.ybSoftwareVersion != null) {
+          expectedCommand.add("--num_releases_to_keep");
+          expectedCommand.add("3");
+        }
+
         Map<String, String> gflags = new HashMap<>(configureParams.gflags);
 
         if (configureParams.type == Everything) {
@@ -1039,6 +1040,8 @@ public class NodeManagerTest extends FakeDBApplication {
         ChangeInstanceType.Params citTaskParams = (ChangeInstanceType.Params) params;
         expectedCommand.add("--instance_type");
         expectedCommand.add(citTaskParams.instanceType);
+        expectedCommand.add("--pg_max_mem_mb");
+        expectedCommand.add("0");
         break;
       case Transfer_XCluster_Certs:
         TransferXClusterCerts.Params txccTaskParams = (TransferXClusterCerts.Params) params;
@@ -3418,26 +3421,6 @@ public class NodeManagerTest extends FakeDBApplication {
       assertFalse(
           currentArgs.toString() + " should not contain " + absent, k2v.containsKey(absent));
     }
-  }
-
-  private void setupNodeInstance(TestData testData, NodeTaskParams params) {
-    NodeInstance testDataNodeInstance = testData.node;
-    NodeInstanceData testDataInstanceData = testDataNodeInstance.getDetails();
-    NodeInstanceData details = new NodeInstanceData();
-    details.instanceName = testDataNodeInstance.getInstanceName();
-    details.ip = testDataInstanceData.ip;
-    details.nodeName = testDataNodeInstance.getNodeName();
-    details.instanceType = testDataNodeInstance.getInstanceTypeCode();
-    details.zone = testDataInstanceData.zone;
-    NodeInstance nodeInstance = new NodeInstance();
-    nodeInstance.setDetails(testDataInstanceData);
-    nodeInstance.setNodeName(params.getNodeName());
-    nodeInstance.setInstanceName(testDataNodeInstance.getInstanceName());
-    nodeInstance.setInstanceTypeCode(testDataNodeInstance.getInstanceTypeCode());
-    nodeInstance.setNodeUuid(params.nodeUuid);
-    nodeInstance.setZoneUuid(testDataNodeInstance.getZoneUuid());
-    nodeInstance.setInUse(true);
-    nodeInstance.save();
   }
 
   private List<String> createPrecheckCommandForCerts(UUID certificateUUID1, UUID certificateUUID2) {

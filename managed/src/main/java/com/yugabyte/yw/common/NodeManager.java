@@ -184,11 +184,11 @@ public class NodeManager extends DevopsBase {
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
-      // Instance may not be present if it is deleted from NodeInstance table
-      // after a release action.
-      NodeInstance node = NodeInstance.get(nodeTaskParam.nodeUuid);
+      // Instance may not be present if it is deleted from NodeInstance table after a release
+      // action. Node UUID is not available in 2.6.
+      Optional<NodeInstance> node = NodeInstance.maybeGetByName(nodeTaskParam.getNodeName());
       command.add("--node_metadata");
-      command.add(node == null ? "{}" : node.getDetailsJson());
+      command.add(node.isPresent() ? node.get().getDetailsJson() : "{}");
     }
     return command;
   }
@@ -271,7 +271,9 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Destroy
             || type == NodeCommandType.Create
             || type == NodeCommandType.Disk_Update
-            || type == NodeCommandType.Transfer_XCluster_Certs)
+            || type == NodeCommandType.Update_Mounted_Disks
+            || type == NodeCommandType.Transfer_XCluster_Certs
+            || type == NodeCommandType.Change_Instance_Type)
         && keyInfo.sshUser != null) {
       subCommand.add("--ssh_user");
       subCommand.add(keyInfo.sshUser);
@@ -324,7 +326,28 @@ public class NodeManager extends DevopsBase {
           }
         }
       }
+
+      // Legacy providers should not be allowed to have no NTP set up. See PLAT 4015
+      if (!keyInfo.showSetUpChrony
+          && !keyInfo.airGapInstall
+          && !((AnsibleSetupServer.Params) params).useTimeSync
+          && (providerType.equals(Common.CloudType.aws)
+              || providerType.equals(Common.CloudType.gcp)
+              || providerType.equals(Common.CloudType.azu))) {
+        subCommand.add("--use_chrony");
+        List<String> publicServerList =
+            Arrays.asList("0.pool.ntp.org", "1.pool.ntp.org", "2.pool.ntp.org", "3.pool.ntp.org");
+        for (String server : publicServerList) {
+          subCommand.add("--ntp_server");
+          subCommand.add(server);
+        }
+      }
+    } else if (params instanceof ChangeInstanceType.Params) {
+      if (keyInfo.airGapInstall) {
+        subCommand.add("--air_gap");
+      }
     }
+
     return subCommand;
   }
 
@@ -979,6 +1002,18 @@ public class NodeManager extends DevopsBase {
         }
         subcommand.add("--package");
         subcommand.add(ybServerPackage);
+        subcommand.add("--num_releases_to_keep");
+        if (config.getBoolean("yb.cloud.enabled")) {
+          subcommand.add(
+              runtimeConfigFactory
+                  .forUniverse(universe)
+                  .getString("yb.releases.num_releases_to_keep_cloud"));
+        } else {
+          subcommand.add(
+              runtimeConfigFactory
+                  .forUniverse(universe)
+                  .getString("yb.releases.num_releases_to_keep_default"));
+        }
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           subcommand.addAll(
               getCertificatePaths(
@@ -1014,6 +1049,18 @@ public class NodeManager extends DevopsBase {
           } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Install.toString())) {
             subcommand.add("--tags");
             subcommand.add("install-software");
+          }
+          subcommand.add("--num_releases_to_keep");
+          if (config.getBoolean("yb.cloud.enabled")) {
+            subcommand.add(
+                runtimeConfigFactory
+                    .forUniverse(universe)
+                    .getString("yb.releases.num_releases_to_keep_cloud"));
+          } else {
+            subcommand.add(
+                runtimeConfigFactory
+                    .forUniverse(universe)
+                    .getString("yb.releases.num_releases_to_keep_default"));
           }
         }
         break;
@@ -1666,7 +1713,6 @@ public class NodeManager extends DevopsBase {
           }
           AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params) nodeTaskParam;
           commandArgs.addAll(getConfigureSubCommand(taskParam));
-
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
             commandArgs.add("--tags");
@@ -1828,6 +1874,12 @@ public class NodeManager extends DevopsBase {
           ChangeInstanceType.Params taskParam = (ChangeInstanceType.Params) nodeTaskParam;
           commandArgs.add("--instance_type");
           commandArgs.add(taskParam.instanceType);
+
+          commandArgs.add("--pg_max_mem_mb");
+          commandArgs.add(
+              Integer.toString(
+                  runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB)));
+
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
@@ -2015,8 +2067,12 @@ public class NodeManager extends DevopsBase {
       }
     }
     if (nodeTaskParam.nodeUuid == null) {
-      // This is for backward compatibility where node UUID is not set in the Universe.
-      nodeTaskParam.nodeUuid = Util.generateNodeUUID(universe.universeUUID, nodeTaskParam.nodeName);
+      UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
+      if (!Common.CloudType.onprem.equals(userIntent.providerType)) {
+        // This is for backward compatibility where node UUID is not set in the Universe.
+        nodeTaskParam.nodeUuid =
+            Util.generateNodeUUID(universe.universeUUID, nodeTaskParam.nodeName);
+      }
     }
   }
 

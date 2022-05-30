@@ -288,6 +288,21 @@ SELECT * FROM sc_multi_desc WHERE k = 1;
  1 | 10 | 10
 (4 rows)
 
+-- Testing for the case in issue #12481
+CREATE INDEX range_ind ON sc_multi_desc(v ASC, r ASC);
+EXPLAIN SELECT v,r FROM sc_multi_desc WHERE v IN (2,4) and r is null;
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Index Only Scan using range_ind on sc_multi_desc  (cost=0.00..5.12 rows=10 width=8)
+   Index Cond: ((v = ANY ('{2,4}'::integer[])) AND (r IS NULL))
+(2 rows)
+
+SELECT v,r FROM sc_multi_desc WHERE v IN (2,4) and r is null;
+ v | r 
+---+---
+ 2 |  
+(1 row)
+
 -- Test NULLS last ordering.
 CREATE TABLE sc_desc_nl(h int, r int, v int);
 CREATE INDEX on sc_desc_nl(h HASH, r DESC NULLS LAST);

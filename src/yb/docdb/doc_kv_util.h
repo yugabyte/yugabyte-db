@@ -42,7 +42,7 @@ bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const std::string &enco
 // Given a DocDB key stored in RocksDB, validate the DocHybridTime size stored as the
 // last few bits of the final byte of the key, and ensure that the ValueType byte preceding that
 // encoded DocHybridTime is ValueType::kHybridTime.
-CHECKED_STATUS CheckHybridTimeSizeAndValueType(
+Status CheckHybridTimeSizeAndValueType(
     const rocksdb::Slice& key,
     size_t* ht_byte_size_dest);
 

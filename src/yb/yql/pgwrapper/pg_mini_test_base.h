@@ -49,10 +49,16 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
     return 3;
   }
 
+  // This allows changing mini cluster options before the mini cluster is started.
+  virtual void OverrideMiniClusterOptions(MiniClusterOptions* options);
+
   // This allows modifying the logic to decide which tablet server to run postgres on -
   // by default, randomly picked out of all the tablet servers.
   virtual const std::shared_ptr<tserver::MiniTabletServer> PickPgTabletServer(
      const MiniCluster::MiniTabletServers& servers);
+
+  // This allows passing extra tserver options to the underlying mini cluster.
+  virtual std::vector<tserver::TabletServerOptions> ExtraTServerOptions();
 
   Result<PGConn> Connect() {
     return PGConn::Connect(pg_host_port_);
@@ -62,7 +68,7 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
     return PGConn::Connect(pg_host_port_, dbname);
   }
 
-  CHECKED_STATUS RestartCluster();
+  Status RestartCluster();
 
   const HostPort& pg_host_port() const {
     return pg_host_port_;

@@ -113,7 +113,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
     return result;
   }
 
-  CHECKED_STATUS WaitForRestoreSnapshot() {
+  Status WaitForRestoreSnapshot() {
     return WaitFor([this]() -> Result<bool> {
       const auto document = VERIFY_RESULT(RunAdminToolCommandJson("list_snapshot_restorations"));
       auto it = document.FindMember("restorations");
@@ -685,7 +685,7 @@ class XClusterAdminCliTest : public AdminCliTest {
     AdminCliTest::DoTearDown();
   }
 
-  CHECKED_STATUS WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
+  Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
     auto proxy = std::make_shared<master::MasterReplicationProxy>(
         &client_->proxy_cache(),
         VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());

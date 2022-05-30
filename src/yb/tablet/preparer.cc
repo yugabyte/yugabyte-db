@@ -60,10 +60,10 @@ class PreparerImpl {
  public:
   explicit PreparerImpl(consensus::Consensus* consensus, ThreadPool* tablet_prepare_pool);
   ~PreparerImpl();
-  CHECKED_STATUS Start();
+  Status Start();
   void Stop();
 
-  CHECKED_STATUS Submit(OperationDriver* operation_driver);
+  Status Submit(OperationDriver* operation_driver);
 
   ThreadPoolToken* PoolToken() {
     return tablet_prepare_pool_token_.get();

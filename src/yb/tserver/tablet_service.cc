@@ -212,6 +212,12 @@ DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
                  "This failure should not cause the TServer to crash but "
                  "instead return an error message on the YSQL connection.");
 
+DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail, false,
+                 "Force updates in transaction status location to fail.");
+
+DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
+                 "Inject delay to slowdown handling of updates in transaction status location.");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
@@ -1192,6 +1198,76 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
         }
         SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
       });
+}
+
+void TabletServiceImpl::UpdateTransactionStatusLocation(
+    const UpdateTransactionStatusLocationRequestPB* req,
+    UpdateTransactionStatusLocationResponsePB* resp,
+    rpc::RpcContext context) {
+  TRACE("UpdateTransactionStatusLocation");
+
+  VLOG(1) << "UpdateTransactionStatusLocation: " << req->ShortDebugString()
+          << ", context: " << context.ToString();
+
+  auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
+  auto status = HandleUpdateTransactionStatusLocation(req, resp, context_ptr);
+  if (!status.ok()) {
+    LOG(WARNING) << status;
+    SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
+  }
+}
+
+Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
+    const UpdateTransactionStatusLocationRequestPB* req,
+    UpdateTransactionStatusLocationResponsePB* resp,
+    std::shared_ptr<rpc::RpcContext> context) {
+  LOG_IF(DFATAL, !req->has_propagated_hybrid_time())
+      << __func__ << " missing propagated hybrid time for transaction status location update";
+  UpdateClock(*req, server_->Clock());
+
+  if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_handle_delay_ms > 0)) {
+    std::this_thread::sleep_for(FLAGS_TEST_txn_status_moved_rpc_handle_delay_ms * 1ms);
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_force_fail)) {
+    return STATUS(IllegalState, "UpdateTransactionStatusLocation forced to fail");
+  }
+
+  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction_id()));
+
+  auto tablet = LookupLeaderTabletOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, context.get());
+  if (!tablet) {
+    return Status::OK();
+  }
+
+  auto* participant = tablet.peer->tablet()->transaction_participant();
+  if (!participant) {
+    return STATUS(InvalidArgument, "No transaction participant to process transaction status move");
+  }
+
+  auto metadata = participant->UpdateTransactionStatusLocation(txn_id, req->new_status_tablet_id());
+  if (!metadata.ok()) {
+    return metadata.status();
+  }
+
+  auto query = std::make_unique<tablet::WriteQuery>(
+      tablet.leader_term, context->GetClientDeadline(), tablet.peer.get(),
+      tablet.peer->tablet());
+  auto* request = query->operation().AllocateRequest();
+  metadata->ToPB(request->mutable_write_batch()->mutable_transaction());
+
+  query->set_callback([resp, context](const Status& status) {
+    if (!status.ok()) {
+      LOG(WARNING) << status;
+      SetupErrorAndRespond(resp->mutable_error(), status, context.get());
+    } else {
+      context->RespondSuccess();
+    }
+  });
+  tablet.peer->WriteAsync(std::move(query));
+
+  return Status::OK();
 }
 
 void TabletServiceImpl::Truncate(const TruncateRequestPB* req,

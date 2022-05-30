@@ -93,6 +93,7 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(scan->heapRelation),
 								  YbGetStorageRelid(scan->heapRelation),
 								  &prepare_params,
+								  YBCIsRegionLocal(scan->heapRelation),
 								  &ybso->handle));
 
 	/* Initialize ybgin scan opaque is_exec_done. */

@@ -38,7 +38,7 @@ struct DocReadContext {
   }
 
   template <class PB>
-  CHECKED_STATUS LoadFromPB(const PB& pb) {
+  Status LoadFromPB(const PB& pb) {
     RETURN_NOT_OK(SchemaFromPB(pb.schema(), &schema));
     RETURN_NOT_OK(schema_packing_storage.LoadFromPB(pb.old_schema_packings()));
     schema_packing_storage.AddSchema(pb.schema_version(), schema);

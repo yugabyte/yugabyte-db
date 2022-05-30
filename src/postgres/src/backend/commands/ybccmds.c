@@ -468,6 +468,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 	ListCell       *listptr;
 	bool           is_shared_relation = tablespaceId == GLOBALTABLESPACE_OID;
 	Oid            databaseId         = YBCGetDatabaseOidFromShared(is_shared_relation);
+	bool           is_matview         = relkind == RELKIND_MATVIEW;
 
 	char *db_name = get_database_name(databaseId);
 	char *schema_name = stmt->relation->schemaname;
@@ -611,6 +612,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 									   tablegroupId,
 									   colocationId,
 									   tablespaceId,
+									   is_matview,
 									   matviewPgTableId,
 									   &handle));
 
@@ -638,23 +640,24 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 void
 YBCDropTable(Oid relationId)
 {
-	YBCPgStatement  handle     = NULL;
-	Oid             databaseId = YBCGetDatabaseOidByRelid(relationId);
+	YBCPgStatement handle = NULL;
+	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
+	/* Whether the table is colocated (via DB or tablegroup) */
+	bool		colocated = YbIsUserTableColocated(databaseId, relationId);
+	Relation	relation = relation_open(relationId, AccessExclusiveLock);
 
-	/* Whether the table is colocated (via DB or a tablegroup) */
-	bool            colocated  = YbIsUserTableColocated(databaseId, relationId);
-	Relation 		relation   = relation_open(relationId, AccessExclusiveLock);
-
-	/* Create table-level tombstone for colocated tables / tables in a tablegroup */
+	/* Create table-level tombstone for colocated/tablegroup tables */
 	if (colocated)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
 															   YbGetStorageRelid(relation),
 															   false,
+															   false,
 															   &handle),
 									 &not_found);
-		/* Since the creation of the handle could return a 'NotFound' error,
+		/*
+		 * Since the creation of the handle could return a 'NotFound' error,
 		 * execute the statement only if the handle is valid.
 		 */
 		const bool valid_handle = !not_found;
@@ -689,20 +692,22 @@ YBCDropTable(Oid relationId)
 }
 
 void
-YBCTruncateTable(Relation rel) {
-	YBCPgStatement  handle;
-	Oid             relationId = RelationGetRelid(rel);
-	Oid             databaseId = YBCGetDatabaseOid(rel);
-
-	/* Whether the table is colocated (via DB or a tablegroup) */
-	bool            colocated = YbIsUserTableColocated(databaseId, relationId);
+YBCTruncateTable(Relation rel)
+{
+	YBCPgStatement handle;
+	Oid			relationId = RelationGetRelid(rel);
+	Oid			databaseId = YBCGetDatabaseOid(rel);
+	bool		isRegionLocal = YBCIsRegionLocal(rel);
+	/* Whether the table is colocated (via DB or tablegroup) */
+	bool		colocated = YbIsUserTableColocated(databaseId, relationId);
 
 	if (colocated)
 	{
-		/* Create table-level tombstone for colocated tables / tables in tablegroups */
+		/* Create table-level tombstone for colocated/tablegroup tables */
 		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 												 relationId,
 												 false,
+												 isRegionLocal,
 												 &handle));
 		HandleYBStatus(YBCPgDmlBindTable(handle));
 		int rows_affected_count = 0;
@@ -723,36 +728,21 @@ YBCTruncateTable(Relation rel) {
 	/* Truncate the associated secondary indexes */
 	List	 *indexlist = RelationGetIndexList(rel);
 	ListCell *lc;
-
 	foreach(lc, indexlist)
 	{
 		Oid indexId = lfirst_oid(lc);
 
+		/* PK index is not secondary index, skip */
 		if (indexId == rel->rd_pkindex)
 			continue;
 
-		/* Whether the table is colocated (via DB or a tablegroup) */
-		colocated = YbIsUserTableColocated(databaseId, relationId);
-
-		if (colocated)
-		{
-			/* Create index-level tombstone for colocated indexes / indexes in tablegroups */
-			HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
-													 indexId,
-													 false,
-													 &handle));
-			HandleYBStatus(YBCPgDmlBindTable(handle));
-			int rows_affected_count = 0;
-			HandleYBStatus(YBCPgDmlExecWriteOp(handle, &rows_affected_count));
-		}
-		else
-		{
-			/* Send truncate table RPC to master for non-colocated tables */
-			HandleYBStatus(YBCPgNewTruncateTable(databaseId,
-												 indexId,
-												 &handle));
-			HandleYBStatus(YBCPgExecTruncateTable(handle));
-		}
+		/*
+		 * Lock level doesn't fully work in YB.  Since YB TRUNCATE is already
+		 * considered to not be transaction-safe, it doesn't really matter.
+		 */
+		Relation indexRel = index_open(indexId, AccessExclusiveLock);
+		YBCTruncateTable(indexRel);
+		index_close(indexRel, AccessExclusiveLock);
 	}
 
 	list_free(indexlist);
@@ -1204,23 +1194,24 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 void
 YBCDropIndex(Oid relationId)
 {
-	YBCPgStatement	handle;
-	Oid				databaseId = YBCGetDatabaseOidByRelid(relationId);
+	YBCPgStatement handle;
+	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
+	/* Whether the table is colocated (via DB or tablegroup) */
+	bool		colocated = YbIsUserTableColocated(databaseId, relationId);
 
-	/* Whether the table is colocated (via DB or a tablegroup) */
-	bool			colocated = YbIsUserTableColocated(databaseId, relationId);
-
-	/* Create table-level tombstone for colocated indexes / indexes in a tablegroup */
+	/* Create table-level tombstone for colocated/tablegroup indexes */
 	if (colocated)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
 															   relationId,
 															   false,
+															   false,
 															   &handle),
 									 &not_found);
 		const bool valid_handle = !not_found;
-		if (valid_handle) {
+		if (valid_handle)
+		{
 			HandleYBStatusIgnoreNotFound(YBCPgDmlBindTable(handle), &not_found);
 			int rows_affected_count = 0;
 			HandleYBStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
@@ -1237,7 +1228,8 @@ YBCDropIndex(Oid relationId)
 													   &handle),
 									 &not_found);
 		const bool valid_handle = !not_found;
-		if (valid_handle) {
+		if (valid_handle)
+		{
 			/*
 			 * We cannot abort drop in DocDB so postpone the execution until
 			 * the rest of the statement/txn is finished executing.

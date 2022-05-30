@@ -167,7 +167,7 @@ void MakeNewProtoRecord(
   }
 }
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
-CHECKED_STATUS PopulateCDCSDKIntentRecord(
+Status PopulateCDCSDKIntentRecord(
     const OpId& op_id,
     const TransactionId& transaction_id,
     const std::vector<docdb::IntentKeyValueForCDC>& intents,
@@ -275,7 +275,7 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
 }
 
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
-CHECKED_STATUS PopulateCDCSDKWriteRecord(
+Status PopulateCDCSDKWriteRecord(
     const ReplicateMsgPtr& msg,
     const StreamMetadata& metadata,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
@@ -378,7 +378,7 @@ void SetColumnInfo(const ColumnSchemaPB& column, CDCSDKColumnInfoPB* column_info
   column_info->set_oid(column.pg_type_oid());
 }
 
-CHECKED_STATUS PopulateCDCSDKDDLRecord(
+Status PopulateCDCSDKDDLRecord(
     const ReplicateMsgPtr& msg, CDCSDKProtoRecordPB* proto_record, const string& table_name,
     const Schema& schema) {
   SCHECK(
@@ -415,7 +415,7 @@ CHECKED_STATUS PopulateCDCSDKDDLRecord(
   return Status::OK();
 }
 
-CHECKED_STATUS PopulateCDCSDKTruncateRecord(
+Status PopulateCDCSDKTruncateRecord(
     const ReplicateMsgPtr& msg, CDCSDKProtoRecordPB* proto_record, const Schema& schema) {
   SCHECK(
       msg->has_truncate(), InvalidArgument,
@@ -446,7 +446,7 @@ void SetKeyWriteId(string key, int32_t write_id, CDCSDKCheckpointPB* checkpoint)
   checkpoint->set_write_id(write_id);
 }
 
-CHECKED_STATUS ProcessIntents(
+Status ProcessIntents(
     const OpId& op_id,
     const TransactionId& transaction_id,
     const StreamMetadata& metadata,
@@ -504,7 +504,7 @@ CHECKED_STATUS ProcessIntents(
   return Status::OK();
 }
 
-CHECKED_STATUS PopulateCDCSDKSnapshotRecord(
+Status PopulateCDCSDKSnapshotRecord(
     GetChangesResponsePB* resp,
     const QLTableRow* row,
     const Schema& schema,

@@ -9,7 +9,7 @@
 
 import React, { FC, useMemo, useState } from 'react';
 import { Col, DropdownButton, MenuItem, OverlayTrigger, Popover, Row } from 'react-bootstrap';
-import { useInfiniteQuery, useMutation, useQueryClient } from 'react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import cronstrue from 'cronstrue';
 
@@ -28,11 +28,13 @@ import { BackupCreateModal } from '../components/BackupCreateModal';
 
 import { convertScheduleToFormValues, convertMsecToTimeFrame } from './ScheduledBackupUtils';
 
-import './ScheduledBackupList.scss';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router';
 import { keyBy } from 'lodash';
 import { FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
+import { ScheduledBackupEmpty } from '../components/BackupEmpty';
+import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
+import './ScheduledBackupList.scss';
 
 const wrapTableName = (tablesList: string[] | undefined) => {
   if (!Array.isArray(tablesList) || tablesList.length === 0) {
@@ -67,6 +69,8 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
   const [editPolicyData, setEditPolicyData] = useState<Record<string, any> | undefined>(undefined);
 
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
+  const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
+  
   const storageConfigsMap = useMemo(() => keyBy(storageConfigs?.data ?? [], 'configUUID'), [
     storageConfigs
   ]);
@@ -83,6 +87,11 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
     {
       getNextPageParam: (lastPage) => lastPage.data.hasNext
     }
+  );
+
+  const { data: tablesInUniverse, isLoading: isTableListLoading } = useQuery(
+    [universeUUID, 'tables'],
+    () => fetchTablesInUniverse(universeUUID!)
   );
 
   if (isLoading) {
@@ -105,6 +114,32 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
     }
   };
 
+  if (schedules?.length === 0) {
+    return (
+      <>
+        <ScheduledBackupEmpty
+          onActionButtonClick={() => {
+            setShowCreateModal(true);
+          }}
+          disabled={tablesInUniverse?.data.length === 0 || currentUniverse.data?.universeConfig?.takeBackups === 'false'}
+        />
+        <BackupCreateModal
+          visible={showCreateModal}
+          onHide={() => {
+            setShowCreateModal(false);
+            if (editPolicyData) {
+              setEditPolicyData(undefined);
+            }
+          }}
+          editValues={editPolicyData}
+          currentUniverseUUID={universeUUID}
+          isScheduledBackup
+          isEditMode={editPolicyData !== undefined}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="schedule-list-panel">
       <div className="schedule-action">
@@ -112,6 +147,8 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
           btnText="Create Scheduled Backup Policy"
           btnClass="btn btn-orange"
           onClick={() => setShowCreateModal(true)}
+          loading={isTableListLoading}
+          disabled={tablesInUniverse?.data.length === 0}
         />
       </div>
       <div className="schedule-backup-list" onScroll={handleScroll}>

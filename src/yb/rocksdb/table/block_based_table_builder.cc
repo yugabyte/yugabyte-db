@@ -893,6 +893,10 @@ TableProperties BlockBasedTableBuilder::GetTableProperties() const {
   return ret;
 }
 
+const std::string& BlockBasedTableBuilder::LastKey() const {
+  return rep_->last_key;
+}
+
 void BlockBasedTableBuilder::TEST_skip_writing_key_value_encoding_format() {
   rep_->TEST_skip_writing_key_value_encoding_format_ = true;
 }

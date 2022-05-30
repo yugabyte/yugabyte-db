@@ -460,10 +460,6 @@ set(CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS_DEBUG "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
 
-if (NOT "${YB_USE_LTO}" STREQUAL "")
-  set(CXX_FLAGS_RELEASE "${CXX_FLAGS_RELEASE} flto -fno-use-linker-plugin")
-endif()
-
 set(CXX_FLAGS_PROFILE_GEN "${CXX_FLAGS_RELEASE} -fprofile-generate")
 set(CXX_FLAGS_PROFILE_BUILD "${CXX_FLAGS_RELEASE} -fprofile-use")
 
@@ -723,6 +719,12 @@ if ((IS_GCC) AND
     ("${CMAKE_CXX_COMPILER_VERSION}" VERSION_GREATER_EQUAL "7.0"))
   # Used with GCC 7.
   ADD_CXX_FLAGS("-faligned-new")
+endif()
+
+# -Wsign-compare is enabled for C++ only for GCC with just -Wall, and enabled for both C and C++
+# for GCC and Clang with -Wextra. Remove when -Wextra is enabled for all source code (#9279).
+if (IS_CLANG)
+  ADD_CXX_FLAGS("-Wsign-compare")
 endif()
 
 string (REPLACE "-Werror=non-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})

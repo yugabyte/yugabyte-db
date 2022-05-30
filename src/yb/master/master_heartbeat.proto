@@ -234,6 +234,9 @@ message TSHeartbeatResponsePB {
   // Version of transaction tables and their placements, so that the TS knows when
   // to update the cached list of status tablet ids in the transaction manager.
   optional uint64 transaction_tables_version = 18;
+
+  // Specify whether or not the cluster is a producer of a valid replication stream.
+  optional bool xcluster_enabled_on_producer = 19;
 }
 
 service MasterHeartbeat {

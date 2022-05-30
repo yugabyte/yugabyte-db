@@ -1238,14 +1238,14 @@ Result<std::vector<OpId>> LogTest::AppendAndCopy(size_t num_batches, size_t num_
 
 namespace {
 
-CHECKED_STATUS CheckEntryEq(const LogEntries& lhs, const LogEntries& rhs, const size_t entry_idx) {
+Status CheckEntryEq(const LogEntries& lhs, const LogEntries& rhs, const size_t entry_idx) {
   SCHECK_EQ(
       lhs[entry_idx]->DebugString(), rhs[entry_idx]->DebugString(), InternalError,
       Format("entries[$0]", entry_idx));
   return Status::OK();
 }
 
-CHECKED_STATUS CheckReadEntriesResultEq(
+Status CheckReadEntriesResultEq(
     const ReadEntriesResult& lhs, const ReadEntriesResult& rhs) {
   SCHECK_EQ(lhs.committed_op_id, rhs.committed_op_id, InternalError, "committed_op_id");
   SCHECK_EQ(lhs.end_offset, rhs.end_offset, InternalError, "end_offset");
@@ -1258,7 +1258,7 @@ CHECKED_STATUS CheckReadEntriesResultEq(
 }
 
 // Checks that lhs is a prefix of rhs.
-CHECKED_STATUS CheckReadEntriesResultIsCorrectPrefixOf(
+Status CheckReadEntriesResultIsCorrectPrefixOf(
     const ReadEntriesResult& lhs, const ReadEntriesResult& rhs) {
   SCHECK_LE(
       lhs.committed_op_id, rhs.committed_op_id, InternalError,
@@ -1434,7 +1434,7 @@ Result<std::vector<LogTest::Op>> LogTest::GenerateOpsAndAppendToLog(
 
 namespace {
 
-CHECKED_STATUS CheckLogIndex(
+Status CheckLogIndex(
     LogReader* log_reader,
     const std::map<int64_t, std::pair<OpId, LogEntryMetadata>>& op_id_with_entry_meta_by_idx) {
   auto* copied_log_index = log_reader->TEST_GetLogIndex();

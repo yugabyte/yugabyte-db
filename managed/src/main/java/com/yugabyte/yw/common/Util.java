@@ -61,6 +61,7 @@ public class Util {
   public static final String REDACT = "REDACTED";
   public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
   public static final String SYSTEM_PLATFORM_DB = "system_platform";
+  public static final int YB_SCHEDULER_INTERVAL = 2;
 
   public static final String AZ = "AZ";
   public static final String GCS = "GCS";
@@ -369,6 +370,9 @@ public class Util {
     return details;
   }
 
+  // Compare v1 and v2 Strings. Returns 0 if the versions are equal, a
+  // positive integer if v1 is newer than v2, a negative integer if v1
+  // is older than v2.
   public static int compareYbVersions(String v1, String v2) {
     Pattern versionPattern = Pattern.compile("^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$");
     Matcher v1Matcher = versionPattern.matcher(v1);
@@ -546,6 +550,8 @@ public class Util {
     return Hex.encodeHexString(bytes);
   }
 
+  // TODO(bhavin192): Helm allows the release name to be 53 characters
+  // long, and with new naming style this becomes 43 for our case.
   // Sanitize helm release name.
   public static String sanitizeHelmReleaseName(String name) {
     return sanitizeKubernetesNamespace(name, 0);

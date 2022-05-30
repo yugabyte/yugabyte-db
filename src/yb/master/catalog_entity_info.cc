@@ -144,7 +144,7 @@ void TabletInfo::SetReplicaLocations(
   replica_locations_ = replica_locations;
 }
 
-CHECKED_STATUS TabletInfo::CheckRunning() const {
+Status TabletInfo::CheckRunning() const {
   if (!table()->is_running()) {
     return STATUS_EC_FORMAT(Expired, MasterError(MasterErrorPB::TABLE_NOT_RUNNING),
                             "Table is not running: $0", table()->ToStringWithState());
@@ -153,7 +153,7 @@ CHECKED_STATUS TabletInfo::CheckRunning() const {
   return Status::OK();
 }
 
-CHECKED_STATUS TabletInfo::GetLeaderNotFoundStatus() const {
+Status TabletInfo::GetLeaderNotFoundStatus() const {
   RETURN_NOT_OK(CheckRunning());
 
   return STATUS_FORMAT(
@@ -335,6 +335,14 @@ const Status TableInfo::GetSchema(Schema* schema) const {
 
 bool TableInfo::colocated() const {
   return LockForRead()->pb.colocated();
+}
+
+std::string TableInfo::matview_pg_table_id() const {
+  return LockForRead()->pb.matview_pg_table_id();
+}
+
+bool TableInfo::is_matview() const {
+  return LockForRead()->pb.is_matview();
 }
 
 std::string TableInfo::indexed_table_id() const {

@@ -22,7 +22,7 @@ type Schedule_List_Reponse = {
 
 export const getScheduledBackupList = (pageno: number) => {
   const cUUID = localStorage.getItem('customerId');
-  const records_to_fetch = 10;
+  const records_to_fetch = 500;
   const params = {
     direction: 'ASC',
     filter: {},

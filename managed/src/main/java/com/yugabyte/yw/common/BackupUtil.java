@@ -355,34 +355,38 @@ public class BackupUtil {
       throws PlatformServiceException {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     for (BackupStorageInfo backupInfo : backupStorageInfos) {
-      if (CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
-        List<TableInfo> tableInfos =
-            tableInfoList
-                .parallelStream()
-                .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
-                .filter(tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
-                .filter(tableInfo -> backupInfo.tableNameList.contains(tableInfo.getName()))
-                .collect(Collectors.toList());
-        if (CollectionUtils.isNotEmpty(tableInfos)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              String.format(
-                  "Keyspace %s contains tables with same names, overwriting data is not allowed",
-                  backupInfo.keyspace));
-        }
-      } else {
-        List<TableInfo> tableInfos =
-            tableInfoList
-                .parallelStream()
-                .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
-                .filter(tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
-                .collect(Collectors.toList());
-        if (CollectionUtils.isNotEmpty(tableInfos)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              String.format(
-                  "Keyspace %s already exists, overwriting data is not allowed",
-                  backupInfo.keyspace));
+      if (!backupInfo.backupType.equals(TableType.REDIS_TABLE_TYPE)) {
+        if (CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
+          List<TableInfo> tableInfos =
+              tableInfoList
+                  .parallelStream()
+                  .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
+                  .filter(
+                      tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
+                  .filter(tableInfo -> backupInfo.tableNameList.contains(tableInfo.getName()))
+                  .collect(Collectors.toList());
+          if (CollectionUtils.isNotEmpty(tableInfos)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Keyspace %s contains tables with same names, overwriting data is not allowed",
+                    backupInfo.keyspace));
+          }
+        } else {
+          List<TableInfo> tableInfos =
+              tableInfoList
+                  .parallelStream()
+                  .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
+                  .filter(
+                      tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
+                  .collect(Collectors.toList());
+          if (CollectionUtils.isNotEmpty(tableInfos)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Keyspace %s already exists, overwriting data is not allowed",
+                    backupInfo.keyspace));
+          }
         }
       }
     }

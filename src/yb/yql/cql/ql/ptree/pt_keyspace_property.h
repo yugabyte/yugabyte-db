@@ -53,7 +53,7 @@ class PTKeyspaceProperty : public PTProperty {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   const TreeListNode<PTKeyspaceProperty>::SharedPtr map_elements() const {
@@ -105,7 +105,7 @@ class PTKeyspacePropertyListNode : public TreeListNode<PTKeyspaceProperty> {
     return MCMakeShared<PTKeyspacePropertyListNode>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 };
 
 class PTKeyspacePropertyMap : public PTKeyspaceProperty {
@@ -126,7 +126,7 @@ class PTKeyspacePropertyMap : public PTKeyspaceProperty {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   void SetPropertyName(MCSharedPtr<MCString> property_name) {

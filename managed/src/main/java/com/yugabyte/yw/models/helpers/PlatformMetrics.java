@@ -16,9 +16,11 @@ import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
 @Getter
+@Slf4j
 public enum PlatformMetrics {
   // Health check common
   HEALTH_CHECK_STATUS("Health check status for universe", Unit.STATUS),
@@ -49,26 +51,6 @@ public enum PlatformMetrics {
   HEALTH_CHECK_C2N_CERT("TServer expired Client to Node certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_CLIENT_CA_CERT("TServer expired Client CA certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_CLIENT_CERT("TServer expired Client certificate nodes count", Unit.COUNT),
-
-  // Health check node metrics
-  HEALTH_CHECK_MASTER_BOOT_TIME_SEC("Master process boot time in seconds from epoch", Unit.SECOND),
-  HEALTH_CHECK_TSERVER_BOOT_TIME_SEC(
-      "TServer process boot time in seconds from epoch", Unit.SECOND),
-  HEALTH_CHECK_NODE_MASTER_FATAL_LOGS("Master process recent fatal logs", Unit.STATUS),
-  HEALTH_CHECK_NODE_MASTER_ERROR_LOGS("Master process recent error logs", Unit.STATUS),
-  HEALTH_CHECK_NODE_TSERVER_FATAL_LOGS("TServer process recent fatal logs", Unit.STATUS),
-  HEALTH_CHECK_NODE_TSERVER_ERROR_LOGS("TServer process recent error logs", Unit.STATUS),
-  HEALTH_CHECK_N2N_CA_CERT_VALIDITY_DAYS(
-      "Remaining Node to Node CA certificate validity days", Unit.DAY),
-  HEALTH_CHECK_N2N_CERT_VALIDITY_DAYS("Remaining Node to Node certificate validity days", Unit.DAY),
-  HEALTH_CHECK_C2N_CA_CERT_VALIDITY_DAYS(
-      "Remaining Client to Node CA certificate validity days", Unit.DAY),
-  HEALTH_CHECK_C2N_CERT_VALIDITY_DAYS(
-      "Remaining Client to Node certificate validity days", Unit.DAY),
-  HEALTH_CHECK_CLIENT_CA_CERT_VALIDITY_DAYS(
-      "Remaining Client CA certificate validity days", Unit.DAY),
-  HEALTH_CHECK_CLIENT_CERT_VALIDITY_DAYS("Remaining Client certificate validity days", Unit.DAY),
-  HEALTH_CHECK_USED_FD_PCT("Percentage of used on the node file descriptors ", Unit.PERCENT),
 
   // Tasks
   CREATE_BACKUP_STATUS("Backup creation task status for universe", Unit.STATUS),
@@ -105,7 +87,8 @@ public enum PlatformMetrics {
       "Flag, indicating that universe backup is in progress", Unit.STATUS, false),
   UNIVERSE_NODE_FUNCTION("Flag, indicating expected node functions", Unit.STATUS, false),
   UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAYS(
-      "Remaining Encryption-at-Rest config validity in days", Unit.DAY, false);
+      "Remaining Encryption-at-Rest config validity in days", Unit.DAY, false),
+  UNIVERSE_REPLICATION_FACTOR("Universe replication factor", Unit.COUNT, true);
 
   private final String help;
   private final Unit unit;
@@ -142,6 +125,12 @@ public enum PlatformMetrics {
   }
 
   public static PlatformMetrics fromMetricName(String metricName) {
-    return valueOf(metricName.substring(4).toUpperCase());
+    try {
+      return valueOf(metricName.substring(4).toUpperCase());
+    } catch (IllegalArgumentException iae) {
+      // This is node metric from health check.
+      log.trace("Enum value not found for metric {}", metricName);
+      return null;
+    }
   }
 }

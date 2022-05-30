@@ -834,6 +834,10 @@ void Tablet::DoCleanupIntentFiles() {
   std::vector<rocksdb::LiveFileMetaData> files;
   // Stops when there are no more files to delete.
   uint64_t previous_name_id = std::numeric_limits<uint64_t>::max();
+  // If intents SST file deletion was blocked by running transactions we want to wait for running
+  // transactions to have time larger than best_file_max_ht by calling
+  // transaction_participant_->WaitMinRunningHybridTime outside of ScopedReadOperation.
+  bool has_deletions_blocked_by_running_transations = false;
   while (GetAtomicFlag(&FLAGS_cleanup_intents_sst_files)) {
     auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
     if (!scoped_read_operation.ok()) {
@@ -864,6 +868,7 @@ void Tablet::DoCleanupIntentFiles() {
 
     auto min_running_start_ht = transaction_participant_->MinRunningHybridTime();
     if (!min_running_start_ht.is_valid() || min_running_start_ht <= best_file_max_ht) {
+      has_deletions_blocked_by_running_transations = true;
       VLOG_WITH_PREFIX_AND_FUNC(4)
           << "Cannot delete because of running transactions: " << min_running_start_ht
           << ", best file max ht: " << best_file_max_ht;
@@ -894,7 +899,7 @@ void Tablet::DoCleanupIntentFiles() {
     }
   }
 
-  if (best_file_max_ht != HybridTime::kMax) {
+  if (best_file_max_ht != HybridTime::kMax && has_deletions_blocked_by_running_transations) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Wait min running hybrid time: " << best_file_max_ht;
     transaction_participant_->WaitMinRunningHybridTime(best_file_max_ht);
   }
@@ -1027,7 +1032,7 @@ void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) 
   }
 }
 
-CHECKED_STATUS ResetRocksDB(
+Status ResetRocksDB(
     bool destroy, const rocksdb::Options& options, std::unique_ptr<rocksdb::DB>* db) {
   if (!*db) {
     return Status::OK();
@@ -1387,10 +1392,26 @@ Status Tablet::HandleQLReadRequest(
   RETURN_NOT_OK(scoped_read_operation);
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
-  if (!IsSchemaVersionCompatible(
-          metadata()->schema_version(), ql_read_request.schema_version(),
-          ql_read_request.is_compatible_with_previous_version())) {
+  bool schema_version_compatible = IsSchemaVersionCompatible(
+      metadata()->schema_version(), ql_read_request.schema_version(),
+      ql_read_request.is_compatible_with_previous_version());
+
+  Status status;
+  if (schema_version_compatible) {
+    Result<TransactionOperationContext> txn_op_ctx =
+        CreateTransactionOperationContext(transaction_metadata, /* is_ysql_catalog_table */ false);
+    RETURN_NOT_OK(txn_op_ctx);
+    status = AbstractTablet::HandleQLReadRequest(
+        deadline, read_time, ql_read_request, *txn_op_ctx, result);
+
+    schema_version_compatible = IsSchemaVersionCompatible(
+        metadata()->schema_version(), ql_read_request.schema_version(),
+        ql_read_request.is_compatible_with_previous_version());
+  }
+
+  if (!schema_version_compatible) {
     DVLOG(1) << "Setting status for read as YQL_STATUS_SCHEMA_VERSION_MISMATCH";
+    result->response.Clear();
     result->response.set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     result->response.set_error_message(Format(
         "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
@@ -1401,14 +1422,10 @@ Status Tablet::HandleQLReadRequest(
     return Status::OK();
   }
 
-  Result<TransactionOperationContext> txn_op_ctx =
-      CreateTransactionOperationContext(transaction_metadata, /* is_ysql_catalog_table */ false);
-  RETURN_NOT_OK(txn_op_ctx);
-  return AbstractTablet::HandleQLReadRequest(
-      deadline, read_time, ql_read_request, *txn_op_ctx, result);
+  return status;
 }
 
-CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+Status Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                                 const size_t row_count,
                                                 QLResponsePB* response) const {
 
@@ -1471,9 +1488,20 @@ Status Tablet::HandlePgsqlReadRequest(
 
   const shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
+  Result<TransactionOperationContext> txn_op_ctx =
+      CreateTransactionOperationContext(
+          transaction_metadata,
+          table_info->schema().table_properties().is_ysql_catalog_table(),
+          &subtransaction_metadata);
+  RETURN_NOT_OK(txn_op_ctx);
+  auto status = ProcessPgsqlReadRequest(
+      deadline, read_time, is_explicit_request_read_time,
+      pgsql_read_request, table_info, *txn_op_ctx, result, num_rows_read);
+
   // Assert the table is a Postgres table.
   DCHECK_EQ(table_info->table_type, TableType::PGSQL_TABLE_TYPE);
   if (table_info->schema_version != pgsql_read_request.schema_version()) {
+    result->response.Clear();
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
     result->response.set_error_message(
         Format("schema version mismatch for table $0: expected $1, got $2",
@@ -1483,15 +1511,7 @@ Status Tablet::HandlePgsqlReadRequest(
     return Status::OK();
   }
 
-  Result<TransactionOperationContext> txn_op_ctx =
-      CreateTransactionOperationContext(
-          transaction_metadata,
-          table_info->schema().table_properties().is_ysql_catalog_table(),
-          &subtransaction_metadata);
-  RETURN_NOT_OK(txn_op_ctx);
-  return ProcessPgsqlReadRequest(
-      deadline, read_time, is_explicit_request_read_time,
-      pgsql_read_request, table_info, *txn_op_ctx, result, num_rows_read);
+  return status;
 }
 
 // Returns true if the query can be satisfied by rows present in current tablet.
@@ -1588,7 +1608,6 @@ void SetBackfillSpecForYsqlBackfill(
   out_spec.set_limit(limit);
   out_spec.set_count(in_spec.count() + row_count);
   response->set_is_backfill_batch_done(!response->has_paging_state());
-  VLOG(2) << " limit is " << limit << " set_count to " << out_spec.count();
   if (limit >= 0 && out_spec.count() >= limit) {
     // Hint postgres to stop scanning now. And set up the
     // next_row_key based on the paging state.
@@ -1608,7 +1627,7 @@ void SetBackfillSpecForYsqlBackfill(
 
 }  // namespace
 
-CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
+Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
                                                 const size_t row_count,
                                                 PgsqlResponsePB* response) const {
   // If there is no hash column in the read request, this is a full-table query. And if there is no
@@ -1755,7 +1774,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
 }
 
 template <class Ids>
-CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids) {
+Status Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids) {
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -1795,7 +1814,7 @@ Status Tablet::RemoveIntents(const RemoveIntentsData& data, const TransactionIdS
 }
 
 // We batch this as some tx could be very large and may not fit in one batch
-CHECKED_STATUS Tablet::GetIntents(
+Status Tablet::GetIntents(
     const TransactionId& id,
     std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
     docdb::ApplyTransactionState* stream_state) {
@@ -2026,9 +2045,11 @@ string GenerateSerializedBackfillSpec(size_t batch_size, const string& next_row_
   backfill_spec.set_limit(batch_size);
   backfill_spec.set_next_row_key(next_row_to_backfill);
   backfill_spec.SerializeToString(&serialized_backfill_spec);
-  VLOG(2) << "Generating backfill_spec " << yb::ToString(backfill_spec) << " encoded as "
-          << b2a_hex(serialized_backfill_spec) << " a string of length "
-          << serialized_backfill_spec.length();
+  VLOG(2) << "Generating backfill_spec " << yb::ToString(backfill_spec)
+          << (VLOG_IS_ON(3) ? Format(" encoded as $0 a string of length $1",
+                                     b2a_hex(serialized_backfill_spec),
+                                     serialized_backfill_spec.length())
+                            : "");
   return serialized_backfill_spec;
 }
 
@@ -2202,7 +2223,8 @@ Status Tablet::BackfillIndexesForYsql(
     *backfilled_until = spec.next_row_key();
 
     VLOG(2) << "Backfilled " << *number_of_rows_processed << " rows. "
-            << "Setting backfilled_until to " << b2a_hex(*backfilled_until) << " of length "
+            << "Setting backfilled_until to "
+            << (backfilled_until->empty() ? "(empty)" : b2a_hex(*backfilled_until)) << " of length "
             << backfilled_until->length();
 
     MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);

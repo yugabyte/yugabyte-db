@@ -125,7 +125,7 @@ class RetryingTSRpcTask : public server::MonitoredTask {
   ~RetryingTSRpcTask();
 
   // Send the subclass RPC request.
-  CHECKED_STATUS Run();
+  Status Run();
 
   // Abort this task and return its value before it was successfully aborted. If the task entered
   // a different terminal state before we were able to abort it, return that state.
@@ -252,7 +252,7 @@ class RetryingTSRpcTask : public server::MonitoredTask {
   // Clean up request and release resources. May call 'delete this'.
   void UnregisterAsyncTask();
 
-  CHECKED_STATUS Failed(const Status& status);
+  Status Failed(const Status& status);
 
   // Only abort this task on reactor if it has been scheduled.
   void AbortIfScheduled();
@@ -515,7 +515,7 @@ class CommonInfoForRaftTask : public RetryingTSRpcTask {
 
  protected:
   // Used by SendOrReceiveData. Return's false if RPC should not be sent.
-  virtual CHECKED_STATUS PrepareRequest(int attempt) = 0;
+  virtual Status PrepareRequest(int attempt) = 0;
 
   TabletServerId permanent_uuid() const;
 
@@ -568,7 +568,7 @@ class AsyncAddServerTask : public AsyncChangeConfigTask {
   bool started_by_lb() const override { return true; }
 
  protected:
-  CHECKED_STATUS PrepareRequest(int attempt) override;
+  Status PrepareRequest(int attempt) override;
 
  private:
   // PRE_VOTER or PRE_OBSERVER (for async replicas).
@@ -590,7 +590,7 @@ class AsyncRemoveServerTask : public AsyncChangeConfigTask {
   bool started_by_lb() const override { return true; }
 
  protected:
-  CHECKED_STATUS PrepareRequest(int attempt) override;
+  Status PrepareRequest(int attempt) override;
 };
 
 // Task to step down tablet server leader and optionally to remove it from an overly-replicated
@@ -622,7 +622,7 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
   bool started_by_lb() const override { return true; }
 
  protected:
-  CHECKED_STATUS PrepareRequest(int attempt) override;
+  Status PrepareRequest(int attempt) override;
   bool SendRequest(int attempt) override;
   void HandleResponse(int attempt) override;
 
@@ -696,7 +696,7 @@ class AsyncGetTabletSplitKey : public AsyncTabletLeaderTask {
 
   AsyncGetTabletSplitKey(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      bool is_manual_split, DataCallbackType result_cb);
+      ManualSplit is_manual_split, DataCallbackType result_cb);
 
   Type type() const override { return ASYNC_GET_TABLET_SPLIT_KEY; }
 
@@ -719,8 +719,7 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
   AsyncSplitTablet(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
       const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
-      const std::string& split_encoded_key, const std::string& split_partition_key,
-      TabletSplitCompleteHandlerIf* tablet_split_complete_handler);
+      const std::string& split_encoded_key, const std::string& split_partition_key);
 
   Type type() const override { return ASYNC_SPLIT_TABLET; }
 
@@ -729,7 +728,6 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
  protected:
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
-  void Finished(const Status& status) override;
 
   tablet::SplitTabletRequestPB req_;
   tserver::SplitTabletResponsePB resp_;
