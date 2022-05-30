@@ -215,12 +215,14 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         if (this.parent.use_cron_expression || !isScheduledBackup) {
           return true;
         }
-        return value * MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()] >=
-            MILLISECONDS_IN['HOURS']
+        return (
+          value * MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()] >=
+          MILLISECONDS_IN['HOURS']
+        );
       }
     }),
     cron_expression: Yup.string().when('use_cron_expression', {
-      is: use_cron_expression => isScheduledBackup && use_cron_expression,
+      is: (use_cron_expression) => isScheduledBackup && use_cron_expression,
       then: Yup.string().required('Required')
     }),
     storage_config: Yup.object().required('Required'),
@@ -347,6 +349,15 @@ function BackupConfigurationForm({
     (t: ITable) => t.tableType === values['api_type'].value
   );
 
+  const tablesByAPI = tablesInUniverse.filter((t: any) => t.tableType === values['api_type'].value);
+
+  const uniqueKeyspaces = uniqBy(tablesByAPI, 'keySpace').map((t: any) => {
+    return {
+      label: t.keySpace,
+      value: t.keySpace
+    };
+  });
+
   return (
     <div className="backup-configuration-form">
       {isScheduledBackup && (
@@ -472,17 +483,7 @@ function BackupConfigurationForm({
             name="db_to_backup"
             component={YBFormSelect}
             label="Select the Database you want to backup"
-            options={[
-              ALL_DB_OPTION,
-              ...uniqBy(tablesInUniverse, 'keySpace')
-                .filter((t: any) => t.tableType === values['api_type'].value)
-                .map((t: any) => {
-                  return {
-                    label: t.keySpace,
-                    value: t.keySpace
-                  };
-                })
-            ]}
+            options={[ALL_DB_OPTION, ...uniqueKeyspaces]}
             onChange={(_: any, val: any) => {
               setFieldValue('db_to_backup', val);
               if (
