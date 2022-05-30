@@ -384,7 +384,7 @@ public class AlertController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     AlertChannel channel = alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID);
     alertChannelService.delete(customerUUID, alertChannelUUID);
-    metricService.handleSourceRemoval(channel.getCustomerUUID(), alertChannelUUID);
+    metricService.markSourceRemoved(channel.getCustomerUUID(), alertChannelUUID);
     auditService().createAuditEntry(ctx(), request());
     return YBPSuccess.empty();
   }

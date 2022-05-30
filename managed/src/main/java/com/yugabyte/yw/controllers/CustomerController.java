@@ -279,7 +279,7 @@ public class CustomerController extends AuthenticatedController {
           INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
     }
 
-    metricService.handleSourceRemoval(customerUUID, null);
+    metricService.markSourceRemoved(customerUUID, null);
 
     auditService().createAuditEntry(ctx(), request());
     return YBPSuccess.empty();

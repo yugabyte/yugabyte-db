@@ -20,5 +20,5 @@ import lombok.Value;
 @Builder
 public class MetricSaveGroup {
   @Singular List<Metric> metrics;
-  @Singular List<MetricFilter> cleanMetricFilters;
+  MetricFilter cleanMetricFilter;
 }
