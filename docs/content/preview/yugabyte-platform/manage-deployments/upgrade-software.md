@@ -28,7 +28,7 @@ Before you start the upgrade, you might want to import a specific YugabyteDB rel
 
 - Provide the path to the storage location.
 
-- Click OK.
+- Click **OK**.
 
 When imported, the release is added to the **Releases** list shown in the following illustration:
 
