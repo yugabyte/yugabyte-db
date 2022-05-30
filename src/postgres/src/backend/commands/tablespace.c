@@ -619,6 +619,22 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 				 errdetail_log("%s", detail_log)));
 	}
 
+  /* Check if there are snapshot schedules, disallow dropping in such cases */
+	if (IsYugaByteEnabled())
+	{
+		bool is_active;
+    HandleYBStatus(YBCPgCheckIfPitrActive(&is_active));
+    if (is_active)
+    {
+      ereport(ERROR,
+			    (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+				   errmsg("tablespace \"%s\" cannot be dropped. "
+					   "Dropping tablespaces is not allowed on clusters "
+						 "with Point in Time Restore activated.",
+             tablespacename)));
+    }
+	}
+
 	/* DROP hook for the tablespace being removed */
 	InvokeObjectDropHook(TableSpaceRelationId, tablespaceoid, 0);
 

@@ -110,6 +110,11 @@ YBTableCreator& YBTableCreator::tablespace_id(const std::string& tablespace_id) 
   return *this;
 }
 
+YBTableCreator& YBTableCreator::is_matview(bool is_matview) {
+  is_matview_ = is_matview;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::matview_pg_table_id(const std::string& matview_pg_table_id) {
   matview_pg_table_id_ = matview_pg_table_id;
   return *this;
@@ -266,6 +271,10 @@ Status YBTableCreator::Create() {
 
   if (!tablespace_id_.empty()) {
     req.set_tablespace_id(tablespace_id_);
+  }
+
+  if (is_matview_) {
+    req.set_is_matview(*is_matview_);
   }
 
   if (!matview_pg_table_id_.empty()) {

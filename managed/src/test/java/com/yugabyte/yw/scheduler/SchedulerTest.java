@@ -14,13 +14,18 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
+import java.util.Date;
+import org.apache.commons.lang.time.DateUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -130,6 +135,68 @@ public class SchedulerTest extends FakeDBApplication {
 
     // 4 times for deleting expired backups and 1 time for creating backup, total 5 calls.
     verify(mockCommissioner, times(5)).submit(any(), any());
+  }
+
+  @Test
+  public void testSkippedFutureScheduleTask() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Schedule s =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    s.updateNextScheduleTaskTime(DateUtils.addHours(new Date(), 2));
+    scheduler.scheduleRunner();
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testClearScheduleBacklog() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(), Matchers.any())).thenReturn(fakeTaskUUID);
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Schedule s =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    s.updateBacklogStatus(true);
+    scheduler.scheduleRunner();
+    verify(mockCommissioner, times(1)).submit(any(), any());
+    s.refresh();
+    assertEquals(false, s.getBacklogStatus());
+  }
+
+  @Test
+  public void testEnableScheduleBacklog() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Schedule s =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    setUniveseBackupInProgress(true, universe);
+    scheduler.scheduleRunner();
+    verify(mockCommissioner, times(0)).submit(any(), any());
+    s.refresh();
+    assertEquals(true, s.getBacklogStatus());
+  }
+
+  @Test
+  public void testSkipScheduleTaskIfRunning() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Schedule s =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    ScheduleTask.create(UUID.randomUUID(), s.getScheduleUUID());
+    scheduler.scheduleRunner();
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  public static void setUniveseBackupInProgress(boolean value, Universe universe) {
+    Universe.UniverseUpdater updater =
+        new Universe.UniverseUpdater() {
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            universeDetails.backupInProgress = value;
+            universe.setUniverseDetails(universeDetails);
+          }
+        };
+    Universe.saveDetails(universe.universeUUID, updater);
   }
 
   public static void setUniversePaused(boolean value, Universe universe) {

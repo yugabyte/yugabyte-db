@@ -69,6 +69,8 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
   const [editPolicyData, setEditPolicyData] = useState<Record<string, any> | undefined>(undefined);
 
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
+  const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
+  
   const storageConfigsMap = useMemo(() => keyBy(storageConfigs?.data ?? [], 'configUUID'), [
     storageConfigs
   ]);
@@ -119,7 +121,7 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
           onActionButtonClick={() => {
             setShowCreateModal(true);
           }}
-          disabled={tablesInUniverse?.data.length === 0}
+          disabled={tablesInUniverse?.data.length === 0 || currentUniverse.data?.universeConfig?.takeBackups === 'false'}
         />
         <BackupCreateModal
           visible={showCreateModal}

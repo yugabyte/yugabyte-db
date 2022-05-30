@@ -12,10 +12,23 @@ import { Field as ReduxField } from 'redux-form';
 import { YBLabel } from '../../../common/descriptors';
 import { Field as FormikField } from 'formik';
 
-import './NTPConfig.scss';
 import { useSelector } from 'react-redux';
 import { flatten, uniq } from 'lodash';
 import { YBMultiEntryInput } from '../../../common/forms/fields/YBMultiEntryInput';
+import './NTPConfig.scss';
+
+export const IP_V4_REGEX = /((\d+\.){3}\d+)/;
+export const IP_V6_REGEX = /(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))/;
+export const HOSTNAME_REGEX = /^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9])$/;
+
+const isValid_IP_or_Hostname = (values: string[]) => {
+  if (!Array.isArray(values)) {
+    return;
+  }
+  return values.every((v) => IP_V4_REGEX.test(v) || IP_V6_REGEX.test(v) || HOSTNAME_REGEX.test(v))
+    ? undefined
+    : 'Invalid Hostname';
+};
 
 export enum NTP_TYPES {
   PROVIDER = 'provider',
@@ -142,15 +155,26 @@ export const NTPConfig: FC<NTPConfigProps> = ({
                     }}
                     onChange={(val) => {
                       onChange('ntpServers', val ? val.map((v) => v.value) : []);
+                      if (fieldType === FIELD_TYPE.FORMIK) {
+                        field.form.setTouched({ ...field?.form.touched, ntpServers: true });
+                      }
                     }}
                     val={values?.map((t: string) => {
                       return { value: t, label: t };
                     })}
                   />
-                  {field?.meta?.error && <span className="standard-error">{field.meta.error}</span>}
+                  {/* Redux-form error */}
+                  {field?.meta?.touched && field?.meta?.error && (
+                    <span className="standard-error">{field.meta.error}</span>
+                  )}
+                  {/* Formik Error */}
+                  {field?.form?.touched?.ntpServers && field?.form?.errors['ntpServers'] && (
+                    <span className="standard-error">{field.form.errors['ntpServers']}</span>
+                  )}
                 </>
               );
-            }
+            },
+            validate: isValid_IP_or_Hostname
           })}
           {!disabled && (
             <div className="sub-text">Separate new entries by `whitespace` or `comma`</div>

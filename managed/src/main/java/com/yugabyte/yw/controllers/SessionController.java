@@ -270,6 +270,7 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result login() {
+    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     boolean useLdap =
         runtimeConfigFactory
             .globalRuntimeConf()
@@ -301,6 +302,12 @@ public class SessionController extends AbstractPlatformController {
     if (user == null) {
       throw new PlatformServiceException(UNAUTHORIZED, "Invalid User Credentials.");
     }
+
+    if (useOAuth && !user.getRole().equals(Role.SuperAdmin)) {
+      throw new PlatformServiceException(
+          UNAUTHORIZED, "Only SuperAdmin access permitted via normal login when SSO is enabled.");
+    }
+
     Customer cust = Customer.get(user.customerUUID);
 
     String authToken = user.createAuthToken();

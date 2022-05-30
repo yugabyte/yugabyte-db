@@ -45,6 +45,7 @@ typedef struct PLyProcedure
 	PyObject   *globals;		/* data saved across calls, global scope */
 	long		calldepth;		/* depth of recursive calls of function */
 	PLySavedArgs *argstack;		/* stack of outer-level call arguments */
+	uint64 yb_catalog_version; /* catalog version at function load time */
 } PLyProcedure;
 
 /* the procedure cache key */

@@ -23,6 +23,7 @@ enum RelationType {
   SYSTEM_TABLE_RELATION = 1;
   USER_TABLE_RELATION = 2;
   INDEX_TABLE_RELATION = 3;
+  MATVIEW_TABLE_RELATION = 4;
 }
 
 enum SysRowEntryType {

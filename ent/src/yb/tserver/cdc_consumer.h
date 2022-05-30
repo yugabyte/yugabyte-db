@@ -14,6 +14,7 @@
 #ifndef ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
 #define ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
 
+#include <condition_variable>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -132,8 +133,8 @@ class CDCConsumer {
                      cdc::ProducerTabletInfo::Hash> producer_consumer_tablet_map_from_master_
                      GUARDED_BY(master_data_mutex_);
 
-  std::unordered_set<std::string> streams_with_same_num_producer_consumer_tablets_
-    GUARDED_BY(master_data_mutex_);
+  std::unordered_set<std::string> streams_with_local_tserver_optimization_
+      GUARDED_BY(master_data_mutex_);
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
 

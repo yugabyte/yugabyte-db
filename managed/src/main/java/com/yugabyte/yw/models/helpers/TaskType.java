@@ -23,6 +23,8 @@ public enum TaskType {
 
   CreateKubernetesUniverse("CreateKubernetesUniverse"),
 
+  ReadOnlyKubernetesClusterCreate("ReadOnlyKubernetesClusterCreate"),
+
   DestroyUniverse("DestroyUniverse"),
 
   PauseUniverse("PauseUniverse"),

@@ -100,21 +100,28 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       String nodePrefix = taskParams().nodePrefix;
 
       Set<NodeDetails> mastersToAdd =
-          getPodsToAdd(newPlacement.masters, currPlacement.masters, ServerType.MASTER, isMultiAz);
+          getPodsToAdd(
+              newPlacement.masters, currPlacement.masters, ServerType.MASTER, isMultiAz, false);
       Set<NodeDetails> mastersToRemove =
           getPodsToRemove(
-              newPlacement.masters, currPlacement.masters, ServerType.MASTER, universe, isMultiAz);
+              newPlacement.masters,
+              currPlacement.masters,
+              ServerType.MASTER,
+              universe,
+              isMultiAz,
+              false);
 
       Set<NodeDetails> tserversToAdd =
           getPodsToAdd(
-              newPlacement.tservers, currPlacement.tservers, ServerType.TSERVER, isMultiAz);
+              newPlacement.tservers, currPlacement.tservers, ServerType.TSERVER, isMultiAz, false);
       Set<NodeDetails> tserversToRemove =
           getPodsToRemove(
               newPlacement.tservers,
               currPlacement.tservers,
               ServerType.TSERVER,
               universe,
-              isMultiAz);
+              isMultiAz,
+              false);
 
       for (UUID currAZs : currPlacement.configs.keySet()) {
         PlacementInfoUtil.addPlacementZone(currAZs, activeZones);
@@ -220,7 +227,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       }
 
       // Update the universe to the new state.
-      createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, newPI);
+      createSingleKubernetesExecutorTask(
+          KubernetesCommandExecutor.CommandType.POD_INFO, newPI, /*isReadOnlyCluster*/ false);
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
@@ -281,9 +289,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 masterRpcPort,
                 newNamingStyle);
 
-    createPodsTask(newPlacement, masterAddresses, currPlacement, serverType, activeZones);
+    createPodsTask(newPlacement, masterAddresses, currPlacement, serverType, activeZones, false);
 
-    createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, activeZones);
+    createSingleKubernetesExecutorTask(
+        KubernetesCommandExecutor.CommandType.POD_INFO, activeZones, /*isReadOnlyCluster*/ false);
 
     createWaitForServersTasks(podsToAdd, serverType)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

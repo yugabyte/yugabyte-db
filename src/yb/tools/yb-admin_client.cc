@@ -137,12 +137,8 @@ using consensus::RunLeaderElectionResponsePB;
 
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
-using master::ListMasterRaftPeersRequestPB;
-using master::ListMasterRaftPeersResponsePB;
 using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
-using master::ListLiveTabletServersRequestPB;
-using master::ListLiveTabletServersResponsePB;
 using master::TabletLocationsPB;
 using master::TSInfoPB;
 
@@ -1257,6 +1253,9 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
           break;
         case master::INDEX_TABLE_RELATION:
           str << " index";
+          break;
+        case master::MATVIEW_TABLE_RELATION:
+          str << "matview";
           break;
         default:
           str << " other";

@@ -536,6 +536,18 @@ public class HealthChecker {
     lastCheckForUUID.cancel(true);
   }
 
+  public void handleUniverseRemoval(UUID universeUUID) {
+    cancelHealthCheck(universeUUID);
+    runningHealthChecks.remove(universeUUID);
+    List<Pair<UUID, String>> universeNodeInfos =
+        uploadedNodeInfo
+            .keySet()
+            .stream()
+            .filter(key -> key.getFirst().equals(universeUUID))
+            .collect(Collectors.toList());
+    universeNodeInfos.forEach(uploadedNodeInfo::remove);
+  }
+
   private CompletableFuture<Done> shutdownThreadpool() {
     shutdown = true;
     if (this.universeExecutor != null) {
@@ -606,6 +618,8 @@ public class HealthChecker {
               } catch (Exception e) {
                 log.error("Error running health check for universe: {}", universeName, e);
                 setHealthCheckFailedMetric(params.customer, params.universe);
+              } finally {
+                runningHealthChecks.remove(params.universe.getUniverseUUID());
               }
             },
             this.universeExecutor);

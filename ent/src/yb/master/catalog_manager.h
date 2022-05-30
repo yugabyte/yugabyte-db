@@ -25,13 +25,15 @@ class UniverseKeyRegistryPB;
 namespace master {
 namespace enterprise {
 
+struct KeyRange;
+
 YB_DEFINE_ENUM(CreateObjects, (kOnlyTables)(kOnlyIndexes));
 
 class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorContext {
   typedef yb::master::CatalogManager super;
  public:
   explicit CatalogManager(yb::master::Master* master)
-      : super(master), snapshot_coordinator_(this) {}
+      : super(master), snapshot_coordinator_(this, this) {}
 
   virtual ~CatalogManager();
   void CompleteShutdown();
@@ -200,6 +202,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   Status ClearFailedUniverse();
 
+  void SetCDCServiceEnabled();
+
+  void PrepareRestore() override;
+
  private:
   friend class SnapshotLoader;
   friend class yb::master::ClusterLoadBalancer;
@@ -279,6 +285,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
 
+  Result<std::map<std::string, KeyRange>> GetTableKeyRanges(const TableId& table_id);
+
   Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
       CollectFlags flags);
@@ -347,7 +355,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status MarkCDCStreamsAsDeleting(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
 
   // Find CDC streams for a table.
-  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTable(const TableId& table_id) const;
+  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableUnlocked(const TableId& table_id)
+      const REQUIRES_SHARED(mutex_);
 
   bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override REQUIRES_SHARED(mutex_);
 
@@ -429,6 +438,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTable(const TableId& table_id)
       const;
 
+  XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTableUnlocked(
+      const TableId& table_id) const REQUIRES_SHARED(mutex_);
+
   Status CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc);
 
@@ -481,6 +493,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   GUARDED_BY(should_send_consumer_registry_mutex_);
 
   MasterSnapshotCoordinator snapshot_coordinator_;
+
+  // True when the cluster is a producer of a valid replication stream.
+  std::atomic<bool> cdc_enabled_{false};
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

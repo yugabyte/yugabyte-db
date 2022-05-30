@@ -192,7 +192,8 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
                 eq(false),
                 eq(taskParams.setUpChrony),
                 eq(taskParams.ntpServers),
-                eq(false));
+                eq(false),
+                eq(taskParams.showSetUpChrony));
       } else {
         String expectedAccessKeyCode = taskParams.keyPairName;
 
@@ -210,7 +211,8 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
                 eq(taskParams.airGapInstall),
                 eq(false),
                 eq(taskParams.setUpChrony),
-                eq(taskParams.ntpServers));
+                eq(taskParams.ntpServers),
+                eq(taskParams.showSetUpChrony));
       }
       // Check AZ info.
       List<AvailabilityZone> zones = r.zones;

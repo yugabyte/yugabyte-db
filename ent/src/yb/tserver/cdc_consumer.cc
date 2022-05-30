@@ -207,7 +207,7 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
 
   LOG_WITH_PREFIX(INFO) << "Updating CDC consumer registry: " << consumer_registry->DebugString();
 
-  streams_with_same_num_producer_consumer_tablets_.clear();
+  streams_with_local_tserver_optimization_.clear();
   for (const auto& producer_map : DCHECK_NOTNULL(consumer_registry)->producer_map()) {
     const auto& producer_entry_pb = producer_map.second;
     if (producer_entry_pb.disable_stream()) {
@@ -228,10 +228,10 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
     // recreate the set of CDCPollers
     for (const auto& stream_entry : producer_entry_pb.stream_map()) {
       const auto& stream_entry_pb = stream_entry.second;
-      if (stream_entry_pb.same_num_producer_consumer_tablets()) {
+      if (stream_entry_pb.local_tserver_optimized()) {
         LOG_WITH_PREFIX(INFO) << Format("Stream $0 will use local tserver optimization",
                                         stream_entry.first);
-        streams_with_same_num_producer_consumer_tablets_.insert(stream_entry.first);
+        streams_with_local_tserver_optimization_.insert(stream_entry.first);
       }
       for (const auto& tablet_entry : stream_entry_pb.consumer_producer_tablet_map()) {
         const auto& consumer_tablet_id = tablet_entry.first;
@@ -326,8 +326,8 @@ void CDCConsumer::TriggerPollForNewTablets() {
 
         // now create the poller
         bool use_local_tserver =
-            streams_with_same_num_producer_consumer_tablets_.find(entry.first.stream_id) !=
-            streams_with_same_num_producer_consumer_tablets_.end();
+            streams_with_local_tserver_optimization_.find(entry.first.stream_id) !=
+            streams_with_local_tserver_optimization_.end();
         auto cdc_poller = std::make_shared<CDCPoller>(
             entry.first, entry.second,
             std::bind(&CDCConsumer::ShouldContinuePolling, this, entry.first, entry.second),

@@ -475,6 +475,38 @@ bool PartitionSchema::IsValidHashPartitionKeyBound(const string& partition_key) 
   return partition_key.empty() || partition_key.size() == kPartitionKeySize;
 }
 
+uint32_t PartitionSchema::GetOverlap(
+    const std::string& key_start,
+    const std::string& key_end,
+    const std::string& other_key_start,
+    const std::string& other_key_end) {
+  uint16_t first_start_val =
+      key_start.empty() ? 0 : PartitionSchema::DecodeMultiColumnHashValue(key_start);
+  uint16_t second_start_val =
+      other_key_start.empty() ? 0 : PartitionSchema::DecodeMultiColumnHashValue(other_key_start);
+  uint16_t first_end_val = key_end.empty()
+                               ? std::numeric_limits<uint16_t>::max()
+                               : PartitionSchema::DecodeMultiColumnHashValue(key_end) - 1;
+  uint16_t second_end_val = other_key_end.empty()
+                                ? std::numeric_limits<uint16_t>::max()
+                                : PartitionSchema::DecodeMultiColumnHashValue(other_key_end) - 1;
+
+  // Use uint32 as max Overlap is uint16_t max + 1
+  uint32_t start_key = max(first_start_val, second_start_val);
+  uint32_t end_key = min(first_end_val, second_end_val);
+
+  if (end_key >= start_key) {
+    return end_key - start_key + 1;
+  }
+
+  return 0;
+}
+
+uint32_t PartitionSchema::GetPartitionRangeSize(
+    const std::string& key_start, const std::string& key_end) {
+  return GetOverlap(key_start, key_end, key_start, key_end);
+}
+
 Status PartitionSchema::CreateRangePartitions(std::vector<Partition>* partitions) const {
   // Create the start range keys.
   // NOTE: When converting FromPB to partition schema, we already error-check, so we don't need

@@ -478,6 +478,16 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
+  Result<bool> CheckIfPitrActive() {
+    tserver::PgCheckIfPitrActiveRequestPB req;
+    tserver::PgCheckIfPitrActiveResponsePB resp;
+    RETURN_NOT_OK(proxy_->CheckIfPitrActive(req, &resp, PrepareController()));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp.is_pitr_active();
+  }
+
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
   Status method( \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
@@ -655,6 +665,10 @@ void PgClient::PerformAsync(
     PgsqlOps* operations,
     const PerformCallback& callback) {
   impl_->PerformAsync(options, operations, callback);
+}
+
+Result<bool> PgClient::CheckIfPitrActive() {
+  return impl_->CheckIfPitrActive();
 }
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \

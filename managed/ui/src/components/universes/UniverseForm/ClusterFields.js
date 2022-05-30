@@ -1616,8 +1616,12 @@ export default class ClusterFields extends Component {
     let currentProviderCode = '';
 
     let currentProviderUUID = self.state.providerSelected;
-    if (formValues[clusterType] && formValues[clusterType].provider) {
-      currentProviderUUID = formValues[clusterType].provider;
+    let currentAccessKey = self.state.accessKeyCode;
+    if (formValues[clusterType]) {
+      if (formValues[clusterType].provider) currentProviderUUID = formValues[clusterType].provider;
+
+      if (formValues[clusterType].accessKeyCode)
+        currentAccessKey = formValues[clusterType].accessKeyCode;
     }
 
     // Populate the cloud provider list
@@ -2177,10 +2181,14 @@ export default class ClusterFields extends Component {
       );
     }
     // Only enable Time Sync Service toggle for AWS/GCP/Azure.
+    const currentAccessKeyInfo = accessKeys.data.find(
+      (key) =>
+        key.idKey.providerUUID === currentProviderUUID && key.idKey.keyCode === currentAccessKey
+    );
     if (
       isDefinedNotNull(currentProvider) &&
       ['aws', 'gcp', 'azu'].includes(currentProvider.code) &&
-      !currentProvider.setUpChrony
+      currentAccessKeyInfo?.keyInfo?.showSetUpChrony === false
     ) {
       const providerCode =
         currentProvider.code === 'aws' ? 'AWS' : currentProvider.code === 'gcp' ? 'GCP' : 'Azure';

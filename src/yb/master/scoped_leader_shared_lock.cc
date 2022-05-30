@@ -83,6 +83,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
       line_number_(line_number),
       function_name_(function_name) {
   int64_t catalog_leader_ready_term;
+  bool catalog_loaded;
   {
     // Check if the catalog manager is running.
     std::lock_guard<simple_spinlock> l(catalog_->state_lock_);
@@ -92,6 +93,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
       return;
     }
     catalog_leader_ready_term = catalog_->leader_ready_term_;
+    catalog_loaded = catalog_->is_catalog_loaded_;
   }
 
   string uuid = catalog_->master_->fs_manager()->uuid();
@@ -133,6 +135,10 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
         "Couldn't get leader_lock_ in shared mode. Leader still loading catalog tables."
         "leader_ready_term_ = $0; cstate.current_term = $1",
         catalog_leader_ready_term, cstate.current_term());
+    return;
+  }
+  if (!catalog_loaded) {
+    leader_status_ = STATUS_SUBSTITUTE(ServiceUnavailable, "Catalog manager is not loaded");
     return;
   }
 }

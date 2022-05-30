@@ -95,15 +95,12 @@ using master::IdPairPB;
 using master::ImportSnapshotMetaRequestPB;
 using master::ImportSnapshotMetaResponsePB;
 using master::ImportSnapshotMetaResponsePB_TableMetaPB;
-using master::IsCreateTableDoneRequestPB;
-using master::IsCreateTableDoneResponsePB;
 using master::ListSnapshotRestorationsRequestPB;
 using master::ListSnapshotRestorationsResponsePB;
 using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
 using master::ListTablesRequestPB;
 using master::ListTablesResponsePB;
-using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
 using master::RestoreSnapshotRequestPB;
 using master::RestoreSnapshotResponsePB;
@@ -282,6 +279,7 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
     req.set_exclude_system_tables(true);
     req.add_relation_type_filter(master::USER_TABLE_RELATION);
     req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    req.add_relation_type_filter(master::MATVIEW_TABLE_RELATION);
     return master_ddl_proxy_->ListTables(req, &resp, rpc);
   }));
 
@@ -297,7 +295,8 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
     tables[i].set_pgschema_name(table.pgschema_name());
 
     RSTATUS_DCHECK(table.relation_type() == master::USER_TABLE_RELATION ||
-            table.relation_type() == master::INDEX_TABLE_RELATION, InternalError,
+            table.relation_type() == master::INDEX_TABLE_RELATION ||
+            table.relation_type() == master::MATVIEW_TABLE_RELATION, InternalError,
             Format("Invalid relation type: $0", table.relation_type()));
     RSTATUS_DCHECK_EQ(table.namespace_().name(), ns.name, InternalError,
                Format("Invalid namespace name: $0", table.namespace_().name()));

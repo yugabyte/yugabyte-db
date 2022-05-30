@@ -251,7 +251,13 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
                             uint64_t read_time) {
   // Group the items by the table ID.
   std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
+    // TODO(dmitry): By design it is only necessary to group ybctids by table, sorting of ybctids
+    // itself is not required. But due to problem described in #12648 unsorted ybctids may produce
+    // incomplete result. Remove ybctid comparision once #12648 is fixed.
+    if (a.table_id != b.table_id) {
       return a.table_id < b.table_id;
+    }
+    return a.ybctid < b.ybctid;
   });
 
   auto arena = std::make_shared<Arena>();
@@ -704,12 +710,13 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  const PgObjectId& tablegroup_oid,
                                  const ColocationId colocation_id,
                                  const PgObjectId& tablespace_oid,
+                                 bool is_matview,
                                  const PgObjectId& matview_pg_table_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, is_colocated_via_database,
-      tablegroup_oid, colocation_id, tablespace_oid, matview_pg_table_oid);
+      tablegroup_oid, colocation_id, tablespace_oid, is_matview, matview_pg_table_oid);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }
@@ -939,7 +946,7 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
       if_not_exist, false /* add_primary_key */,
       tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid, colocation_id,
-      tablespace_oid, PgObjectId() /* matview_pg_table_id */);
+      tablespace_oid, false /* is_matview */, PgObjectId() /* matview_pg_table_id */);
   stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {
       stmt->UseTransaction();
@@ -1706,6 +1713,10 @@ void PgApiImpl::RegisterSysTableForPrefetching(
   } else {
     pg_sys_table_prefetcher_->Register(table_id, index_id);
   }
+}
+
+Result<bool> PgApiImpl::CheckIfPitrActive() {
+  return pg_session_->CheckIfPitrActive();
 }
 
 } // namespace pggate
