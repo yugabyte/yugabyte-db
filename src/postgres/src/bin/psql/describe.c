@@ -3310,7 +3310,7 @@ add_tablegroup_footer(printTableContent *const cont, char relkind,
 				}
 				else
 				{
-					/* Append the tablegoup to the latest footer */
+					/* Append the tablegroup to the latest footer */
 					printfPQExpBuffer(&buf, "%s", cont->footer->data);
 
 					/*
