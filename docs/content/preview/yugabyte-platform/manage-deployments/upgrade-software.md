@@ -34,7 +34,7 @@ When imported, the release is added to the **Releases** list shown in the follow
 
 ![Releases](/images/yp/releases-list.png)<br>
 
-T delete or disable a release, click its corresponding **Actions**.
+To delete or disable a release, click its corresponding **Actions**.
 
 You can perform a rolling upgrade on a live universe deployment as follows:
 
