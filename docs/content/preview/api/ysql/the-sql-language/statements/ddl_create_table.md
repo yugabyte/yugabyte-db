@@ -57,7 +57,7 @@ By default, only the first column is treated as the hash-partition column. But t
 
 - `Range primary key columns`: A table can have zero or more range primary key columns and it controls the top-level ordering of rows within a table (if there are no hash partition columns) or the ordering of rows among rows that share a common set of hash partitioned column values. By default, the range primary key columns are stored in ascending order. But this behavior can be controlled by explicit use of `ASC` or `DESC`.
 
-For example, if the primary key specification is `PRIMARY KEY ((a, b) HASH, c DESC)` then columns `a` & `b` are used together to hash partition the table, and rows that share the same values for `a` and `b` are stored in descending order of their value for `c`.
+For example, if the primary key specification is `PRIMARY KEY ((a, b) HASH, c DESC)` then columns `a` and `b` are used together to hash partition the table, and rows that share the same values for `a` and `b` are stored in descending order of their value for `c`.
 
 If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used to hash partition
 the table and rows that share the same value for `a` are stored in ascending order of their value
