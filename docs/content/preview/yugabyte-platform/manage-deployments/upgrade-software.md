@@ -24,7 +24,7 @@ Before you start the upgrade, you might want to import a specific YugabyteDB rel
 
 - Specify the release version to import.
 
-- Select the storage or URL that contain the release. If the release is located on Amazon S3, you would need to provide the access information; if the release is located on Google Cloud Storage, you would need to copy and past the contents of the JSON file with the access credentials; if the release is accessible via a HTTP, you would need to specify checksum value of the download.
+- Select the storage or URL that contains the release. If the release is located on Amazon S3, you would need to provide the access information; if the release is located on Google Cloud Storage, you would need to copy and paste the contents of the JSON file with the access credentials; if the release is accessible via a HTTP, you would need to specify the checksum value of the download.
 
 - Provide the path to the storage location.
 
