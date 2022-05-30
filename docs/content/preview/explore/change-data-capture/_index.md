@@ -48,7 +48,7 @@ The current YugabyteDB CDC implementation supports only Debezium and Kafka.
 
 {{< warning title="Warning" >}}
 
-YugabyteDB doesn't yet support the DROP TABLE and TRUNCATE TABLE commands. The behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands). See also the [limitations](#limitations) section.
+YugabyteDB doesn't yet support the DROP TABLE and TRUNCATE TABLE commands. The behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands). See also [Limitations](#limitations).
 
 {{< /warning >}}
 
@@ -124,7 +124,7 @@ Note that after you have received a change for a row for some timestamp `t`, you
 
 The change records for CDC are read from the WAL. The CDC module maintains checkpoints internally for each of the stream-ids and garbage collects the WAL entries if those have been streamed to CDC clients.
 
-In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. This is configurable using a [Gflag](../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
+In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage-collected. This is configurable using a [Gflag](../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
 
 ## yb-admin commands
 
