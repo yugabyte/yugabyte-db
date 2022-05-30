@@ -3,7 +3,7 @@ import * as Yup from 'yup';
 import React, { useState } from 'react';
 import { Field, Form, Formik } from 'formik';
 import { Row, Col } from 'react-bootstrap';
-import { YBButton, YBControlledNumericInput, YBFormInput } from '../../../common/forms/fields';
+import { YBButton, YBControlledNumericInput, YBFormInput, YBToggle } from '../../../common/forms/fields';
 import { AzureRegions } from './AzureRegions';
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
 import { FIELD_TYPE, NTPConfig, NTP_TYPES } from './NTPConfig';
@@ -19,7 +19,8 @@ const initialValues = {
   AZURE_RG: '',
   ntp_option: NTP_TYPES.PROVIDER,
   ntpServers: [],
-  setUpChrony: true
+  setUpChrony: true,
+  airGapInstall: false
 };
 
 const validationSchema = Yup.object().shape({
@@ -63,7 +64,7 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
   const [regionsFormData, setRegionsFormData] = useState([]);
 
   const createProviderConfig = (values) => {
-    const config = _.omit(values, 'providerName', 'networkSetup', 'sshPort', 'sshUser', 'ntpServers', 'ntp_option', 'setUpChrony');
+    const config = _.omit(values, 'providerName', 'networkSetup', 'sshPort', 'sshUser', 'ntpServers', 'ntp_option', 'setUpChrony', 'airGapInstall');
     const regions = convertFormDataToPayload(regionsFormData);
     if (values['sshPort']) {
       regions['sshPort'] = values['sshPort'];
@@ -73,6 +74,7 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
     }
     regions['ntpServers'] = values['ntpServers']
     regions['setUpChrony'] = values['setUpChrony']
+    regions['airGapInstall'] = values['airGapInstall']
     createAzureProvider(values.providerName, config, regions);
   };
 
@@ -262,7 +264,33 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
                   </Col>
                 </Row>
                 <Row className="config-provider-row">
-                <Col lg={3}>
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">Air Gap Installation</div>
+                  </Col>
+                  <Col lg={1}>
+                    <Field name="airGapInstall">
+                      {({ field }) => (
+                        <YBToggle
+                          name="airGapInstall"
+                          input={{
+                            value: field.value,
+                            onChange: field.onChange
+                          }}
+                          defaultChecked={false}
+                        />
+                      )}
+                    </Field>
+                  </Col>
+                  <Col className="config-provider-tooltip">
+                    <YBInfoTip
+                      title="Air Gap Installation"
+                      content="Would you like YugaWare to create instances in air gap mode for your universes?"
+                    />
+                  </Col>
+                </Row>
+
+                <Row className="config-provider-row">
+                  <Col lg={3}>
                     <div className="form-item-custom-label">NTP Setup<YBTag>Beta</YBTag></div>
                   </Col>
                   <Col lg={7}>
