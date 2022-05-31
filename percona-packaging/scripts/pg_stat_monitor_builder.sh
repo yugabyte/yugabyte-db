@@ -92,6 +92,29 @@ add_percona_yum_repo(){
     return
 }
 
+set_changelog(){
+    if [ -z $1 ]
+    then
+        echo "No spec file is provided"
+        return
+    else
+        start_line=0
+        while read -r line; do
+            (( start_line++ ))
+            if [ "$line" = "%changelog" ]
+            then
+                (( start_line++ ))
+                echo "$start_line"
+                current_date=$(date +"%a %b %d %Y")
+                sed -i "$start_line,$ d" $1
+                echo "* $current_date Percona Build/Release Team <eng-build@percona.com> - ${VERSION}-${RPM_RELEASE} >> $1
+                echo "- Release ${VERSION}-${RPM_RELEASE}" >> $1
+                return
+            fi
+        done <$1
+    fi
+}
+
 get_sources(){
     cd "${WORKDIR}"
     if [ "${SOURCE}" = 0 ]
@@ -136,6 +159,8 @@ get_sources(){
 
     sed -i "s:@@RPM_RELEASE@@:${RPM_RELEASE}:g" rpm/pg-stat-monitor.spec
     sed -i "s:@@VERSION@@:${VERSION}:g" rpm/pg-stat-monitor.spec
+
+    set_changelog rpm/pg-stat-monitor.spec
 
     cd ${WORKDIR}
     #
