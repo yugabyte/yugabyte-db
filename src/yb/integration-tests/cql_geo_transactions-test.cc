@@ -81,8 +81,8 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     client_ = ASSERT_RESULT(cluster_->CreateClient());
     transaction_pool_ = nullptr;
     auto mini_ts = cluster_->mini_tablet_server(0);
-    transaction_pool_ = mini_ts->server()->TransactionPool();
-    transaction_manager_ = mini_ts->server()->TransactionManager();
+    transaction_pool_ = &mini_ts->server()->TransactionPool();
+    transaction_manager_ = &mini_ts->server()->TransactionManager();
     ASSERT_NE(transaction_pool_, nullptr);
   }
 

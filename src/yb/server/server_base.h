@@ -116,13 +116,14 @@ class RpcServerBase {
                 const scoped_refptr<Clock>& clock = nullptr);
   virtual ~RpcServerBase();
 
-  Status Init();
+  virtual Status Init();
+  virtual Status Start();
+
   Status RegisterService(
       size_t queue_limit, rpc::ServiceIfPtr rpc_impl,
       rpc::ServicePriority priority = rpc::ServicePriority::kNormal);
-  Status Start();
   Status StartRpcServer();
-  void Shutdown();
+  virtual void Shutdown();
   void SetConnectionContextFactory(rpc::ConnectionContextFactoryPtr connection_context_factory);
   virtual Status SetupMessengerBuilder(rpc::MessengerBuilder* builder);
 
@@ -197,9 +198,9 @@ class RpcAndWebServerBase : public RpcServerBase {
   static void DisplayIconTile(std::stringstream* output, const std::string icon,
                               const std::string caption, const std::string url);
 
-  Status Init();
-  Status Start();
-  void Shutdown();
+  Status Init() override;
+  Status Start() override;
+  void Shutdown() override;
 
   std::unique_ptr<FsManager> fs_manager_;
   std::unique_ptr<Webserver> web_server_;

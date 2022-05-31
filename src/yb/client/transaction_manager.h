@@ -61,6 +61,8 @@ class TransactionManager {
 
   uint64_t GetLoadedStatusTabletsVersion();
 
+  void Shutdown();
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

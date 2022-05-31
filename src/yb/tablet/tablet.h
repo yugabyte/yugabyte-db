@@ -721,8 +721,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return *client_future_.get();
   }
 
-  client::TransactionManager* transaction_manager() {
-    return transaction_manager_.get();
+  client::TransactionManager& transaction_manager() {
+    return transaction_manager_provider_();
   }
 
   // Creates a new shared pointer of the object managed by metadata_cache_. This is done
@@ -937,8 +937,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::shared_future<client::YBClient*> client_future_;
 
-  // Created only when secondary indexes are present.
-  std::unique_ptr<client::TransactionManager> transaction_manager_;
+  // Expected to live while this object is alive.
+  TransactionManagerProvider transaction_manager_provider_;
 
   // This object should not be accessed directly to avoid race conditions.
   // Use methods YBMetaDataCache, CreateNewYBMetaDataCache, and ResetYBMetaDataCache to read it

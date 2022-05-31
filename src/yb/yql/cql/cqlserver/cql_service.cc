@@ -381,7 +381,7 @@ void CQLServiceImpl::CollectGarbage(size_t required) {
           << ", memory usage = " << prepared_stmts_mem_tracker_->consumption();
 }
 
-client::TransactionPool* CQLServiceImpl::TransactionPool() {
+client::TransactionPool& CQLServiceImpl::TransactionPool() {
   return server_->tserver()->TransactionPool();
 }
 
