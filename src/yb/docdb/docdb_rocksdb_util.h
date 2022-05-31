@@ -108,6 +108,8 @@ rocksdb::Options TEST_AutoInitFromRocksDBFlags();
 
 rocksdb::BlockBasedTableOptions TEST_AutoInitFromRocksDbTableFlags();
 
+Result<rocksdb::CompressionType> TEST_GetConfiguredCompressionType(const std::string& flag_value);
+
 Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
     const std::string& flag_value);
 
