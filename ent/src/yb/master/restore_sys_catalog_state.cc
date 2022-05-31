@@ -74,6 +74,12 @@ bool TableDeleted(const SysTablesEntryPB& table) {
          table.hide_state() == SysTablesEntryPB::HIDDEN;
 }
 
+bool TabletDeleted(const SysTabletsEntryPB& tablet) {
+  return tablet.state() == SysTabletsEntryPB::REPLACED ||
+         tablet.state() == SysTabletsEntryPB::DELETED ||
+         tablet.hide_hybrid_time() != 0;
+}
+
 bool IsSequencesDataObject(const NamespaceId& id, const SysNamespaceEntryPB& pb) {
   return id == kPgSequencesDataNamespaceId;
 }
@@ -409,6 +415,11 @@ Status RestoreSysCatalogState::DetermineEntries(
   for (auto& id_and_metadata : objects->tablets) {
     auto it = tables.find(id_and_metadata.second.table_id());
     if (it == tables.end()) {
+      continue;
+    }
+    // We could have DELETED/HIDDEN tablets for a RUNNING table,
+    // for instance in the case of tablet splitting.
+    if (TabletDeleted(id_and_metadata.second)) {
       continue;
     }
     RETURN_NOT_OK(process_entry(id_and_metadata.first, &id_and_metadata.second));

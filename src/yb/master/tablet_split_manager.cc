@@ -36,6 +36,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/unique_lock.h"
 
 DEFINE_int32(process_split_tablet_candidates_interval_msec, 0,
@@ -130,16 +131,15 @@ TabletSplitManager::TabletSplitManager(
     driver_(driver),
     xcluster_split_driver_(xcluster_split_driver),
     is_running_(false),
-    splitting_disabled_until_(CoarseDuration::zero()),
     last_run_time_(CoarseDuration::zero()) {}
 
 Status TabletSplitManager::ValidateTableAgainstDisabledList(const TableId& table_id) {
-  UniqueLock<decltype(mutex_)> lock(mutex_);
+  UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
   return ValidateAgainstDisabledList(table_id, &ignore_table_for_splitting_until_);
 }
 
 Status TabletSplitManager::ValidateTabletAgainstDisabledList(const TabletId& tablet_id) {
-  UniqueLock<decltype(mutex_)> lock(mutex_);
+  UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
   return ValidateAgainstDisabledList(tablet_id, &ignore_tablet_for_splitting_until_);
 }
 
@@ -177,10 +177,13 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
-  if (table.is_deleted()) {
-    VLOG(1) << Format("Table is deleted; ignoring for splitting. table_id: $0", table.id());
-    return STATUS_FORMAT(
-        NotSupported, "Table is deleted; ignoring for splitting. table_id: $0", table.id());
+  {
+    auto l = table.LockForRead();
+    if (l->started_deleting() || l->started_hiding()) {
+      VLOG(1) << Format("Table is deleted; ignoring for splitting. table_id: $0", table.id());
+      return STATUS_FORMAT(
+          NotSupported, "Table is deleted; ignoring for splitting. table_id: $0", table.id());
+    }
   }
 
   if (!ignore_disabled_list) {
@@ -294,7 +297,7 @@ void TabletSplitManager::MarkTtlTableForSplitIgnore(const TableId& table_id) {
   if (FLAGS_prevent_split_for_ttl_tables_for_seconds != 0) {
     const auto recheck_at = CoarseMonoClock::Now()
         + MonoDelta::FromSeconds(FLAGS_prevent_split_for_ttl_tables_for_seconds);
-    UniqueLock<decltype(mutex_)> lock(mutex_);
+    UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
     ignore_table_for_splitting_until_[table_id] = recheck_at;
   }
 }
@@ -303,7 +306,7 @@ void TabletSplitManager::MarkSmallKeyRangeTabletForSplitIgnore(const TabletId& t
   if (FLAGS_prevent_split_for_small_key_range_tablets_for_seconds != 0) {
     const auto recheck_at = CoarseMonoClock::Now()
         + MonoDelta::FromSeconds(FLAGS_prevent_split_for_small_key_range_tablets_for_seconds);
-    UniqueLock<decltype(mutex_)> lock(mutex_);
+    UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
     ignore_tablet_for_splitting_until_[tablet_id] = recheck_at;
   }
 }
@@ -617,17 +620,16 @@ bool TabletSplitManager::HasOutstandingTabletSplits(const TableInfoMap& table_in
     for (const auto& task : table->GetTasks()) {
       if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
           task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
+        YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Table " << table->id()
+                                      << " has outstanding splitting tasks";
         return true;
       }
     }
   }
 
   for (const auto& table : valid_tables) {
-    for (const auto& tablet : table->GetTablets()) {
-      auto tablet_lock = tablet->LockForRead();
-      if (tablet_lock->pb.has_split_parent_tablet_id() && !tablet_lock->is_running()) {
-        return true;
-      }
+    if (table->HasOutstandingSplits()) {
+      return true;
     }
   }
   return false;
@@ -641,10 +643,13 @@ bool TabletSplitManager::IsTabletSplittingComplete(const TableInfoMap& table_inf
   return !HasOutstandingTabletSplits(table_info_map) && !is_running_;
 }
 
-void TabletSplitManager::DisableSplittingFor(const MonoDelta& disable_duration) {
-  LOG(INFO) << Substitute("Disabling tablet splitting for $0 milliseconds.",
-                          disable_duration.ToMilliseconds());
-  splitting_disabled_until_ = CoarseMonoClock::Now() + disable_duration;
+void TabletSplitManager::DisableSplittingFor(
+    const MonoDelta& disable_duration, const std::string& feature_name) {
+  DCHECK(!feature_name.empty());
+  UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
+  LOG(INFO) << Substitute("Disabling tablet splitting for $0 milliseconds for feature $1.",
+                          disable_duration.ToMilliseconds(), feature_name);
+  splitting_disabled_until_[feature_name] = CoarseMonoClock::Now() + disable_duration;
 }
 
 void TabletSplitManager::MaybeDoSplitting(
@@ -653,20 +658,25 @@ void TabletSplitManager::MaybeDoSplitting(
     return;
   }
 
+  is_running_ = true;
+  auto is_running_scope_exit = ScopeExit([this] { is_running_ = false; });
+
+  {
+    UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
+    auto now = CoarseMonoClock::Now();
+    for (const auto& pair : splitting_disabled_until_) {
+      if (now <= pair.second) {
+        return;
+      }
+    }
+  }
+
   auto time_since_last_run = CoarseMonoClock::Now() - last_run_time_;
   if (time_since_last_run < (FLAGS_process_split_tablet_candidates_interval_msec * 1ms)) {
     return;
   }
 
-  // Setting and unsetting is_running_ could also be accomplished using a scoped object, but this is
-  // simpler for now.
-  is_running_ = true;
-  if (CoarseMonoClock::Now() < splitting_disabled_until_) {
-    is_running_ = false;
-    return;
-  }
   DoSplitting(table_info_map, tablet_info_map);
-  is_running_ = false;
   last_run_time_ = CoarseMonoClock::Now();
 }
 

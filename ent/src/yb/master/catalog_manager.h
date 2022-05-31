@@ -206,6 +206,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void PrepareRestore() override;
 
+  void EnableTabletSplitting(const std::string& feature) override;
+
  private:
   friend class SnapshotLoader;
   friend class yb::master::ClusterLoadBalancer;

@@ -83,6 +83,8 @@ class SnapshotCoordinatorContext {
 
   virtual Result<size_t> GetNumLiveTServersForActiveCluster() = 0;
 
+  virtual void EnableTabletSplitting(const std::string& feature) = 0;
+
   virtual ~SnapshotCoordinatorContext() = default;
 };
 
