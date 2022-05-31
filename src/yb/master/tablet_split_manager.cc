@@ -133,14 +133,23 @@ TabletSplitManager::TabletSplitManager(
     is_running_(false),
     last_run_time_(CoarseDuration::zero()) {}
 
-Status TabletSplitManager::ValidateTableAgainstDisabledList(const TableId& table_id) {
+struct SplitCandidate {
+  TabletInfoPtr tablet;
+  uint64_t leader_sst_size;
+};
+
+Status TabletSplitManager::ValidateTableAgainstDisabledLists(const TableId& table_id) {
   UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
-  return ValidateAgainstDisabledList(table_id, &ignore_table_for_splitting_until_);
+  RETURN_NOT_OK(ValidateAgainstDisabledList(table_id, &disable_splitting_for_ttl_table_until_));
+  RETURN_NOT_OK(ValidateAgainstDisabledList(table_id,
+                                            &disable_splitting_for_backfilling_table_until_));
+  return Status::OK();
 }
 
 Status TabletSplitManager::ValidateTabletAgainstDisabledList(const TabletId& tablet_id) {
   UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
-  return ValidateAgainstDisabledList(tablet_id, &ignore_tablet_for_splitting_until_);
+  return ValidateAgainstDisabledList(tablet_id,
+                                     &disable_splitting_for_small_key_range_tablet_until_);
 }
 
 Status TabletSplitManager::ValidateIndexTablePartitioning(const TableInfo& table) {
@@ -173,7 +182,7 @@ Status TabletSplitManager::ValidateIndexTablePartitioning(const TableInfo& table
 
 Status TabletSplitManager::ValidateSplitCandidateTable(
     const TableInfo& table,
-    const IgnoreDisabledList ignore_disabled_list) {
+    const IgnoreDisabledList ignore_disabled_lists) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
@@ -186,8 +195,8 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
     }
   }
 
-  if (!ignore_disabled_list) {
-    RETURN_NOT_OK(ValidateTableAgainstDisabledList(table.id()));
+  if (!ignore_disabled_lists) {
+    RETURN_NOT_OK(ValidateTableAgainstDisabledLists(table.id()));
   }
 
   // Check if this table is covered by a PITR schedule.
@@ -266,7 +275,7 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(
   if (!ignore_ttl_validation
       && schema.table_properties().HasDefaultTimeToLive()
       && ts_desc->get_disable_tablet_split_if_default_ttl()) {
-    MarkTtlTableForSplitIgnore(tablet.table()->id());
+    DisableSplittingForTtlTable(tablet.table()->id());
     return STATUS_FORMAT(
         NotSupported, "Tablet splitting is not supported for tables with default time to live, "
         "tablet_id: $0", tablet.tablet_id());
@@ -293,21 +302,35 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(
   return Status::OK();
 }
 
-void TabletSplitManager::MarkTtlTableForSplitIgnore(const TableId& table_id) {
+void TabletSplitManager::DisableSplittingForTtlTable(const TableId& table_id) {
   if (FLAGS_prevent_split_for_ttl_tables_for_seconds != 0) {
+    VLOG(1) << "Disabling splitting for TTL table. Table id: " << table_id;
     const auto recheck_at = CoarseMonoClock::Now()
         + MonoDelta::FromSeconds(FLAGS_prevent_split_for_ttl_tables_for_seconds);
     UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
-    ignore_table_for_splitting_until_[table_id] = recheck_at;
+    disable_splitting_for_ttl_table_until_[table_id] = recheck_at;
   }
 }
 
-void TabletSplitManager::MarkSmallKeyRangeTabletForSplitIgnore(const TabletId& tablet_id) {
+void TabletSplitManager::DisableSplittingForBackfillingTable(const TableId& table_id) {
+  LOG(INFO) << "Disabling splitting for backfilling table. Table id: " << table_id;
+  UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
+  disable_splitting_for_backfilling_table_until_[table_id] = CoarseTimePoint::max();
+}
+
+void TabletSplitManager::ReenableSplittingForBackfillingTable(const TableId& table_id) {
+  LOG(INFO) << "Re-enabling splitting for table. Table id: " << table_id;
+  UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
+  disable_splitting_for_backfilling_table_until_.erase(table_id);
+}
+
+void TabletSplitManager::DisableSplittingForSmallKeyRangeTablet(const TabletId& tablet_id) {
   if (FLAGS_prevent_split_for_small_key_range_tablets_for_seconds != 0) {
+    VLOG(1) << "Disabling splitting for small key range tablet. Tablet id: " << tablet_id;
     const auto recheck_at = CoarseMonoClock::Now()
         + MonoDelta::FromSeconds(FLAGS_prevent_split_for_small_key_range_tablets_for_seconds);
     UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
-    ignore_tablet_for_splitting_until_[tablet_id] = recheck_at;
+    disable_splitting_for_small_key_range_tablet_until_[tablet_id] = recheck_at;
   }
 }
 
@@ -607,28 +630,19 @@ void TabletSplitManager::DoSplitting(
   ScheduleSplits(state.GetSplitsToSchedule());
 }
 
-bool TabletSplitManager::HasOutstandingTabletSplits(const TableInfoMap& table_info_map) {
-  vector<TableInfoPtr> valid_tables;
-  for (const auto& table : table_info_map) {
-    // Check all potential tables for outstanding splits (including temporarily disabled tables).
-    if (ValidateSplitCandidateTable(*table.second, IgnoreDisabledList::kTrue).ok()) {
-      valid_tables.push_back(table.second);
+bool TabletSplitManager::HasOutstandingTabletSplits(const TableInfo& table) {
+  for (const auto& task : table.GetTasks()) {
+    if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
+        task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
+      YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Table " << table.id()
+                                    << " has outstanding splitting tasks";
+      return true;
     }
   }
 
-  for (const auto& table : valid_tables) {
-    for (const auto& task : table->GetTasks()) {
-      if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
-          task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
-        YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Table " << table->id()
-                                      << " has outstanding splitting tasks";
-        return true;
-      }
-    }
-  }
-
-  for (const auto& table : valid_tables) {
-    if (table->HasOutstandingSplits()) {
+  for (const auto& tablet : table.GetTablets()) {
+    auto tablet_lock = tablet->LockForRead();
+    if (tablet_lock->pb.has_split_parent_tablet_id() && !tablet_lock->is_running()) {
       return true;
     }
   }
@@ -639,8 +653,22 @@ bool TabletSplitManager::IsRunning() {
   return is_running_;
 }
 
-bool TabletSplitManager::IsTabletSplittingComplete(const TableInfoMap& table_info_map) {
-  return !HasOutstandingTabletSplits(table_info_map) && !is_running_;
+bool TabletSplitManager::IsTabletSplittingComplete(const TableInfo& table) {
+  // It is important to check that is_running_ is false BEFORE checking for outstanding splits.
+  // Otherwise, we could have the following order of events:
+  // 1. Thread A: Tablet split manager enqueues a split for table T.
+  // 2. Thread B: disables splitting on T and calls IsTabletSplittingComplete(T), which finds no
+  //              outstanding splits.
+  // 3. Thread A: Starts the split for T and returns, setting is_running_ to false.
+  // 4. Thread B: reads is_running_ is false below, and IsTabletSplittingComplete returns true (even
+  //              though there is now an outstanding split for T).
+  if (is_running_) {
+    return false;
+  }
+  if (table.is_deleted()) {
+    return true;
+  }
+  return !HasOutstandingTabletSplits(table);
 }
 
 void TabletSplitManager::DisableSplittingFor(
