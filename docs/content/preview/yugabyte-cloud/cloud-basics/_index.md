@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Using YugabyteDB Managed, you can create single region clusters that can be deployed across multiple and single availability zones.
+Using YugabyteDB Managed, you can create single- and multi-region clusters that can be deployed across multiple availability zones and regions.
 
 <div class="row">
 
@@ -30,6 +30,18 @@ Using YugabyteDB Managed, you can create single region clusters that can be depl
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="create-clusters-topology/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/introduction/benefits.png" aria-hidden="true" />
+        <div class="title">Cluster topologies</div>
+      </div>
+      <div class="body">
+        Choose the topology best suited to your requirements for latency, availability, and geo-distribution.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cloud-vpcs/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
@@ -41,14 +53,20 @@ Using YugabyteDB Managed, you can create single region clusters that can be depl
     </a>
   </div>
 
+</div>
+
+## Deploy single region clusters
+
+<div class="row">
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-clusters-free/">
+    <a class="section-link icon-offset" href="create-clusters-multisync/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/architecture/concepts/single_node.png" aria-hidden="true" />
         <div class="title">Create a Sandbox cluster</div>
       </div>
       <div class="body">
-        Create a Sandbox cluster in YugabyteDB Managed.
+        Create your free single-node Sandbox cluster.
       </div>
     </a>
   </div>
@@ -57,10 +75,40 @@ Using YugabyteDB Managed, you can create single region clusters that can be depl
     <a class="section-link icon-offset" href="create-clusters/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">Create a Dedicated cluster</div>
+        <div class="title">Create a fault tolerant cluster</div>
       </div>
       <div class="body">
-        Create a new Dedicated cluster in YugabyteDB Managed.
+        Deploy single-region clusters with node- and availability zone-level fault tolerance.
+      </div>
+    </a>
+  </div>
+
+</div>
+
+## Deploy multi-region clusters
+
+<div class="row">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="create-clusters-multisync/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
+        <div class="title">Sync across all regions</div>
+      </div>
+      <div class="body">
+        Create a stretched multi-region synchronous cluster.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="create-clusters-multisync/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
+        <div class="title">Geo partitioned</div>
+      </div>
+      <div class="body">
+        Pin data to specific geographical regions.
       </div>
     </a>
   </div>

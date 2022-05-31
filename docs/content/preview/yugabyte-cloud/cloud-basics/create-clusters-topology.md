@@ -12,13 +12,22 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB offers a number of deployment and replication options in geo-distributed environments. While there is no getting around the physics of network latency, you can achieve resilience, performance, and compliance objectives using synchronous and asynchronous data replication, and granular geo-partitioning.
-
 A YugabyteDB cluster consists of three or more nodes that communicate with each other and across which data is distributed. You can place the nodes of a YugabyteDB cluster across different zones in a single region, and across regions. The topology you choose depends on your requirements for latency, availability, and geo-distribution:
 
-- Moving data closer to where the end-users are enables lower latency access.
+- Moving data closer to where end-users are enables lower latency access.
 - Distributing data can make the data service resilient to zone and region failures in the cloud.
 - Geo-partitioning can keep user data in a particular geographic region to comply with data sovereignty regulations.
+
+YugabyteDB Managed offers a number of deployment and replication options in geo-distributed environments to achieve resilience, performance, and compliance objectives.
+
+| Type | Consistency | Read Latency | Write Latency | Best For |
+| :--- | :--- | :--- | :--- | :--- |
+| Multi zone | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Zone-level resilience |
+| Multi region synchronous | Strong | High with strong consistency or low with eventual consistency | Depends on inter-region distances | Region-level resilience |
+| Geo partitioned | Strong | Low in region (1-10ms); high across regions (40-100ms) | Low in region (1-10ms); high across regions (40-100ms) | Compliance, low latency I/O by moving data closer to customers |
+| xCluster active-passive | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery, low latency I/O |
+| xCluster active-active | Eventual (timeline) | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery, low latency I/O |
+| Read replica | Strong in source, eventual in replica | Low in primary region (1-10ms) | Low in region (1-10ms) | Low latency reads |
 
 ## Single region multi-zone cluster
 
@@ -35,7 +44,7 @@ In a single-region multi-zone cluster, the nodes of the YugabyteDB cluster are p
 **Strengths**
 
 - Strong consistency
-- Resilience and HA – zero RPO and near zero RTO
+- Resilience and high availability (HA) – zero recovery point objective (RPO) and near zero recovery time objective (RTO)
 - Clients in the same region get low read and write latency
 
 **Tradeoffs**
@@ -43,13 +52,15 @@ In a single-region multi-zone cluster, the nodes of the YugabyteDB cluster are p
 - Applications accessing data from remote regions may experience higher read/write latencies
 - Not resilient to region-level outages, such as those caused by natural disasters like floods or ice storms
 
+To deploy a multi-zone cluster, refer to [Create a Dedicated cluster](../create-clusters/).
+
 ## Sync across all regions
 
 In a synchronous multi-region cluster, the nodes of the cluster are deployed in different regions rather than in different availability zones of the same region.
 
 ![Single cluster deployed across three regions](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-2.png)
 
-**Resilience**: Putting cluster nodes in different regions provides an even higher degree of failure independence. In the event of a failure, the database cluster continues to serve data requests from the remaining regions while automatically replicating the data in the background to maintain the desired level of resilience.
+**Resilience**: Putting cluster nodes in different regions provides a  higher degree of failure independence. In the event of a failure, the database cluster continues to serve data requests from the remaining regions while automatically replicating the data in the background to maintain the desired level of resilience.
 
 **Consistency**: All writes are synchronously replicated. Transactions are globally consistent.
 
@@ -67,23 +78,62 @@ Write latencies in this deployment mode can be high. This is because the tablet 
 - Write latency can be high (depends on the distance//network packet transfer times
 - Follower reads trade off consistency for latency
 
+To deploy a multi-region synchronous cluster, refer to [Deploy a multi-region synchronous cluster](../create-clusters-multisync/).
+
+## Geo-partitioning with data pinning
+
+Applications that need to keep user data in a particular geographic region to comply with data sovereignty regulations can use row-level geo-partitioning in YugabyteDB. This feature allows fine-grained control over pinning rows in a user table to specific geographic locations.
+
+Here's how it works:
+
+1. Pick a column of the table that will be used as the partition column. The value of this column could be the country or geographic name in a user table for example.
+
+2. Next, create partition tables based on the partition column of the original table. You will end up with a partition table for each region that you want to pin data to.
+
+3. Finally pin each table so the data lives in different zones of the target region.
+
+With this deployment mode, the cluster automatically keeps specific rows and all the table shards (known as tablets) in the specified region. In addition to complying with data sovereignty requirements, you also get low-latency access to data from users in the region while maintaining transactional consistency semantics.
+
+![Geo-partitioned cluster deployed across three regions](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-5.png)
+
+**Resilience**: Clusters with geo-partitioned tables are resilient to zone-level failures when the nodes in each region are deployed in different zones of the region.
+
+**Consistency**: Because this deployment model has a single cluster that is spread out across multiple geographies, all writes are synchronously replicated to nodes in different zones of the same region, thus maintaining strong consistency.
+
+**Latency**: Because all the shard replicas are pinned to zones in a single region, read and write overhead is minimal and latency is low. To insert rows or make updates to rows pinned to a particular region, the cluster needs to touch only shard replicas in the same region.
+
+**Strengths**
+
+- Tables that have data that needs to be pinned to specific geographic regions to meet data sovereignty requirements
+- Low latency reads and writes in the region the data resides in
+- Strongly consistent reads and writes
+
+**Tradeoffs**
+
+- Row-level geo-partitioning is helpful for specific use cases where the dataset and access to the data is logically partitioned. Examples include users in different countries accessing their accounts, and localized products (or product inventory) in a product catalog.
+- When users travel, access to their data will incur cross-region latency because their data is pinned to a different region.
+
+To deploy a geo-partioned cluster, contact {{<support-cloud>}}.
+
 ## Multi-region cross-cluster
 
-In situations where applications want to keep data in multiple clouds or in remote regions, YugabyteDB offers asynchronous replication across two data centers or cloud regions. This can be either bi-directional in active-active configuration, or single-directional in active-passive configuration.
+In situations where applications want to keep data in multiple clouds or in remote regions, YugabyteDB offers asynchronous replication across two data centers or cloud regions. This can be either bi-directional in an active-active configuration, or uni-directional in an active-passive configuration.
 
 Here's how it works:
 
 1. You deploy two YugabyteDB clusters (typically) in different regions. Each cluster automatically replicates data in the cluster synchronously for strong consistency.
 
-2. You then set up xCluster asynchronous replication from one cluster to another. This can be either bi-directional in active-active configuration, or single-directional in active-passive configuration.
+2. You then set up xCluster asynchronous replication from one cluster to another. This can be either bi-directional in active-active configurations, or uni-directional in active-passive configurations.
 
-### Single direction active-passive
+To deploy a cross-cluster replication cluster, contact {{<support-cloud>}}.
+
+### Active-passive
 
 In an active-passive configuration, one cluster handles writes, and asynchronously replicates to a sink cluster.
 
 The sink cluster can be used to serve low-latency reads that are timeline consistent to clients nearby. They can also be used for disaster recovery. In the event of a source cluster failure, clients can connect to the replicated sink cluster.
 
-xCluster replication is ideal for use cases such as DR, auditing, and compliance. You can also use xCluster replication to migrate data from a data center to the cloud or from one cloud to another. In situations that tolerate eventual consistency, clients in the same region as the sink clusters can get low latency reads.
+xCluster replication is ideal for use cases such as data recovery, auditing, and compliance. You can also use xCluster replication to migrate data from a data center to the cloud or from one cloud to another. In situations that tolerate eventual consistency, clients in the same region as the sink clusters can get low latency reads.
 
 ![Multi-region deployment with single-direction asynchronous replication between clusters](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-3.png)
 
@@ -104,7 +154,7 @@ xCluster replication is ideal for use cases such as DR, auditing, and compliance
 - The sink cluster does not handle writes. Writes from clients outside the source cluster region can incur high latency
 - Because xCluster replication bypasses the query layer for replicated records, database triggers won't get fired and can lead to unexpected behavior
 
-### Bi-direction active-active
+### Active-active
 
 In an active-active configuration, both clusters can handle writes to potentially the same data. Writes to either cluster are asynchronously replicated to the other cluster with a timestamp for the update. xCluster with bi-directional replication is used for disaster recovery.
 
@@ -127,39 +177,6 @@ In an active-active configuration, both clusters can handle writes to potentiall
 - Because xCluster replication bypasses the query layer for replicated records, database triggers won't get fired and can lead to unexpected behavior
 - Because xCluster replication is done at the write-ahead log (WAL) level, there is no way to check for unique constraints. It's possible to have two conflicting writes in separate universes that will violate the unique constraint and will cause the main table to contain both rows but the index to contain just 1 row, resulting in an inconsistent state.
 - Similarly, the active-active mode doesn't support auto-increment IDs because both universes will generate the same sequence numbers, and this can result in conflicting rows. It is better to use UUIDs instead.
-
-## Geo-partitioning with data pinning
-
-Applications that need to keep user data in a particular geographic region to comply with data sovereignty regulations can use row-level geo-partitioning in YugabyteDB. This feature allows fine-grained control over pinning rows in a user table to specific geographic locations.
-
-![Geo-partitioned cluster deployed across three regions](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-5.png)
-
-Here's how it works:
-
-1. Pick a column of the table that will be used as the partition column. The value of this column could be the country or geographic name in a user table for example.
-
-2. Next, create partition tables based on the partition column of the original table. You will end up with a partition table for each region that you want to pin data to.
-
-3. Finally pin each table so the data lives in different zones of the target region.
-
-With this deployment mode, the cluster automatically keeps specific rows and all the table shards (known as tablets) in the specified region. In addition to complying with data sovereignty requirements, you also get low-latency access to data from users in the region while maintaining transactional consistency semantics.
-
-**Resilience**: Clusters with geo-partitioned tables are resilient to zone-level failures when the nodes in each region are deployed in different zones of the region.
-
-**Consistency**: Because this deployment model has a single cluster that is spread out across multiple geographies, all writes are synchronously replicated to nodes in different zones of the same region, thus maintaining strong consistency.
-
-**Latency**: Because all the shard replicas are pinned to zones in a single region, read and write overhead is minimal and latency is low. To insert rows or make updates to rows pinned to a particular region, the cluster needs to touch only shard replicas in the same region.
-
-**Strengths**
-
-- Tables that have data that needs to be pinned to specific geographic regions to meet data sovereignty requirements
-- Low latency reads and writes in the region the data resides in
-- Strongly consistent reads and writes
-
-**Tradeoffs**
-
-- Row-level geo-partitioning is helpful for specific use cases where the dataset and access to the data is logically partitioned. Examples include users in different countries accessing their accounts, and localized products (or product inventory) in a product catalog.
-- When users travel, access to their data will incur cross-region latency because their data is pinned to a different region.
 
 ## Read replicas
 
@@ -184,6 +201,8 @@ For applications that have writes happening from a single zone or region but wan
 - The primary cluster and the read replicas are correlated clusters, not two independent clusters. In other words, adding read replicas does not improve resilience.
 - Read replicas can't take writes, so write latency from remote regions can be high even if there is a read replica near the client.
 
+To deploy a read replica cluster, contact {{<support-cloud>}}.
+
 ## Learn more
 
 - [Multi-DC deployments](../../deploy/multi-dc/)
@@ -193,4 +212,5 @@ For applications that have writes happening from a single zone or region but wan
 
 ## Next steps
 
+- [Plan your cluster](../create-clusters-overview/)
 - [Create a cluster](../create-clusters/)

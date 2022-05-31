@@ -12,7 +12,7 @@ menu:
   preview:
     identifier: cloud-vpcs
     parent: cloud-basics
-    weight: 200
+    weight: 20
 ---
 
 A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your YugabyteDB Managed clusters to communicate with those clusters without traversing the public internet; all traffic stays in the cloud provider's network.

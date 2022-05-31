@@ -1,32 +1,27 @@
 ---
-title: Create a Dedicated cluster
-linkTitle: Create a Dedicated cluster
-description: Deploy production clusters in YugabyteDB Managed.
+title: Deploy a multi-region synchronous cluster
+linkTitle: Multi-region synchronous
+description: Deploy multi-region synchronous clusters in YugabyteDB Managed.
 headcontent:
-aliases:
-  - /preview/deploy/yugabyte-cloud/create-clusters/
-  - /preview/yugabyte-cloud/create-clusters/
 menu:
   preview:
-    identifier: create-clusters
+    identifier: create-clusters-multisync
     parent: cloud-basics
-    weight: 50
+    weight: 60
 isTocNested: true
 showAsideToc: true
 ---
 
-Dedicated clusters support multi-node and highly available deployments and are suitable for production deployments.
-
-{{< youtube id="qYMcNzWotkI" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
+[Multi-region synchronous clusters](../create-clusters-topology/#sync-across-all-regions) include a minimum of 3 nodes spread across multiple regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
 
 ## Features
 
-Dedicated clusters include the following features:
+Multi-region synchronous clusters include the following features:
 
 - No limit on cluster size - choose any cluster size based on your use case.
-- Multi node [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3 clusters with availability zone and node level fault tolerance. To deploy multi-region clusters, contact {{<support-cloud>}}.
+- Single multi-region [replication factor](../../../architecture/docdb-replication/replication/) (RF) 3 cluster.
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
-- VPC networking support.
+- VPC networking required.
 - Automated and on-demand backups.
 - Create as many as you need.
 - Provisioned with a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB. You can choose to provision with a preview release. Before deploying a production cluster on a preview release, contact {{<support-cloud>}}.
@@ -35,8 +30,8 @@ Dedicated clusters include the following features:
 
 ## Prerequisites
 
+- Create VPCs in the regions where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 - Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
-- If you want to use dedicated VPCs for network isolation and security, create the VPC before you create your cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
 ## Create a cluster
 
@@ -47,7 +42,7 @@ The **Create Cluster** wizard has the following pages:
 1. [Select Cluster Type](#select-cluster-type)
 1. [General Settings](#general-settings)
 1. [Cluster Setup](#cluster-setup)
-1. [DB Credentials](#db-credentials)
+1. [DB Credentials](#database-credentials)
 
 ### Select Cluster Type
 
@@ -67,35 +62,21 @@ Set the following options:
 
 ### Cluster Setup
 
+Select **Multi-Region Deployment** and **Sync across all regions**.
+
 Set the following options:
 
-- **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failures.
+- **Select regions and node size**
 
-  ![Add Cluster Wizard - Fault tolerance](/images/yb-cloud/cloud-addcluster-paid3.1.png)
+  ![Add Cluster Wizard - Multi-region and size](/images/yb-cloud/cloud-addcluster-multisync.png)
 
-  - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
-  - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
-  - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
+  - **Regions**: For each of the 3 regions, choose the [region](../../release-notes#cloud-provider-regions) where the nodes will be located, and the VPC in which to deploy the nodes. Choose the number of nodes to deploy in the regions; each region has the same number of nodes. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
-- **Choose a region and size your cluster**
-
-  ![Add Cluster Wizard - Region and size](/images/yb-cloud/cloud-addcluster-paid3.2.png)
-
-  - **Region**: Choose the [region](../../release-notes#cloud-provider-regions) where the cluster will be located, or click **Request a multi-region cluster** to contact Yugabyte Support to arrange multi-region deployment.
-
-  - **Nodes** - enter the number of nodes for the cluster. Node and Availability zone level clusters have a minimum of 3 nodes; Availability zone level clusters increment by 3.
-  - **vCPU/Node** - enter the number of virtual CPUs per node.
-  - **Disk size/Node** - enter the disk size per node in GB.
-
-- **Configure VPC**
-
-  ![Add Cluster Wizard - Configure VPC](/images/yb-cloud/cloud-addcluster-paid3.3.png)
-
-  To use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
+  - **Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
 
 Monthly total costs for the cluster are estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
-Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../cloud-clusters/configure-clusters#infrastructure).
+Multi-Region clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../cloud-clusters/configure-clusters#infrastructure).
 
 ### Database Credentials
 
