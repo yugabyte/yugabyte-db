@@ -52,7 +52,7 @@ enum class TabletServerServiceRpcMethodIndexes;
 
 YB_STRONGLY_TYPED_BOOL(AllowSplitTablet);
 
-using TransactionPoolProvider = std::function<client::TransactionPool*()>;
+using TransactionPoolProvider = std::function<client::TransactionPool&()>;
 
 } // namespace tserver
 } // namespace yb

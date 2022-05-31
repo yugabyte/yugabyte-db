@@ -741,7 +741,7 @@ Status PgClientSession::BeginTransactionIfNecessary(
         : Status::OK();
   }
 
-  txn = transaction_pool_provider_()->Take(
+  txn = transaction_pool_provider_().Take(
       client::ForceGlobalTransaction(options.force_global_transaction()), deadline);
   if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
            isolation == IsolationLevel::READ_COMMITTED) &&
@@ -777,7 +777,7 @@ Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
   if (!txn) {
     const auto isolation = FLAGS_ysql_serializable_isolation_for_ddl_txn
         ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
-    txn = VERIFY_RESULT(transaction_pool_provider_()->TakeAndInit(isolation, deadline));
+    txn = VERIFY_RESULT(transaction_pool_provider_().TakeAndInit(isolation, deadline));
     ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
     EnsureSession(PgClientSessionKind::kDdl)->SetTransaction(txn);
   }

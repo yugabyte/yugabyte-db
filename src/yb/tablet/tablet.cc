@@ -413,6 +413,7 @@ Tablet::Tablet(const TabletInitData& data)
       pending_abortable_op_counter_("RocksDB abortable read/write operations"),
       write_ops_being_submitted_counter_("Tablet schema"),
       client_future_(data.client_future),
+      transaction_manager_provider_(data.transaction_manager_provider),
       local_tablet_filter_(data.local_tablet_filter),
       log_prefix_suffix_(data.log_prefix_suffix),
       is_sys_catalog_(data.is_sys_catalog),
@@ -457,11 +458,6 @@ Tablet::Tablet(const TabletInitData& data)
       (is_sys_catalog_ || transactional)) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
         data.transaction_participant_context, this, tablet_metrics_entity_);
-    // Create transaction manager for secondary index update.
-    if (has_index) {
-      transaction_manager_ = std::make_unique<client::TransactionManager>(
-          client_future_.get(), scoped_refptr<server::Clock>(clock_), local_tablet_filter_);
-    }
   }
 
   // Create index table metadata cache for secondary index update.
@@ -1969,11 +1965,6 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
 
   // Create transaction manager and index table metadata cache for secondary index update.
   if (!operation->index_map().empty()) {
-    if (current_table_info->schema().table_properties().is_transactional() &&
-        !transaction_manager_) {
-      transaction_manager_ = std::make_unique<client::TransactionManager>(
-          client_future_.get(), scoped_refptr<server::Clock>(clock_), local_tablet_filter_);
-    }
     CreateNewYBMetaDataCache();
   }
 

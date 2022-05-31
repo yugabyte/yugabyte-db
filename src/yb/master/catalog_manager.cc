@@ -4088,7 +4088,7 @@ Status CatalogManager::CreateTransactionStatusTableInternal(
     return STATUS_SUBSTITUTE(AlreadyPresent, "Table already exists: $0", table_name);
   }
 
-  LOG(INFO) << "Creating transaction status table " << table_name;
+  LOG(INFO) << "Creating transaction status table: " << table_name;
   // Set up a CreateTable request internally.
   CreateTableRequestPB req;
   CreateTableResponsePB resp;
@@ -4359,8 +4359,8 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   const auto& pb = l->pb;
 
   // 2. Verify if the create is in-progress.
-  TRACE("Verify if the table creation is in progress for $0", table->ToString());
   auto result = !table->IsCreateInProgress();
+  TRACE("Verify if the table creation is in progress for $0, $1", table->ToString(), result);
 
   // 3. Set any current errors, if we are experiencing issues creating the table. This will be
   // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in

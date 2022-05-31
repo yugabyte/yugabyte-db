@@ -75,8 +75,8 @@ void GeoTransactionsTestBase::SetUp() {
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto mini_ts = cluster_->mini_tablet_server(i);
     if (AsString(mini_ts->bound_rpc_addr().address()) == pg_host_port().host()) {
-      transaction_pool_ = mini_ts->server()->TransactionPool();
-      transaction_manager_ = mini_ts->server()->TransactionManager();
+      transaction_pool_ = &mini_ts->server()->TransactionPool();
+      transaction_manager_ = &mini_ts->server()->TransactionManager();
       break;
     }
   }

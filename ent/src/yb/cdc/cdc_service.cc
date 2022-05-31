@@ -254,7 +254,7 @@ class CDCServiceImpl::Impl {
   explicit Impl(TSTabletManager* tablet_manager, rw_spinlock* mutex) : mutex_(*mutex) {
     const auto server = tablet_manager->server();
     async_client_init_.emplace(
-        "cdc_client", FLAGS_cdc_ybclient_reactor_threads, FLAGS_cdc_read_rpc_timeout_ms / 1000,
+        "cdc_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms),
         server->permanent_uuid(), &server->options(), server->metric_entity(),
         server->mem_tracker(), server->messenger());
     async_client_init_->Start();

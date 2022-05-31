@@ -718,19 +718,13 @@ void WriteQuery::UpdateQLIndexes() {
       session->SetDeadline(deadline());
       if (write_op->request().has_child_transaction_data()) {
         child_transaction_data = &write_op->request().child_transaction_data();
-        if (!tablet().transaction_manager()) {
-          StartSynchronization(
-              std::move(self_),
-              STATUS(Corruption, "Transaction manager is not present for index update"));
-          return;
-        }
         auto child_data = client::ChildTransactionData::FromPB(
             write_op->request().child_transaction_data());
         if (!child_data.ok()) {
           StartSynchronization(std::move(self_), child_data.status());
           return;
         }
-        txn = std::make_shared<client::YBTransaction>(tablet().transaction_manager(), *child_data);
+        txn = std::make_shared<client::YBTransaction>(&tablet().transaction_manager(), *child_data);
         session->SetTransaction(txn);
       } else {
         child_transaction_data = nullptr;

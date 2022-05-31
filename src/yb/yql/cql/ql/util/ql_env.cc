@@ -104,7 +104,7 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
   }
   if (transaction_pool_ == nullptr) {
     if (transaction_pool_provider_) {
-      transaction_pool_ = transaction_pool_provider_();
+      transaction_pool_ = &transaction_pool_provider_();
     } else {
       return STATUS(InternalError, "No transaction pool provider");
     }
