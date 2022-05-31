@@ -492,6 +492,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Returns true if all tablets of the table are deleted or hidden.
   bool AreAllTabletsHidden() const;
 
+  // Verify that all tablets in partitions_ are running. Newly created tablets (e.g. because of a
+  // tablet split) might not be running.
+  Status CheckAllActiveTabletsRunning() const;
+
   // Clears partitons_ and tablets_.
   // If deactivate_only is set to true then clear only the partitions_.
   void ClearTabletMaps(DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
@@ -535,7 +539,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void WaitTasksCompletion();
 
   // Allow for showing outstanding tasks in the master UI.
-  std::unordered_set<std::shared_ptr<server::MonitoredTask>> GetTasks();
+  std::unordered_set<std::shared_ptr<server::MonitoredTask>> GetTasks() const;
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
@@ -578,7 +582,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
-  // At any point in time it contains only the active tablets.
+  // At any point in time it contains only the active tablets (defined in the comment on tablets_).
   std::map<PartitionKey, TabletInfo*> partitions_ GUARDED_BY(lock_);
   // At any point in time it contains both active and inactive tablets.
   // Currently there are two cases for a tablet to be categorized as inactive:

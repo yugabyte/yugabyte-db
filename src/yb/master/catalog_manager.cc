@@ -181,6 +181,7 @@
 #include "yb/util/oid_generator.h"
 #include "yb/util/random_util.h"
 #include "yb/util/rw_mutex.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
@@ -2785,11 +2786,11 @@ Status CatalogManager::SplitTablet(
                    tserver::TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY) {
           LOG(INFO) << "AsyncGetTabletSplitKey task failed for tablet " << tablet->tablet_id()
               << ". Tablet split not supported for tablets with TTL file expiration.";
-          tablet_split_manager()->MarkTtlTableForSplitIgnore(tablet->table()->id());
+          tablet_split_manager()->DisableSplittingForTtlTable(tablet->table()->id());
         } else if (tserver::TabletServerError(result.status()) ==
                    tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL) {
           LOG(INFO) << "Tablet key range is too small to split, disabling splitting temporarily.";
-          tablet_split_manager()->MarkSmallKeyRangeTabletForSplitIgnore(tablet->id());
+          tablet_split_manager()->DisableSplittingForSmallKeyRangeTablet(tablet->id());
         } else {
           LOG(WARNING) << "AsyncGetTabletSplitKey task failed with status: " << result.status();
         }
@@ -8557,13 +8558,21 @@ Status CatalogManager::DisableTabletSplitting(
 Status CatalogManager::IsTabletSplittingComplete(
     const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
     rpc::RpcContext* rpc) {
-  TableInfoMap table_info_map;
+  vector<TableInfoPtr> tables;
   {
     SharedLock lock(mutex_);
-    table_info_map = *table_ids_map_;
+    tables.reserve(table_ids_map_->size());
+    for (const auto& table : *table_ids_map_) {
+      tables.push_back(table.second);
+    }
   }
-  resp->set_is_tablet_splitting_complete(
-      tablet_split_manager_.IsTabletSplittingComplete(table_info_map));
+  for (const auto& table : tables) {
+    if (!tablet_split_manager_.IsTabletSplittingComplete(*table)) {
+      resp->set_is_tablet_splitting_complete(false);
+      return Status::OK();
+    }
+  }
+  resp->set_is_tablet_splitting_complete(true);
   return Status::OK();
 }
 

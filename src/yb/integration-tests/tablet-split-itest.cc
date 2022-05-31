@@ -2045,7 +2045,7 @@ TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
 
   // State that table should not be split for the next 1 second.
   // Candidate table should no longer be valid.
-  split_manager->MarkTtlTableForSplitIgnore(table_->id());
+  split_manager->DisableSplittingForTtlTable(table_->id());
   ASSERT_NOK(split_manager->ValidateSplitCandidateTable(table_info));
 
   // After 2 seconds, table is a valid split candidate again.
@@ -2055,7 +2055,7 @@ TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
   // State again that table should not be split for the next 1 second.
   // Candidate table should still be a valid candidate if ignore_disabled_list
   // is true (e.g. in the case of manual tablet splitting).
-  split_manager->MarkTtlTableForSplitIgnore(table_->id());
+  split_manager->DisableSplittingForTtlTable(table_->id());
   ASSERT_OK(split_manager->ValidateSplitCandidateTable(table_info,
       master::IgnoreDisabledList::kTrue));
 }
