@@ -30,7 +30,7 @@ You can create source and target universes as follows:
 1. Proceed to setting up [unidirectional](#set-up-unidirectional-replication) or [bidirectional](#set-up-bidirectional-replication) replication.
 
 {{< note title="Note" >}}
-If you already have existing data in your tables, follow the bootstrap process described in [bootstrap a sink cluster](#bootstrap-a-sink-cluster).
+If you already have existing data in your tables, follow the bootstrap process described in [Bootstrap a target universe](#bootstrap-a-target-universe).
 {{< /note >}}
 
 ## Set up unidirectional replication
@@ -39,7 +39,7 @@ After you created the required tables, you can set up asynchronous replication a
 
 - Look up the source universe UUID and the table IDs for the two tables and the index table:
 
-  - To find a universe's UUID, check `http://yb-master-ip:7000/varz` for `--cluster_uuid`. If it is not available in this location, check the same field in the cluster configuration.
+  - To find a universe's UUID, check `http://yb-master-ip:7000/varz` for `--cluster_uuid`. If it is not available in this location, check the same field in the universe configuration.
 
   - To find a table ID, execute the following command as an admin user:
 
@@ -100,7 +100,7 @@ Once you have set up replication, load data into the source universe, as follows
     ```
 
   \
-  Note that the IP address needs to correspond to the IP of any T-Servers in the cluster.
+  Note that the IP address needs to correspond to the IP of any T-Servers in the universe.
 
 - For bidirectional replication, repeat the preceding step in the yugabyte-target universe.
 
@@ -160,7 +160,7 @@ Consider the following example:
 
 When universes use different certificates, you need to store the certificates for the producer universe on the target universe, as follows:
 
-1. Ensure that `use_node_to_node_encryption` is set to `true` on all [masters](../../reference/configuration/yb-master/#use-node-to-node-encryption) and [tservers](../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
+1. Ensure that `use_node_to_node_encryption` is set to `true` on all [masters](../../reference/configuration/yb-master/#use-node-to-node-encryption) and [t-servers](../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
 
 1. For each master and t-server on the target universe, set the gflag `certs_for_cdc_dir` to the parent directory where you want to store all the source universe's certificates for replication.
 
@@ -251,7 +251,7 @@ To create unidirectional replication, peform the following:
 
   ![xCluster_with_GP](/images/explore/yb_xcluster_table_uuids.png)
 
-<br><br>
+<br>
 
 2. Run the replication setup command for the source universe, as follows:
     ```sh
@@ -267,7 +267,7 @@ To create unidirectional replication, peform the following:
     127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     000033e1000030008000000000004007,000033e100003000800000000000400d,000033e1000030008000000000004013
     ```
-3. Optionally, if you have access to YugabyteDB Anywhere, you can observe the replication setup ( `xClusterSetup1` ) by navigating to **Replication** on the source and target universe.
+3. Optionally, if you have access to YugabyteDB Anywhere, you can observe the replication setup (`xClusterSetup1`) by navigating to **Replication** on the source and target universe.
 
 ## Set up asynchronous replication in Kubernetes
 
