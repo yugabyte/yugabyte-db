@@ -107,7 +107,7 @@ set_changelog(){
                 echo "$start_line"
                 current_date=$(date +"%a %b %d %Y")
                 sed -i "$start_line,$ d" $1
-                echo "* $current_date Percona Build/Release Team <eng-build@percona.com> - ${VERSION}-${RPM_RELEASE} >> $1
+                echo "* $current_date Percona Build/Release Team <eng-build@percona.com> - ${VERSION}-${RPM_RELEASE}" >> $1
                 echo "- Release ${VERSION}-${RPM_RELEASE}" >> $1
                 return
             fi
