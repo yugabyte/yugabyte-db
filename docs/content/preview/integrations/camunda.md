@@ -94,8 +94,6 @@ Note that for the service event, you need an external task worker. For that purp
 
 1. Click File > New File > BPMN Diagram to create a new BPMN diagram. <br/><br/>
 
-    ![alt text](https://docs.camunda.org/get-started/quick-start/img/modeler-new-bpmn-diagram.png)
-
 1. Double-click the start event, and name the event "Payment Retrieval Requested".
 
 1. Create a service event:
@@ -106,15 +104,9 @@ Note that for the service event, you need an external task worker. For that purp
 
     1. Click the activity shape, and use the wrench button to change the activity type to Service Task. <br/><br/>
 
-        ![alt text](https://docs.camunda.org/get-started/quick-start/img/modeler-step2.png)
-
 1. Repeat the previous step to add an end event named "Payment Received". <br/><br/>
 
-    ![alt text](https://docs.camunda.org/get-started/quick-start/img/modeler-step3.png)
-
 1. Configure the service task:
-
-    ![alt text](https://docs.camunda.org/get-started/quick-start/img/modeler-step5.png)
 
     1. Enter `payment-retrieval` in the ID property field to configure an ID for the process.
 
@@ -184,7 +176,6 @@ When the process engine encounters a service task configured to be externally ha
 
       console.log(`Charging credit card with an amount of ${amount}€ for the item '${item}'...`);
 
-      open('https://docs.camunda.org/get-started/quick-start/success');
 
       // Complete the task
       await taskService.complete(task);
