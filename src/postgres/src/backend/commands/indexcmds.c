@@ -1401,7 +1401,6 @@ DefineIndex(Oid relationId,
 	 * No need to break (abort) ongoing txns since this is an online schema
 	 * change.
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
-	 * level 1).
 	 */
 	YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
 	                           false /* is_breaking_catalog_change */);

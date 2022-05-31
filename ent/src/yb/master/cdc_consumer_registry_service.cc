@@ -23,6 +23,7 @@
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/partition.h"
 
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
@@ -33,132 +34,313 @@ namespace master {
 namespace enterprise {
 
 std::map<std::string, std::string> GetPartitionStartKeyConsumerTabletMapping(
-    const GetTableLocationsResponsePB& consumer_tablets_resp) {
+    const std::map<std::string, KeyRange>& consumer_tablet_keys) {
   std::map<std::string, std::string> partitions_map;
-  for (const auto& tablet_location : consumer_tablets_resp.tablet_locations()) {
-    partitions_map[tablet_location.partition().partition_key_start()] = tablet_location.tablet_id();
+  for (const auto& tablets : consumer_tablet_keys) {
+    partitions_map[tablets.second.start_key] = tablets.first;
   }
   return partitions_map;
 }
 
-Status CreateTabletMapping(
+std::map<std::string, KeyRange> GetTabletKeys(
+    const google::protobuf::RepeatedPtrField<TabletLocationsPB>& tablet_locations) {
+  std::map<std::string, KeyRange> tablet_keys;
+  for (const auto& tablets : tablet_locations) {
+    tablet_keys[tablets.tablet_id()].start_key = tablets.partition().partition_key_start();
+    tablet_keys[tablets.tablet_id()].end_key = tablets.partition().partition_key_end();
+  }
+  return tablet_keys;
+}
+
+bool GetProducerTabletKeys(
+    const ::google::protobuf::Map<std::string, cdc::ProducerTabletListPB>& mutable_map,
+    std::map<std::string, KeyRange>* tablet_keys) {
+  for (const auto& mapping : mutable_map) {
+    auto tablet_info = mapping.second;
+    if (tablet_info.tablets_size() != tablet_info.start_key_size() ||
+        tablet_info.tablets_size() != tablet_info.end_key_size()) {
+      // Looks like the mapping was created without key info. We need to fallback to old round robin
+      // based mapping.
+      DCHECK(tablet_info.start_key_size() == 0 && tablet_info.end_key_size() == 0);
+      return false;
+    }
+
+    for (int i = 0; i < tablet_info.tablets_size(); i++) {
+      const auto& producer_tablet = tablet_info.tablets(i);
+      (*tablet_keys)[producer_tablet].start_key = tablet_info.start_key(i);
+      (*tablet_keys)[producer_tablet].end_key = tablet_info.end_key(i);
+    }
+  }
+  return true;
+}
+
+void PopulateTsAddresses(
+    const TabletLocationsPB& producer, std::unordered_set<HostPort, HostPortHash>* tserver_addrs) {
+  // For external CDC Consumers, populate the list of TServers they can connect to as proxies.
+  for (const auto& replica : producer.replicas()) {
+    // Use the public IP addresses since we're cross-universe
+    for (const auto& addr : replica.ts_info().broadcast_addresses()) {
+      tserver_addrs->insert(HostPortFromPB(addr));
+    }
+    // Rarely a viable setup for production replication, but used in testing...
+    if (replica.ts_info().broadcast_addresses_size() == 0) {
+      LOG(WARNING) << "No public broadcast addresses found for "
+                   << replica.ts_info().permanent_uuid() << ".  Using private addresses instead.";
+      for (const auto& addr : replica.ts_info().private_rpc_addresses()) {
+        tserver_addrs->insert(HostPortFromPB(addr));
+      }
+    }
+  }
+}
+
+// We can optimize if we have the same tablet count in the producer and consumer table by
+// mapping key ranges to each other. Due to tablet splitting it may be possible that the keys dont
+// match even when the count of range is the same. Return true if a mapping was possible.
+bool TryCreateOptimizedTabletMapping(
+    const std::map<std::string, KeyRange>& producer_tablet_keys,
+    const std::map<std::string, std::string>& consumer_partitions_map,
+    google::protobuf::Map<::std::string, ::yb::cdc::ProducerTabletListPB>* mutable_map) {
+  if (consumer_partitions_map.size() != producer_tablet_keys.size()) {
+    return false;
+  }
+
+  for (const auto& producer : producer_tablet_keys) {
+    auto producer_key_range = producer.second;
+    const auto& it = consumer_partitions_map.find(producer_key_range.start_key);
+    if (it == consumer_partitions_map.end()) {
+      mutable_map->clear();
+      return false;
+    }
+
+    (*mutable_map)[it->second].add_tablets(producer.first);
+    (*mutable_map)[it->second].add_start_key(producer_key_range.start_key);
+    (*mutable_map)[it->second].add_end_key(producer_key_range.end_key);
+  }
+
+  return true;
+}
+
+Status ComputeTabletMapping(
+    const std::map<std::string, KeyRange>& producer_tablet_keys,
+    const std::map<std::string, KeyRange>& consumer_tablet_keys,
+    cdc::StreamEntryPB* stream_entry) {
+  stream_entry->set_local_tserver_optimized(false);
+  auto mutable_map = stream_entry->mutable_consumer_producer_tablet_map();
+  mutable_map->clear();
+  auto consumer_partitions_map = GetPartitionStartKeyConsumerTabletMapping(consumer_tablet_keys);
+  if (TryCreateOptimizedTabletMapping(producer_tablet_keys, consumer_partitions_map, mutable_map)) {
+    stream_entry->set_local_tserver_optimized(true);
+    return Status::OK();
+  }
+
+  // Map tablets based on max key range overlap.
+  for (const auto& producer : producer_tablet_keys) {
+    const auto& producer_tablet_id = producer.first;
+    auto producer_key_range = producer.second;
+    auto producer_key_range_size = PartitionSchema::GetPartitionRangeSize(
+        producer_key_range.start_key, producer_key_range.end_key);
+    std::string consumer_tablet_id;
+    uint32_t max_overlap = 0;
+
+    for (const auto& consumer_tablet : consumer_tablet_keys) {
+      auto consumer_key_range = consumer_tablet.second;
+      auto overlap = PartitionSchema::GetOverlap(
+          producer_key_range.start_key, producer_key_range.end_key, consumer_key_range.start_key,
+          consumer_key_range.end_key);
+      if (overlap > max_overlap) {
+        consumer_tablet_id = consumer_tablet.first;
+        max_overlap = overlap;
+        if (overlap >= producer_key_range_size / 2) {
+          // We have majority overlap. Break as we cannot do better than this.
+          break;
+        }
+      }
+    }
+
+    if (consumer_tablet_id.empty()) {
+      auto s = STATUS_SUBSTITUTE(
+          IllegalState,
+          "Could not find any consumer tablets with overlapping key range for producer tablet $0, "
+          "partition_key_start: $1 and partition_key_end: $2",
+          producer_tablet_id,
+          Slice(producer_key_range.start_key).ToDebugHexString(),
+          Slice(producer_key_range.end_key).ToDebugHexString());
+      DLOG(FATAL) << s;
+      return s;
+    }
+
+    (*mutable_map)[consumer_tablet_id].add_tablets(producer_tablet_id);
+    (*mutable_map)[consumer_tablet_id].add_start_key(producer_key_range.start_key);
+    (*mutable_map)[consumer_tablet_id].add_end_key(producer_key_range.end_key);
+  }
+
+  return Status::OK();
+}
+
+Status InitCDCStream(
     const std::string& producer_table_id,
     const std::string& consumer_table_id,
-    const std::string& producer_id,
-    const std::string& producer_master_addrs,
-    const GetTableLocationsResponsePB& consumer_tablets_resp,
+    const std::map<std::string, KeyRange>& consumer_tablet_keys,
     std::unordered_set<HostPort, HostPortHash>* tserver_addrs,
     cdc::StreamEntryPB* stream_entry,
-    std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks) {
-
+    std::shared_ptr<CDCRpcTasks>
+        cdc_rpc_tasks) {
   // Get the tablets in the producer table.
   auto producer_table_locations =
       VERIFY_RESULT(cdc_rpc_tasks->GetTableLocations(producer_table_id));
 
-  auto consumer_tablets_size = consumer_tablets_resp.tablet_locations_size();
-  auto partitions_map = GetPartitionStartKeyConsumerTabletMapping(consumer_tablets_resp);
   stream_entry->set_consumer_table_id(consumer_table_id);
   stream_entry->set_producer_table_id(producer_table_id);
-  auto* mutable_map = stream_entry->mutable_consumer_producer_tablet_map();
-  bool same_tablet_count = consumer_tablets_size == producer_table_locations.size();
-  LOG(INFO) << Format("For producer table id $0 and consumer table id $1, same num tablets: $2",
-                      producer_table_id, consumer_table_id, same_tablet_count);
-  stream_entry->set_same_num_producer_consumer_tablets(same_tablet_count);
+
+  auto producer_tablet_keys = GetTabletKeys(producer_table_locations);
+  RETURN_NOT_OK(ComputeTabletMapping(producer_tablet_keys, consumer_tablet_keys, stream_entry));
+
+  LOG(INFO) << Format(
+      "For producer table id $0 and consumer table id $1, same num tablets: $2", producer_table_id,
+      consumer_table_id, stream_entry->local_tserver_optimized());
+
   // Create the mapping between consumer and producer tablets.
   for (int i = 0; i < producer_table_locations.size(); i++) {
-    const auto& producer = producer_table_locations.Get(i).tablet_id();
-    std::string consumer;
-    if (same_tablet_count) {
-      // We can optimize if we have the same tablet count in the producer and consumer table by
-      // mapping key ranges to each other.
-      const auto& it =
-          partitions_map.find(producer_table_locations.Get(i).partition().partition_key_start());
-      if (it == partitions_map.end()) {
-        return STATUS_SUBSTITUTE(
-            IllegalState, "When producer and consumer tablet counts are the same, could not find "
-                          "matching keyrange for tablet $0", producer);
-      }
-      consumer = it->second;
-    } else {
-      consumer = consumer_tablets_resp.tablet_locations(i % consumer_tablets_size).tablet_id();
-    }
-
-    cdc::ProducerTabletListPB producer_tablets;
-    auto it = mutable_map->find(consumer);
-    if (it != mutable_map->end()) {
-      producer_tablets = it->second;
-    }
-    *producer_tablets.add_tablets() = producer;
-    (*mutable_map)[consumer] = producer_tablets;
-
-    // For external CDC Consumers, populate the list of TServers they can connect to as proxies.
-    for (const auto& replica : producer_table_locations.Get(i).replicas()) {
-      // Use the public IP addresses since we're cross-universe
-      for (const auto& addr : replica.ts_info().broadcast_addresses()) {
-        tserver_addrs->insert(HostPortFromPB(addr));
-      }
-      // Rarely a viable setup for production replication, but used in testing...
-      if (replica.ts_info().broadcast_addresses_size() == 0) {
-        LOG(WARNING) << "No public broadcast addresses found for "
-                     << replica.ts_info().permanent_uuid()
-                     << ".  Using private addresses instead.";
-        for (const auto& addr : replica.ts_info().private_rpc_addresses()) {
-          tserver_addrs->insert(HostPortFromPB(addr));
-        }
-      }
-    }
+    const auto& producer = producer_table_locations.Get(i);
+    PopulateTsAddresses(producer, tserver_addrs);
   }
+
   return Status::OK();
 }
 
-Status UpdateTableMappingOnTabletSplit(
-    cdc::StreamEntryPB* stream_entry,
-    const SplitTabletIds& split_tablet_ids) {
+Result<bool> TryComputeOverlapBasedMapping(
+    const std::map<std::string, KeyRange>& consumer_tablet_keys, cdc::StreamEntryPB* stream_entry) {
+  std::map<std::string, KeyRange> producer_tablet_keys;
+
+  // See if we stored the producer tablet keys.
+  if (!GetProducerTabletKeys(stream_entry->consumer_producer_tablet_map(), &producer_tablet_keys)) {
+    return false;
+  }
+
+  RETURN_NOT_OK(ComputeTabletMapping(producer_tablet_keys, consumer_tablet_keys, stream_entry));
+  return true;
+}
+
+Status UpdateTabletMappingOnConsumerSplit(
+    const std::map<std::string, KeyRange>& consumer_tablet_keys,
+    const SplitTabletIds& split_tablet_ids, cdc::StreamEntryPB* stream_entry) {
   auto* mutable_map = stream_entry->mutable_consumer_producer_tablet_map();
+  // We should have more consumer tablets than before. Request has to be idempotent so equality is
+  // allowed.
+  DCHECK_GE(consumer_tablet_keys.size(), mutable_map->size());
+
+  // Try to perform a overlap based mapping.
+  if (VERIFY_RESULT(TryComputeOverlapBasedMapping(consumer_tablet_keys, stream_entry))) {
+    return Status::OK();
+  }
+
+  // Looks like we dont have producer key ranges. Just distribute the producer tablets between both
+  // children.
   auto producer_tablets = (*mutable_map)[split_tablet_ids.source];
-  mutable_map->erase(split_tablet_ids.source);
-  // TODO introduce a better mapping of tablets to improve locality (GH #10186).
-  // For now we just distribute the producer tablets between both children.
-  for (int i = 0; i < producer_tablets.tablets().size(); ++i) {
-    if (i % 2) {
-      *(*mutable_map)[split_tablet_ids.children.first].add_tablets() = producer_tablets.tablets(i);
-    } else {
-      *(*mutable_map)[split_tablet_ids.children.second].add_tablets() = producer_tablets.tablets(i);
+  DCHECK(producer_tablets.start_key_size() == 0 && producer_tablets.end_key_size() == 0);
+  // Only process this tablet if it present, if not we have already processed it.
+  if (mutable_map->erase(split_tablet_ids.source)) {
+    for (int i = 0; i < producer_tablets.tablets().size(); ++i) {
+      const auto& child = (i % 2) ? split_tablet_ids.children.first
+                                  : split_tablet_ids.children.second;
+      *(*mutable_map)[child].add_tablets() = producer_tablets.tablets(i);
     }
   }
+
+  stream_entry->set_local_tserver_optimized(false);
   return Status::OK();
 }
 
-Result<std::vector<CDCConsumerStreamInfo>> TEST_GetConsumerProducerTableMap(
-    const std::string& producer_master_addrs,
-    const ListTablesResponsePB& resp) {
+Status UpdateTabletMappingOnProducerSplit(
+    const std::map<std::string, KeyRange>& consumer_tablet_keys,
+    const SplitTabletIds& split_tablet_ids,
+    const string& split_key,
+    bool* found_source,
+    bool* found_all_split_childs,
+    cdc::StreamEntryPB* stream_entry) {
+  // Find the parent tablet in the tablet mapping.
+  *found_source = false;
+  *found_all_split_childs = false;
+  auto mutable_map = stream_entry->mutable_consumer_producer_tablet_map();
+  // Also keep track if we see the split children tablets.
+  vector<string> split_child_tablet_ids{
+      split_tablet_ids.children.first, split_tablet_ids.children.second};
+  for (auto& consumer_tablet_to_producer_tablets : *mutable_map) {
+    auto& producer_tablet_infos = consumer_tablet_to_producer_tablets.second;
+    bool has_key_range =
+        producer_tablet_infos.start_key_size() == producer_tablet_infos.tablets_size() &&
+        producer_tablet_infos.end_key_size() == producer_tablet_infos.tablets_size();
+    auto producer_tablets = producer_tablet_infos.mutable_tablets();
+    for (int i = 0; i < producer_tablets->size(); i++) {
+      auto& tablet = producer_tablets->Get(i);
+      if (tablet == split_tablet_ids.source) {
+        // Remove the parent tablet id.
+        producer_tablets->DeleteSubrange(i, 1);
+        // For now we add the children tablets to the same consumer tablet.
+        // ReComputeTabletMapping will optimize this.
+        producer_tablet_infos.add_tablets(split_tablet_ids.children.first);
+        producer_tablet_infos.add_tablets(split_tablet_ids.children.second);
 
-  auto cdc_rpc_tasks = VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(
-      "" /* producer_id */, producer_master_addrs));
-  auto producer_tables = VERIFY_RESULT(cdc_rpc_tasks->ListTables());
+        if (has_key_range) {
+          auto old_start_key = producer_tablet_infos.start_key(i);
+          auto old_end_key = producer_tablet_infos.end_key(i);
 
-  std::unordered_map<std::string, std::string> consumer_tables_map;
-  for (const auto& table_info : resp.tables()) {
-    const auto& table_name_str = Format("$0:$1", table_info.namespace_().name(), table_info.name());
-    consumer_tables_map[table_name_str] = table_info.id();
-  }
+          RETURN_NOT_OK_PREPEND(
+              PartitionSchema::IsValidHashPartitionRange(old_start_key, split_key),
+              Format("Producer tablet $0 does not contain split key", split_tablet_ids.source));
+          RETURN_NOT_OK_PREPEND(
+              PartitionSchema::IsValidHashPartitionRange(split_key, old_end_key),
+              Format("Producer tablet $0 does not contain split key", split_tablet_ids.source));
 
-  std::vector<CDCConsumerStreamInfo> consumer_producer_list;
-  for (const auto& table : producer_tables) {
-    // TODO(Rahul): Fix this for YSQL workload testing.
-    if (!master::IsSystemNamespace(table.second.namespace_name())) {
-      const auto& table_name_str =
-          Format("$0:$1", table.second.namespace_name(), table.second.table_name());
-      CDCConsumerStreamInfo stream_info;
-      stream_info.stream_id = RandomHumanReadableString(16);
-      stream_info.producer_table_id = table.first;
-      stream_info.consumer_table_id = consumer_tables_map[table_name_str];
-      consumer_producer_list.push_back(std::move(stream_info));
+          // Remove old keys and add the new ones.
+          producer_tablet_infos.mutable_start_key()->DeleteSubrange(i, 1);
+          producer_tablet_infos.mutable_end_key()->DeleteSubrange(i, 1);
+          producer_tablet_infos.add_start_key(old_start_key);
+          producer_tablet_infos.add_end_key(split_key);
+          producer_tablet_infos.add_start_key(split_key);
+          producer_tablet_infos.add_end_key(old_end_key);
+        } else {
+          DCHECK(
+              producer_tablet_infos.start_key_size() == 0 &&
+              producer_tablet_infos.end_key_size() == 0);
+        }
+        // There should only be one copy of each producer tablet per stream, so can exit
+        // early.
+        *found_source = true;
+        break;
+      }
+
+      // Check if this is one of the child split tablets.
+      auto it = std::find(split_child_tablet_ids.begin(), split_child_tablet_ids.end(), tablet);
+      if (it != split_child_tablet_ids.end()) {
+        split_child_tablet_ids.erase(it);
+      }
+    }
+    if (*found_source) {
+      break;
     }
   }
-  return consumer_producer_list;
+
+  if (!*found_source) {
+    // Did not find the source tablet - means that we have already processed this SPLIT_OP, so for
+    // idempotent, we can return OK.
+    *found_all_split_childs = split_child_tablet_ids.empty();
+    return Status::OK();
+  }
+
+  // Try to perform a better overlap based mapping.
+  if (VERIFY_RESULT(TryComputeOverlapBasedMapping(consumer_tablet_keys, stream_entry))) {
+    return Status::OK();
+  }
+
+  // Stream was created without producer tablet key info. We will leave the children on the same
+  // consumer.
+  // Also make sure that we switch off of 1-1 mapping optimizations.
+  stream_entry->set_local_tserver_optimized(false);
+
+  return Status::OK();
 }
 
-} // namespace enterprise
-} // namespace master
-} // namespace yb
+}  // namespace enterprise
+}  // namespace master
+}  // namespace yb

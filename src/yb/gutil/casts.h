@@ -26,10 +26,10 @@
 
 #include <assert.h>         // for use with down_cast<>
 #include <string.h>         // for memcpy
-#include <limits.h>         // for enumeration casts and tests
 
 #include <limits>
 #include <string>
+#include <type_traits>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/template_util.h"
@@ -395,6 +395,27 @@ Out narrow_cast(const In& in) {
   }
   if (std::is_signed<In>::value && in < static_cast<In>(std::numeric_limits<Out>::min())) {
     BadNarrowCast('<', std::to_string(in), std::to_string(std::numeric_limits<Out>::min()));
+  }
+  return static_cast<Out>(in);
+}
+
+// make_unsigned should be used to cast from signed to unsigned representation of the same size.
+// If value is out of range of output type the system will crash with FATAL error message.
+template <class In>
+typename std::enable_if<std::is_signed_v<In>, typename std::make_unsigned<In>::type>::type
+    make_unsigned(const In& in) {
+  if (in < 0) {
+    BadNarrowCast('<', std::to_string(in), "0");
+  }
+  return static_cast<typename std::make_unsigned<In>::type>(in);
+}
+
+template <class In>
+typename std::enable_if<std::is_unsigned_v<In>, typename std::make_signed<In>::type>::type
+    make_signed(const In& in) {
+  using Out = typename std::make_signed<In>::type;
+  if (in > static_cast<In>(std::numeric_limits<Out>::max())) {
+    BadNarrowCast('<', std::to_string(in), std::to_string(std::numeric_limits<Out>::max()));
   }
   return static_cast<Out>(in);
 }

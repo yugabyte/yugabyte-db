@@ -43,6 +43,8 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       "Batched COPY is not supported";
   private static final String INVALID_BATCH_SIZE_ERROR_MSG =
       "argument to option \"rows_per_transaction\" must be a positive integer";
+  private static final String INVALID_NUM_SKIPPED_ROWS_ERROR_MSG =
+      "argument to option \"skip\" must be a nonnegative integer";
   private static final String INVALID_COPY_INPUT_ERROR_MSG =
       "invalid input syntax for integer";
   private static final String INVALID_FOREIGN_KEY_ERROR_MSG =
@@ -930,6 +932,239 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
 
       // We should roll back all the changes.
       assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, 0);
+    }
+  }
+
+  @Test
+  public void testBatchCopySkipSomeRows() throws Exception {
+    String absFilePath = getAbsFilePath("skip-rows-valid-some.txt");
+    String tableName = "skiprows_some";
+    int totalLines = 100;
+    int skippedLines = 10;
+    int expectedCopiedLines = totalLines - skippedLines;
+
+    createFileInTmpDir(absFilePath, totalLines);
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(String.format(
+          "CREATE TABLE %s (a Integer, b serial, c varchar, d int)", tableName));
+      statement.execute(String.format(
+          "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, SKIP %s)",
+          tableName, absFilePath, skippedLines));
+
+      // Expecting totalLines - skippedLines will be copied.
+      assertOneRow(statement,
+                   String.format("SELECT COUNT(*) FROM %s", tableName),
+                   expectedCopiedLines);
+    }
+  }
+
+  @Test
+  public void testBatchCopySkipAllRows() throws Exception {
+    String absFilePath = getAbsFilePath("skip-rows-valid-all.txt");
+    String tableName = "skiprows_all";
+    int totalLines = 100;
+    int skippedLines = 1000;
+
+    createFileInTmpDir(absFilePath, totalLines);
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(String.format(
+          "CREATE TABLE %s (a Integer, b serial, c varchar, d int)", tableName));
+      statement.execute(String.format(
+          "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, SKIP %s)",
+          tableName, absFilePath, skippedLines));
+
+      // Since skippedLines > totalLines, we expect 0 rows will be copied.
+      assertOneRow(statement,
+                   String.format("SELECT COUNT(*) FROM %s", tableName), 0);
+    }
+  }
+
+  @Test
+  public void testBatchCopyInvalidSkipRowsParameter() throws Exception {
+    String absFilePath = getAbsFilePath("skip-rows-invalid.txt");
+    String tableName = "skiprow_invalid";
+    int totalLines = 100;
+    int skippedLines = -1;
+
+    createFileInTmpDir(absFilePath, totalLines);
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(String.format(
+          "CREATE TABLE %s (a Integer, b serial, c varchar, d int)", tableName));
+      // Copy would fail since skippedLines is an invalid value.
+      runInvalidQuery(statement,
+          String.format(
+              "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, SKIP %s)",
+              tableName, absFilePath, skippedLines),
+          INVALID_NUM_SKIPPED_ROWS_ERROR_MSG);
+
+      // No rows will be copied.
+      assertOneRow(statement,
+                   String.format("SELECT COUNT(*) FROM %s", tableName), 0);
+    }
+  }
+
+  @Test
+  public void testBatchCopyInvalidLinesAmongSkipped() throws Exception {
+    // If invalid lines appear among the rows being skipped, we still throw an error.
+    String absFilePath = getAbsFilePath("skip-rows-invalid-lines-among-skipped.txt");
+    String tableName = "skiprow_invalid_lines";
+    int totalValidLines = 5;
+    int totalInvalidLines = 10;
+    int skippedLines = totalValidLines + totalInvalidLines;
+
+    createFileInTmpDir(absFilePath, totalValidLines);
+    appendInvalidEntries(absFilePath, totalInvalidLines);
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(String.format(
+          "CREATE TABLE %s (a Integer, b serial, c varchar, d int)", tableName));
+      // Copy will fail upon processing invalid lines.
+      runInvalidQuery(statement,
+          String.format(
+              "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, SKIP %s)",
+              tableName, absFilePath, skippedLines),
+          INVALID_COPY_INPUT_ERROR_MSG);
+
+      // No rows will be copied.
+      assertOneRow(statement,
+                   String.format("SELECT COUNT(*) FROM %s", tableName), 0);
+    }
+  }
+
+  @Test
+  public void testBatchCopySkipRICheck() throws Exception {
+    // One will not execute Before/After row trigger for skipped lines. In particular,
+    // we will not do Referential Integrity check for such lines.
+    String absFilePath = getAbsFilePath("skip-rows-ri-check.txt");
+    String tableName = "skiprow_ri_check";
+    String refTableName = "skiprow_ri_check_maintable";
+
+    int totalLines = 100;
+    int skippedLines = 10;
+
+    String referenceKey = "a_fkey";
+    String INVALID_FOREIGN_KEY_CHECK_ERROR_MSG =
+        String.format("insert or update on table \"%s\" violates foreign key constraint \"%s_%s\"",
+                      tableName, tableName, referenceKey);
+
+    createFileInTmpDir(absFilePath, totalLines);
+
+    try (Statement statement = connection.createStatement()) {
+      // Create reference table without the keys among the skipped rows.
+      statement.execute(String.format("CREATE TABLE %s (a INT PRIMARY KEY)", refTableName));
+      statement.execute(String.format(
+          "INSERT INTO %s (a) SELECT s * 4 FROM GENERATE_SERIES (%d, %d) AS s",
+          refTableName, skippedLines, totalLines - 1));
+
+      statement.execute(
+          String.format("CREATE TABLE %s (a INT REFERENCES %s, b INT, c INT, d INT)",
+                        tableName, refTableName));
+
+      // Copying all lines would fail as some of the rows fail the RI check.
+      runInvalidQuery(statement,
+          String.format("COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)",
+                        tableName, absFilePath),
+          INVALID_FOREIGN_KEY_CHECK_ERROR_MSG);
+      assertOneRow(statement,
+                   String.format("SELECT COUNT(*) FROM %s", tableName), 0);
+
+      // But after skipping such lines, the copy would succeed.
+      statement.execute(String.format(
+          "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, SKIP %s)",
+          tableName, absFilePath, skippedLines));
+      assertOneRow(statement,
+                   String.format("SELECT COUNT(*) FROM %s", tableName), totalLines - skippedLines);
+    }
+  }
+
+  @Test
+  public void testBatchCopyMixSkipLinesAndRowsPerTransaction() throws Exception {
+    // In this case, we create a reference table containing keys 2, 3, 4, and attempt
+    // to copy from a file containing keys from 0 to 5. We specify SKIP = 2
+    // and ROWS_PER_TRANSACTION = 3. The copy logic will skip the first two rows, then
+    // batch the next three rows in a write batch, then try to copy the last row but fail,
+    // resulting to the resulting table containing three rows.
+    String absFilePath = getAbsFilePath("skip-rows-mix-skip-lines-and-rps.txt");
+    String tableName = "skiprow_mixed";
+    String refTableName = "skiprow_mixed_maintable";
+
+    int totalLines = 6;
+    int skippedLines = 2;
+    int batchSize = 3;
+
+    String referenceKey = "a_fkey";
+    String INVALID_FOREIGN_KEY_CHECK_ERROR_MSG =
+        String.format("insert or update on table \"%s\" violates foreign key constraint \"%s_%s\"",
+                      tableName, tableName, referenceKey);
+
+    createFileInTmpDir(absFilePath, totalLines);
+
+    try (Statement statement = connection.createStatement()) {
+      // Create reference table without the keys among the skipped tuples, and without the last key
+      // of the input file. This is to trigger the failure when copying the file to the table.
+      statement.execute(String.format("CREATE TABLE %s (a INT PRIMARY KEY)", refTableName));
+      statement.execute(String.format(
+          "INSERT INTO %s (a) SELECT s * 4 FROM GENERATE_SERIES (%d, %d) AS s",
+          refTableName, skippedLines, totalLines - 2));
+
+      statement.execute(
+          String.format("CREATE TABLE %s (a INT REFERENCES %s, b INT, c INT, d INT)",
+                        tableName, refTableName));
+
+      // Issue a copy with both SKIP and ROW_PER_TRANSACTION option. The copy would fail as the
+      // last row fails the RI check.
+      runInvalidQuery(statement,
+          String.format(
+            "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION %d, SKIP %d)",
+            tableName, absFilePath, batchSize, skippedLines),
+          INVALID_FOREIGN_KEY_CHECK_ERROR_MSG);
+      // But batchSize rows would remain in the table.
+      assertOneRow(statement,
+                   String.format("SELECT COUNT(*) FROM %s", tableName), batchSize);
+    }
+  }
+
+  @Test
+  public void testBatchedCopyDisableFKCheck() throws Exception {
+    String absFilePath = getAbsFilePath("disable-fk-check.txt");
+    String tableName = "maintable_disable_fk";
+    String refTableName = "reftable_disable_fk";
+
+    int totalLines = 100;
+    String referenceKey = "a_fkey";
+
+    createFileInTmpDir(absFilePath, totalLines);
+
+    String INVALID_FOREIGN_KEY_CHECK_ERROR_MSG =
+        String.format("insert or update on table \"%s\" violates foreign key constraint \"%s_%s\"",
+                      tableName, tableName, referenceKey);
+
+    try (Statement statement = connection.createStatement()) {
+      // Create reference table without any data.
+      statement.execute(String.format("CREATE TABLE %s (a INT PRIMARY KEY)", refTableName));
+
+      statement.execute(
+          String.format("CREATE TABLE %s (a INT REFERENCES %s, b INT, c INT, d INT)",
+                        tableName, refTableName));
+
+      // The execution will fail since the none of the key is present in the reference table.
+      runInvalidQuery(statement,
+          String.format("COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)",
+                        tableName, absFilePath),
+          INVALID_FOREIGN_KEY_CHECK_ERROR_MSG);
+
+      // No rows should be copied.
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, 0);
+
+      // Executing the copy with DISABLE_FK_CHECK should succeed.
+      statement.execute(
+          String.format("COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, DISABLE_FK_CHECK)",
+          tableName, absFilePath));
+
+      // All the rows will be copied.
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, totalLines);
     }
   }
 }

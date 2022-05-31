@@ -73,6 +73,8 @@ class SnapshotCoordinatorContext {
 
   virtual void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) = 0;
 
+  virtual void PrepareRestore() = 0;
+
   virtual rpc::Scheduler& Scheduler() = 0;
 
   virtual int64_t LeaderTerm() = 0;

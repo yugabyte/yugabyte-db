@@ -87,6 +87,7 @@ public class AccessKeyController extends AuthenticatedController {
     boolean skipProvisioning = formData.get().skipProvisioning;
     boolean setUpChrony = formData.get().setUpChrony;
     List<String> ntpServers = formData.get().ntpServers;
+    boolean showSetUpChrony = formData.get().showSetUpChrony;
     AccessKey accessKey;
 
     LOG.info(
@@ -122,7 +123,8 @@ public class AccessKeyController extends AuthenticatedController {
               airGapInstall,
               skipProvisioning,
               setUpChrony,
-              ntpServers);
+              ntpServers,
+              showSetUpChrony);
     } else if (keyContent != null && !keyContent.isEmpty()) {
       if (keyType == null) {
         throw new PlatformServiceException(BAD_REQUEST, "keyType params required.");
@@ -143,7 +145,8 @@ public class AccessKeyController extends AuthenticatedController {
               airGapInstall,
               skipProvisioning,
               setUpChrony,
-              ntpServers);
+              ntpServers,
+              showSetUpChrony);
     } else {
       accessKey =
           accessManager.addKey(
@@ -153,7 +156,8 @@ public class AccessKeyController extends AuthenticatedController {
               airGapInstall,
               skipProvisioning,
               setUpChrony,
-              ntpServers);
+              ntpServers,
+              showSetUpChrony);
     }
 
     // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo

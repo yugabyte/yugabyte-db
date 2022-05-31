@@ -138,7 +138,7 @@ class UniverseDetail extends Component {
 
   isCurrentUniverseDeleteTask = (uuid) => {
     return this.props.tasks.customerTaskList.filter(
-      (task) => task.targetUUID === uuid && task.type === 'Delete'
+      (task) => task.targetUUID === uuid && task.type === 'Delete' && task.target === 'Universe'
     );
   };
 

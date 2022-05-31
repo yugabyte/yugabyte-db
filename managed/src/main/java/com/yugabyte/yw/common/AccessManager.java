@@ -111,7 +111,8 @@ public class AccessManager extends DevopsBase {
       boolean airGapInstall,
       boolean skipProvisioning,
       boolean setUpChrony,
-      List<String> ntpServers)
+      List<String> ntpServers,
+      boolean showSetUpChrony)
       throws IOException {
     return uploadKeyFile(
         regionUUID,
@@ -124,6 +125,7 @@ public class AccessManager extends DevopsBase {
         skipProvisioning,
         setUpChrony,
         ntpServers,
+        showSetUpChrony,
         true);
   }
 
@@ -139,6 +141,7 @@ public class AccessManager extends DevopsBase {
       boolean skipProvisioning,
       boolean setUpChrony,
       List<String> ntpServers,
+      boolean showSetUpChrony,
       boolean deleteRemote)
       throws IOException {
     Region region = Region.get(regionUUID);
@@ -188,7 +191,7 @@ public class AccessManager extends DevopsBase {
     keyInfo.skipProvisioning = skipProvisioning;
     keyInfo.ntpServers = ntpServers;
     keyInfo.setUpChrony = setUpChrony;
-    keyInfo.showSetUpChrony = true; // New Providers should have this set true
+    keyInfo.showSetUpChrony = showSetUpChrony;
     keyInfo.deleteRemote = deleteRemote;
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
@@ -204,6 +207,7 @@ public class AccessManager extends DevopsBase {
       boolean skipProvisioning,
       boolean setUpChrony,
       List<String> ntpServers,
+      boolean showSetUpChrony,
       boolean overrideKeyValidate) {
     AccessKey key = null;
     Path tempFile = null;
@@ -225,6 +229,7 @@ public class AccessManager extends DevopsBase {
               skipProvisioning,
               setUpChrony,
               ntpServers,
+              showSetUpChrony,
               false);
 
       File pemFile = new File(key.getKeyInfo().privateKey);
@@ -240,7 +245,8 @@ public class AccessManager extends DevopsBase {
                 airGapInstall,
                 skipProvisioning,
                 setUpChrony,
-                ntpServers);
+                ntpServers,
+                showSetUpChrony);
       }
     } catch (NoSuchFileException ioe) {
       LOG.error(ioe.getMessage(), ioe);
@@ -269,7 +275,8 @@ public class AccessManager extends DevopsBase {
       boolean airGapInstall,
       boolean skipProvisioning,
       boolean setUpChrony,
-      List<String> ntpServers) {
+      List<String> ntpServers,
+      boolean showSetupChrony) {
     return addKey(
         regionUUID,
         keyCode,
@@ -279,7 +286,8 @@ public class AccessManager extends DevopsBase {
         airGapInstall,
         skipProvisioning,
         setUpChrony,
-        ntpServers);
+        ntpServers,
+        showSetupChrony);
   }
 
   public AccessKey addKey(
@@ -290,7 +298,16 @@ public class AccessManager extends DevopsBase {
       Integer sshPort,
       boolean airGapInstall) {
     return addKey(
-        regionUUID, keyCode, privateKeyFile, sshUser, sshPort, airGapInstall, false, false, null);
+        regionUUID,
+        keyCode,
+        privateKeyFile,
+        sshUser,
+        sshPort,
+        airGapInstall,
+        false,
+        false,
+        null,
+        false);
   }
 
   public AccessKey addKey(
@@ -299,7 +316,8 @@ public class AccessManager extends DevopsBase {
       Integer sshPort,
       boolean setUpChrony,
       List<String> ntpServers) {
-    return addKey(regionUUID, keyCode, null, null, sshPort, false, false, setUpChrony, ntpServers);
+    return addKey(
+        regionUUID, keyCode, null, null, sshPort, false, false, setUpChrony, ntpServers, false);
   }
 
   public AccessKey addKey(
@@ -311,7 +329,8 @@ public class AccessManager extends DevopsBase {
       boolean airGapInstall,
       boolean skipProvisioning,
       boolean setUpChrony,
-      List<String> ntpServers) {
+      List<String> ntpServers,
+      boolean showSetupChrony) {
     List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
@@ -361,7 +380,7 @@ public class AccessManager extends DevopsBase {
       keyInfo.skipProvisioning = skipProvisioning;
       keyInfo.setUpChrony = setUpChrony;
       keyInfo.ntpServers = ntpServers;
-      keyInfo.showSetUpChrony = true; // New Providers should have this set true
+      keyInfo.showSetUpChrony = showSetupChrony;
       accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
     }
 

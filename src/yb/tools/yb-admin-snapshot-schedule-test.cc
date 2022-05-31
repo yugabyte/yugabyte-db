@@ -2044,6 +2044,46 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentTxnRestore, YbAdminSnapshotCons
   }
 }
 
+// Tests that DDLs are blocked during restore.
+TEST_F_EX(YbAdminSnapshotScheduleTest, DDLsDuringRestore, YbAdminSnapshotConsistentRestoreTest) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table (k1 INT PRIMARY KEY)"));
+  ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (k1) VALUES (1)"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Created table test_table";
+
+  // Drop the table.
+  ASSERT_OK(conn.ExecuteQuery("DROP TABLE test_table"));
+  LOG(INFO) << "Dropped table test_table";
+
+  // Introduce a delay between catalog patching and loading into memory.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_delay_sys_catalog_reload_secs", "4"));
+
+  // Now start restore.
+  auto restoration_id = ASSERT_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
+  LOG(INFO) << "Restored sys catalog metadata";
+
+  // Issue DDLs in-between.
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table2 (k1 INT PRIMARY KEY)"));
+  ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table2 (k1) VALUES (1)"));
+  LOG(INFO) << "Created table test_table2";
+
+  ASSERT_OK(WaitRestorationDone(restoration_id, 40s));
+
+  // Validate data.
+  auto out = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * from test_table"));
+  LOG(INFO) << "test_table entry: " << out;
+  ASSERT_EQ(out, "1");
+
+  out = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * from test_table2"));
+  LOG(INFO) << "test_table2 entry: " << out;
+  ASSERT_EQ(out, "1");
+}
+
 class YbAdminSnapshotConsistentRestoreFailoverTest : public YbAdminSnapshotScheduleTest {
  public:
   std::vector<std::string> ExtraTSFlags() override {
@@ -2666,31 +2706,35 @@ class YbAdminSnapshotScheduleTestWithLB : public YbAdminSnapshotScheduleTest {
     }, timeout, "IsLoadBalancerIdle"));
   }
 
-  void WaitForLoadToBeBalanced(yb::MonoDelta timeout) {
-    ASSERT_OK(WaitFor([&]() -> Result<bool> {
-      std::vector<uint32_t> tserver_loads;
-      for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-        auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
-        tserver::ListTabletsRequestPB req;
-        tserver::ListTabletsResponsePB resp;
-        rpc::RpcController controller;
-        controller.set_timeout(timeout);
-        RETURN_NOT_OK(proxy.ListTablets(req, &resp, &controller));
-        int tablet_count = 0;
-        for (const auto& tablet : resp.status_and_schema()) {
-          if (tablet.tablet_status().table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-            continue;
-          }
-          if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()) {
-            if (tablet.tablet_status().tablet_data_state() != tablet::TABLET_DATA_TOMBSTONED) {
-              ++tablet_count;
-            }
+  Result<std::vector<uint32_t>> GetTServerLoads(yb::MonoDelta timeout) {
+    std::vector<uint32_t> tserver_loads;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
+      tserver::ListTabletsRequestPB req;
+      tserver::ListTabletsResponsePB resp;
+      rpc::RpcController controller;
+      controller.set_timeout(timeout);
+      RETURN_NOT_OK(proxy.ListTablets(req, &resp, &controller));
+      int tablet_count = 0;
+      for (const auto& tablet : resp.status_and_schema()) {
+        if (tablet.tablet_status().table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+          continue;
+        }
+        if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()) {
+          if (tablet.tablet_status().tablet_data_state() != tablet::TABLET_DATA_TOMBSTONED) {
+            ++tablet_count;
           }
         }
-        LOG(INFO) << "For TS " << cluster_->tablet_server(i)->id() << ", load: " << tablet_count;
-        tserver_loads.push_back(tablet_count);
       }
+      LOG(INFO) << "For TS " << cluster_->tablet_server(i)->id() << ", load: " << tablet_count;
+      tserver_loads.push_back(tablet_count);
+    }
+    return tserver_loads;
+  }
 
+  void WaitForLoadToBeBalanced(yb::MonoDelta timeout) {
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      auto tserver_loads = VERIFY_RESULT(GetTServerLoads(timeout));
       return integration_tests::AreLoadsBalanced(tserver_loads);
     }, timeout, "Are loads balanced"));
   }
@@ -2720,6 +2764,156 @@ TEST_F(YbAdminSnapshotScheduleTestWithLB, TestLBHiddenTables) {
 
   // Validate loads are balanced.
   WaitForLoadToBeBalanced(30s * kTimeMultiplier * 10);
+}
+
+class YbAdminSnapshotScheduleTestWithLBYsql : public YbAdminSnapshotScheduleTestWithLB {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    opts->enable_ysql = true;
+    opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
+    opts->num_masters = 3;
+    opts->extra_master_flags.emplace_back("--enable_ysql_tablespaces_for_placement=true");
+  }
+
+  // Adds tserver in c1.r1 and specified zone.
+  Status AddTServerInZone(const std::string& zone, int count) {
+    std::vector<std::string> ts_flags = ExtraTSFlags();
+    ts_flags.push_back("--placement_cloud=c1");
+    ts_flags.push_back("--placement_region=r1");
+    ts_flags.push_back(Format("--placement_zone=$0", zone));
+    RETURN_NOT_OK(cluster_->AddTabletServer(true, ts_flags));
+    RETURN_NOT_OK(cluster_->WaitForTabletServerCount(count, 30s));
+    return Status::OK();
+  }
+
+  std::string GetCreateTablespaceCommand() {
+    return "create tablespace demo_ts with (replica_placement='{\"num_replicas\": 3, "
+           "\"placement_blocks\": [{\"cloud\":\"c1\", \"region\":\"r1\", "
+           "\"zone\":\"z1\", \"min_num_replicas\":1}, "
+           "{\"cloud\":\"c1\", \"region\":\"r1\", \"zone\":\"z2\", "
+           "\"min_num_replicas\":1}, {\"cloud\":\"c1\", \"region\":\"r1\", "
+           "\"zone\":\"z3\", \"min_num_replicas\":1}]}')";
+  }
+};
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlPreventTablespaceDrop),
+          YbAdminSnapshotScheduleTestWithLBYsql) {
+  // Start a cluster with 3 nodes. Create a snapshot schedule on a db.
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  LOG(INFO) << "Cluster started with 3 nodes";
+
+  // Add 3 more tablet servers in custom placments.
+  ASSERT_OK(AddTServerInZone("z1", 4));
+  ASSERT_OK(AddTServerInZone("z2", 5));
+  ASSERT_OK(AddTServerInZone("z3", 6));
+  LOG(INFO) << "Added 3 more tservers in z1, z2 and z3";
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  // Create a tablespace and an associated table.
+  std::string tblspace_command = GetCreateTablespaceCommand();
+
+  LOG(INFO) << "Tablespace command: " << tblspace_command;
+  ASSERT_OK(conn.Execute(tblspace_command));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT) TABLESPACE demo_ts"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+  LOG(INFO) << "Created tablespace and table";
+
+  // Now drop the table.
+  ASSERT_OK(conn.Execute("DROP TABLE test_table"));
+  LOG(INFO) << "Dropped the table test_table";
+
+  // Try dropping the tablespace, it should fail.
+  auto res = conn.Execute("DROP TABLESPACE demo_ts");
+  LOG(INFO) << res.ToString();
+  ASSERT_FALSE(res.ok());
+  ASSERT_STR_CONTAINS(
+      res.ToString(), "Dropping tablespaces is not allowed on clusters "
+                      "with Point in Time Restore activated");
+
+  // Delete the schedule.
+  ASSERT_OK(DeleteSnapshotSchedule(schedule_id));
+  LOG(INFO) << "Deleted snapshot schedule successfully";
+
+  // Now drop the tablespace, it should succeed.
+  ASSERT_OK(conn.Execute("DROP TABLESPACE demo_ts"));
+  LOG(INFO) << "Successfully dropped the tablespace";
+}
+
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlRestoreDroppedTableWithTablespace),
+    YbAdminSnapshotScheduleTestWithLBYsql) {
+  // Start a cluster with 3 nodes. Create a snapshot schedule on a db.
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  LOG(INFO) << "Cluster started with 3 nodes";
+
+  // Add 3 more tablet servers in custom placments.
+  ASSERT_OK(AddTServerInZone("z1", 4));
+  ASSERT_OK(AddTServerInZone("z2", 5));
+  ASSERT_OK(AddTServerInZone("z3", 6));
+  LOG(INFO) << "Added 3 more tservers in z1, z2 and z3";
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  // Create a tablespace and an associated table.
+  std::string tblspace_command = GetCreateTablespaceCommand();
+
+  LOG(INFO) << "Tablespace command: " << tblspace_command;
+  ASSERT_OK(conn.Execute(tblspace_command));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT) "
+      "TABLESPACE demo_ts SPLIT INTO 24 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+  LOG(INFO) << "Created tablespace and table with 24 tablets";
+
+  // Wait for some time before noting down the time.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  // Note down the time.
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  // Now drop the table.
+  ASSERT_OK(conn.Execute("DROP TABLE test_table"));
+  LOG(INFO) << "Dropped the table test_table";
+
+  // Restore to the time when the table existed.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Verify data.
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
+  LOG(INFO) << "Got value " << res;
+  ASSERT_EQ(res, "before");
+
+  // Add another tserver in z1, the load should get evenly balanced.
+  ASSERT_OK(AddTServerInZone("z1", 7));
+  LOG(INFO) << "Added tserver 7";
+
+  // Validate loads are balanced.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto tserver_loads = VERIFY_RESULT(GetTServerLoads(30s * kTimeMultiplier * 10));
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+      if (i < 3 && tserver_loads[i] != 0) {
+        return false;
+      }
+      if ((i == 3 || i == 6) && tserver_loads[i] != 12) {
+        return false;
+      }
+      if ((i == 4 || i == 5) && tserver_loads[i] != 24) {
+        return false;
+      }
+    }
+    return true;
+  }, 30s * kTimeMultiplier * 10, "Are loads balanced"));
+  LOG(INFO) << "Loads are now balanced";
+
+  // Verify table is still functional.
+  ASSERT_OK(conn.Execute("INSERT INTO test_table (key, value) VALUES (2, 'after')"));
+  res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table WHERE key=2"));
+  LOG(INFO) << "Got value " << res;
+  ASSERT_EQ(res, "after");
 }
 
 }  // namespace tools

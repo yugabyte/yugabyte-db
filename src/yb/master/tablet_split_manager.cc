@@ -56,6 +56,10 @@ DEFINE_uint64(outstanding_tablet_split_limit, 1,
               "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
               "value is set to 0.");
 
+DEFINE_uint64(outstanding_tablet_split_limit_per_tserver, 1,
+              "Limit of the number of outstanding tablet splits per node. Limitation is disabled "
+              "if this value is set to 0.");
+
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 
 DEFINE_bool(enable_tablet_split_of_pitr_tables, true,
@@ -128,15 +132,6 @@ TabletSplitManager::TabletSplitManager(
     is_running_(false),
     splitting_disabled_until_(CoarseDuration::zero()),
     last_run_time_(CoarseDuration::zero()) {}
-
-struct SplitCandidate {
-  TabletInfoPtr tablet;
-  uint64_t leader_sst_size;
-};
-
-static inline bool LargestTabletFirst(const SplitCandidate& c1, const SplitCandidate& c2) {
-  return c1.leader_sst_size > c2.leader_sst_size;
-}
 
 Status TabletSplitManager::ValidateTableAgainstDisabledList(const TableId& table_id) {
   UniqueLock<decltype(mutex_)> lock(mutex_);
@@ -313,9 +308,8 @@ void TabletSplitManager::MarkSmallKeyRangeTabletForSplitIgnore(const TabletId& t
   }
 }
 
-bool AllReplicasHaveFinishedCompaction(const TabletInfo& tablet_info) {
-  auto replica_map = tablet_info.GetReplicaLocations();
-  for (auto const& replica : *replica_map) {
+bool AllReplicasHaveFinishedCompaction(const TabletReplicaMap& replicas) {
+  for (const auto& replica : replicas) {
     if (replica.second.drive_info.may_have_orphaned_post_split_data) {
       return false;
     }
@@ -334,25 +328,182 @@ void TabletSplitManager::ScheduleSplits(const std::unordered_set<TabletId>& spli
   }
 }
 
-void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
-  // Splits which are tracked by an AsyncGetTabletSplitKey or AsyncSplitTablet task.
-  std::unordered_set<TabletId> splits_with_task;
-  // Splits for which at least one child tablet is still undergoing compaction.
-  std::unordered_set<TabletId> compacting_splits;
-  // Splits that need to be started / restarted.
-  std::unordered_set<TabletId> splits_to_schedule;
-  // New split candidates. The chosen candidates are eventually added to splits_to_schedule.
-  vector<SplitCandidate> new_split_candidates;
+// A cache of the shared_ptrs to each tablet's replicas, to avoid having to repeatedly lock the
+// tablet, and to ensure that we use a consistent set of replicas for each tablet within each
+// iteration of the tablet split manager.
+class TabletReplicaMapCache {
+ public:
+  const std::shared_ptr<const TabletReplicaMap> GetOrAdd(const TabletInfo& tablet) {
+    auto it = replica_cache_.find(tablet.id());
+    if (it != replica_cache_.end()) {
+      return it->second;
+    } else {
+      const std::shared_ptr<const TabletReplicaMap> replicas = tablet.GetReplicaLocations();
+      if (replicas->empty()) {
+        LOG(WARNING) << "No replicas found for tablet. Id: " << tablet.id();
+      }
+      return replica_cache_[tablet.id()] = replicas;
+    }
+  }
+
+ private:
+  std::unordered_map<TabletId, std::shared_ptr<const TabletReplicaMap>> replica_cache_;
+};
+
+class OutstandingSplitState {
+ public:
+  OutstandingSplitState(
+      const TabletInfoMap& tablet_info_map, TabletReplicaMapCache* replica_cache):
+      tablet_info_map_{tablet_info_map}, replica_cache_{replica_cache} {}
 
   // Helper method to determine if more splits can be scheduled, or if we should exit early.
-  const auto can_split_more = [&]() {
-    uint64_t outstanding_splits = splits_with_task.size() +
-                                  compacting_splits.size() +
-                                  splits_to_schedule.size();
+  bool CanSplitMoreGlobal() const {
+    uint64_t outstanding_splits = splits_with_task_.size() +
+                                  compacting_splits_.size() +
+                                  splits_to_schedule_.size();
     return FLAGS_outstanding_tablet_split_limit == 0 ||
            outstanding_splits < FLAGS_outstanding_tablet_split_limit;
-  };
+  }
 
+  bool CanSplitMoreOnReplicas(const TabletReplicaMap& replicas) const {
+    for (const auto& location : replicas) {
+      auto it = ts_to_ongoing_splits_.find(location.first);
+      if (it != ts_to_ongoing_splits_.end() &&
+          it->second.size() >= FLAGS_outstanding_tablet_split_limit_per_tserver) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool HasSplitWithTask(const TabletId& split_tablet_id) const {
+    return splits_with_task_.contains(split_tablet_id);
+  }
+
+  void AddSplitWithTask(const TabletId& split_tablet_id) {
+    splits_with_task_.insert(split_tablet_id);
+    auto it = tablet_info_map_.find(split_tablet_id);
+    if (it == tablet_info_map_.end()) {
+      LOG(WARNING) << "Split tablet with task not found in tablet info map. ID: "
+                   << split_tablet_id;
+      return;
+    }
+    TrackTserverSplits(split_tablet_id, *replica_cache_->GetOrAdd(*it->second));
+    auto l = it->second->LockForRead();
+    for (auto child_id : l->pb.split_tablet_ids()) {
+      // Track split_tablet_id as an ongoing split on its children's tservers.
+      TrackTserverSplits(split_tablet_id, child_id);
+    }
+  }
+
+  void AddSplitToRestart(const TabletId& split_tablet_id, const TabletInfo& split_child) {
+    if (!compacting_splits_.contains(split_tablet_id)) {
+      bool inserted_split_to_schedule = splits_to_schedule_.insert(split_tablet_id).second;
+      if (inserted_split_to_schedule) {
+        // Track split_tablet_id as an ongoing split on its tservers. This is required since it is
+        // possible that one of the split children is not running yet, but we still want to count
+        // the split against the limits of the tservers on which the children will eventually
+        // appear.
+        TrackTserverSplits(split_tablet_id, split_tablet_id);
+      }
+    }
+    TrackTserverSplits(split_tablet_id, *replica_cache_->GetOrAdd(split_child));
+  }
+
+  void AddCompactingSplit(
+      const TabletId& split_tablet_id, const TabletInfo& split_child) {
+    // It's possible that one child subtablet leads us to insert the parent tablet id into
+    // splits_to_schedule, and another leads us to insert into compacting_splits. In this
+    // case, it means one of the children is live, thus both children have been created and
+    // the split RPC does not need to be scheduled.
+    bool was_scheduled_for_split = splits_to_schedule_.erase(split_tablet_id);
+    if (was_scheduled_for_split) {
+      LOG(INFO) << Substitute("Found compacting split child ($0), so removing split parent "
+                              "($1) from splits to schedule.", split_child.id(), split_tablet_id);
+    }
+    bool inserted_compacting_split = compacting_splits_.insert(split_tablet_id).second;
+    if (inserted_compacting_split && !was_scheduled_for_split) {
+      // Track split_tablet_id as an ongoing split on its tservers. This is required since it is
+      // possible that one of the split children is not running yet, but we still want to count
+      // the split against the limits of the tservers on which the children will eventually
+      // appear.
+      TrackTserverSplits(split_tablet_id, split_tablet_id);
+    }
+    TrackTserverSplits(split_tablet_id, *replica_cache_->GetOrAdd(split_child));
+  }
+
+  const std::unordered_set<TabletId>& GetSplitsToSchedule() const {
+    return splits_to_schedule_;
+  }
+
+  void AddCandidate(TabletInfoPtr tablet, uint64_t leader_sst_size) {
+    new_split_candidates_.emplace_back(SplitCandidate{tablet, leader_sst_size});
+  }
+
+  void ProcessCandidates() {
+    // Add any new splits to the set of splits to schedule (while respecting the max number of
+    // outstanding splits).
+    if (CanSplitMoreGlobal()) {
+      if (FLAGS_sort_automatic_tablet_splitting_candidates) {
+        sort(new_split_candidates_.begin(), new_split_candidates_.end(), LargestTabletFirst);
+      }
+      for (const auto& candidate : new_split_candidates_) {
+        if (!CanSplitMoreGlobal()) {
+          break;
+        }
+        auto replicas = replica_cache_->GetOrAdd(*candidate.tablet);
+        if (!CanSplitMoreOnReplicas(*replicas)) {
+          continue;
+        }
+        splits_to_schedule_.insert(candidate.tablet->id());
+        TrackTserverSplits(candidate.tablet->id(), *replicas);
+      }
+    }
+  }
+
+ private:
+  const TabletInfoMap& tablet_info_map_;
+  TabletReplicaMapCache* replica_cache_;
+  // Splits which are tracked by an AsyncGetTabletSplitKey or AsyncSplitTablet task.
+  std::unordered_set<TabletId> splits_with_task_;
+  // Splits for which at least one child tablet is still undergoing compaction.
+  std::unordered_set<TabletId> compacting_splits_;
+  // Splits that need to be started / restarted.
+  std::unordered_set<TabletId> splits_to_schedule_;
+
+  struct SplitCandidate {
+    TabletInfoPtr tablet;
+    uint64_t leader_sst_size;
+  };
+  // New split candidates. The chosen candidates are eventually added to splits_to_schedule.
+  vector<SplitCandidate> new_split_candidates_;
+
+  std::unordered_map<TabletServerId, std::unordered_set<TabletId>> ts_to_ongoing_splits_;
+
+  // Tracks split_tablet_id as an ongoing split on the replicas of replica_tablet_id, which is
+  // either split_tablet_id itself or one of split_tablet_id's children.
+  void TrackTserverSplits(const TabletId& split_tablet_id, const TabletId& replica_tablet_id) {
+    auto it = tablet_info_map_.find(replica_tablet_id);
+    if (it == tablet_info_map_.end()) {
+      LOG(INFO) << "Tablet not found in tablet info map. ID: " << replica_tablet_id;
+    }
+    TrackTserverSplits(split_tablet_id, *replica_cache_->GetOrAdd(*it->second));
+  }
+
+  void TrackTserverSplits(const TabletId& tablet_id, const TabletReplicaMap& split_replicas) {
+    for (const auto& location : split_replicas) {
+      VLOG(1) << "Inserting location " << location.first << " for tablet " << tablet_id;
+      ts_to_ongoing_splits_[location.first].insert(tablet_id);
+    }
+  }
+
+  static inline bool LargestTabletFirst(const SplitCandidate& c1, const SplitCandidate& c2) {
+    return c1.leader_sst_size > c2.leader_sst_size;
+  }
+};
+
+void TabletSplitManager::DoSplitting(
+    const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map) {
   // TODO(asrivastava): We might want to loop over all running tables when determining outstanding
   // splits, to avoid missing outstanding splits for tables that have recently become invalid for
   // splitting. This is most critical for tables that frequently switch between being valid and
@@ -365,16 +516,25 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
     }
   }
 
+  TabletReplicaMapCache replica_cache;
+  OutstandingSplitState state(tablet_info_map, &replica_cache);
   for (const auto& table : valid_tables) {
     for (const auto& task : table->GetTasks()) {
       // These tasks will retry automatically until they succeed or fail.
       if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
           task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
         const TabletId tablet_id = static_cast<AsyncTabletLeaderTask*>(task.get())->tablet_id();
-        splits_with_task.insert(tablet_id);
+        auto tablet_info_it = tablet_info_map.find(tablet_id);
+        if (tablet_info_it != tablet_info_map.end()) {
+          const auto& tablet = tablet_info_it->second;
+          state.AddSplitWithTask(tablet->id());
+        } else {
+          LOG(WARNING) << "Could not find tablet info for tablet with task. Tablet id: "
+                      << tablet_id;
+        }
         LOG(INFO) << Substitute("Found split with ongoing task. Task type: $0. "
                                 "Split parent id: $1.", task->type_name(), tablet_id);
-        if (!can_split_more()) {
+        if (!state.CanSplitMoreGlobal()) {
           return;
         }
       }
@@ -383,79 +543,64 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
 
   for (const auto& table : valid_tables) {
     for (const auto& tablet : table->GetTablets()) {
-      if (!can_split_more()) {
+      if (!state.CanSplitMoreGlobal()) {
         break;
       }
-      if (splits_with_task.count(tablet->id())) {
+      if (state.HasSplitWithTask(tablet->id())) {
         continue;
       }
 
       auto tablet_lock = tablet->LockForRead();
-      // Ignore a tablet as a new split candidate if it is part of an outstanding split.
-      bool ignore_as_candidate = false;
       if (tablet_lock->pb.has_split_parent_tablet_id()) {
         const TabletId& parent_id = tablet_lock->pb.split_parent_tablet_id();
-        if (splits_with_task.count(parent_id) != 0) {
+        if (state.HasSplitWithTask(parent_id)) {
           continue;
         }
+
+        // If a split child is not running, schedule a restart for the split.
         if (!tablet_lock->is_running()) {
-          // Recently split child is not running; restart the split.
-          ignore_as_candidate = true;
           LOG(INFO) << Substitute("Found split child ($0) that is not running. Adding parent ($1) "
                                   "to list of splits to reschedule.", tablet->id(), parent_id);
-          splits_to_schedule.insert(parent_id);
-        } else if (!AllReplicasHaveFinishedCompaction(*tablet)) {
-          // This (running) tablet is the child of a split and is still compacting. We assume that
-          // this split will eventually complete for both tablets.
-          ignore_as_candidate = true;
-          LOG(INFO) << Substitute("Found split child ($0) that is compacting. Adding parent ($1) "
-                                  " to list of compacting splits.", tablet->id(), parent_id);
-          compacting_splits.insert(parent_id);
+          state.AddSplitToRestart(parent_id, *tablet);
+          continue;
         }
-        if (splits_to_schedule.count(parent_id) != 0 && compacting_splits.count(parent_id) != 0) {
-          // It's possible that one child subtablet leads us to insert the parent tablet id into
-          // splits_to_schedule, and another leads us to insert into compacting_splits. In this
-          // case, it means one of the children is live, thus both children have been created and
-          // the split RPC does not need to be scheduled.
-          LOG(INFO) << Substitute("Found compacting split child ($0), so removing split parent "
-                                  "($1) from splits to schedule.", tablet->id(), parent_id);
-          splits_to_schedule.erase(parent_id);
+
+        // If this (running) tablet is the child of a split and is still compacting, track it as a
+        // compacting split but do not schedule a restart (we assume that this split will eventually
+        // complete for both tablets).
+        if (!AllReplicasHaveFinishedCompaction(*replica_cache.GetOrAdd(*tablet))) {
+          LOG(INFO) << Substitute("Found split child ($0) that is compacting. Adding parent ($1) "
+                                  "to list of compacting splits.", tablet->id(), parent_id);
+          state.AddCompactingSplit(parent_id, *tablet);
+          continue;
         }
       }
 
-      if (!ignore_as_candidate) {
-        auto drive_info_opt = tablet->GetLeaderReplicaDriveInfo();
-        if (!drive_info_opt.ok()) {
-          continue;
-        }
-        if (ValidateSplitCandidateTablet(*tablet).ok() &&
-            filter_->ShouldSplitValidCandidate(*tablet, drive_info_opt.get()) &&
-            AllReplicasHaveFinishedCompaction(*tablet)) {
-          SplitCandidate candidate = {tablet, drive_info_opt.get().sst_files_size};
-          new_split_candidates.push_back(std::move(candidate));
+      // Check if this tablet is a valid candidate for splitting, and if so, add it to the list of
+      // split candidates.
+      auto drive_info_opt = tablet->GetLeaderReplicaDriveInfo();
+      if (!drive_info_opt.ok()) {
+        continue;
+      }
+      if (ValidateSplitCandidateTablet(*tablet).ok() &&
+          filter_->ShouldSplitValidCandidate(*tablet, drive_info_opt.get())) {
+        const auto replicas = replica_cache.GetOrAdd(*tablet);
+        if (AllReplicasHaveFinishedCompaction(*replicas) &&
+            state.CanSplitMoreOnReplicas(*replicas)) {
+          state.AddCandidate(tablet, drive_info_opt.get().sst_files_size);
         }
       }
     }
-    if (!can_split_more()) {
+    if (!state.CanSplitMoreGlobal()) {
       break;
     }
   }
 
-  // Add any new splits to the set of splits to schedule (while respecting the max number of
-  // outstanding splits).
-  if (can_split_more()) {
-    if (FLAGS_sort_automatic_tablet_splitting_candidates) {
-      sort(new_split_candidates.begin(), new_split_candidates.end(), LargestTabletFirst);
-    }
-    for (const auto& candidate : new_split_candidates) {
-      if (!can_split_more()) {
-        break;
-      }
-      splits_to_schedule.insert(candidate.tablet->id());
-    }
-  }
-
-  ScheduleSplits(splits_to_schedule);
+  // Sort candidates if required and add as many desired candidates to the list of splits to
+  // schedule as possible (while respecting the limits on ongoing splits).
+  state.ProcessCandidates();
+  // Schedule any new splits and any splits that need to be restarted.
+  ScheduleSplits(state.GetSplitsToSchedule());
 }
 
 bool TabletSplitManager::HasOutstandingTabletSplits(const TableInfoMap& table_info_map) {
@@ -501,7 +646,8 @@ void TabletSplitManager::DisableSplittingFor(const MonoDelta& disable_duration) 
   splitting_disabled_until_ = CoarseMonoClock::Now() + disable_duration;
 }
 
-void TabletSplitManager::MaybeDoSplitting(const TableInfoMap& table_info_map) {
+void TabletSplitManager::MaybeDoSplitting(
+    const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map) {
   if (!FLAGS_enable_automatic_tablet_splitting) {
     return;
   }
@@ -518,31 +664,35 @@ void TabletSplitManager::MaybeDoSplitting(const TableInfoMap& table_info_map) {
     is_running_ = false;
     return;
   }
-  DoSplitting(table_info_map);
+  DoSplitting(table_info_map, tablet_info_map);
   is_running_ = false;
   last_run_time_ = CoarseMonoClock::Now();
 }
 
-void TabletSplitManager::ProcessSplitTabletResult(
+Status TabletSplitManager::ProcessSplitTabletResult(
     const TableId& split_table_id,
     const SplitTabletIds& split_tablet_ids) {
+  // Since this can get called multiple times from DoSplitTablet (if a tablet split is retried),
+  // everything here needs to be idempotent.
   LOG(INFO) << "Processing split tablet result for table " << split_table_id
             << ", split tablet ids: " << split_tablet_ids.ToString();
-  // TODO(JHE) Handle failure cases here (github issue #11030).
+
   // Update the xCluster tablet mapping.
   Status s = xcluster_split_driver_->UpdateXClusterConsumerOnTabletSplit(
       split_table_id, split_tablet_ids);
-  WARN_NOT_OK(s, Format(
+  RETURN_NOT_OK_PREPEND(s, Format(
       "Encountered an error while updating the xCluster consumer tablet mapping. "
       "Table id: $0, Split Tablets: $1",
       split_table_id, split_tablet_ids.ToString()));
   // Also process tablet splits for producer side splits.
   s = xcluster_split_driver_->UpdateXClusterProducerOnTabletSplit(
       split_table_id, split_tablet_ids);
-  WARN_NOT_OK(s, Format(
+  RETURN_NOT_OK_PREPEND(s, Format(
       "Encountered an error while updating the xCluster producer tablet mapping. "
       "Table id: $0, Split Tablets: $1",
       split_table_id, split_tablet_ids.ToString()));
+
+  return Status::OK();
 }
 
 }  // namespace master

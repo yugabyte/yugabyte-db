@@ -719,8 +719,7 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
   AsyncSplitTablet(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
       const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
-      const std::string& split_encoded_key, const std::string& split_partition_key,
-      TabletSplitCompleteHandlerIf* tablet_split_complete_handler);
+      const std::string& split_encoded_key, const std::string& split_partition_key);
 
   Type type() const override { return ASYNC_SPLIT_TABLET; }
 
@@ -729,7 +728,6 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
  protected:
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
-  void Finished(const Status& status) override;
 
   tablet::SplitTabletRequestPB req_;
   tserver::SplitTabletResponsePB resp_;

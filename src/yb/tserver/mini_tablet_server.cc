@@ -103,14 +103,15 @@ MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
 
   // Start RPC server on loopback.
   FLAGS_rpc_server_allow_ephemeral_ports = true;
-  opts_.rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(index_, rpc_port);
+  const std::string rpc_host = server::TEST_RpcAddress(index_, server::Private::kTrue);
+  opts_.rpc_opts.rpc_bind_addresses = HostPortToString(rpc_host, rpc_port);
   // A.B.C.D.xip.io resolves to A.B.C.D so it is very useful for testing.
   opts_.broadcast_addresses = {
     HostPort(server::TEST_RpcAddress(index_,
                                      server::Private(FLAGS_TEST_private_broadcast_address)),
     rpc_port) };
   opts_.webserver_opts.port = 0;
-  opts_.webserver_opts.bind_interface = opts_.broadcast_addresses.front().host();
+  opts_.webserver_opts.bind_interface = rpc_host;
   if (!opts_.has_placement_cloud()) {
     opts_.SetPlacement(Format("cloud$0", (index_ + 1) / FLAGS_TEST_nodes_per_cloud),
                        Format("rack$0", index_), "zone");
@@ -323,7 +324,17 @@ Endpoint MiniTabletServer::bound_rpc_addr() const {
 
 Endpoint MiniTabletServer::bound_http_addr() const {
   CHECK(started_);
-  return server_->first_http_address();
+  // Try to get address from the running WebServer.
+  Result<Endpoint> res_ep = server_->first_http_address();
+  if (res_ep) {
+    return *res_ep;
+  }
+
+  WARN_NOT_OK(res_ep.status(), "RpcAndWebServerBase error");
+  // The WebServer may be not started. Return input bound address.
+  HostPort web_input_hp;
+  CHECK_OK(server_->web_server()->GetInputHostPort(&web_input_hp));
+  return CHECK_RESULT(ParseEndpoint(web_input_hp.ToString(), web_input_hp.port()));
 }
 
 std::string MiniTabletServer::bound_http_addr_str() const {

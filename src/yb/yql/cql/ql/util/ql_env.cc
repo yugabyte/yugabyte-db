@@ -37,7 +37,9 @@
 DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
 DEFINE_bool(ycql_cache_login_info, false, "Use authentication information cached locally.");
 DEFINE_bool(ycql_require_drop_privs_for_truncate, false,
-    "Require DROP TABLE permission in order to truncate table");
+            "Require DROP TABLE permission in order to truncate table");
+DEFINE_bool(ycql_use_local_transaction_tables, false,
+            "Whether or not to use local transaction tables when possible for YCQL transactions.");
 
 namespace yb {
 namespace ql {
@@ -102,12 +104,13 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
   }
   if (transaction_pool_ == nullptr) {
     if (transaction_pool_provider_) {
-      transaction_pool_ = transaction_pool_provider_();
+      transaction_pool_ = &transaction_pool_provider_();
     } else {
       return STATUS(InternalError, "No transaction pool provider");
     }
   }
-  auto result = transaction_pool_->Take(client::ForceGlobalTransaction::kTrue, deadline);
+  auto result = transaction_pool_->Take(
+      client::ForceGlobalTransaction(!FLAGS_ycql_use_local_transaction_tables), deadline);
   RETURN_NOT_OK(result->Init(isolation_level));
   return result;
 }

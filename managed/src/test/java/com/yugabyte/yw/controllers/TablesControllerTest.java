@@ -25,6 +25,8 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyObject;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -47,6 +49,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.protobuf.ByteString;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.ApiUtils;
@@ -140,6 +143,7 @@ public class TablesControllerTest extends FakeDBApplication {
   private Environment mockedEnvironment;
   MockedStatic<FileUtils> mockedFileUtils;
   private Customer customer;
+  private Config mockConfig;
   private Users user;
 
   private Schema getFakeSchema() {
@@ -155,6 +159,7 @@ public class TablesControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     mockClient = mock(YBClient.class);
+    mockConfig = mock(Config.class);
     mockService = mock(YBClientService.class);
     mockListTablesResponse = mock(ListTablesResponse.class);
     mockSchemaResponse = mock(GetTableSchemaResponse.class);
@@ -175,6 +180,7 @@ public class TablesControllerTest extends FakeDBApplication {
             metricQueryHelper,
             customerConfigService,
             mockNodeUniverseManager,
+            mockConfig,
             mockedEnvironment);
     tablesController.setAuditService(auditService);
 
@@ -282,6 +288,28 @@ public class TablesControllerTest extends FakeDBApplication {
     assertEquals(
         "Expected error. Masters are not currently queryable.",
         Json.parse(contentAsString(r)).get("error").asText());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testListTablesFromYbClientLeaderMasterNotAvailable() throws Exception {
+    Universe u1 = createUniverse("Universe-1", customer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(u1.universeUUID);
+    customer.save();
+    final Universe u2 = u1;
+    doThrow(new RuntimeException("Timed out waiting for Master Leader after 10000 ms"))
+        .when(mockClient)
+        .waitForMasterLeader(anyLong());
+
+    Result r =
+        assertThrows(
+                PlatformServiceException.class,
+                () -> tablesController.listTables(customer.uuid, u2.universeUUID, false))
+            .getResult();
+    assertEquals(500, r.status());
+    assertEquals(
+        "Could not find the master leader", Json.parse(contentAsString(r)).get("error").asText());
     assertAuditEntry(0, customer.uuid);
   }
 

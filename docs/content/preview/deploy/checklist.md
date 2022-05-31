@@ -99,6 +99,10 @@ Write-heavy applications usually require more disk IOPS (especially if the size 
 
 YugabyteDB uses per-tablet [size tiered compaction](../../architecture/concepts/yb-tserver/). Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
 
+YugabyteDB stores data compressed by default. The effectiveness of compression depends on the data set. For example, if the data has already been compressed, then the additional compression at the storage layer of YugabyteDB will not be very effective.
+
+Plan for about 20% headroom on each node to allow space for miscellaneous overheads such as temporary additional space needed for compactions, metadata overheads, etc.
+
 ### Network
 
 Below is a minimal list of default ports (along with the network access required) in order to use YugabyteDB.
