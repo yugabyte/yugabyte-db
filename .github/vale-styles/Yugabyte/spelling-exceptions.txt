@@ -90,6 +90,7 @@ Caddy
 callstack
 callstacks
 Camo
+Camunda
 canonicalized
 captcha
 CentOS
