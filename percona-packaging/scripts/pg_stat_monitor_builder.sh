@@ -109,6 +109,7 @@ set_changelog(){
                 sed -i "$start_line,$ d" $1
                 echo "* $current_date Percona Build/Release Team <eng-build@percona.com> - ${VERSION}-${RPM_RELEASE}" >> $1
                 echo "- Release ${VERSION}-${RPM_RELEASE}" >> $1
+                echo >> $1
                 return
             fi
         done <$1
