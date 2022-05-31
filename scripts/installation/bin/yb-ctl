@@ -798,15 +798,13 @@ class ClusterOptions:
         return binary_path
 
     def get_binary_path(self, binary_name):
-        # If the user specified a custom path, do not default back to anything else.
-        if self.custom_binary_dir:
-            binary_dirs = [self.custom_binary_dir]
-            logging.info("Using custom binaries path: {}".format(self.custom_binary_dir))
-        else:
-            binary_dirs = [
-                os.path.join(self.installation_dir, 'bin'),
-                os.path.join(self.installation_dir, 'postgres', 'bin')
-            ]
+        base_dir = self.custom_binary_dir if self.custom_binary_dir else self.installation_dir
+        binary_dirs = [
+            os.path.join(base_dir, 'bin'),
+            os.path.join(base_dir, 'postgres', 'bin')
+        ]
+
+        logging.info("Using binaries path: {}".format(base_dir))
 
         for binary_dir in binary_dirs:
             path = os.path.join(binary_dir, binary_name)
