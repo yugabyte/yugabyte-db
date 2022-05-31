@@ -208,13 +208,13 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
 }
 
 Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
-                                                  const MetricPrometheusOptions& opts) const {
+                                          const MetricPrometheusOptions& opts) const {
   return WriteForPrometheus(writer, {""}, opts);  // Include all metrics.
 }
 
 Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
-                                                  const vector<string>& requested_metrics,
-                                                  const MetricPrometheusOptions& opts) const {
+                                          const vector<string>& requested_metrics,
+                                          const MetricPrometheusOptions& opts) const {
   EntityMap entities;
   {
     std::lock_guard<simple_spinlock> l(lock_);
