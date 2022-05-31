@@ -473,6 +473,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Return whether given partition start keys match partitions_.
   bool HasPartitions(const std::vector<PartitionKey> other) const;
 
+  bool HasOutstandingSplits() const;
+
   // Get all tablets of the table.
   // If include_inactive is true then it also returns inactive tablets along with the active ones.
   // See the declaration of partitions_ structure to understand what constitutes inactive tablets.

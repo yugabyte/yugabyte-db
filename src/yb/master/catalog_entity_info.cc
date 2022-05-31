@@ -761,6 +761,35 @@ TabletInfos TableInfo::GetTablets(IncludeInactive include_inactive) const {
   return result;
 }
 
+bool TableInfo::HasOutstandingSplits() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  std::unordered_set<TabletId> partitions_tablets;
+  for (const auto& p : partitions_) {
+    auto tablet_lock = p.second->LockForRead();
+    if (tablet_lock->pb.has_split_parent_tablet_id() && !tablet_lock->is_running()) {
+      YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Child tablet " << p.second->tablet_id()
+                                   << " belonging to table " << id() << " is not yet running";
+      return true;
+    }
+    partitions_tablets.insert(p.second->tablet_id());
+  }
+  for (const auto& p : tablets_) {
+    // If any parents have not been deleted yet, the split is not yet complete.
+    if (!partitions_tablets.contains(p.second->tablet_id())) {
+      auto tablet_lock = p.second->LockForRead();
+      if (!tablet_lock->is_deleted() && !tablet_lock->is_hidden()) {
+        YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Parent tablet " << p.second->tablet_id()
+                                     << " belonging to table " << id()
+                                     << " is not yet deleted or hidden";
+        return true;
+      }
+    }
+  }
+  YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Table "
+                               << id() << " does not have any outstanding splits";
+  return false;
+}
+
 TabletInfoPtr TableInfo::GetColocatedTablet() const {
   SharedLock<decltype(lock_)> l(lock_);
   if (colocated() && !tablets_.empty()) {

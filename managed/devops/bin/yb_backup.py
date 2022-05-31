@@ -98,7 +98,7 @@ YB_ADMIN_HELP_RE = re.compile(r'^ \d+\. (\w+).*')
 
 DISABLE_SPLITTING_MS = 30000
 DISABLE_SPLITTING_FREQ_SEC = 10
-IS_SPLITTING_DISABLED_MAX_RETRIES = 10
+IS_SPLITTING_DISABLED_MAX_RETRIES = 100
 TEST_SLEEP_AFTER_FIND_SNAPSHOT_DIRS_SEC = 100
 
 DEFAULT_TS_WEB_PORT = 9000
@@ -2687,7 +2687,7 @@ class YBBackup:
     def bg_disable_splitting(self):
         while (True):
             logging.info("Disabling splitting for {} milliseconds.".format(DISABLE_SPLITTING_MS))
-            self.run_yb_admin(["disable_tablet_splitting", DISABLE_SPLITTING_MS])
+            self.run_yb_admin(["disable_tablet_splitting", DISABLE_SPLITTING_MS, "yb_backup"])
             time.sleep(DISABLE_SPLITTING_FREQ_SEC)
 
     def backup_table(self):
@@ -2737,7 +2737,7 @@ class YBBackup:
         if not self.args.do_not_disable_splitting:
             disable_splitting_supported = False
             try:
-                self.run_yb_admin(["disable_tablet_splitting", DISABLE_SPLITTING_MS])
+                self.run_yb_admin(["disable_tablet_splitting", DISABLE_SPLITTING_MS, "yb_backup"])
                 disable_splitting_supported = True
             except YbAdminOpNotSupportedException as ex:
                 # Continue if the disable splitting APIs are not supported, otherwise re-raise and

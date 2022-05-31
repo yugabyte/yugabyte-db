@@ -480,6 +480,8 @@ class CatalogManager :
       const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  void DisableTabletSplittingInternal(const MonoDelta& duration, const std::string& feature);
+
   // Returns true if there are no outstanding tablets and the tablet split manager is not currently
   // processing tablet splits.
   Status IsTabletSplittingComplete(

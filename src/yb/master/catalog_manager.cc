@@ -8555,11 +8555,16 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
   return Status::OK();
 }
 
+void CatalogManager::DisableTabletSplittingInternal(
+    const MonoDelta& duration, const std::string& feature) {
+  tablet_split_manager_.DisableSplittingFor(duration, feature);
+}
+
 Status CatalogManager::DisableTabletSplitting(
     const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
     rpc::RpcContext* rpc) {
   const MonoDelta disable_duration = MonoDelta::FromMilliseconds(req->disable_duration_ms());
-  tablet_split_manager_.DisableSplittingFor(disable_duration);
+  DisableTabletSplittingInternal(disable_duration, req->feature_name());
   return Status::OK();
 }
 
