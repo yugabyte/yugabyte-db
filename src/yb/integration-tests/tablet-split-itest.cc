@@ -1054,7 +1054,7 @@ TEST_F(AutomaticTabletSplitITest, IsTabletSplittingComplete) {
 
   // Create a split task by pausing when trying to get split key. IsTabletSplittingComplete should
   // include this ongoing task.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
   std::this_thread::sleep_for(FLAGS_catalog_manager_bg_task_wait_ms * 2ms);
   ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get())));
@@ -1062,14 +1062,17 @@ TEST_F(AutomaticTabletSplitITest, IsTabletSplittingComplete) {
   // Now let the split occur on master but not tserver.
   // IsTabletSplittingComplete should include splits that are only complete on master.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
   ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get())));
 
   // Verify that the split finishes, and that IsTabletSplittingComplete returns true even though
   // compactions are not done.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0;
   ASSERT_OK(WaitForTabletSplitCompletion(2));
-  ASSERT_TRUE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get())));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(IsSplittingComplete(master_admin_proxy.get()));
+  }, MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms * 2),
+    "IsTabletSplittingComplete did not return true."));
 }
 
 // This test tests both FLAGS_enable_automatic_tablet_splitting and the DisableTabletSplitting API
@@ -1078,6 +1081,7 @@ TEST_F(AutomaticTabletSplitITest, DisableTabletSplitting) {
   // Must disable splitting for at least as long as we wait in WaitForTabletSplitCompletion.
   const auto kExtraSleepDuration = 5s * kTimeMultiplier;
   const auto kDisableDuration = split_completion_timeout_sec_ + kExtraSleepDuration;
+  const std::string kSplitDisableFeatureName = "DisableTabletSplittingTest";
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
@@ -1106,6 +1110,7 @@ TEST_F(AutomaticTabletSplitITest, DisableTabletSplitting) {
 
   master::DisableTabletSplittingRequestPB disable_req;
   disable_req.set_disable_duration_ms(kDisableDuration.ToMilliseconds());
+  disable_req.set_feature_name(kSplitDisableFeatureName);
   master::DisableTabletSplittingResponsePB disable_resp;
   ASSERT_OK(master_admin_proxy->DisableTabletSplitting(disable_req, &disable_resp, &controller));
 

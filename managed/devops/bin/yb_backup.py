@@ -95,7 +95,7 @@ YB_ADMIN_HELP_RE = re.compile(r'^ \d+\. (\w+).*')
 
 DISABLE_SPLITTING_MS = 30000
 DISABLE_SPLITTING_FREQ_SEC = 10
-IS_SPLITTING_DISABLED_MAX_RETRIES = 10
+IS_SPLITTING_DISABLED_MAX_RETRIES = 100
 TEST_SLEEP_AFTER_FIND_SNAPSHOT_DIRS_SEC = 100
 
 DEFAULT_TS_WEB_PORT = 9000
@@ -2791,7 +2791,7 @@ class YBBackup:
             time.sleep(DISABLE_SPLITTING_FREQ_SEC)
 
     def disable_tablet_splitting(self):
-        self.run_yb_admin(["disable_tablet_splitting", str(DISABLE_SPLITTING_MS)])
+        self.run_yb_admin(["disable_tablet_splitting", str(DISABLE_SPLITTING_MS), "yb_backup"])
 
     def backup_table(self):
         """

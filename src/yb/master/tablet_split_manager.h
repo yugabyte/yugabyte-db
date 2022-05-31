@@ -31,7 +31,7 @@ class TabletSplitManager {
                      XClusterSplitDriverIf* xcluster_split_driver);
 
   // Temporarily disable splitting for the specified amount of time.
-  void DisableSplittingFor(const MonoDelta& disable_duration);
+  void DisableSplittingFor(const MonoDelta& disable_duration, const std::string& feature_name);
 
   bool IsRunning();
 
@@ -83,15 +83,18 @@ class TabletSplitManager {
   // disabled before calling IsTabletSplittingComplete. This should only be written to by the
   // automatic tablet splitting code.
   bool is_running_;
-  CoarseTimePoint splitting_disabled_until_;
   CoarseTimePoint last_run_time_;
 
   template <typename IdType>
   using DisabledSet = std::unordered_map<IdType, CoarseTimePoint>;
 
-  std::mutex mutex_;
-  DisabledSet<TableId> ignore_table_for_splitting_until_ GUARDED_BY(mutex_);
-  DisabledSet<TabletId> ignore_tablet_for_splitting_until_ GUARDED_BY(mutex_);
+  // Whether tablet-splitting is disabled (cluster-wide), keyed by the feature name (e.g. PITR).
+  // This prevents features from accidentally overwriting each others' disable timeouts.
+  DisabledSet<std::string> splitting_disabled_until_ GUARDED_BY(disabled_sets_mutex_);
+  DisabledSet<TableId> ignore_table_for_splitting_until_ GUARDED_BY(disabled_sets_mutex_);
+  DisabledSet<TabletId> ignore_tablet_for_splitting_until_ GUARDED_BY(disabled_sets_mutex_);
+
+  std::mutex disabled_sets_mutex_;
 };
 
 }  // namespace master

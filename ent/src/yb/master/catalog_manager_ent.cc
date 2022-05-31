@@ -5307,6 +5307,10 @@ void CatalogManager::PrepareRestore() {
   is_catalog_loaded_ = false;
 }
 
+void CatalogManager::EnableTabletSplitting(const std::string& feature) {
+  DisableTabletSplittingInternal(MonoDelta::FromMilliseconds(0), feature);
+}
+
 }  // namespace enterprise
 }  // namespace master
 }  // namespace yb
