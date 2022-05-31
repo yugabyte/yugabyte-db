@@ -486,6 +486,7 @@ class OutstandingSplitState {
     auto it = tablet_info_map_.find(replica_tablet_id);
     if (it == tablet_info_map_.end()) {
       LOG(INFO) << "Tablet not found in tablet info map. ID: " << replica_tablet_id;
+      return;
     }
     TrackTserverSplits(split_tablet_id, *replica_cache_->GetOrAdd(*it->second));
   }
