@@ -44,10 +44,10 @@ Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites), t
 
 ## Prerequisites
 
-This tutorial assumes that you have:
+This tutorial assumes that you have installed the following:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start/).
-- installed Visual Studio.
+- YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start/).
+- Visual Studio.
 
 {{< warning title="Warning" >}}
 
@@ -61,14 +61,16 @@ connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoadin
 
 ## Create a sample C# application
 
-- Create a new C# project, and choose [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as template. Follow the instructions to save the project.
+To create the sample C# application, do the following:
 
-- Add the Npgsql package to your project as follows:
+1. In Visual Studio, create a new C# application, and choose [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as template. Follow the instructions to save the project.
 
-1. Right-click on **Dependencies** and click **Manage Nuget Packages**.
-1. Search for `Npgsql` and click **Add Package**.
+1. Add the Npgsql package to your project as follows:
 
-- Copy the following code to your `Program.cs` file:
+   - Right-click on **Dependencies** and click **Manage Nuget Packages**.
+   - Search for `Npgsql` and click **Add Package**.
+
+1. Copy the following code to your `Program.cs` file:
 
 ```csharp
 using System;
@@ -80,7 +82,8 @@ namespace Yugabyte_CSharp_Demo
     {
         static void Main(string[] args)
         {
-            NpgsqlConnection conn = new NpgsqlConnection("host=localhost;port=5433;database=yugabyte;user id=yugabyte;password=");
+           var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
+           NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 
             try
             {
@@ -124,7 +127,7 @@ namespace Yugabyte_CSharp_Demo
 
 ### Run the C# application
 
-Select `Run -> Start Without Debugging` to run the application.
+To run the application, choose **Run -> Start Without Debugging**.
 
 You should see the following output:
 
@@ -149,19 +152,20 @@ The client driver supports several SSL modes, as follows:
 | verify-ca | Supported <br/> (Self-signed certificates aren't supported.) |
 | verify-full | Supported <br/> (Self-signed certificates aren't supported.) |
 
-Refer the [Configure SSL/TLS](../../../reference/drivers/csharp/postgres-npgsql-reference/#configure-ssl-tls) section for SSL supported modes with examples for setting up your connection strings.
+Refer to [Configure SSL/TLS](../../../../reference/drivers/csharp/postgres-npgsql-reference/#configure-ssl-tls) for information on supported SSL modes and examples for setting up your connection strings.
 
 ### Create a sample C# application with SSL
 
-- Create a new C# project in Visual Studio and choose [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as the template. Follow the instructions to save the project.
+To create the sample C# application, do the following:
 
-- Install the Npgsql driver in your Visual Studio project, replacing the values in the `connStringBuilder` object as appropriate for your cluster::
+1. In Visual Studio, create a new C# application, and choose [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as the template. Follow the instructions to save the project.
 
-1. Open your Project Solution View
-1. Right-click on **Packages** and click **Add Packages**
-1. Search for `Npgsql` and click **Add Package**
+1. Add the Npgsql package to your project as follows:
 
-- Copy the following code to your `Program.cs` file:
+   - Right-click on **Dependencies** and click **Manage Nuget Packages**.
+   - Search for `Npgsql` and click **Add Package**.
+
+1. Copy the following code to your `Program.cs` file, and replace the values in the `connStringBuilder` object as appropriate for your cluster.
 
 ```csharp
 using System;
@@ -232,9 +236,9 @@ namespace Yugabyte_CSharp_Demo
 
 ### Run the C# SSL application
 
-Run the C# app. Select `Run -> Start Without Debugging`.
+To run the application, choose **Run -> Start Without Debugging**.
 
-You should see the following as the output:
+You should see the following output:
 
 ```output
 Created table Employee

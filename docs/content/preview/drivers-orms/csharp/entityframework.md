@@ -33,9 +33,9 @@ The following sections break down the quick start example to demonstrate how to 
 
 ### Step 1: Add the ORM dependency
 
-If you are using Visual Studio IDE, add the Npgsql package to project as follows:
+If you are using Visual Studio, add the Npgsql package to the project as follows:
 
-1. Right-click on **Dependencies** and click **Manage Nuget Packages**..
+1. Right-click **Dependencies** and choose **Manage Nuget Packages**.
 1. Search for `Npgsql` and click **Add Package**.
 
 To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
@@ -150,5 +150,5 @@ Deleting the blog
 
 ## Next steps
 
-- Explore [scaling C# applications](../../explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop C# applications with YugabyteDB Managed](../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/).
+- Explore [scaling C# applications](../../../explore/linear-scalability/) with YugabyteDB.
+- Learn how to [develop C# applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/).

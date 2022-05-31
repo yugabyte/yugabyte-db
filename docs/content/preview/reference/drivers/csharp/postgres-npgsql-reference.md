@@ -25,20 +25,20 @@ showAsideToc: true
 
 </ul>
 
-Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, F# to access the YugabyteDB server. It is implemented in 100% C# code, is free and is open source.
+Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, and F# to access the YugabyteDB server.
 
-## Quick Start
+## Quick start
 
 Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a C# application](/preview/quick-start/build-apps/csharp/ysql).
 
-## Download the Driver Dependency
+## Download the driver dependency
 
 If you are using Visual Studio IDE, add the Npgsql package to your project as follows:
 
-1. Right-click on **Dependencies** and click **Manage Nuget Packages**
+1. Right-click **Dependencies** and choose **Manage Nuget Packages**
 1. Search for `Npgsql` and click **Add Package**
 
-To add Npgsql package to your project, when not using an IDE, use the `dotnet` command:
+To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
 
 ```csharp
 dotnet add package Npgsql
@@ -50,11 +50,11 @@ or any of the other methods mentioned on the [nuget page](https://www.nuget.org/
 
 Learn how to perform common tasks required for C# application development using the Npgsql driver.
 
-### Connect to YugabyteDB Database
+### Connect to YugabyteDB database
 
-After setting up the dependencies, implement the C# client application that uses the Npgsql driver to connect to your YugabyteDB cluster and run query on the sample data.
+After setting up the dependencies, implement the C# client application that uses the Npgsql driver to connect to your YugabyteDB cluster and run a query on the sample data.
 
-Import Npgsql and use the `NpgsqlConnection` class for getting connection object for the YugabyteDB database, which can be used for running DDL and DML statements against the database.
+Import Npgsql and use the `NpgsqlConnection` class to create the connection object to perform DDLs and DMLs against the database.
 
 Example URL for connecting to YugabyteDB can be seen below.
 
@@ -67,9 +67,9 @@ NpgsqlConnection conn = new NpgsqlConnection(yburl);
 | :---------- | :---------- | :------ |
 | host  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
-| database | database name | yugabyte
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
+| database | Database name | yugabyte
+| user | User connecting to the database | yugabyte
+| password | Password for the user | yugabyte
 
 ### Create table
 
@@ -85,9 +85,9 @@ NpgsqlCommand empCreateCmd = new NpgsqlCommand("CREATE TABLE employee (id int PR
 empCreateCmd.ExecuteNonQuery();
 ```
 
-### Read and Write Data
+### Read and write data
 
-#### Insert Data
+#### Insert data
 
 To write data into YugabyteDB, execute the `INSERT` statement using the `NpgsqlCommand` class, get a command object, and then call the `ExecuteNonQuery()` method using this command object.
 
@@ -100,9 +100,9 @@ NpgsqlCommand empInsertCmd = new NpgsqlCommand("INSERT INTO employee (id, name, 
 int numRows = empInsertCmd.ExecuteNonQuery();
 ```
 
-#### Query Data
+#### Query data
 
-To query data from YugabyteDB tables, execute the `SELECT` statement using `NpgsqlCommand` class, get a command object, and then call the `ExecuteReader()` function using the object. Loop through the reader to get the list of returned rows.
+To query data from YugabyteDB tables, execute the `SELECT` statement using the `NpgsqlCommand` class, get a command object, and then call the `ExecuteReader()` function using the object. Loop through the reader to get the list of returned rows.
 
 ```sql
 SELECT * from employee where id=1;
@@ -124,7 +124,7 @@ while (reader.Read())
 
 ### Configure SSL/TLS
 
-- For Npgsql versions before 6.0, the client driver supports the following SSL modes:
+For Npgsql versions before 6.0, the client driver supports the following SSL modes:
 
 | SSL mode | Client driver behavior |
 | :------- | :--------------------- |
@@ -137,7 +137,7 @@ while (reader.Read())
 
 The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers. When you specify SSL mode `require`, the driver verifies the certificate by default (like the `verify-ca` or `verify-full` modes), and fails for self-signed certificates. You can override this by specifying "Trust Server Certificate=true", in which case it bypasses walking the certificate chain to validate trust and hence works like other drivers' `require` mode. In this case, the Root-CA certificate is not required to be configured.
 
-- For versions 6.0 or later, the client driver supports the following SSL modes:
+For versions 6.0 or later, the client driver supports the following SSL modes:
 
 | SSL mode | Client driver behavior |
 | :------- | :--------------------- |
@@ -164,7 +164,7 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     CRUD(connStringBuilder.ConnectionString);
 ```
 
-The following is an example connection string builder for connecting to a YugabyteDB cluster with the `VerifyCA` or `Verifyfull` SSL mode.
+The following is an example connection string builder for connecting to a YugabyteDB cluster with the `VerifyCA` or `VerifyFull` SSL mode.
 
 ```csharp
 var connStringBuilder = new NpgsqlConnectionStringBuilder();
@@ -179,8 +179,7 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     CRUD(connStringBuilder.ConnectionString);
 ```
 
-
-## Compatibility Matrix
+## Compatibility matrix
 
 | Driver Version | YugabyteDB Version | Support |
 | :------------- | :----------------- | :------ |
@@ -188,6 +187,6 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
 | 6.0.3 |  2.8 (stable) | full
 | 6.0.3 | 2.6 | full
 
-## Other Usage Examples
+## Other usage examples
 
 - [SSL Example](/preview/quick-start/build-apps/csharp/ysql/#create-a-sample-c-application-with-ssl)
