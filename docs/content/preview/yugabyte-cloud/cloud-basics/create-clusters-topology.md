@@ -26,7 +26,7 @@ YugabyteDB Managed offers a number of deployment and replication options in geo-
 | Multi region synchronous | Strong | High with strong consistency or low with eventual consistency | Depends on inter-region distances | Region-level resilience |
 | Geo partitioned | Strong | Low in region (1-10ms); high across regions (40-100ms) | Low in region (1-10ms); high across regions (40-100ms) | Compliance, low latency I/O by moving data closer to customers |
 | xCluster active-passive | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery, low latency I/O |
-| xCluster active-active | Eventual (timeline) | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery, low latency I/O |
+| xCluster active-active | Eventual (timeline) | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery-, low latency I/O |
 | Read replica | Strong in source, eventual in replica | Low in primary region (1-10ms) | Low in region (1-10ms) | Low latency reads |
 
 ## Single region multi-zone cluster
@@ -80,7 +80,7 @@ Write latencies in this deployment mode can be high. This is because the tablet 
 
 To deploy a multi-region synchronous cluster, refer to [Deploy a multi-region synchronous cluster](../create-clusters-multisync/).
 
-## Geo-partitioning with data pinning
+## Geo-partitioned with data pinning
 
 Applications that need to keep user data in a particular geographic region to comply with data sovereignty regulations can use row-level geo-partitioning in YugabyteDB. This feature allows fine-grained control over pinning rows in a user table to specific geographic locations.
 
@@ -115,7 +115,7 @@ With this deployment mode, the cluster automatically keeps specific rows and all
 
 To deploy a geo-partioned cluster, contact {{<support-cloud>}}.
 
-## Multi-region cross-cluster
+## Cross-cluster
 
 In situations where applications want to keep data in multiple clouds or in remote regions, YugabyteDB offers asynchronous replication across two data centers or cloud regions. This can be either bi-directional in an active-active configuration, or uni-directional in an active-passive configuration.
 
