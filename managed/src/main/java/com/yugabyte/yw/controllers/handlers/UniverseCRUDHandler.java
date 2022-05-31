@@ -54,11 +54,13 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1329,6 +1331,15 @@ public class UniverseCRUDHandler {
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
+    if (existingNode.cloudInfo != null
+        && !Objects.equals(inputNode.cloudInfo.private_ip, existingNode.cloudInfo.private_ip)) {
+      String errMsg =
+          String.format(
+              "Illegal attempt to change private ip to %s for node %s",
+              inputNode.cloudInfo.private_ip, inputNode.nodeName);
+      LOG.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
     // TODO compare other node fields here.
   }
 
@@ -1337,6 +1348,11 @@ public class UniverseCRUDHandler {
   private void checkNodesInClusterForUpdate(
       Cluster cluster, Set<NodeDetails> existingNodes, Set<NodeDetails> inputNodes) {
     AtomicInteger inputNodesInToBeRemoved = new AtomicInteger();
+    Set<String> forbiddenIps =
+        Arrays.stream(appConfig.getString("yb.security.forbidden_ips", "").split("[, ]"))
+            .filter(StringUtils::isNotBlank)
+            .collect(Collectors.toSet());
+
     // Collect all the nodes which are not in ToBeAdded state and validate.
     Map<String, NodeDetails> inputNodesMap =
         inputNodes
@@ -1352,6 +1368,14 @@ public class UniverseCRUDHandler {
                   // Nodes in ToBeAdded must not have names.
                   if (StringUtils.isNotBlank(node.nodeName)) {
                     String errMsg = String.format("Node name %s cannot be present", node.nodeName);
+                    LOG.error(errMsg);
+                    throw new PlatformServiceException(BAD_REQUEST, errMsg);
+                  }
+                  if (node.cloudInfo != null
+                      && node.cloudInfo.private_ip != null
+                      && forbiddenIps.contains(node.cloudInfo.private_ip)) {
+                    String errMsg =
+                        String.format("Forbidden ip %s for node", node.cloudInfo.private_ip);
                     LOG.error(errMsg);
                     throw new PlatformServiceException(BAD_REQUEST, errMsg);
                   }
