@@ -146,6 +146,8 @@ typedef struct CopyStateData
 	bool		convert_selectively;	/* do selective binary conversion? */
 	List	   *convert_select; /* list of column names (can be NIL) */
 	bool	   *convert_select_flags;	/* per-column CSV/TEXT CS flags */
+	OnConflictAction  on_conflict_action;  /* how to handle when the new row
+											* conflicts with existing row */
 
 	/* these are just for error messages, see CopyFromErrorCallback */
 	const char *cur_relname;	/* table name for error messages */
@@ -1067,6 +1069,8 @@ ProcessCopyOptions(ParseState *pstate,
 
 	cstate->disable_fk_check = false;
 
+	cstate->on_conflict_action = ONCONFLICT_NONE;
+
 	/* Extract options from the statement node tree */
 	foreach(option, options)
 	{
@@ -1145,6 +1149,8 @@ ProcessCopyOptions(ParseState *pstate,
 		}
 		else if (strcmp(defel->defname, "disable_fk_check") == 0)
 			cstate->disable_fk_check = true;
+		else if (strcmp(defel->defname, "replace") == 0)
+			cstate->on_conflict_action = ONCONFLICT_YB_REPLACE;
 		else if (strcmp(defel->defname, "null") == 0)
 		{
 			if (cstate->null_print)
@@ -3036,11 +3042,17 @@ CopyFrom(CopyState cstate)
 						{
 							if (useNonTxnInsert)
 							{
-								YBCExecuteNonTxnInsert(resultRelInfo->ri_RelationDesc, tupDesc, tuple);
+								YBCExecuteNonTxnInsert(resultRelInfo->ri_RelationDesc,
+													   tupDesc,
+													   tuple,
+													   cstate->on_conflict_action);
 							}
 							else
 							{
-								YBCExecuteInsert(resultRelInfo->ri_RelationDesc, tupDesc, tuple);
+								YBCExecuteInsert(resultRelInfo->ri_RelationDesc,
+												 tupDesc,
+												 tuple,
+												 cstate->on_conflict_action);
 							}
 						}
 						else if (resultRelInfo->ri_FdwRoutine != NULL)

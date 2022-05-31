@@ -70,11 +70,13 @@ extern Oid YBCHeapInsertForDb(Oid dboid,
  */
 extern Oid YBCExecuteInsert(Relation rel,
                             TupleDesc tupleDesc,
-                            HeapTuple tuple);
+                            HeapTuple tuple,
+							OnConflictAction onConflictAction);
 extern Oid YBCExecuteInsertForDb(Oid dboid,
                                  Relation rel,
                                  TupleDesc tupleDesc,
-                                 HeapTuple tuple);
+                                 HeapTuple tuple,
+								 OnConflictAction onConflictAction);
 
 /*
  * Execute the insert outside of a transaction.
@@ -82,11 +84,13 @@ extern Oid YBCExecuteInsertForDb(Oid dboid,
  */
 extern Oid YBCExecuteNonTxnInsert(Relation rel,
                                   TupleDesc tupleDesc,
-                                  HeapTuple tuple);
+                                  HeapTuple tuple,
+								  OnConflictAction onConflictAction);
 extern Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
                                        Relation rel,
                                        TupleDesc tupleDesc,
-                                       HeapTuple tuple);
+                                       HeapTuple tuple,
+									   OnConflictAction onConflictAction);
 
 /*
  * Insert a tuple into the an index's backing YugaByte index table.
