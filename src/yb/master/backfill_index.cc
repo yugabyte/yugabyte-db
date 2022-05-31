@@ -53,6 +53,7 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/sys_catalog.h"
 
@@ -68,10 +69,12 @@
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
 
 DEFINE_int32(ysql_index_backfill_rpc_timeout_ms, 60 * 1000, // 1 min.
@@ -103,6 +106,18 @@ DEFINE_int32(index_backfill_wait_for_alter_table_completion_ms, 100,
              "completed, during index backfill.");
 TAG_FLAG(index_backfill_wait_for_alter_table_completion_ms, advanced);
 TAG_FLAG(index_backfill_wait_for_alter_table_completion_ms, runtime);
+
+DEFINE_int32(index_backfill_tablet_split_completion_timeout_sec, 30,
+             "Total time to wait for tablet splitting to complete on a table from which we are "
+             "running a backfill before aborting the backfill and marking it as failed.");
+TAG_FLAG(index_backfill_tablet_split_completion_timeout_sec, advanced);
+TAG_FLAG(index_backfill_tablet_split_completion_timeout_sec, runtime);
+
+DEFINE_int32(index_backfill_tablet_split_completion_poll_freq_ms, 2000,
+             "Delay before retrying to see if tablet splitting has completed on the table from "
+             "which we are running a backfill.");
+TAG_FLAG(index_backfill_tablet_split_completion_poll_freq_ms, advanced);
+TAG_FLAG(index_backfill_tablet_split_completion_poll_freq_ms, runtime);
 
 DEFINE_bool(defer_index_backfill, false,
             "Defer index backfill so that backfills can be performed as a batch later on.");
@@ -356,20 +371,22 @@ Status MultiStageAlterTable::StartBackfillingData(
   RETURN_NOT_OK(ClearFullyAppliedAndUpdateState(
       catalog_manager, indexed_table, current_version, /* change_state to RUNNING */ false));
 
-  RETURN_NOT_OK(indexed_table->SetIsBackfilling());
+  auto ns_info = catalog_manager->FindNamespaceById(indexed_table->namespace_id());
+  RETURN_NOT_OK_PREPEND(ns_info, "Unable to get namespace info for backfill");
 
+  RETURN_NOT_OK(indexed_table->SetIsBackfilling());
   TRACE("Starting backfill process");
   VLOG(0) << __func__ << " starting backfill on " << indexed_table->ToString() << " for "
           << yb::ToString(idx_infos);
 
-  auto ns_info = catalog_manager->FindNamespaceById(indexed_table->namespace_id());
-  RETURN_NOT_OK_PREPEND(ns_info, "Unable to get namespace info for backfill");
-
   auto backfill_table = std::make_shared<BackfillTable>(
       catalog_manager->master_, catalog_manager->AsyncTaskPool(), indexed_table, idx_infos,
       *ns_info);
-  backfill_table->Launch();
-  return Status::OK();
+  Status s = backfill_table->Launch();
+  if (!s.ok()) {
+    indexed_table->ClearIsBackfilling();
+  }
+  return s;
 }
 
 // Returns true, if the said IndexPermissions is a transient state.
@@ -684,7 +701,7 @@ const std::unordered_set<TableId> BackfillTable::indexes_to_build() const {
   return indexes_to_build;
 }
 
-void BackfillTable::Launch() {
+Status BackfillTable::Launch() {
   backfill_job_ = std::make_shared<BackfillTableJob>(shared_from_this());
   backfill_job_->SetState(MonitoredTaskState::kRunning);
   master_->catalog_manager_impl()->jobs_tracker_->AddTask(backfill_job_);
@@ -698,23 +715,41 @@ void BackfillTable::Launch() {
         backfill_job->mutable_backfill_state()->insert(
             {idx_info.table_id(), BackfillJobPB::IN_PROGRESS});
       }
-      auto s = master_->catalog_manager_impl()->sys_catalog_->Upsert(
-              leader_term(), indexed_table_);
-      if (!s.ok()) {
-        LOG(WARNING) << "Failed to persist backfill jobs. Abandoning launch. " << s;
-        return;
-      }
+      RETURN_NOT_OK_PREPEND(
+          master_->catalog_manager_impl()->sys_catalog_->Upsert(leader_term(), indexed_table_),
+          "Failed to persist backfill jobs. Abandoning launch.");
       l.Commit();
     }
   }
-  if (!timestamp_chosen_.load(std::memory_order_acquire)) {
-    LaunchComputeSafeTimeForRead();
-  } else {
-    LaunchBackfill();
+
+  // This must be a shared pointer and not just 'this' so we do not accidentally clean up
+  // BackfillTable when the last shared pointer to BackfillTable is deleted in Abort() (when the
+  // backfill job is deleted).
+  Status status = threadpool()->SubmitFunc(std::bind(&BackfillTable::LaunchBackfill,
+                                                     this->shared_from_this()));
+  if (!status.ok()) {
+    RETURN_NOT_OK_PREPEND(Abort(), "Failed to run LaunchBackfill.");
+    return status;
+  }
+  return Status::OK();
+}
+
+void BackfillTable::LaunchBackfill() {
+  Status status = WaitForTabletSplitting();
+  if (!status.ok()) {
+    LOG(WARNING) << status;
+    WARN_NOT_OK(Abort(), "Failed to abort backfill after backfill failed.");
+    return;
+  }
+
+  status = DoLaunchBackfill();
+  if (!status.ok()) {
+    LOG(WARNING) << status;
+    WARN_NOT_OK(Abort(), "Failed to abort backfill after backfill failed.");
   }
 }
 
-void BackfillTable::LaunchComputeSafeTimeForRead() {
+Status BackfillTable::LaunchComputeSafeTimeForRead() {
   auto tablets = indexed_table_->GetTablets();
 
   num_tablets_.store(tablets.size(), std::memory_order_release);
@@ -723,8 +758,9 @@ void BackfillTable::LaunchComputeSafeTimeForRead() {
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     auto get_safetime = std::make_shared<GetSafeTimeForTablet>(
         shared_from_this(), tablet, min_cutoff);
-    get_safetime->Launch();
+    RETURN_NOT_OK(get_safetime->Launch());
   }
+  return Status::OK();
 }
 
 std::string BackfillTable::LogPrefix() const {
@@ -777,8 +813,7 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
         << "Failed backfill. Could not compute safe time for "
         << yb::ToString(indexed_table_) << " " << s;
     if (!timestamp_chosen_.exchange(true)) {
-      RETURN_NOT_OK_PREPEND(
-          MarkAllIndexesAsFailed(), "Failed to mark backfill as failed. Abandoning.");
+      RETURN_NOT_OK(Abort());
     }
     return Status::OK();
   }
@@ -813,13 +848,44 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
     VLOG_WITH_PREFIX(2) << "Saved " << read_timestamp
                         << " as backfilling_timestamp";
     timestamp_chosen_.store(true, std::memory_order_release);
-    LaunchBackfill();
+    Status backfill_status = DoBackfill();
+    if (!backfill_status.ok()) {
+      // Mark indexes as failed so CREATE INDEX will stop waiting and return.
+      RETURN_NOT_OK(Abort());
+      return backfill_status;
+    }
   }
   return Status::OK();
 }
 
-void BackfillTable::LaunchBackfill() {
-  VLOG_WITH_PREFIX(1) << "launching backfill with timestamp: "
+Status BackfillTable::WaitForTabletSplitting() {
+  auto* tablet_split_manager = master_->catalog_manager()->tablet_split_manager();
+  tablet_split_manager->DisableSplittingForBackfillingTable(indexed_table_->id());
+  CoarseTimePoint deadline = CoarseMonoClock::Now() +
+                             FLAGS_index_backfill_tablet_split_completion_timeout_sec * 1s;
+  while (!tablet_split_manager->IsTabletSplittingComplete(*indexed_table_)) {
+    if (CoarseMonoClock::Now() > deadline) {
+      return STATUS(TimedOut, "Tablet splitting did not complete after being disabled; cannot "
+                              "safely backfill the index.");
+    }
+    SleepFor(FLAGS_index_backfill_tablet_split_completion_poll_freq_ms * 1ms * kTimeMultiplier);
+  }
+
+  RETURN_NOT_OK(indexed_table_->CheckAllActiveTabletsRunning());
+  return Status::OK();
+}
+
+Status BackfillTable::DoLaunchBackfill() {
+  if (!timestamp_chosen_.load(std::memory_order_acquire)) {
+    RETURN_NOT_OK(LaunchComputeSafeTimeForRead());
+  } else {
+    RETURN_NOT_OK(DoBackfill());
+  }
+  return Status::OK();
+}
+
+Status BackfillTable::DoBackfill() {
+  VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: "
                       << read_time_for_backfill_;
   auto tablets = indexed_table_->GetTablets();
 
@@ -829,6 +895,7 @@ void BackfillTable::LaunchBackfill() {
     auto backfill_tablet = std::make_shared<BackfillTablet>(shared_from_this(), tablet);
     backfill_tablet->Launch();
   }
+  return Status::OK();
 }
 
 void BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& failed_indexes) {
@@ -837,7 +904,7 @@ void BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& fai
                            << " due to " << s;
     WARN_NOT_OK(
         MarkIndexesAsFailed(failed_indexes, s.message().ToBuffer()),
-        "Couldn't to mark Indexes as failed");
+        "Couldn't mark indexes as failed");
     CheckIfDone();
     return;
   }
@@ -846,7 +913,7 @@ void BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& fai
   if (!done() && --tablets_pending_ == 0) {
     LOG_WITH_PREFIX(INFO) << "Completed backfilling the index table.";
     done_.store(true, std::memory_order_release);
-    WARN_NOT_OK(MarkAllIndexesAsSuccess(), "Failed to complete backfill.");
+    WARN_NOT_OK(MarkAllIndexesAsSuccess(), "Failed to mark indexes as successfully backfilled.");
     WARN_NOT_OK(UpdateIndexPermissionsForIndexes(), "Failed to complete backfill.");
   } else {
     VLOG_WITH_PREFIX(1) << "Still backfilling " << tablets_pending_ << " more tablets.";
@@ -859,7 +926,9 @@ Status BackfillTable::MarkIndexesAsFailed(
 }
 
 Status BackfillTable::MarkAllIndexesAsFailed() {
-  return MarkIndexesAsDesired(indexes_to_build(), BackfillJobPB::FAILED, "failed");
+  RETURN_NOT_OK_PREPEND(MarkIndexesAsDesired(indexes_to_build(), BackfillJobPB::FAILED, "failed"),
+                        "Failed to mark backfill as failed.");
+  return Status::OK();
 }
 
 Status BackfillTable::MarkAllIndexesAsSuccess() {
@@ -902,6 +971,13 @@ Status BackfillTable::MarkIndexesAsDesired(
         master_->catalog_manager_impl()->sys_catalog_->Upsert(leader_term(), indexed_table_));
     l.Commit();
   }
+  return Status::OK();
+}
+
+Status BackfillTable::Abort() {
+  LOG(WARNING) << "Backfill failed.";
+  RETURN_NOT_OK(MarkAllIndexesAsFailed());
+  CheckIfDone();
   return Status::OK();
 }
 
@@ -953,6 +1029,8 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
       all_success ? MonitoredTaskState::kComplete : MonitoredTaskState::kFailed);
   RETURN_NOT_OK(ClearCheckpointStateInTablets());
   indexed_table_->ClearIsBackfilling();
+  master_->catalog_manager()->tablet_split_manager()
+      ->ReenableSplittingForBackfillingTable(indexed_table_->id());
 
   VLOG(1) << "Sending alter table requests to the Indexed table";
   RETURN_NOT_OK(master_->catalog_manager_impl()->SendAlterTableRequest(indexed_table_));
@@ -1186,18 +1264,14 @@ Status BackfillTablet::UpdateBackfilledUntil(
 // GetSafeTimeForTablet
 // -----------------------------------------------------------------------------------------------
 
-void GetSafeTimeForTablet::Launch() {
+Status GetSafeTimeForTablet::Launch() {
   tablet_->table()->AddTask(shared_from_this());
-  Status status = Run();
+  RETURN_NOT_OK_PREPEND(Run(), Substitute("Failed to send GetSafeTime request for $0. ",
+                                            tablet_->ToString()));
   // Need to print this after Run() because that's where it picks the TS which description()
   // needs.
-  if (status.ok()) {
-    VLOG(3) << "Started GetSafeTimeForTablet : " << this->description();
-  } else {
-    LOG(WARNING) << Substitute("Failed to send GetSafeTime request for $0. ",
-                               tablet_->ToString())
-                 << status;
-  }
+  VLOG(3) << "Started GetSafeTimeForTablet : " << this->description();
+  return Status::OK();
 }
 
 bool GetSafeTimeForTablet::SendRequest(int attempt) {
