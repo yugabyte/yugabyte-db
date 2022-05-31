@@ -1,12 +1,10 @@
 ---
-title: Python ORMs
-linkTitle: Python ORMs
+title: Use an ORM
+linkTitle: Use an ORM
 description: Django ORM support for YugabyteDB
-headcontent: Django ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Python ORMs
     identifier: django-orm
     parent: python-drivers
     weight: 600

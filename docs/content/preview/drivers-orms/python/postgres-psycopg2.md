@@ -1,12 +1,10 @@
 ---
-title: Python drivers
-linkTitle: Python drivers
+title: Connect an app
+linkTitle: Connect an app
 description: Python drivers for YSQL
-headcontent: Python drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Python drivers
     identifier: postgres-psycopg2-driver
     parent: python-drivers
     weight: 500
