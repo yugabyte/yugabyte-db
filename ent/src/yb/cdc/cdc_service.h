@@ -323,6 +323,12 @@ class CDCServiceImpl : public CDCServiceIf {
       const OpId& checkpoint, const string& tablet_id,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
+  Status UpdateChildrenTabletsOnSplitOp(
+      const std::string& stream_id,
+      const std::string& tablet_id,
+      std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
+      const client::YBSessionPtr& session);
+
   rpc::Rpcs rpcs_;
 
   tserver::TSTabletManager* tablet_manager_;

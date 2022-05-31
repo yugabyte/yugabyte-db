@@ -1725,7 +1725,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
 
     assertEquals(
-        expectedConfigs, PlacementInfoUtil.getConfigPerNamespace(pi, nodePrefix, k8sProvider));
+        expectedConfigs,
+        PlacementInfoUtil.getConfigPerNamespace(pi, nodePrefix, k8sProvider, false));
   }
 
   // TODO: use parameters here?
@@ -1736,32 +1737,55 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     String ns = "ns-1";
     String nodePrefix = "demo-universe";
     String nodePrefixAz = String.format("%s-%s", nodePrefix, az);
-
-    assertEquals(
-        nodePrefixAz, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, false));
-    assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config, false));
-    assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, true));
-    assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config, true));
+    boolean isReadCluster = false;
 
     assertEquals(
         nodePrefixAz,
-        PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config, false));
+        PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, false, isReadCluster));
     assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config, false));
+        nodePrefix,
+        PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config, false, isReadCluster));
     assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config, true));
+        nodePrefix,
+        PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, true, isReadCluster));
     assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config, true));
+        nodePrefix,
+        PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config, true, isReadCluster));
+
+    assertEquals(
+        nodePrefixAz,
+        PlacementInfoUtil.getKubernetesNamespace(
+            true, nodePrefix, az, config, false, isReadCluster));
+    assertEquals(
+        nodePrefix,
+        PlacementInfoUtil.getKubernetesNamespace(
+            false, nodePrefix, az, config, false, isReadCluster));
+    assertEquals(
+        nodePrefix,
+        PlacementInfoUtil.getKubernetesNamespace(
+            true, nodePrefix, az, config, true, isReadCluster));
+    assertEquals(
+        nodePrefix,
+        PlacementInfoUtil.getKubernetesNamespace(
+            false, nodePrefix, az, config, true, isReadCluster));
 
     config.put("KUBENAMESPACE", ns);
-    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config, false));
     assertEquals(
-        ns, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config, false));
-    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config, true));
-    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config, true));
+        ns,
+        PlacementInfoUtil.getKubernetesNamespace(
+            true, nodePrefix, az, config, false, isReadCluster));
+    assertEquals(
+        ns,
+        PlacementInfoUtil.getKubernetesNamespace(
+            false, nodePrefix, az, config, false, isReadCluster));
+    assertEquals(
+        ns,
+        PlacementInfoUtil.getKubernetesNamespace(
+            true, nodePrefix, az, config, true, isReadCluster));
+    assertEquals(
+        ns,
+        PlacementInfoUtil.getKubernetesNamespace(
+            false, nodePrefix, az, config, true, isReadCluster));
   }
 
   @Test
@@ -1843,7 +1867,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
             pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true);
-    assertNull(masterAddresses);
+    assertEquals(
+        "demo-universe-yb-master-0.demo-universe-yb-masters.demo-universe.svc.cluster.local:1234",
+        masterAddresses);
   }
 
   @Test

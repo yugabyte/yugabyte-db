@@ -129,6 +129,7 @@ typedef struct CopyStateData
 	bool		freeze;			/* freeze rows on loading? */
 	bool		csv_mode;		/* Comma Separated Value format? */
 	bool		header_line;	/* CSV header line? */
+	bool		disable_fk_check;	/* Disable FK check? */
 	char	   *null_print;		/* NULL marker string (server encoding!) */
 	int			null_print_len; /* length of same */
 	char	   *null_print_client;	/* same converted to file encoding */
@@ -1064,6 +1065,8 @@ ProcessCopyOptions(ParseState *pstate,
 
 	cstate->num_initial_skipped_rows = 0;
 
+	cstate->disable_fk_check = false;
+
 	/* Extract options from the statement node tree */
 	foreach(option, options)
 	{
@@ -1140,6 +1143,8 @@ ProcessCopyOptions(ParseState *pstate,
 						 errmsg("argument to option \"%s\" must be a nonnegative integer", defel->defname),
 						 parser_errposition(pstate, defel->location)));
 		}
+		else if (strcmp(defel->defname, "disable_fk_check") == 0)
+			cstate->disable_fk_check = true;
 		else if (strcmp(defel->defname, "null") == 0)
 		{
 			if (cstate->null_print)
@@ -2595,6 +2600,7 @@ CopyFrom(CopyState cstate)
 	estate->es_num_result_relations = 1;
 	estate->es_result_relation_info = resultRelInfo;
 	estate->es_range_table = cstate->range_table;
+	estate->yb_es_is_fk_check_disabled = cstate->disable_fk_check;
 
 	/* Set up a tuple slot too */
 	myslot = ExecInitExtraTupleSlot(estate, tupDesc);

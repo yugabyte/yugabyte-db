@@ -92,14 +92,12 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   Status ProcessChangesStartingFromIndex(int start);
 
   Status ProcessRecordForTablet(
-      const int record_idx, const Result<client::internal::RemoteTabletPtr>& tablet);
+      const cdc::CDCRecordPB& record, const Result<client::internal::RemoteTabletPtr>& tablet);
 
-  Status ProcessRecordForLocalTablet(const int record_idx);
+  Status ProcessRecordForLocalTablet(const cdc::CDCRecordPB& record);
 
   Status ProcessRecordForTabletRange(
-      const int record_idx,
-      const std::string partition_key_start,
-      const std::string partition_key_end,
+      const cdc::CDCRecordPB& record,
       const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets);
 
   Result<bool> ProcessSplitOp(const cdc::CDCRecordPB& record);
@@ -236,18 +234,16 @@ Status TwoDCOutputClient::ProcessChangesStartingFromIndex(int start) {
     }
 
     if (UseLocalTserver()) {
-      RETURN_NOT_OK(ProcessRecordForLocalTablet(i));
+      RETURN_NOT_OK(ProcessRecordForLocalTablet(record));
     } else {
       if (record.operation() == cdc::CDCRecordPB::APPLY) {
-        RETURN_NOT_OK(ProcessRecordForTabletRange(
-            i, record.partition().partition_key_start(),
-            record.partition().partition_key_end(), all_tablets_result_));
+        RETURN_NOT_OK(ProcessRecordForTabletRange(record, all_tablets_result_));
       } else {
         auto partition_hash_key = PartitionSchema::EncodeMultiColumnHashValue(
             VERIFY_RESULT(CheckedStoInt<uint16_t>(record.key(0).key())));
         auto tablet_result = local_client_->client->LookupTabletByKeyFuture(
             table_, partition_hash_key, CoarseMonoClock::now() + timeout_ms_).get();
-        RETURN_NOT_OK(ProcessRecordForTablet(i, tablet_result));
+        RETURN_NOT_OK(ProcessRecordForTablet(record, tablet_result));
       }
     }
     processed_write_record = true;
@@ -289,21 +285,18 @@ Status TwoDCOutputClient::ProcessRecord(const std::vector<std::string>& tablet_i
 }
 
 Status TwoDCOutputClient::ProcessRecordForTablet(
-    const int record_idx,
-    const Result<client::internal::RemoteTabletPtr>& tablet) {
+    const cdc::CDCRecordPB& record, const Result<client::internal::RemoteTabletPtr>& tablet) {
   RETURN_NOT_OK(tablet);
-  return ProcessRecord({tablet->get()->tablet_id()}, twodc_resp_copy_.records(record_idx));
+  return ProcessRecord({tablet->get()->tablet_id()}, record);
 }
 
 Status TwoDCOutputClient::ProcessRecordForTabletRange(
-    const int record_idx,
-    const std::string partition_key_start,
-    const std::string partition_key_end,
+    const cdc::CDCRecordPB& record,
     const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets) {
   RETURN_NOT_OK(tablets);
 
   auto filtered_tablets_result = client::FilterTabletsByHashPartitionKeyRange(
-      *tablets, partition_key_start, partition_key_end);
+      *tablets, record.partition().partition_key_start(), record.partition().partition_key_end());
   RETURN_NOT_OK(filtered_tablets_result);
 
   auto filtered_tablets = *filtered_tablets_result;
@@ -316,11 +309,11 @@ Status TwoDCOutputClient::ProcessRecordForTabletRange(
                  [&](const auto& tablet_ptr) {
     return tablet_ptr->tablet_id();
   });
-  return ProcessRecord(tablet_ids, twodc_resp_copy_.records(record_idx));
+  return ProcessRecord(tablet_ids, record);
 }
 
-Status TwoDCOutputClient::ProcessRecordForLocalTablet(const int record_idx) {
-  return ProcessRecord({consumer_tablet_info_.tablet_id}, twodc_resp_copy_.records(record_idx));
+Status TwoDCOutputClient::ProcessRecordForLocalTablet(const cdc::CDCRecordPB& record) {
+  return ProcessRecord({consumer_tablet_info_.tablet_id}, record);
 }
 
 Result<bool> TwoDCOutputClient::ProcessSplitOp(const cdc::CDCRecordPB& record) {
@@ -332,13 +325,13 @@ Result<bool> TwoDCOutputClient::ProcessSplitOp(const cdc::CDCRecordPB& record) {
   split_info.set_split_encoded_key(record.split_tablet_request().split_encoded_key());
   split_info.set_split_partition_key(record.split_tablet_request().split_partition_key());
 
-  RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
-      producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
-
   if (PREDICT_FALSE(FLAGS_TEST_xcluster_consumer_fail_after_process_split_op)) {
     return STATUS(
         InternalError, "Fail due to FLAGS_TEST_xcluster_consumer_fail_after_process_split_op");
   }
+
+  RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
+      producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
 
   // Increment processed records, and check for completion.
   bool done;

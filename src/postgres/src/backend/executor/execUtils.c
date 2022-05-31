@@ -171,6 +171,7 @@ CreateExecutorState(void)
 	 * YugaByte-specific fields
 	 */
 	estate->yb_es_is_single_row_modify_txn = false;
+	estate->yb_es_is_fk_check_disabled = false;
 	estate->yb_conflict_slot = NULL;
 	/*
 	 * The read hybrid time used for this query. This will be initialized

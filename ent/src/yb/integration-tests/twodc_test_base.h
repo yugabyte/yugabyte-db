@@ -117,8 +117,6 @@ class TwoDCTestBase : public YBTest {
   Status DeleteUniverseReplication(
       const std::string& universe_id, YBClient* client, MiniCluster* cluster);
 
-  size_t NumProducerTabletsPolled(MiniCluster* cluster);
-
   Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 
   Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid);

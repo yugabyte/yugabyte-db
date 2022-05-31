@@ -594,6 +594,9 @@ class CatalogManager :
   // Is the table a special sequences system table?
   bool IsSequencesSystemTable(const TableInfo& table) const;
 
+  // Is the table a materialized view?
+  bool IsMatviewTable(const TableInfo& table) const;
+
   // Is the table created by user?
   // Note that table can be regular table or index in this case.
   bool IsUserCreatedTable(const TableInfo& table) const override;
@@ -895,6 +898,11 @@ class CatalogManager :
   Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const override;
 
   std::vector<std::string> GetMasterAddresses();
+
+  // Returns true if there is at-least one snapshot schedule on any database/keyspace
+  // in the cluster.
+  Status CheckIfPitrActive(
+    const CheckIfPitrActiveRequestPB* req, CheckIfPitrActiveResponsePB* resp);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.

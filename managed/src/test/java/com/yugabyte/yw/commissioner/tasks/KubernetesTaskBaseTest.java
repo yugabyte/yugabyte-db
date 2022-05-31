@@ -34,7 +34,8 @@ public class KubernetesTaskBaseTest {
   })
   public void testGetK8sNodeName(String podName, String server, boolean isMultiAz) {
     ServerType serverType = server.equals("master") ? ServerType.MASTER : ServerType.TSERVER;
-    NodeDetails node = kubernetesTaskBase.getKubernetesNodeName(1, "az-1", serverType, isMultiAz);
+    NodeDetails node =
+        kubernetesTaskBase.getKubernetesNodeName(1, "az-1", serverType, isMultiAz, false);
     assertEquals(podName, node.nodeName);
   }
 

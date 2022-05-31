@@ -587,8 +587,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 
-  boost::optional<yb::client::AsyncClientInitialiser> async_client_init_;
-
   TabletPeers shutting_down_peers_;
 
   std::shared_ptr<TabletMemoryManager> mem_manager_;

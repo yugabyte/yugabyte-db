@@ -805,3 +805,13 @@ export async function validateGFlags(dbVersion, payload) {
     throw e.response.data;
   }
 }
+
+//Fetch releases by provider
+export async function fetchSupportedReleases(pUUID) {
+  const cUUID = localStorage.getItem('customerId');
+  try {
+    return await axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/releases`);
+  } catch (e) {
+    throw e.response.data;
+  }
+}

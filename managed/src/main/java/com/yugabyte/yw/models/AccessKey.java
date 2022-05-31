@@ -47,8 +47,9 @@ public class AccessKey extends Model {
     @ApiModelProperty public boolean setUpChrony = false;
     @ApiModelProperty public List<String> ntpServers;
 
+    // Indicates whether the provider was created before or after PLAT-3009
+    // True if it was created after, else it was created before.
     // Dictates whether or not to show the set up NTP option in the provider UI
-    // False by default so the old providers can continue to show useTimeSync
     @ApiModelProperty public boolean showSetUpChrony = false;
   }
 

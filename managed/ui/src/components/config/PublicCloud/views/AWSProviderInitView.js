@@ -31,6 +31,7 @@ import { regionsData } from './providerRegionsData';
 import { NTPConfig, NTP_TYPES } from './NTPConfig';
 
 import { YBTag } from '../../../common/YBTag';
+import clsx from 'clsx';
 import './providerView.scss';
 
 const validationIsRequired = (value) => (value && value.trim() !== '' ? undefined : 'Required');
@@ -586,14 +587,14 @@ class AWSProviderInitView extends Component {
     this.props.closeModal();
   };
 
-  generateRow = (label, field) => {
+  generateRow = (label, field, centerAlign = false) => {
     return (
       <Row className="config-provider-row">
         <Col lg={3}>
           <div className="form-item-custom-label">{label}</div>
         </Col>
         <Col lg={7}>
-          <div className="form-right-aligned-labels">{field}</div>
+          <div className={clsx(['form-right-aligned-labels', {'center-align-row' : centerAlign}])}>{field}</div>
         </Col>
       </Row>
     );
@@ -814,7 +815,8 @@ class AWSProviderInitView extends Component {
         onToggle={this.hostedZoneToggled}
         infoTitle={label}
         infoContent={tooltipContent}
-      />
+      />,
+      true
     );
   }
 
@@ -830,7 +832,8 @@ class AWSProviderInitView extends Component {
         defaultChecked={false}
         infoTitle={label}
         infoContent={tooltipContent}
-      />
+      />,
+      true
     );
   }
 

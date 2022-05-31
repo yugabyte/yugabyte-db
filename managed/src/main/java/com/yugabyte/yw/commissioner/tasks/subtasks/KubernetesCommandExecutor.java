@@ -134,6 +134,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // TODO(bhavin192): rename this to helmReleaseName for clarity.
     public String nodePrefix;
     public String namespace;
+    public boolean isReadOnlyCluster;
     public String ybSoftwareVersion = null;
     public boolean enableNodeToNodeEncrypt = false;
     public boolean enableClientToNodeEncrypt = false;
@@ -275,13 +276,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             serviceToIP.put(service.getMetadata().getName(), service.getSpec().getClusterIP());
           });
     }
+
     return serviceToIP;
   }
 
   private void processNodeInfo() {
     ObjectNode pods = Json.newObject();
     Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
-    UUID placementUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
+    UUID placementUuid =
+        taskParams().isReadOnlyCluster
+            ? u.getUniverseDetails().getReadOnlyClusters().get(0).uuid
+            : u.getUniverseDetails().getPrimaryCluster().uuid;
     PlacementInfo pi = taskParams().placementInfo;
 
     Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
@@ -304,7 +309,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               taskParams().nodePrefix,
               azName,
               config,
-              u.getUniverseDetails().useNewHelmNamingStyle);
+              u.getUniverseDetails().useNewHelmNamingStyle,
+              taskParams().isReadOnlyCluster);
 
       List<Pod> podInfos =
           kubernetesManagerFactory.getManager().getPodInfos(config, nodePrefix, namespace);
@@ -343,7 +349,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Universe.UniverseUpdater updater =
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          Set<NodeDetails> defaultNodes = universeDetails.nodeDetailsSet;
+          Set<NodeDetails> defaultNodes =
+              universeDetails.getNodesInCluster(
+                  taskParams().isReadOnlyCluster
+                      ? universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid
+                      : universe.getUniverseDetails().getPrimaryCluster().uuid);
           NodeDetails defaultNode = defaultNodes.iterator().next();
           Set<NodeDetails> nodeDetailsSet = new HashSet<>();
           Iterator<Map.Entry<String, JsonNode>> iter = pods.fields();
@@ -379,10 +389,18 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             nodeDetail.azUuid = azUUID;
             nodeDetail.placementUuid = placementUuid;
             nodeDetail.state = NodeDetails.NodeState.Live;
-            nodeDetail.nodeName = nodeName;
+            // If read cluster is deployed in same AZ as primary, node names will be same. To make
+            // them unique, append readonly tag.
+            nodeDetail.nodeName =
+                taskParams().isReadOnlyCluster
+                    ? String.format("%s%s", nodeName, Universe.READONLY)
+                    : nodeName;
             nodeDetailsSet.add(nodeDetail);
           }
-          universeDetails.nodeDetailsSet = nodeDetailsSet;
+          // Remove existing cluster nodes and add nodeDetailsSet
+          // Don't remove all as we might delete other cluster nodes.
+          universeDetails.nodeDetailsSet.removeAll(defaultNodes);
+          universeDetails.nodeDetailsSet.addAll(nodeDetailsSet);
           universe.setUniverseDetails(universeDetails);
         };
     saveUniverseDetails(updater);
@@ -429,7 +447,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, Object> overrides = new HashMap<String, Object>();
     Yaml yaml = new Yaml();
 
-    // TODO: decide if the user want to expose all the services or just master.
+    // TODO: decide if the user wants to expose all the services or just master.
     overrides = yaml.load(application.resourceAsStream("k8s-expose-all.yml"));
 
     Provider provider = Provider.get(taskParams().providerUUID);
@@ -438,10 +456,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, String> regionConfig = new HashMap<String, String>();
 
     Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
-    // TODO: This only takes into account primary cluster for Kubernetes, we need to
-    // address ReadReplica clusters as well.
     UniverseDefinitionTaskParams.UserIntent userIntent =
-        u.getUniverseDetails().getPrimaryCluster().userIntent;
+        taskParams().isReadOnlyCluster
+            ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
+            : u.getUniverseDetails().getPrimaryCluster().userIntent;
     InstanceType instanceType =
         InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
     if (instanceType == null) {
@@ -460,13 +478,35 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     String placementCloud = null;
     String placementRegion = null;
     String placementZone = null;
+
+    // This is true always now.
     boolean isMultiAz = (taskParams().masterAddresses != null) ? true : false;
 
-    PlacementInfo pi =
-        isMultiAz
-            ? taskParams().placementInfo
-            : u.getUniverseDetails().getPrimaryCluster().placementInfo;
-    ;
+    PlacementInfo pi;
+    if (taskParams().isReadOnlyCluster) {
+      pi =
+          isMultiAz
+              ? taskParams().placementInfo
+              : u.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
+    } else {
+      pi =
+          isMultiAz
+              ? taskParams().placementInfo
+              : u.getUniverseDetails().getPrimaryCluster().placementInfo;
+    }
+
+    // To maintain backward compatability with old helm charts,
+    // for Read cluster we need to pass isMultiAz=true. (By default isMultiAz is set to true as
+    // masterAddr is never null at this point).
+    // For primary cluster we still have to pass isMultiAz=false for single AZ so that we can create
+    // PDB.
+    // isMultiAz actually tells us if what we are deploying is partial universe.
+    // Ex: If we want to deploy a universe in multiple AZs, each AZ is partial deployment.
+    // If we want to deploy universe with both primary and read replicas in only one AZ each cluster
+    // deployment is partial universe.
+    if (!taskParams().isReadOnlyCluster) {
+      isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+    }
     if (pi != null) {
       if (pi.cloudList.size() != 0) {
         PlacementInfo.PlacementCloud cloud = pi.cloudList.get(0);
@@ -523,18 +563,26 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         overrides.put("AZ", placementZone);
       }
       overrides.put("isMultiAz", true);
-
-      overrides.put(
-          "replicas",
-          ImmutableMap.of(
-              "tserver",
-              numNodes,
-              "master",
-              replicationFactorZone,
-              "totalMasters",
-              replicationFactor));
+      if (taskParams().isReadOnlyCluster) {
+        overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", 0));
+      } else {
+        overrides.put(
+            "replicas",
+            ImmutableMap.of(
+                "tserver",
+                numNodes,
+                "master",
+                replicationFactorZone,
+                "totalMasters",
+                replicationFactor));
+      }
     } else {
-      overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", replicationFactor));
+      if (taskParams().isReadOnlyCluster) {
+        overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", 0));
+      } else {
+        overrides.put(
+            "replicas", ImmutableMap.of("tserver", numNodes, "master", replicationFactor));
+      }
     }
 
     if (!tserverDiskSpecs.isEmpty()) {
@@ -683,7 +731,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     partition.put("master", taskParams().masterPartition);
     overrides.put("partition", partition);
 
-    UUID placementUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
+    UUID placementUuid =
+        taskParams().isReadOnlyCluster
+            ? u.getUniverseDetails().getReadOnlyClusters().get(0).uuid
+            : u.getUniverseDetails().getPrimaryCluster().uuid;
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Go over master flags.
     Map<String, Object> masterOverrides = new HashMap<String, Object>(userIntent.masterGFlags);

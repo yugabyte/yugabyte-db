@@ -913,6 +913,7 @@ stmt :
 			| CreateExtensionStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
+			| CreatePLangStmt
 			| CreateMatViewStmt
 			| CreateOpClassStmt
 			| CreateOpFamilyStmt
@@ -933,6 +934,7 @@ stmt :
 			| DropOpClassStmt
 			| DropOpFamilyStmt
 			| DropOwnedStmt
+			| DropPLangStmt
 			| DropRoleStmt
 			| DropStmt
 			| DropTableSpaceStmt
@@ -1002,12 +1004,10 @@ stmt :
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePublicationStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreatePLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropPLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
@@ -4722,7 +4722,6 @@ NumericOnly_list:	NumericOnly						{ $$ = list_make1($1); }
 CreatePLangStmt:
 			CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE NonReservedWord_or_Sconst
 			{
-				parser_ybc_not_support(@1, "CREATE LANGUAGE");
 				CreatePLangStmt *n = makeNode(CreatePLangStmt);
 				n->replace = $2;
 				n->plname = $6;
@@ -4736,7 +4735,6 @@ CreatePLangStmt:
 			| CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE NonReservedWord_or_Sconst
 			  HANDLER handler_name opt_inline_handler opt_validator
 			{
-				parser_ybc_not_support(@1, "CREATE LANGUAGE");
 				CreatePLangStmt *n = makeNode(CreatePLangStmt);
 				n->replace = $2;
 				n->plname = $6;
@@ -4780,7 +4778,6 @@ opt_validator:
 DropPLangStmt:
 			DROP opt_procedural LANGUAGE NonReservedWord_or_Sconst opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP LANGUAGE");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_LANGUAGE;
 					n->objects = list_make1(makeString($4));
@@ -4791,7 +4788,6 @@ DropPLangStmt:
 				}
 			| DROP opt_procedural LANGUAGE IF_P EXISTS NonReservedWord_or_Sconst opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP LANGUAGE");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_LANGUAGE;
 					n->objects = list_make1(makeString($6));

@@ -108,6 +108,17 @@ static void PlanCacheRelCallback(Datum arg, Oid relid);
 static void PlanCacheFuncCallback(Datum arg, int cacheid, uint32 hashvalue);
 static void PlanCacheSysCallback(Datum arg, int cacheid, uint32 hashvalue);
 
+/*
+ * For prepared statements, generate custom plans for at least the first 5 runs
+ * (arbitrary)
+ */
+int yb_test_planner_custom_plan_threshold = 5;
+
+/*
+ * Prefer custom plan over generic plan for prepared statement if more
+ * partitions are pruned using a custom plan.
+ */
+bool enable_choose_custom_plan_for_partition_pruning = true;
 
 /*
  * InitPlanCache: initialize module during InitPostgres.
@@ -1044,8 +1055,11 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	if (plansource->cursor_options & CURSOR_OPT_CUSTOM_PLAN)
 		return true;
 
-	/* Generate custom plans until we have done at least 5 (arbitrary) */
-	if (plansource->num_custom_plans < 5)
+	/*
+	 * Generate custom plans until we have done at least
+	 * 'yb_test_planner_custom_plan_threshold' runs.
+	 */
+	if (plansource->num_custom_plans < yb_test_planner_custom_plan_threshold)
 		return true;
 
 	/* For single row modify operations, use a custom plan so as to push down
@@ -1065,6 +1079,16 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	avg_custom_cost = plansource->total_custom_cost / plansource->num_custom_plans;
 
 	/*
+	 * If generic plan is present, then choose custom plan if partition pruning
+	 * or constraint exclusion has pruned more relations for custom plan over
+	 * generic plan.
+	 */
+	if (enable_choose_custom_plan_for_partition_pruning && plansource->gplan &&
+		plansource->yb_custom_max_num_referenced_rels <
+			plansource->yb_generic_num_referenced_rels)
+		return true;
+
+	/*
 	 * Prefer generic plan if it's less expensive than the average custom
 	 * plan.  (Because we include a charge for cost of planning in the
 	 * custom-plan costs, this means the generic plan only has to be less
@@ -1078,6 +1102,23 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 		return false;
 
 	return true;
+}
+
+/*
+ * num_referenced_relations: Return number of relations referenced by a plan.
+ */
+static int
+num_referenced_relations(CachedPlan *plan)
+{
+	ListCell   *lc1;
+	int nrelations = 0;
+	foreach(lc1, plan->stmt_list)
+	{
+		PlannedStmt *plannedstmt = lfirst_node(PlannedStmt, lc1);
+		nrelations += plannedstmt->yb_num_referenced_relations;
+	}
+
+	return nrelations;
 }
 
 /*
@@ -1205,6 +1246,8 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 			}
 			/* Update generic_cost whenever we make a new generic plan */
 			plansource->generic_cost = cached_plan_cost(plan, false);
+			plansource->yb_generic_num_referenced_rels =
+				num_referenced_relations(plan);
 
 			/*
 			 * If, based on the now-known value of generic_cost, we'd not have
@@ -1235,6 +1278,20 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 		{
 			plansource->total_custom_cost += cached_plan_cost(plan, true);
 			plansource->num_custom_plans++;
+
+			/*
+			 * Store the maximum number of relations referenced across all
+			 * the runs using custom plan. In Yugabyte clusters, higher the
+			 * number of relations referenced by a plan, higher the number
+			 * of RPCs required to fetch the data across these relations. This
+			 * mostly comes into play when using partitioned tables, where
+			 * the number of pruned partitions can be a huge performance
+			 * factor.
+			 */
+			int nrelations = num_referenced_relations(plan);
+			if (plansource->num_custom_plans == 1 ||
+				plansource->yb_custom_max_num_referenced_rels < nrelations)
+				plansource->yb_custom_max_num_referenced_rels = nrelations;
 		}
 	}
 

@@ -132,6 +132,13 @@ message DdlLogResponsePB {
   repeated DdlLogEntryPB entries = 2;
 }
 
+message CheckIfPitrActiveRequestPB {}
+
+message CheckIfPitrActiveResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool is_pitr_active = 2;
+}
+
 service MasterAdmin {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -155,4 +162,7 @@ service MasterAdmin {
       returns (IsTabletSplittingCompleteResponsePB);
 
   rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
+
+  rpc CheckIfPitrActive(CheckIfPitrActiveRequestPB)
+      returns (CheckIfPitrActiveResponsePB);
 }

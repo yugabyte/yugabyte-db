@@ -1676,6 +1676,24 @@ ysql_sql_latency:
         "DeleteStmt": "Delete"
       ticksuffix: "&nbsp;\u00B5s"
 
+ysql_connections:
+  metric: ""
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    saved_name: "yb_ysqlserver_connection_total|yb_ysqlserver_active_connection_total"
+  group_by: "saved_name"
+  panel_group: "YSQL Connections"
+  layout:
+    title: "Total YSQL Connections"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_ysqlserver_connection_total": "Total"
+        "yb_ysqlserver_active_connection_total": "Active"
+
 ysql_server_advanced_rpc_per_second:
   metric: "rpc_irate_rps"
   function: "avg_over_time|sum"

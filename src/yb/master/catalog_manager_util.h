@@ -19,6 +19,7 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
 
@@ -143,6 +144,31 @@ class CatalogManagerUtil {
       *sequences_data_table_filter_.Add()->mutable_table_id() = kPgSequencesDataTableId;
     }
     return sequences_data_table_filter_;
+  }
+
+  template <class Lock>
+  static Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock) {
+    // This covers both in progress and fully deleted objects.
+    if (lock->started_deleting()) {
+      return STATUS_EC_FORMAT(
+          NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
+          "The object '$0.$1' does not exist", lock->namespace_id(), lock->name());
+    }
+    if (!lock->visible_to_client()) {
+      return STATUS_EC_FORMAT(
+          ServiceUnavailable, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
+          "The object '$0.$1' is not running", lock->namespace_id(), lock->name());
+    }
+    return Status::OK();
+  }
+
+  template <class Lock, class RespClass>
+  static Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock, RespClass* resp) {
+    auto status = CheckIfTableDeletedOrNotVisibleToClient(lock);
+    if (!status.ok()) {
+      return SetupError(resp->mutable_error(), status);
+    }
+    return Status::OK();
   }
 
  private:

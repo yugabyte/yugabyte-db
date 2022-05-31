@@ -86,7 +86,7 @@ public class TableManagerYb extends DevopsBase {
       PlacementInfo pi = primaryCluster.placementInfo;
       podFQDNToConfig =
           PlacementInfoUtil.getKubernetesConfigPerPod(
-              pi, universe.getUniverseDetails().nodeDetailsSet);
+              pi, universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid));
     } else {
       // Populate the map so that we use the correct SSH Keys for the different
       // nodes in different clusters.
