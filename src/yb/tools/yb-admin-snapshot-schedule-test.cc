@@ -242,7 +242,11 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   Result<pgwrapper::PGConn> PgConnect(const std::string& db_name = std::string()) {
     auto* ts = cluster_->tablet_server(
         RandomUniformInt<size_t>(0, cluster_->num_tablet_servers() - 1));
-    return pgwrapper::PGConn::Connect(HostPort(ts->bind_host(), ts->pgsql_rpc_port()), db_name);
+    return pgwrapper::PGConnBuilder({
+      .host = ts->bind_host(),
+      .port = ts->pgsql_rpc_port(),
+      .dbname = db_name
+    }).Connect();
   }
 
   Result<std::string> PrepareCql(MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
