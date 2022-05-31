@@ -160,5 +160,11 @@ const std::shared_ptr<MemTracker>& MasterTabletServer::mem_tracker() const {
 void MasterTabletServer::SetPublisher(rpc::Publisher service) {
 }
 
+client::TransactionPool& MasterTabletServer::TransactionPool() {
+  LOG(FATAL) << "Unexpected call of TransactionPool()";
+  client::TransactionPool* temp = nullptr;
+  return *temp;
+}
+
 } // namespace master
 } // namespace yb

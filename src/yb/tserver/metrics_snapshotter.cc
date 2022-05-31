@@ -235,9 +235,9 @@ MetricsSnapshotter::Thread::Thread(const TabletServerOptions& opts, TabletServer
   table_metrics_whitelist_ = CSVToSet(FLAGS_metrics_snapshotter_table_metrics_whitelist);
 
   async_client_init_.emplace(
-      "tserver_metrics_snapshotter_client", 0 /* num_reactors */,
-      FLAGS_tserver_metrics_snapshotter_yb_client_default_timeout_ms / 1000, "" /* tserver_uuid */,
-      &server->options(), server->metric_entity(), server->mem_tracker(),
+      "tserver_metrics_snapshotter_client",
+      std::chrono::milliseconds(FLAGS_tserver_metrics_snapshotter_yb_client_default_timeout_ms),
+      "" /* tserver_uuid */, &server->options(), server->metric_entity(), server->mem_tracker(),
       server->messenger());
 }
 
