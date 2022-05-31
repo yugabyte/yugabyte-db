@@ -32,6 +32,26 @@ namespace docdb {
 
 class DocDBRocksDBUtilTest : public YBTest {};
 
+TEST_F(DocDBRocksDBUtilTest, CaseInsensitiveCompressionType) {
+  rocksdb::CompressionType got_compression_type =
+      CHECK_RESULT(TEST_GetConfiguredCompressionType("snappy"));
+
+  ASSERT_EQ(got_compression_type, rocksdb::kSnappyCompression);
+
+  got_compression_type = CHECK_RESULT(TEST_GetConfiguredCompressionType("SNappy"));
+  ASSERT_EQ(got_compression_type, rocksdb::kSnappyCompression);
+  got_compression_type = CHECK_RESULT(TEST_GetConfiguredCompressionType("snaPPy"));
+  ASSERT_EQ(got_compression_type, rocksdb::kSnappyCompression);
+
+  ASSERT_NOK(TEST_GetConfiguredCompressionType("snappy-"));
+
+  got_compression_type = CHECK_RESULT(TEST_GetConfiguredCompressionType("Lz4"));
+  ASSERT_EQ(got_compression_type, rocksdb::kLZ4Compression);
+
+  got_compression_type = CHECK_RESULT(TEST_GetConfiguredCompressionType("zLiB"));
+  ASSERT_EQ(got_compression_type, rocksdb::kZlibCompression);
+}
+
 TEST_F(DocDBRocksDBUtilTest, MaxBackgroundFlushesDefault) {
   FLAGS_num_cpus = 16;
   auto options = TEST_AutoInitFromRocksDBFlags();
