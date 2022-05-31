@@ -63,6 +63,18 @@ Although not a superuser, `yb_superuser` includes sufficient privileges to perfo
 
 `yb_superuser` is the highest privileged role you have access to in YugabyteDB Managed. You can't delete, change the passwords, or login using the `postgres` or `yugabyte` superuser roles.
 
+### yb_db_admin
+
+The `yb_db_admin` role is specific to YugabyteDB Managed clusters and allows non-superuser roles to perform a number of privileged operations. A user granted this role can do the following:
+
+- alter and drop schemas it does not own
+- alter and drop tables it does not own
+- alter and drop indexes it does not own
+- create tablespaces on tables and indexes it does not own, and drop tablespaces it does not own
+- alter roles it does not own
+
+`yb_superuser` and, by extension, the default admin user, is a member of `yb_db_admin`.
+
 ### yb_extension
 
 The `yb_extension` role allows non-superuser roles to [create extensions](../../cloud-clusters/add-extensions/). A user granted this role can create all the extensions that are bundled in YugabyteDB. `yb_superuser` and, by extension, the default admin user, is a member of `yb_extension`.
