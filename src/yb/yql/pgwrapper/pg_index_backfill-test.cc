@@ -799,16 +799,13 @@ TEST_F_EX(PgIndexBackfillTest,
 
   LOG(INFO) << "backfill table on " << this->kAuthDbName << " database";
   {
-    const std::string& host = pg_ts->bind_host();
-    const uint16_t port = pg_ts->pgsql_rpc_port();
-
-    PGConn auth_conn = ASSERT_RESULT(ConnectUsingString(Format(
-        "user=$0 password=$1 host=$2 port=$3 dbname=$4",
-        "yugabyte",
-        "yugabyte",
-        host,
-        port,
-        this->kAuthDbName)));
+    auto auth_conn = ASSERT_RESULT(PGConnBuilder({
+        .host = pg_ts->bind_host(),
+        .port = pg_ts->pgsql_rpc_port(),
+        .dbname = this->kAuthDbName,
+        .user = "yugabyte",
+        .password = "yugabyte"
+    }).Connect());
     ASSERT_OK(auth_conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
     ASSERT_OK(auth_conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
   }
@@ -1503,9 +1500,11 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Create connection to the same tablet server as the one running CREATE INDEX";
   PGConn same_ts_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
   LOG(INFO) << "Create connection to a different tablet server from the one running CREATE INDEX";
-  PGConn diff_ts_conn = ASSERT_RESULT(PGConn::Connect(
-      HostPort(diff_ts->bind_host(), diff_ts->pgsql_rpc_port()),
-      kDatabaseName));
+  PGConn diff_ts_conn = ASSERT_RESULT(PGConnBuilder({
+    .host = diff_ts->bind_host(),
+    .port = diff_ts->pgsql_rpc_port(),
+    .dbname = kDatabaseName
+  }).Connect());
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));

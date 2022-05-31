@@ -196,7 +196,7 @@ struct SplitChildTabletIdsTag : yb::StringVectorBackedErrorTag {
   // It is part of the wire protocol and should not be changed once released.
   static constexpr uint8_t kCategory = 14;
 
-  static std::string ToMessage(Value value);
+  static std::string ToMessage(const Value& value);
 };
 
 typedef yb::StatusErrorCodeImpl<SplitChildTabletIdsTag> SplitChildTabletIdsData;
