@@ -34,24 +34,27 @@ void LibPqTestBase::SetUp() {
 }
 
 Result<PGConn> LibPqTestBase::Connect(bool simple_query_protocol) {
-  return PGConn::Connect(
-      HostPort(pg_ts->bind_host(), pg_ts->pgsql_rpc_port()), simple_query_protocol);
+  return ConnectToDB(std::string() /* db_name */, simple_query_protocol);
 }
 
 Result<PGConn> LibPqTestBase::ConnectToDB(const string& db_name, bool simple_query_protocol) {
-  return PGConn::Connect(
-      HostPort(pg_ts->bind_host(), pg_ts->pgsql_rpc_port()), db_name, simple_query_protocol);
+  return ConnectToDBAsUser(db_name, PGConnSettings::kDefaultUser, simple_query_protocol);
 }
 
 Result<PGConn> LibPqTestBase::ConnectToDBAsUser(
     const string& db_name, const string& user, bool simple_query_protocol) {
-  return PGConn::Connect(
-      HostPort(pg_ts->bind_host(), pg_ts->pgsql_rpc_port()), db_name, user, simple_query_protocol);
+  return PGConnBuilder({
+    .host = pg_ts->bind_host(),
+    .port = pg_ts->pgsql_rpc_port(),
+    .dbname = db_name,
+    .user = user
+  }).Connect(simple_query_protocol);
 }
 
 Result<PGConn> LibPqTestBase::ConnectUsingString(
     const string& conn_str, CoarseTimePoint deadline, bool simple_query_protocol) {
-  return PGConn::Connect(conn_str, deadline, simple_query_protocol);
+  return PGConn::Connect(
+    conn_str, deadline, simple_query_protocol, std::string() /* conn_str_for_log */);
 }
 
 bool LibPqTestBase::TransactionalFailure(const Status& status) {

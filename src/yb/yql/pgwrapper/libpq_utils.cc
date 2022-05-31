@@ -109,6 +109,42 @@ inline void ReplaceAll(std::string* str, const std::string& from, const std::str
   }
 }
 
+std::string BuildConnectionString(const PGConnSettings& settings, bool mask_password = false) {
+  std::string result;
+  result.reserve(512);
+  result += Format("host=$0 port=$1", settings.host, settings.port);
+  if (!settings.dbname.empty()) {
+    result += Format(" dbname=$0", PqEscapeLiteral(settings.dbname));
+  }
+  if (settings.connect_timeout) {
+    result += Format(" connect_timeout=$0", settings.connect_timeout);
+  }
+  if (!settings.user.empty()) {
+    result += Format(" user=$0", PqEscapeLiteral(settings.user));
+  }
+  if (!settings.password.empty()) {
+    result += Format(" password=$0", mask_password ? "<REDACTED>" : settings.password);
+  }
+  return result;
+}
+
+std::string FormPQErrorMessage(const char* msg) {
+  std::string result(msg);
+  // Avoid double newline (postgres adds a newline after the error message).
+  if (!result.empty() && result.back() == '\n') {
+    result.pop_back();
+  }
+  return result;
+}
+
+std::string GetPQErrorMessage(const PGresult* res) {
+  return FormPQErrorMessage(PQresultErrorMessage(res));
+}
+
+std::string GetPQErrorMessage(const PGconn* conn) {
+  return FormPQErrorMessage(PQerrorMessage(conn));
+}
+
 }  // anonymous namespace
 
 
@@ -153,26 +189,13 @@ struct PGConn::CopyData {
   }
 };
 
-Result<PGConn> PGConn::Connect(
-    const HostPort& host_port,
-    const std::string& db_name,
-    const std::string& user,
-    bool simple_query_protocol) {
-  auto conn_info = Format(
-      "host=$0 port=$1 user=$2",
-      host_port.host(),
-      host_port.port(),
-      PqEscapeLiteral(user));
-  if (!db_name.empty()) {
-    conn_info = Format("dbname=$0 $1", PqEscapeLiteral(db_name), conn_info);
-  }
-  return Connect(conn_info, simple_query_protocol);
-}
-
 Result<PGConn> PGConn::Connect(const std::string& conn_str,
                                CoarseTimePoint deadline,
                                bool simple_query_protocol,
-                               const boost::optional<std::string>& conn_str_for_log) {
+                               const std::string& explicit_conn_str_for_log) {
+  const auto& conn_str_for_log = explicit_conn_str_for_log.empty()
+      ? conn_str
+      : explicit_conn_str_for_log;
   auto start = CoarseMonoClock::now();
   for (;;) {
     PGConnPtr result(PQconnectdb(conn_str.c_str()));
@@ -180,25 +203,24 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
       return STATUS(NetworkError, "Failed to connect to DB");
     }
     auto status = PQstatus(result.get());
-    if (status == ConnStatusType::CONNECTION_OK) {
+    if (status == CONNECTION_OK) {
       LOG(INFO) << "Connected to PG ("
-                << (conn_str_for_log.has_value() ? conn_str_for_log.value() : conn_str)
+                << conn_str_for_log
                 << "), time taken: "
                 << MonoDelta(CoarseMonoClock::Now() - start);
       return PGConn(std::move(result), simple_query_protocol);
     }
     auto now = CoarseMonoClock::now();
     if (now >= deadline) {
-      std::string msg(yb::Format("$0", status));
-      if (status == CONNECTION_BAD) {
-        msg = PQerrorMessage(result.get());
-        // Avoid double newline (postgres adds a newline after the error message).
-        if (msg.back() == '\n') {
-          msg.resize(msg.size() - 1);
-        }
-      }
-      return STATUS_FORMAT(NetworkError, "Connect failed: $0, passed: $1",
-                           msg, MonoDelta(now - start));
+      const auto msg = status == CONNECTION_BAD
+          ? GetPQErrorMessage(result.get())
+          : std::string();
+      const MonoDelta duration(now - start);
+      LOG(INFO) << "Connect with \"" << conn_str_for_log << "\" failed: "
+                << (msg.empty() ? AsString(status) : msg) << ", time taken: " << duration;
+      return STATUS(NetworkError,
+                    Format("Connect failed: $0, passed: $1", msg, duration),
+                    AuxilaryMessage(msg));
     }
   }
 }
@@ -234,13 +256,14 @@ Status PGConn::Execute(const std::string& command, bool show_query_in_error) {
                            "Tuples received in Execute$0",
                            show_query_in_error ? Format(" of '$0'", command) : "");
     }
+    auto msg = GetPQErrorMessage(res.get());
     return STATUS(NetworkError,
                   Format("Execute$0 failed: $1, message: $2",
                          show_query_in_error ? Format(" of '$0'", command) : "",
                          status,
-                         PQresultErrorMessage(res.get())),
+                         msg),
                   Slice() /* msg2 */,
-                  PgsqlError(GetSqlState(res.get())));
+                  PgsqlError(GetSqlState(res.get()))).CloneAndAddErrorCode(AuxilaryMessage(msg));
   }
   return Status::OK();
 }
@@ -248,11 +271,12 @@ Status PGConn::Execute(const std::string& command, bool show_query_in_error) {
 Result<PGResultPtr> CheckResult(PGResultPtr result, const std::string& command) {
   auto status = PQresultStatus(result.get());
   if (ExecStatusType::PGRES_TUPLES_OK != status && ExecStatusType::PGRES_COPY_IN != status) {
+    auto msg = GetPQErrorMessage(result.get());
     return STATUS(NetworkError,
                   Format("Fetch '$0' failed: $1, message: $2",
-                         command, status, PQresultErrorMessage(result.get())),
+                         command, status, msg),
                   Slice() /* msg2 */,
-                  PgsqlError(GetSqlState(result.get())));
+                  PgsqlError(GetSqlState(result.get()))).CloneAndAddErrorCode(AuxilaryMessage(msg));
   }
   return result;
 }
@@ -579,6 +603,15 @@ std::string PqEscapeIdentifier(const std::string& input) {
 
 bool HasTryAgain(const Status& status) {
   return status.ToString().find("Try again:") != std::string::npos;
+}
+
+PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)
+    : conn_str_(BuildConnectionString(settings)),
+      conn_str_for_log_(BuildConnectionString(settings, true /* mask_password */)) {
+}
+
+Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
+  return PGConn::Connect(conn_str_, simple_query_protocol, conn_str_for_log_);
 }
 
 } // namespace pgwrapper

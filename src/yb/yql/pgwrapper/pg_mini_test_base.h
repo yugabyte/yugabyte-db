@@ -61,11 +61,15 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
   virtual std::vector<tserver::TabletServerOptions> ExtraTServerOptions();
 
   Result<PGConn> Connect() {
-    return PGConn::Connect(pg_host_port_);
+    return ConnectToDB(std::string() /* db_name */);
   }
 
   Result<PGConn> ConnectToDB(const std::string& dbname) {
-    return PGConn::Connect(pg_host_port_, dbname);
+    return PGConnBuilder({
+      .host = pg_host_port_.host(),
+      .port = pg_host_port_.port(),
+      .dbname = dbname
+    }).Connect();
   }
 
   Status RestartCluster();

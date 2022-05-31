@@ -226,27 +226,15 @@ Status YsqlUpgradeHelper::AnalyzeMigrationFiles() {
 }
 
 Result<PGConn> YsqlUpgradeHelper::Connect(const std::string& database_name) {
-  // Construct connection string.  Note that the plain password in the connection string will be
-  // sent over the wire, but since it only goes over a unix-domain socket, there should be no
-  // eavesdropping/tampering issues.
-  const std::string conn_str = Format(
-      "user=$0 password=$1 host=$2 port=$3 dbname=$4",
-      "postgres",
-      ysql_auth_key_,
-      PgDeriveSocketDir(ysql_proxy_addr_.host()),
-      ysql_proxy_addr_.port(),
-      pgwrapper::PqEscapeLiteral(database_name));
-  // Use the string with redacted password for logging purposes.
-  boost::optional<std::string> conn_str_for_log(Format(
-      "user=$0 password=$1 host=$2 port=$3 dbname=$4",
-      "postgres",
-      "<REDACTED>",
-      PgDeriveSocketDir(ysql_proxy_addr_.host()),
-      ysql_proxy_addr_.port(),
-      pgwrapper::PqEscapeLiteral(database_name)));
-
-  PGConn pgconn = VERIFY_RESULT(
-      PGConn::Connect(conn_str, false /* simple_query_protocol */, conn_str_for_log));
+  // Note that the plain password in the connection string will be sent over the wire, but since it
+  // only goes over a unix-domain socket, there should be no eavesdropping/tampering issues.
+  auto pgconn = VERIFY_RESULT(PGConnBuilder({
+    .host = PgDeriveSocketDir(ysql_proxy_addr_.host()),
+    .port = ysql_proxy_addr_.port(),
+    .dbname = database_name,
+    .user = "postgres",
+    .password = UInt64ToString(ysql_auth_key_),
+  }).Connect());
 
   RETURN_NOT_OK(pgconn.Execute("SET ysql_upgrade_mode TO true;"));
 
