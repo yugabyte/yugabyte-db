@@ -233,15 +233,15 @@ class TransactionParticipant::Impl
     return (**it).local_commit_time();
   }
 
-  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) {
+  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = transactions_.find(id);
     if (it == transactions_.end()) {
       return boost::none;
     }
-    return boost::make_optional<CommitMetadata>({
+    return boost::make_optional<TransactionLocalState>({
       .commit_ht = (**it).local_commit_time(),
-      .aborted_subtxn_set = (**it).local_commit_aborted_subtxn_set(),
+      .aborted_subtxn_set = (**it).last_known_aborted_subtxn_set(),
     });
   }
 
@@ -1642,8 +1642,9 @@ HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
   return impl_->LocalCommitTime(id);
 }
 
-boost::optional<CommitMetadata> TransactionParticipant::LocalCommitData(const TransactionId& id) {
-  return impl_->LocalCommitData(id);
+boost::optional<TransactionLocalState> TransactionParticipant::LocalTxnData(
+    const TransactionId& id) {
+  return impl_->LocalTxnData(id);
 }
 
 std::pair<size_t, size_t> TransactionParticipant::TEST_CountIntents() const {

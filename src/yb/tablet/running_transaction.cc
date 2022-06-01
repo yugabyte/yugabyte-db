@@ -80,7 +80,7 @@ void RunningTransaction::BatchReplicated(const TransactionalBatchData& value) {
 
 void RunningTransaction::SetLocalCommitData(
     HybridTime time, const AbortedSubTransactionSet& aborted_subtxn_set) {
-  local_commit_aborted_subtxn_set_ = aborted_subtxn_set;
+  last_known_aborted_subtxn_set_ = aborted_subtxn_set;
   local_commit_time_ = time;
   last_known_status_hybrid_time_ = local_commit_time_;
   last_known_status_ = TransactionStatus::COMMITTED;
@@ -105,8 +105,9 @@ void RunningTransaction::RequestStatusAt(const StatusRequest& request,
     if (transaction_status) {
       HybridTime last_known_status_hybrid_time = last_known_status_hybrid_time_;
       AbortedSubTransactionSet local_commit_aborted_subtxn_set;
-      if (transaction_status == TransactionStatus::COMMITTED) {
-        local_commit_aborted_subtxn_set = local_commit_aborted_subtxn_set_;
+      if (transaction_status == TransactionStatus::COMMITTED ||
+          transaction_status == TransactionStatus::PENDING) {
+        local_commit_aborted_subtxn_set = last_known_aborted_subtxn_set_;
       }
       lock->unlock();
       request.callback(TransactionStatusResult{
@@ -248,14 +249,16 @@ void RunningTransaction::StatusReceived(
 bool RunningTransaction::UpdateStatus(
     TransactionStatus transaction_status, HybridTime time_of_status,
     HybridTime coordinator_safe_time, AbortedSubTransactionSet aborted_subtxn_set) {
+  if (!local_commit_time_ && transaction_status != TransactionStatus::ABORTED) {
+    // If we've already committed locally, then last_known_aborted_subtxn_set_ is already set
+    // properly. Otherwise, we should update it here.
+    last_known_aborted_subtxn_set_ = aborted_subtxn_set;
+  }
+
   // Check for local_commit_time_ is not required for correctness, but useful for optimization.
   // So we could avoid unnecessary actions.
   if (local_commit_time_) {
     return false;
-  }
-
-  if (transaction_status == TransactionStatus::COMMITTED) {
-    local_commit_aborted_subtxn_set_ = aborted_subtxn_set;
   }
 
   if (transaction_status == TransactionStatus::ABORTED && coordinator_safe_time) {
@@ -342,7 +345,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
 
     time_of_status = last_known_status_hybrid_time_;
     transaction_status = last_known_status_;
-    aborted_subtxn_set = local_commit_aborted_subtxn_set_;
+    aborted_subtxn_set = last_known_aborted_subtxn_set_;
 
     status_waiters = ExtractFinishedStatusWaitersUnlocked(
         serial_no, time_of_status, transaction_status);
@@ -391,7 +394,8 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
     if (status_for_waiter) {
       // We know status at global_limit_ht, so could notify waiter.
       auto result = TransactionStatusResult{*status_for_waiter, time_of_status};
-      if (result.status == TransactionStatus::COMMITTED) {
+      if (result.status == TransactionStatus::COMMITTED ||
+          result.status == TransactionStatus::PENDING) {
         result.aborted_subtxn_set = aborted_subtxn_set;
       }
       waiter.callback(std::move(result));
@@ -402,7 +406,8 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
       LOG_IF_WITH_PREFIX(DFATAL, waiter.serial_no > serial_no)
           << "Notify waiter with request id greater than id of status request: "
           << waiter.serial_no << " vs " << serial_no;
-      waiter.callback(TransactionStatusResult{TransactionStatus::PENDING, time_of_status});
+      waiter.callback(TransactionStatusResult{
+          TransactionStatus::PENDING, time_of_status, aborted_subtxn_set});
     } else {
       waiter.callback(STATUS(TryAgain,
           Format("Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "

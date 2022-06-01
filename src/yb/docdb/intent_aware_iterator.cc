@@ -180,7 +180,8 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
         result.value_time = decoded_intent_key.doc_ht;
       }
     } else {
-      auto commit_data = VERIFY_RESULT(transaction_status_cache->GetCommitData(decoded_txn_id));
+      auto commit_data = VERIFY_RESULT(
+          transaction_status_cache->GetTransactionLocalState(decoded_txn_id));
       auto commit_ht = commit_data.commit_ht;
       auto aborted_subtxn_set = commit_data.aborted_subtxn_set;
       auto is_aborted_subtxn = aborted_subtxn_set.Test(decoded_subtxn_id);

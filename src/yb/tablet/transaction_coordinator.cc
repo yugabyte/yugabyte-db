@@ -778,6 +778,10 @@ class TransactionState {
     }
     last_touch_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
+    // TODO -- consider swapping instead of copying here.
+    if (data.state.aborted().set_size() > aborted_.set_size()) {
+      aborted_ = data.state.aborted();
+    }
     return Status::OK();
   }
 
@@ -974,8 +978,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
 
         auto mutable_aborted_set_pb = response->add_aborted_subtxn_set();
-        if (txn_status_with_ht.status == TransactionStatus::COMMITTED &&
-            it != managed_transactions_.end()) {
+        if (it != managed_transactions_.end() &&
+            (txn_status_with_ht.status == TransactionStatus::COMMITTED ||
+             txn_status_with_ht.status == TransactionStatus::PENDING)) {
           *mutable_aborted_set_pb = it->GetAbortedSubTransactionSetPB();
         }
       }

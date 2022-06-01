@@ -82,8 +82,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     return local_commit_time_;
   }
 
-  const AbortedSubTransactionSet& local_commit_aborted_subtxn_set() const {
-    return local_commit_aborted_subtxn_set_;
+  const AbortedSubTransactionSet& last_known_aborted_subtxn_set() const {
+    return last_known_aborted_subtxn_set_;
   }
 
   void SetLocalCommitData(HybridTime time, const AbortedSubTransactionSet& aborted_subtxn_set);
@@ -163,10 +163,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   RunningTransactionContext& context_;
   RemoveIntentsTask remove_intents_task_;
   HybridTime local_commit_time_ = HybridTime::kInvalid;
-  AbortedSubTransactionSet local_commit_aborted_subtxn_set_;
 
   TransactionStatus last_known_status_ = TransactionStatus::CREATED;
   HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
+  AbortedSubTransactionSet last_known_aborted_subtxn_set_;
   std::vector<StatusRequest> status_waiters_;
   rpc::Rpcs::Handle get_status_handle_;
   rpc::Rpcs::Handle abort_handle_;
