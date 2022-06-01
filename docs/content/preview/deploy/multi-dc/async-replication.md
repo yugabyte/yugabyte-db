@@ -1,7 +1,7 @@
 ---
 title: Deploy to two universes with asynchronous replication
-headerTitle: Asynchronous Replication
-linkTitle: Asynchronous Replication
+headerTitle: Asynchronous replication
+linkTitle: Asynchronous replication
 description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
 aliases:
   - /preview/deploy/multi-dc/2dc-deployment
@@ -17,7 +17,7 @@ showAsideToc: true
 
 You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between universes (also known as data centers).
 
-For information on two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/).
+For information on two data center (2DC) deployment architecture and replication scenarios, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/).
 
 ## Set up universes
 
@@ -168,11 +168,11 @@ When universes use different certificates, you need to store the certificates fo
 
 1. Copy this file to each node on the target. It needs to be copied to a directory named`<certs_for_cdc_dir>/<source_universe_uuid>`.
 
-    For example, if you previously set `certs_for_cdc_dir=/home/yugabyte/yugabyte_producer_certs`, and the source universe's ID is `00000000-1111-2222-3333-444444444444`, then you would need to copy the cert file to `/home/yugabyte/yugabyte_producer_certs/00000000-1111-2222-3333-444444444444/ca.crt`.
+    For example, if you previously set `certs_for_cdc_dir=/home/yugabyte/yugabyte_producer_certs`, and the source universe's ID is `00000000-1111-2222-3333-444444444444`, then you would need to copy the certificate file to `/home/yugabyte/yugabyte_producer_certs/00000000-1111-2222-3333-444444444444/ca.crt`.
 
-1. Set up replication using `yb-admin setup_universe_replication`, making sure to also set the `-certs_dir_name` flag to the directory with the *target universe's* certificates (this should be different from the directory used in the previous steps).
+1. Set up replication using `yb-admin setup_universe_replication`, making sure to also set the `-certs_dir_name` flag to the directory with the target universe's certificates (this should be different from the directory used in the previous steps).
 
-    For example, if you have the target's certificates in `/home/yugabyte/yugabyte-tls-config`, then you would run the following:
+    For example, if you have the target universe's certificates in `/home/yugabyte/yugabyte-tls-config`, then you would run the following:
 
     ```sh
     ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
@@ -310,7 +310,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
       ```
 
 - Collect table UUIDs by navigating to **Tables** in the Admin UI available at 127.0.0.1:7000. These UUIDs are to be used while setting up replication. <br>
-- Set up replication from the source universe by executing the following command at the source universe:
+- Set up replication from the source universe by executing the following command on the source universe:
 
     ```sh
   kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c \
@@ -331,7 +331,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
     yb-master-0.yb-masters.xcluster-source.svc.cluster.local 00004000000030008000000000004001"
     ```
 
-- Perform the following on the source universe side and then observe the replication at the target universe side:
+- Perform the following on the source universe and then observe replication one the target universe:
 
     ```sh
   kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c <source_universe_container> -- bash
@@ -349,7 +349,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
     SELECT * FROM employees;
     ```
 
-- Perform the following on the target universe side:
+- Perform the following on the target universe:
     ```sh
   kubectl exec -it -n <target_universe_namespace> -t <target_universe_master_leader> -c <target_universe_container> -- bash
     /home/yugabyte/bin/ysqlsh -h <target_universe_yqlserver>
@@ -371,7 +371,7 @@ You can set up asynchronous replication for the following purposes:
 * Catching up an existing stream where the target has fallen too far behind.
 
 
-In order to ensure that the WALs are still available, you need to perform the following steps within the [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) gflag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
+To ensure that the WALs are still available, you need to perform the following steps within the [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) gflag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
 
 Proceed as follows:
 
@@ -412,19 +412,17 @@ Proceed as follows:
       fb156717174941008e54fa958e613c10,a2a46f5cbf8446a3a5099b5ceeaac28b,c967967523eb4e03bcc201bb464e0679
       ```
 
-### Adjust flow
+You can modify the bootstrap as follows:
 
-You can modify the bootstrap flow as follows:
+- To wipe the test setup, use the `delete_universe_replication` command.
+- After running the `bootstrap_cdc_producer` command, you can verify entries via the `list_cdc_streams` command.
 
-- Wipe the test setup by using the `delete_universe_replication` command.
-- After running the `bootstrap_cdc_producer` command, verify entries via the `list_cdc_streams` command.
+You can also perform the following modifications:
 
-To add the modification flow, perform the following:
-
-- Add a table to the source and target universes by using the `alter_universe_replication add_table` command.
-- Remove an existing table from the source and target universes by using the `alter_universe_replication remove_table` command.
-- Change the master nodes on the source universe by executing the`alter_universe_replication set_master_addresses` command.
-- Verify changes via the `get_universe_config` command.
+- To add a table to the source and target universes, use the `alter_universe_replication add_table` command.
+- To remove an existing table from the source and target universes, use the `alter_universe_replication remove_table` command.
+- To change the master nodes on the source universe, execute the `alter_universe_replication set_master_addresses` command.
+- You can verify changes via the `get_universe_config` command.
 
 ## Migrate schema
 
