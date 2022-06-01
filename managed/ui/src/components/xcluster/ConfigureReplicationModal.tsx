@@ -111,7 +111,7 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
           setCurrentStep(currentStep + 1);
         } else {
           if (values['tables'].length === 0) {
-            toast.error('Configuration must have atleast one table');
+            toast.error('Configuration must have at least one table');
             return;
           }
           addReplication.mutateAsync(values).then(() => {

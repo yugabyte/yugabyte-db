@@ -60,13 +60,13 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
   @Override
   public String getName() {
-    Params taskParams = taskParams();
-    return super.getName()
-        + "("
-        + taskParams.rootCertPath
-        + ", "
-        + taskParams.replicationGroupName
-        + ")";
+    return String.format(
+        "%s %s(action=%s, replicationGroupName=%s, rootCertPath=%s)",
+        super.getName(),
+        this.getClass().getSimpleName(),
+        taskParams().action,
+        taskParams().replicationGroupName,
+        taskParams().rootCertPath);
   }
 
   @Override
