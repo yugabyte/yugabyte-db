@@ -618,8 +618,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  type=str.lower)
         self.parser.add_argument("--disable_custom_ssh", action="store_true",
                                  help="Disable running the ansible task for using custom SSH.")
-        self.parser.add_argument("--install_python", action="store_true", default=False,
-                                 help="Flag to set if host OS needs python installed for Ansible.")
         self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
                                  help="Max memory for postgress process.")
         self.parser.add_argument("--use_chrony", action="store_true",
@@ -706,8 +704,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         use_default_port = not ssh_port_updated
         host_info = self.wait_for_host(args, default_port=use_default_port)
         ansible = self.cloud.setup_ansible(args)
-        if (args.install_python):
-            self.extra_vars["install_python"] = True
         ansible.run("preprovision.yml", self.extra_vars, host_info)
 
         if not args.disable_custom_ssh and use_default_port:
