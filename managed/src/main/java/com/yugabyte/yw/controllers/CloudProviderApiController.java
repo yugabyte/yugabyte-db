@@ -23,11 +23,13 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RotateAccessKeyFormData;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -189,6 +191,7 @@ public class CloudProviderApiController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(RotateAccessKeyFormData.class);
     List<UUID> universeUUIDs = formData.get().universeUUIDs;
     String newKeyCode = formData.get().newKeyCode;
+    failManuallyProvisioned(providerUUID, newKeyCode);
     accessManager.rotateAccessKey(customerUUID, providerUUID, universeUUIDs, newKeyCode);
     return withMessage("Created rotate key task for the listed universes");
   }
@@ -198,5 +201,18 @@ public class CloudProviderApiController extends AuthenticatedController {
       return r.code;
     }
     return null;
+  }
+
+  private void failManuallyProvisioned(UUID providerUUID, String newAccessKeyCode) {
+    AccessKey providerAccessKey = AccessKey.getAll(providerUUID).get(0);
+    AccessKey newAccessKey = AccessKey.getOrBadRequest(providerUUID, newAccessKeyCode);
+    if (providerAccessKey.getKeyInfo().skipProvisioning) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Provider has manually provisioned nodes, cannot rotate keys!");
+    } else if (newAccessKey.getKeyInfo().skipProvisioning) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "New access key was made for manually provisoned nodes, please supply another key!");
+    }
   }
 }
