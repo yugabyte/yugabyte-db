@@ -856,36 +856,36 @@ public enum AlertTemplate {
 
   LEADERLESS_TABLETS(
       "Leaderless tablets",
-      "Leader is missing for some tablet(s) for more than 5 minutes",
-      "max by (node_prefix) (count by (node_prefix, exported_instance)"
-          + " (max_over_time(yb_node_leaderless_tablet{node_prefix=\"__nodePrefix__\"}[5m]))"
-          + " {{ query_condition }} {{ query_threshold }})",
-      "Tablet leader is missing for more than 5 minutes for "
+      "Leader is missing for some tablet(s) for longer than configured threshold",
+      "max by (node_prefix)"
+          + " (min_over_time(yb_node_leaderless_tablet_count{node_prefix=\"__nodePrefix__\"}"
+          + "[{{ query_threshold }}s]) > 0)",
+      "Tablet leader is missing for more than {{ $labels.threshold }} seconds for "
           + "{{ $value | printf \\\"%.0f\\\" }} tablet(s) in universe '{{ $labels.source_name }}'.",
       0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
-          .defaultThreshold(SEVERE, 0)
-          .defaultThresholdCondition(Condition.GREATER_THAN)
-          .defaultThresholdUnit(STATUS)
+          .defaultThreshold(SEVERE, "yb.alert.underreplicated_tablets_secs_severe")
+          .defaultThresholdUnit(SECOND)
+          .thresholdMinValue(1.0)
           .build()),
 
   UNDER_REPLICATED_TABLETS(
       "Under-replicated tablets",
-      "Some tablet(s) remain under-replicated for more than 5 minutes",
-      "max by (node_prefix) (count by (node_prefix, exported_instance)"
-          + " (max_over_time(yb_node_underreplicated_tablet{node_prefix=\"__nodePrefix__\"}[5m]))"
-          + " {{ query_condition }} {{ query_threshold }})",
-      "{{ $value | printf \\\"%.0f\\\" }} tablet(s) remain under-replicated "
-          + "for more than 5 minutes in universe '{{ $labels.source_name }}'.",
+      "Some tablet(s) remain under-replicated for longer than configured threshold",
+      "max by (node_prefix)"
+          + " (min_over_time(yb_node_underreplicated_tablet_count{node_prefix=\"__nodePrefix__\"}"
+          + "[{{ query_threshold }}s]) > 0)",
+      "{{ $value | printf \\\"%.0f\\\" }} tablet(s) remain under-replicated for "
+          + "more than {{ $labels.threshold }} seconds in universe '{{ $labels.source_name }}'.",
       0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
-          .defaultThreshold(SEVERE, 0)
-          .defaultThresholdCondition(Condition.GREATER_THAN)
-          .defaultThresholdUnit(STATUS)
+          .defaultThreshold(SEVERE, "yb.alert.leaderless_tablets_secs_severe")
+          .defaultThresholdUnit(SECOND)
+          .thresholdMinValue(1.0)
           .build());
 
   // @formatter:on
