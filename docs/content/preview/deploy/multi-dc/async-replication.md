@@ -158,7 +158,7 @@ Consider the following example:
   000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
 ```
 
-When universes use different certificates, you need to store the certificates for the producer universe on the target universe, as follows:
+When universes use different certificates, you need to store the certificates for the source universe on the target universe, as follows:
 
 1. Ensure that `use_node_to_node_encryption` is set to `true` on all [masters](../../reference/configuration/yb-master/#use-node-to-node-encryption) and [t-servers](../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
 
@@ -166,11 +166,11 @@ When universes use different certificates, you need to store the certificates fo
 
 1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored within the [`--certs_dir`]`/preview/reference/configuration/yb-master/#certs-dir`.
 
-1. Copy this file to each node on the target. It needs to be copied to a directory named`<certs_for_cdc_dir>/<source_universe_uuid>`.
+1. Copy this file to each node on the target. It needs to be copied to a directory named`<certs_for_cdc_dir>/<source_universe_uuid>`.<br>
 
     For example, if you previously set `certs_for_cdc_dir=/home/yugabyte/yugabyte_producer_certs`, and the source universe's ID is `00000000-1111-2222-3333-444444444444`, then you would need to copy the certificate file to `/home/yugabyte/yugabyte_producer_certs/00000000-1111-2222-3333-444444444444/ca.crt`.
 
-1. Set up replication using `yb-admin setup_universe_replication`, making sure to also set the `-certs_dir_name` flag to the directory with the target universe's certificates (this should be different from the directory used in the previous steps).
+1. Set up replication using `yb-admin setup_universe_replication`, making sure to also set the `-certs_dir_name` flag to the directory with the target universe's certificates (this should be different from the directory used in the previous steps).<br>
 
     For example, if you have the target universe's certificates in `/home/yugabyte/yugabyte-tls-config`, then you would run the following:
 
@@ -186,8 +186,8 @@ When universes use different certificates, you need to store the certificates fo
 
 You start by creating a source and a target universe with the same configurations (the same regions and zones), as follows:
 
-* Regions: EU(Paris), Asia Pacific(Mumbai) and US West(Oregon)
-* Zones: eu-west-3a, ap-south-1a and us-west-2a
+* Regions: EU(Paris), Asia Pacific(Mumbai), US West(Oregon)
+* Zones: eu-west-3a, ap-south-1a, us-west-2a
 
   ```sh
   ./bin/yb-ctl --rf 3 create --placement_info "cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3"
@@ -199,11 +199,11 @@ You start by creating a source and a target universe with the same configuration
   ./bin/yb-ctl --rf 3 create --placement_info "aws.us-west-2.us-west-2a,aws.ap-south-1.ap-south-1a,aws.eu-west-3.eu-west-3a"
   ```
 
-Create tables, table spaces, and partition tables at both the source and target universes, as per the following example:
+Create tables, tablespaces, and partition tables at both the source and target universes, as per the following example:
 
 * Main table: transactions
-* Table spaces: eu_ts, ap_ts and us_ts
-* Partition Tables: transactions_eu, transactions_in, transactions_us
+* Tablespaces: eu_ts, ap_ts, us_ts
+* Partition tables: transactions_eu, transactions_in, transactions_us
 
   ```sql
   CREATE TABLE transactions (
@@ -249,14 +249,12 @@ To create unidirectional replication, peform the following:
 
 1. Collect partition table UUIDs from the source universe (partition tables, transactions_eu, transactions_in, transactions_us) by navigating to **Tables** in the Admin UI available at 127.0.0.1:7000. These UUIDs are to be used while setting up replication. <br><br>
 
-  ![xCluster_with_GP](/images/explore/yb_xcluster_table_uuids.png)
-
-<br>
+     ![xCluster_with_GP](/images/explore/yb_xcluster_table_uuids.png)
 
 2. Run the replication setup command for the source universe, as follows:
     ```sh
     ./bin/yb-admin -master_addresses <consumer_master_addresses> \
-    setup_universe_replication <producer universe UUID>_<replication_stream_name> \
+    setup_universe_replication <source_universe_UUID>_<replication_stream_name> \
     <producer_master_addresses> <comma_separated_table_ids>
     ```
 
@@ -277,13 +275,13 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 
 - Create tables in both universes, as follows: 
 
-  - Execute the following commands at for the source universe:
+  - Execute the following commands for the source universe:
 
       ```sh
     kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c <source_universe_container> -- bash
       /home/yugabyte/bin/ysqlsh -h <source_universe_yqlserver>
       create table query
-      ```
+    ```
 
     Consider the following example:
 
@@ -293,13 +291,13 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
       create table employees(id int primary key, name text);
       ```
 
-  - Execute the following commands at for the target universe:
+  - Execute the following commands for the target universe:
 
       ```sh
     kubectl exec -it -n <target_universe_namespace> -t <target_universe_master_leader> -c <target_universe_container> -- bash
       /home/yugabyte/bin/ysqlsh -h <target_universe_yqlserver>
       create table query
-      ```
+    ```
 
     Consider the following example:
 
@@ -318,7 +316,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
     <target_universe_master_addresses> setup_universe_replication \
     <source_universe_UUID>_<replication_stream_name> <source_universe_master_addresses> \
     <comma_separated_table_ids>"
-    ```
+  ```
 
   Consider the following example:
 
@@ -331,14 +329,14 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
     yb-master-0.yb-masters.xcluster-source.svc.cluster.local 00004000000030008000000000004001"
     ```
 
-- Perform the following on the source universe and then observe replication one the target universe:
+- Perform the following on the source universe and then observe replication on the target universe:
 
     ```sh
   kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c <source_universe_container> -- bash
     /home/yugabyte/bin/ysqlsh -h <source_universe_yqlserver>
     insert query
     select query
-    ```
+  ```
 
   Consider the following example:
 
@@ -354,7 +352,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
   kubectl exec -it -n <target_universe_namespace> -t <target_universe_master_leader> -c <target_universe_container> -- bash
     /home/yugabyte/bin/ysqlsh -h <target_universe_yqlserver>
     select query
-    ```
+  ```
 
   Consider the following example:
 
@@ -401,7 +399,7 @@ Proceed as follows:
     ./bin/yb-admin -master_addresses <target_universe_master_addresses> setup_universe_replication \
       <source_universe_uuid>_<replication_stream_name> <source_universe_master_addresses> \
       <comma_separated_source_universe_table_ids> <comma_separated_bootstrap_ids>
-      ```
+    ```
 
     Consider the following example:
 
@@ -426,7 +424,7 @@ You can also perform the following modifications:
 
 ## Migrate schema
 
-You can execute DDL operations, after replication has been already configured for some tables.
+You can execute DDL operations after replication has been already configured for some tables.
 
 ### Stop user writes
 
