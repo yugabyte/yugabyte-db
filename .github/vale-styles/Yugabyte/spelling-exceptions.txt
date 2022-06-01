@@ -580,6 +580,8 @@ sharding
 shfmt
 Shibboleth
 Shopify
+shortcode
+shortcodes
 Sidekiq
 Silverlight
 Sisense
