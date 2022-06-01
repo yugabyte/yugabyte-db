@@ -880,10 +880,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     req.set_tablet_id(status_tablet->tablet_id());
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
 
-    // TODO(savepoints) -- Attach metadata about aborted subtransactions in heartbeat.
     auto& state = *req.mutable_state();
     state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
     state.set_status(status);
+
+    if (subtransaction_.active()) {
+      subtransaction_.get().aborted.ToPB(state.mutable_aborted()->mutable_set());
+    }
 
     return UpdateTransaction(
         deadline,
@@ -922,7 +925,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
     auto& state = *req.mutable_state();
     state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
-    // TODO(savepoints) -- Attach metadata about aborted subtransactions to commit message.
     state.set_status(seal_only ? TransactionStatus::SEALED : TransactionStatus::COMMITTED);
     state.mutable_tablets()->Reserve(narrow_cast<int>(tablets_.size()));
     for (const auto& tablet : tablets_) {
