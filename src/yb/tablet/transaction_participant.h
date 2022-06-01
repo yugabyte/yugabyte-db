@@ -136,7 +136,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
-  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override;
+  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override;
 
   void RequestStatusAt(const StatusRequest& request) override;
 
