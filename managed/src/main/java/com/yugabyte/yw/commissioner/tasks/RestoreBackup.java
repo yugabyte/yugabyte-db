@@ -37,31 +37,9 @@ public class RestoreBackup extends UniverseTaskBase {
         throw new RuntimeException("A backup for this universe is already in progress.");
       }
 
-      if (taskParams().alterLoadBalancer) {
-        createLoadBalancerStateChangeTask(false)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-      }
-      UserTaskDetails.SubTaskGroupType groupType = UserTaskDetails.SubTaskGroupType.RestoringBackup;
-      if (taskParams().backupStorageInfoList != null) {
-        for (BackupStorageInfo backupStorageInfo : taskParams().backupStorageInfoList) {
-          if (KmsConfig.get(taskParams().kmsConfigUUID) != null) {
-            RestoreBackupParams restoreParams =
-                createParamsBody(taskParams(), backupStorageInfo, ActionType.RESTORE_KEYS);
-            createRestoreBackupTask(restoreParams).setSubTaskGroupType(groupType);
-            createEncryptedUniverseKeyRestoreTaskYb(restoreParams).setSubTaskGroupType(groupType);
-          }
-
-          RestoreBackupParams restoreParams =
-              createParamsBody(taskParams(), backupStorageInfo, ActionType.RESTORE);
-          createRestoreBackupTask(restoreParams).setSubTaskGroupType(groupType);
-        }
-      }
+      createAllRestoreSubtasks(taskParams(), UserTaskDetails.SubTaskGroupType.RestoringBackup);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
-      if (taskParams().alterLoadBalancer) {
-        createLoadBalancerStateChangeTask(true)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-      }
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 

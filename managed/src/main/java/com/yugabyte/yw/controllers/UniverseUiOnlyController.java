@@ -108,8 +108,8 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   }
 
   /**
-   * @deprecated - Use UniverseClustersController.createAll that configures and creates creates all
-   *     clusters for a universe in one-shot.
+   * @deprecated - Use UniverseClustersController.createAll that configures and creates all clusters
+   *     for a universe in one-shot.
    *     <p>API that queues a task to create a new universe. This does not wait for the creation.
    * @return result of the universe create operation.
    */
