@@ -138,7 +138,7 @@ yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV 
 ```
 
 
-### Import a large table using smaller transactions
+### Performance tips when importing a large table
 
 When importing a very large table, Yugabyte recommends using many smaller transactions (rather than one large transaction).
 This can be achieved natively by using the `ROWS_PER_TRANSACTION` option.
@@ -152,3 +152,8 @@ yugabyte=# COPY large_table FROM '/home/yuga/Desktop/large_table.csv'
 - If the table does not exist, errors are raised.
 - `COPY TO` can only be used with regular tables.
 - `COPY FROM` can be used with tables, foreign tables, and views.
+
+Additionally, the following copy options may be useful for speeding up copying, or allowing for faster recovery from a partial state:
+* `DISABLE_FK_CHECK` will skip foreign key check when copying new rows to the table.
+* `REPLACE`: if the primary / unique key of the new row conflicts with that of the existing row, the new row will replace the existing row in the table.
+* `SKIP n`: skips the first `n` rows of the file. Require `n` to be nonnegative.
