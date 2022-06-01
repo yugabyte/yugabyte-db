@@ -105,6 +105,8 @@ message CreateTableRequestPB {
   // This field should be used to create or restore table with a fixed set of partitions.
   repeated PartitionPB partitions = 22;
 
+  optional bool is_matview = 26;
+
   optional bytes matview_pg_table_id = 24;
 }
 

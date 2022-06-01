@@ -96,7 +96,8 @@ Status PgCreateTable::Exec(
   table_creator->table_name(table_name_).table_type(client::YBTableType::PGSQL_TABLE_TYPE)
                 .table_id(PgObjectId::GetYbTableIdFromPB(req_.table_id()))
                 .schema(&schema)
-                .colocated(req_.colocated());
+                .colocated(req_.colocated())
+                .is_matview(req_.is_matview());
   if (req_.is_pg_catalog_table()) {
     table_creator->is_pg_catalog_table();
   }

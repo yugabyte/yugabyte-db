@@ -405,6 +405,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   bool colocated() const;
 
+  std::string matview_pg_table_id() const;
+  // True if the table is a materialized view.
+  bool is_matview() const;
+
   // Return the table's ID. Does not require synchronization.
   virtual const std::string& id() const override { return table_id_; }
 
@@ -550,6 +554,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Set the tablespace to use during table creation. This will determine
   // where the tablets of the newly created table should reside.
   void SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id);
+
+  void SetMatview();
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;
