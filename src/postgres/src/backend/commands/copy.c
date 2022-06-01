@@ -2784,7 +2784,8 @@ CopyFrom(CopyState cstate)
 	for (uint64 i = 0; i < cstate->num_initial_skipped_rows; i++)
 	{
 		Oid	loaded_oid = InvalidOid;
-		has_more_tuples = NextCopyFrom(cstate, econtext, values, nulls, &loaded_oid);
+		has_more_tuples = NextCopyFrom(cstate, econtext, values, nulls,
+			&loaded_oid, true /* skip_row */);
 		if (!has_more_tuples)
 			break;
 	}
@@ -2822,7 +2823,8 @@ CopyFrom(CopyState cstate)
 			if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
-			has_more_tuples = NextCopyFrom(cstate, econtext, values, nulls, &loaded_oid);
+			has_more_tuples = NextCopyFrom(cstate, econtext, values, nulls,
+				&loaded_oid, false /* skip_row */);
 			if (!has_more_tuples)
 				break;
 
@@ -3614,10 +3616,14 @@ NextCopyFromRawFields(CopyState cstate, char ***fields, int *nfields)
  * 'values' and 'nulls' arrays must be the same length as columns of the
  * relation passed to BeginCopyFrom. This function fills the arrays.
  * Oid of the tuple is returned with 'tupleOid' separately.
+
+ * 'skip_row' is used to specify whether we should skip format checking for
+ * this row. In particular, if 'skip_row' is true, we will not raise error
+ * upon reading an invalid row.
  */
 bool
 NextCopyFrom(CopyState cstate, ExprContext *econtext,
-			 Datum *values, bool *nulls, Oid *tupleOid)
+			 Datum *values, bool *nulls, Oid *tupleOid, bool skip_row)
 {
 	TupleDesc	tupDesc;
 	AttrNumber	num_phys_attrs,
@@ -3652,6 +3658,10 @@ NextCopyFrom(CopyState cstate, ExprContext *econtext,
 		/* read raw fields in the next line */
 		if (!NextCopyFromRawFields(cstate, &field_strings, &fldct))
 			return false;
+
+		/* if the row is skipped, ignore all the format checking */
+		if (skip_row)
+			return true;
 
 		/* check for overflowing fields */
 		if (nfields > 0 && fldct > nfields)
