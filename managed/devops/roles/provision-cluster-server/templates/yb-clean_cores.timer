@@ -3,8 +3,10 @@ Description=Yugabyte clean cores
 Requires=yb-clean_cores.service
 
 [Timer]
-User=yugabyte
-Group=yugabyte
+{% if ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7' %}
+User={{ user_name }}
+Group={{ user_name }}
+{% endif %}
 Unit=yb-clean_cores.service
 # Run every 10 minutes offset by 5 (5, 15, 25...)
 OnCalendar=*:0/10:30
