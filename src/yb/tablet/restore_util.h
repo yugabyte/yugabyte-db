@@ -78,6 +78,7 @@ class FetchState {
  private:
   Status Update();
   Status NextNonDeletedEntry();
+  Result<bool> IsDeletedEntry();
 
   std::unique_ptr<docdb::IntentAwareIterator> iterator_;
   Slice prefix_;
