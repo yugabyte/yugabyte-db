@@ -1,0 +1,41 @@
+name: postgresql-11-pmm-integration
+on: pull_request
+
+jobs:
+  build:
+    name: pg-11-pgsm-pmm-integration-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Clone QA Integration repository
+        uses: actions/checkout@v2
+        with:
+          repository: 'Percona-Lab/qa-integration'
+          ref: 'main'
+
+      # print branch name
+      - name: Get branch name
+        run: echo 'The branch name is' ${{ github.head_ref }}
+      
+      - name: Run PMM & PGSM Setup, E2E Tests
+        run: bash -xe ./pmm_pgsm_setup/pmm_pgsm_setup.sh --pgsql-version=11 --pgstat-monitor-branch=${{ github.head_ref }}
+
+      - name: Test Report
+        uses: dorny/test-reporter@v1
+        if: success() || failure()    # run this step even if previous step failed
+        with:
+          name: Codeceptjs E2E Tests            # Name of the check run which will be created
+          path: ./pmm-ui-tests/tests/output/*.xml    # Path to test results
+          reporter: java-junit
+
+      - name: Get PMM-Agent Logs from the Container
+        if: success() || failure()    # run this step even if previous step failed
+        run: docker exec pgsql_pgsm_11 cat pmm-agent.log > ./pmm-ui-tests/tests/output/pmm-agent.log
+
+      - name: Upload Tests Artifacts
+        uses: actions/upload-artifact@v3
+        if: success() || failure()    # run this step even if previous step failed
+        with:
+          name: tests-artifact
+          path: ./pmm-ui-tests/tests/output/
+          if-no-files-found: ignore # 'warn' or 'ignore' are also available, defaults to `warn`
