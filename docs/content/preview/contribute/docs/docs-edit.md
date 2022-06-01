@@ -56,13 +56,13 @@ _More content in this section is coming soon._
 
 ## Make a pull request {#make-a-pr}
 
-Once you've made your changes, make a pull request by telling GitHub to compare a branch _on your fork_ to the master branch on the main repository.
+After you've made your changes, make a pull request by telling GitHub to compare a branch _on your fork_ to the master branch on the main repository.
 
 ### Use the PR preview build
 
 Preview builds take 10-15 minutes to build.
 
-All PR previews on the main repository are of the form `https://deploy-preview-ABCD--infallible-bardeen-164bc9.netlify.app/` where ABCD is the pull request number.
+All PR previews on the main repository are of the form `https://deploy-preview-ABCDE--infallible-bardeen-164bc9.netlify.app/` where ABCDE is the pull request number.
 
 Add a line in your PR's description to tag the Netlify bot and tell it where to launch the preview:
 

@@ -40,6 +40,90 @@ Yugabyte's documentation voice should be informal and authoritative. Speak (or r
 
 **Use imperative headings.** They're more of a call to action than gerunds. "Provision your cluster" makes it clear this is something _you the reader_ are going to do, rather than "Provisioning your cluster". Gerunds and other constructions will sometimes be clearer, so don't feel obligated to use an imperative where it really doesn't work.
 
+### Links
+
+Prefer markdown-style `[link text](link-target)` links over HTML tags. Markdown's endnote-style links are also fine to use. Hugo has its own curly-brace link syntax, but it's less friendly and doesn't seem to have any advantages in normal use.
+
+### Including content from other files
+
+The [includeCode](#includecode) and [includeFile](#includefile) shortcodes insert the contents of a file as plain text (includeFile can optionally add source-highlighting), while [includeMarkdown](#includemarkdown) inserts the contents of a file _and renders it as markdown_.
+
+`includeCode` and `includeFile` both strip trailing whitespace from the input file.
+
+Look in [sample-files/include-test.md](sample-files/include-test.md) for examples of how to use both shortcodes. Both shortcodes are defined in [/docs/layouts/shortcodes](https://github.com/yugabyte/yugabyte-db/tree/master/docs/layouts/shortcodes/) in the main repository.
+
+#### includeCode
+
+Because it doesn't create its own code block, you can use this shortcode to build a code block from several sources.
+
+The base path is `/docs/static/`.
+
+**Call `includeCode`** in a fenced code block:
+
+````markdown
+```sql
+{{%/* includeCode file="code-samples/include.sql" */%}}
+```
+````
+
+**To nest the code block**, tell the shortcode how many spaces to indent:
+
+````markdown
+1. To do this thing, use this code:
+
+    ```sql
+    {{%/* includeCode file="code-samples/include.sql" spaces=4 */%}}
+    ```
+````
+
+**To specify highlighting options**, do so on the fenced code block. This is a Hugo feature, not part of the shortcode. For example, add a highlight to lines 1 and 7-10:
+
+````markdown
+```sql {hl_lines=[1,"7-10"]}
+{{%/* includeCode file="code-samples/include.sql" */%}}
+```
+````
+
+> For more information on highlight options: <https://gohugo.io/content-management/syntax-highlighting/#highlighting-in-code-fences>
+
+#### includeFile
+
+The `includeFile` shortcode infers the code language from the filename extension (or `output` if there's no extension) and creates its own code block.
+
+The base path is `/docs/static/`.
+
+**Call `includeFile`** on a line of its own:
+
+```go
+{{</* includeFile file="code-samples/include.sql" */>}}
+```
+
+**To nest the code block**, indent the shortcode:
+
+```go
+    {{</* includeFile file="code-samples/include.sql" */>}}
+```
+
+**To specify a code language** and override the default:
+
+```go
+{{</* includeFile file="code-samples/include.sql" lang="sql" */>}}
+```
+
+**To specify highlighting options**:
+
+```go
+{{</* includeFile file="code-samples/include.sql" hl_options="hl_lines=1 7-10" */>}}
+```
+
+> CAREFUL! `hl_lines` takes a different form here than when you're specifying it on a fenced block: no comma, no quotes: `hl_options="hl_lines=1 7-10"`
+>
+> For more information on highlight options: <https://gohugo.io/content-management/syntax-highlighting/#highlight-shortcode>
+
+#### includeMarkdown
+
+Inserts the contents of a markdown file, rendered as part of the calling page. We use this primarily for syntax diagrams.
+
 ### Code blocks
 
 **Code language is required.** Every code block needs a language tag. Use `output` for all output, and append a language if you want to have source highlighting but still omit the Copy button (for example, `output.json`). The Hugo docs list [all language names](https://gohugo.io/content-management/syntax-highlighting/#list-of-chroma-highlighting-languages) you can use for fenced code blocks.
