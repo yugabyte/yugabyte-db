@@ -151,12 +151,12 @@ YB_NODE_YSQL_CONNECT = MetricDefinition(
 YB_NODE_YSQL_WRITE_READ = MetricDefinition(
     "yb_node_ysql_write_read",
     "Status of test ysql write and read operation")
-YB_NODE_LEADERLESS_TABLET = MetricDefinition(
-    "yb_node_leaderless_tablet",
-    "Leaderless tablets")
-YB_NODE_UNDERREPLICATED_TABLET = MetricDefinition(
-    "yb_node_underreplicated_tablet",
-    "Underreplicated tablets")
+YB_NODE_LEADERLESS_TABLET_COUNT = MetricDefinition(
+    "yb_node_leaderless_tablet_count",
+    "Leaderless tablets count")
+YB_NODE_UNDERREPLICATED_TABLET_COUNT = MetricDefinition(
+    "yb_node_underreplicated_tablet_count",
+    "Underreplicated tablets count")
 
 ###################################################################################################
 # Reporting
@@ -941,14 +941,14 @@ class NodeChecker():
             .add_value(client_backends)
         return e.fill_and_return_entry([int(client_backends)], False, [metric])
 
-    def check_tablets(self, entry, endpoint, tablets_field, metric_definition):
+    def check_tablets(self, entry, endpoint, tablets_field, count_metric):
         master_endpoint = 'http://{}:{}/api/v1/{}' \
             .format(self.node, self.master_http_port, endpoint)
         response = self.http_request(master_endpoint)
         if not response:
             return e.fill_and_return_entry(['Master HTTP endpoint is not running'], True)
 
-        metric = Metric.from_definition(metric_definition)
+        metric = Metric.from_definition(count_metric)
         total_tablets = 0
         try:
             response_json = json.loads(response)
@@ -956,27 +956,26 @@ class NodeChecker():
                 return entry.fill_and_return_entry(
                     ['Unexpected response received from Master'], True)
             for tablet in response_json[tablets_field]:
-                metric.add_value(1, [Label("table_uuid", tablet["table_uuid"]),
-                                     Label("tablet_uuid", tablet["tablet_uuid"])])
                 total_tablets += 1
         except Exception as ex:
             message = str(ex)
             return entry.fill_and_return_entry([message], True)
 
+        metric.add_value(total_tablets)
         return entry.fill_and_return_entry(
-            [int(total_tablets)], False if total_tablets == 0 else True, [metric])
+            [int(total_tablets)], False, [metric])
 
     def check_leaderless_tablets(self):
         logging.info("Checking leaderless tablest on node {}".format(self.node))
         e = self._new_metric_entry("Leaderless tablets")
         return self.check_tablets(e, "tablet-replication", "leaderless_tablets",
-                                  YB_NODE_LEADERLESS_TABLET)
+                                  YB_NODE_LEADERLESS_TABLET_COUNT)
 
     def check_underreplicated_tablets(self):
         logging.info("Checking under-replicated tablets on node {}".format(self.node))
         e = self._new_metric_entry("Underreplicated tablets")
         return self.check_tablets(e, "tablet-under-replication", "underreplicated_tablets",
-                                  YB_NODE_UNDERREPLICATED_TABLET)
+                                  YB_NODE_UNDERREPLICATED_TABLET_COUNT)
 
     def check_node_metrics_collection(self):
         logging.info("Checking node exporter on node {}".format(self.node))
