@@ -189,4 +189,4 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
 
 ## Other usage examples
 
-- [SSL Example](/preview/quick-start/build-apps/csharp/ysql/#create-a-sample-c-application-with-ssl)
+[Sample C# application with SSL](/preview/quick-start/build-apps/csharp/ysql/#create-a-sample-c-application-with-ssl)

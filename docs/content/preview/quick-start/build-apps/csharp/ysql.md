@@ -141,17 +141,6 @@ John  35   CSharp
 
 ## Use C# with SSL
 
-The client driver supports several SSL modes, as follows:
-
-| SSL mode | Client driver behavior |
-| :------- | :--------------------- |
-| disable | Supported |
-| allow | Not Supported |
-| prefer | Supported |
-| require | Supported  |
-| verify-ca | Supported <br/> (Self-signed certificates aren't supported.) |
-| verify-full | Supported <br/> (Self-signed certificates aren't supported.) |
-
 Refer to [Configure SSL/TLS](../../../../reference/drivers/csharp/postgres-npgsql-reference/#configure-ssl-tls) for information on supported SSL modes and examples for setting up your connection strings.
 
 ### Create a sample C# application with SSL
@@ -180,11 +169,11 @@ namespace Yugabyte_CSharp_Demo
           var connStringBuilder = new NpgsqlConnectionStringBuilder();
            connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
            connStringBuilder.Port = 5433;
-           connStringBuilder.SslMode = SslMode.Require;
+           connStringBuilder.SslMode = SslMode.VerifyFull;
+           connStringBuilder.RootCertificate = "/root.crt" //Provide full path to your root CA.
            connStringBuilder.Username = "admin";
            connStringBuilder.Password = "xxxxxx";
            connStringBuilder.Database = "yugabyte";
-           connStringBuilder.TrustServerCertificate = true;
            CRUD(connStringBuilder.ConnectionString);
        }
        static void CRUD(string connString)

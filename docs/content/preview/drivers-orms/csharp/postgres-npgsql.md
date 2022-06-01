@@ -71,14 +71,14 @@ NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 
 #### Use SSL (Optional)
 
-Set up the driver properties to configure the credentials and SSL certificates for connecting to your cluster. The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers. When you specify SSL mode `require`, the driver verifies the certificate by default (like the `verify-ca` or `verify-full` modes), and fails for self-signed certificates (like YugabyteDB's). You can override this by specifying `TrustServerCertificate = true`, in which case it bypasses walking the certificate chain to validate trust, and hence works like other drivers' `require` mode. In this case, the Root-CA certificate is not required to be configured.
+Set up the driver properties to configure the credentials and SSL certificates for connecting to your cluster. The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers.
+
+Learn more about how in [Configure SSL/TLS](../../../reference/drivers/csharp/postgres-npgsql-reference/#configure-ssl-tls) section.
 
 | Npgsql Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | sslmode  | SSL Mode | require
 | TrustServerCertificate |  Trust the server certificate configured on the YugabyteDB cluster | false
-
-If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
 The following is an example URL for connecting to YugabyteDB.
 
@@ -86,13 +86,15 @@ The following is an example URL for connecting to YugabyteDB.
 var connStringBuilder = new NpgsqlConnectionStringBuilder();
     connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
     connStringBuilder.Port = 5433;
-    connStringBuilder.SslMode = SslMode.Require;
+    connStringBuilder.SslMode = SslMode.VerifyFull;
+    connStringBuilder.RootCertificate = "/root.crt" //Provide full path to your root CA.
     connStringBuilder.Username = "admin";
     connStringBuilder.Password = "xxxxxx";
     connStringBuilder.Database = "yugabyte";
-    connStringBuilder.TrustServerCertificate = true;
     CRUD(connStringBuilder.ConnectionString);
 ```
+
+If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
 Refer to [Configure SSL/TLS](../../../reference/drivers/csharp/postgres-npgsql-reference/#configure-ssl-tls) for more information on default and supported modes with examples for setting up your connection strings.
 
