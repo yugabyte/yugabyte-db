@@ -64,6 +64,9 @@ public class UserTaskDetails {
     // Creating Access Key
     CreateAccessKey,
 
+    // Rotate access key to all nodes of a universe
+    RotateAccessKey,
+
     // Initializing Cloud Metadata
     InitializeCloudMetadata,
 
@@ -409,6 +412,10 @@ public class UserTaskDetails {
       case ToggleTls:
         title = "Toggle TLS";
         description = "Add certificates and toggle TLS gflags";
+        break;
+      case RotateAccessKey:
+        title = "Rotate Access Key";
+        description = "Rotate the access key for a universe";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

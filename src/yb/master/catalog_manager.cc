@@ -6043,6 +6043,24 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     resp->mutable_schema()->CopyFrom(l->pb.schema());
   }
 
+  // Due to pgschema_name being added after 2.13, older tables may not have this field.
+  // So backfill pgschema_name for non-system YSQL table schema.
+  if (!table->is_system() && l->table_type() == TableType::PGSQL_TABLE_TYPE &&
+      !resp->schema().has_pgschema_name()) {
+    SharedLock lock(mutex_);
+    TRACE("Acquired catalog manager lock for schema name lookup");
+
+    auto pgschema_name = GetPgSchemaName(table);
+    if (!pgschema_name.ok() || pgschema_name->empty()) {
+      Status s = STATUS_SUBSTITUTE(NotFound,
+          "Unable to find schema name for YSQL table $0.$1 due to error: $2",
+          table->namespace_name(), table->name(), pgschema_name.ToString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    } else {
+      resp->mutable_schema()->set_pgschema_name(*pgschema_name);
+    }
+  }
+
   if (get_fully_applied_indexes && l->pb.has_fully_applied_schema()) {
     resp->set_version(l->pb.fully_applied_schema_version());
     resp->mutable_indexes()->CopyFrom(l->pb.fully_applied_indexes());
@@ -8562,11 +8580,16 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
   return Status::OK();
 }
 
+void CatalogManager::DisableTabletSplittingInternal(
+    const MonoDelta& duration, const std::string& feature) {
+  tablet_split_manager_.DisableSplittingFor(duration, feature);
+}
+
 Status CatalogManager::DisableTabletSplitting(
     const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
     rpc::RpcContext* rpc) {
   const MonoDelta disable_duration = MonoDelta::FromMilliseconds(req->disable_duration_ms());
-  tablet_split_manager_.DisableSplittingFor(disable_duration);
+  DisableTabletSplittingInternal(disable_duration, req->feature_name());
   return Status::OK();
 }
 

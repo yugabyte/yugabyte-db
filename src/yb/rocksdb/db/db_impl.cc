@@ -149,6 +149,9 @@ DEFINE_int32(compaction_priority_step_size, 5,
 DEFINE_int32(small_compaction_extra_priority, 1,
              "Small compaction will get small_compaction_extra_priority extra priority.");
 
+DEFINE_bool(task_ignore_disk_priority, false,
+              "Ignore disk priority when considering compaction and flush priorities.");
+
 DEFINE_bool(rocksdb_use_logging_iterator, false,
             "Wrap newly created RocksDB iterators in a logging wrapper");
 
@@ -242,6 +245,7 @@ bool operator==(const StateTickers& lhs, const StateTickers& rhs) {
     return YB_STRUCT_EQUALS(tasks, files, bytes);
 }
 
+constexpr int kNoDiskPriority = 0;
 constexpr int kTopDiskCompactionPriority = 100;
 constexpr int kTopDiskFlushPriority = 200;
 constexpr int kShuttingDownPriority = 200;
@@ -394,7 +398,10 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    return kFlushPriority - active_tasks;
+    if (FLAGS_task_ignore_disk_priority) {
+      return kNoDiskPriority;
+    }
+    return kTopDiskCompactionPriority - active_tasks;
   }
 
  private:
@@ -495,6 +502,9 @@ class DBImpl::FlushTask : public ThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
+    if (FLAGS_task_ignore_disk_priority) {
+      return kNoDiskPriority;
+    }
     return kTopDiskFlushPriority - active_tasks;
   }
 

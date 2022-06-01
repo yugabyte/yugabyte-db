@@ -16,6 +16,8 @@
 #include <memory>
 #include <thread>
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
@@ -161,7 +163,7 @@ Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string&
     rocksdb::kLZ4Compression
   };
   for (const auto& compression_type : kValidRocksDBCompressionTypes) {
-    if (flag_value == rocksdb::CompressionTypeToString(compression_type)) {
+    if (boost::iequals(flag_value, rocksdb::CompressionTypeToString(compression_type))) {
       if (rocksdb::CompressionTypeSupported(compression_type)) {
         return compression_type;
       }
@@ -527,6 +529,10 @@ rocksdb::BlockBasedTableOptions TEST_AutoInitFromRocksDbTableFlags() {
   rocksdb::BlockBasedTableOptions blockBasedTableOptions;
   AutoInitFromBlockBasedTableOptions(&blockBasedTableOptions);
   return blockBasedTableOptions;
+}
+
+Result<rocksdb::CompressionType> TEST_GetConfiguredCompressionType(const std::string& flag_value) {
+  return yb::GetConfiguredCompressionType(flag_value);
 }
 
 int32_t GetGlobalRocksDBPriorityThreadPoolSize() {

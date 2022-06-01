@@ -95,7 +95,7 @@ YB_ADMIN_HELP_RE = re.compile(r'^ \d+\. (\w+).*')
 
 DISABLE_SPLITTING_MS = 30000
 DISABLE_SPLITTING_FREQ_SEC = 10
-IS_SPLITTING_DISABLED_MAX_RETRIES = 10
+IS_SPLITTING_DISABLED_MAX_RETRIES = 100
 TEST_SLEEP_AFTER_FIND_SNAPSHOT_DIRS_SEC = 100
 
 DEFAULT_TS_WEB_PORT = 9000
@@ -150,8 +150,9 @@ class BackupTimer:
         self.logged_times = [time.time()]
         self.phases = ["START"]
         self.num_phases = 0
+        self.finished = False
 
-    def log_new_phase(self, msg=""):
+    def log_new_phase(self, msg="", last_phase=False):
         self.logged_times.append(time.time())
         self.phases.append(msg)
         self.num_phases += 1
@@ -161,17 +162,23 @@ class BackupTimer:
             self.num_phases - 1,
             self.phases[self.num_phases - 1],
             str(timedelta(seconds=time_taken))))
-        logging.info("[app] Starting phase {}: {}".format(self.num_phases, msg))
+        if last_phase:
+            self.finished = True
+        else:
+            logging.info("[app] Starting phase {}: {}".format(self.num_phases, msg))
 
     def print_summary(self):
+        if not self.finished:
+            self.log_new_phase(last_phase=True)
+
         log_str = "Summary of run:\n"
-        # Print info for each phase.
-        for i in range(1, self.num_phases + 1):
-            t = self.logged_times[i] - self.logged_times[i - 1]
+        # Print info for each phase (ignore phase-0: START).
+        for i in range(1, self.num_phases):
+            t = self.logged_times[i + 1] - self.logged_times[i]
             log_str += "{} : PHASE {} : {}\n".format(str(timedelta(seconds=t)), i, self.phases[i])
         # Also print info for total runtime.
         log_str += "Total runtime: {}".format(
-            str(timedelta(seconds=time.time() - self.logged_times[0])))
+            str(timedelta(seconds=self.logged_times[-1] - self.logged_times[0])))
         # Add [app] for YW platform filter.
         logging.info("[app] " + log_str)
 
@@ -2791,7 +2798,7 @@ class YBBackup:
             time.sleep(DISABLE_SPLITTING_FREQ_SEC)
 
     def disable_tablet_splitting(self):
-        self.run_yb_admin(["disable_tablet_splitting", str(DISABLE_SPLITTING_MS)])
+        self.run_yb_admin(["disable_tablet_splitting", str(DISABLE_SPLITTING_MS), "yb_backup"])
 
     def backup_table(self):
         """

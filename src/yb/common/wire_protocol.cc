@@ -561,7 +561,7 @@ static const std::string kSplitChildTabletIdsCategoryName = "split child tablet 
 StatusCategoryRegisterer split_child_tablet_ids_category_registerer(
     StatusCategoryDescription::Make<SplitChildTabletIdsTag>(&kSplitChildTabletIdsCategoryName));
 
-std::string SplitChildTabletIdsTag::ToMessage(Value value) {
+std::string SplitChildTabletIdsTag::ToMessage(const Value& value) {
   return Format("Split child tablet IDs: $0", value);
 }
 
