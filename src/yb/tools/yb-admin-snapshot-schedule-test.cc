@@ -614,6 +614,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, Pgsql) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, PgsqlDropDatabaseAndSchedule) {
+  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
 
   auto conn = ASSERT_RESULT(PgConnect());
@@ -2578,9 +2579,73 @@ class YbAdminSnapshotScheduleFailoverTests : public YbAdminSnapshotScheduleTest 
              "--enable_automatic_tablet_splitting=true",
              "--max_concurrent_restoration_rpcs=1",
              "--schedule_restoration_rpcs_out_of_band=false",
-             "--vmodule=tablet_bootstrap=4" };
+             "--vmodule=tablet_bootstrap=4",
+             Format("--TEST_play_pending_uncommitted_entries=$0",
+                    replay_uncommitted_ ? "true" : "false")};
   }
+
+  Status ClusterRestartTest(bool replay_uncommitted);
+
+  void SetReplayUncommitted(bool replay_uncommitted) {
+    replay_uncommitted_ = replay_uncommitted;
+  }
+
+ private:
+  bool replay_uncommitted_ = false;
 };
+
+Status YbAdminSnapshotScheduleFailoverTests::ClusterRestartTest(bool replay_uncommitted) {
+  SetReplayUncommitted(replay_uncommitted);
+  auto schedule_id = VERIFY_RESULT(PrepareCql());
+  LOG(INFO) << "Snapshot schedule id " << schedule_id;
+
+  auto conn = VERIFY_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  // Create a table with large number of tablets.
+  RETURN_NOT_OK(conn.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH TABLETS = 24",
+      client::kTableName.table_name()));
+
+  // Insert some data.
+  RETURN_NOT_OK(conn.ExecuteQueryFormat(
+      "INSERT INTO $0 (key, value) values (1, 'before')",
+      client::kTableName.table_name()));
+
+  LOG(INFO) << "Created Keyspace and table";
+
+  // Record time for restoring.
+  Timestamp time(VERIFY_RESULT(WallClock()->Now()).time_point);
+
+  // Drop the table.
+  RETURN_NOT_OK(conn.ExecuteQueryFormat(
+      "DROP TABLE $0", client::kTableName.table_name()));
+  LOG(INFO) << "Dropped the table";
+
+  // Now start restore to the noted time. Since the RPCs are slow, we can restart
+  // the cluster in the meantime.
+  auto restoration_id = VERIFY_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
+
+  LOG(INFO) << "Now restarting cluster";
+  cluster_->Shutdown();
+  RETURN_NOT_OK(cluster_->Restart());
+  LOG(INFO) << "Cluster restarted";
+
+  // Now speed up rpcs.
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters("schedule_restoration_rpcs_out_of_band", "true"));
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters("max_concurrent_restoration_rpcs", "9"));
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters("snapshot_coordinator_poll_interval_ms", "500"));
+
+  RETURN_NOT_OK(WaitRestorationDone(restoration_id, 120s * kTimeMultiplier));
+
+  // Validate data.
+  auto select_expr = Format("SELECT * FROM $0", client::kTableName.table_name());
+  auto rows = VERIFY_RESULT(conn.ExecuteAndRenderToString(select_expr));
+  LOG(INFO) << "Data after restoration: " << rows;
+  if (rows != "1,before") {
+    return STATUS_FORMAT(IllegalState, "Expected 1,before, found $0", rows);
+  }
+  return Status::OK();
+}
 
 TEST_F(YbAdminSnapshotScheduleFailoverTests, LeaderFailoverDuringRestorationRpcs) {
   auto schedule_id = ASSERT_RESULT(PrepareCql());
@@ -2630,52 +2695,11 @@ TEST_F(YbAdminSnapshotScheduleFailoverTests, LeaderFailoverDuringRestorationRpcs
 }
 
 TEST_F(YbAdminSnapshotScheduleFailoverTests, ClusterRestartDuringRestore) {
-  auto schedule_id = ASSERT_RESULT(PrepareCql());
-  LOG(INFO) << "Snapshot schedule id " << schedule_id;
+  ASSERT_OK(ClusterRestartTest(false));
+}
 
-  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
-
-  // Create a table with large number of tablets.
-  ASSERT_OK(conn.ExecuteQueryFormat(
-      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH TABLETS = 24",
-      client::kTableName.table_name()));
-
-  // Insert some data.
-  ASSERT_OK(conn.ExecuteQueryFormat(
-      "INSERT INTO $0 (key, value) values (1, 'before')",
-      client::kTableName.table_name()));
-
-  LOG(INFO) << "Created Keyspace and table";
-
-  // Record time for restoring.
-  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
-
-  // Drop the table.
-  ASSERT_OK(conn.ExecuteQueryFormat(
-      "DROP TABLE $0", client::kTableName.table_name()));
-  LOG(INFO) << "Dropped the table";
-
-  // Now start restore to the noted time. Since the RPCs are slow, we can restart
-  // the cluster in the meantime.
-  auto restoration_id = ASSERT_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
-
-  LOG(INFO) << "Now restarting cluster";
-  cluster_->Shutdown();
-  ASSERT_OK(cluster_->Restart());
-  LOG(INFO) << "Cluster restarted";
-
-  // Now speed up rpcs.
-  ASSERT_OK(cluster_->SetFlagOnMasters("schedule_restoration_rpcs_out_of_band", "true"));
-  ASSERT_OK(cluster_->SetFlagOnMasters("max_concurrent_restoration_rpcs", "9"));
-  ASSERT_OK(cluster_->SetFlagOnMasters("snapshot_coordinator_poll_interval_ms", "500"));
-
-  ASSERT_OK(WaitRestorationDone(restoration_id, 120s * kTimeMultiplier));
-
-  // Validate data.
-  auto select_expr = Format("SELECT * FROM $0", client::kTableName.table_name());
-  auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
-  LOG(INFO) << "Data after restoration: " << rows;
-  ASSERT_EQ(rows, "1,before");
+TEST_F(YbAdminSnapshotScheduleFailoverTests, ClusterRestartDuringRestoreWithReplayUncommitted) {
+  ASSERT_OK(ClusterRestartTest(true));
 }
 
 TEST_F(YbAdminSnapshotScheduleFailoverTests, LeaderFailoverDuringSysCatalogRestorationPhase) {
