@@ -499,7 +499,6 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
-    when(mockConfigHelper.getGravitonInstancePrefixList()).thenReturn(ImmutableList.of("m6g."));
     createTempFile("node_manager_test_ca.crt", "test-cert");
   }
 
