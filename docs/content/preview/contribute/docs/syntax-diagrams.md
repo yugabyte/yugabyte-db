@@ -224,13 +224,13 @@ All are located within the [_syntax resources directory_](#syntax-resources-dire
 
 Notice that there is no garbage collection scheme for unreferenced [_generated documentation source_](#generated-documentation-source) files. Content authors must do this task manually.
 
-### Grammar [diagrams file](https://docs.yugabyte.com/preview/api/ysql/syntax_resources/grammar_diagrams/#abort)
+### Grammar diagrams file
 
 ```output
 <your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/grammar_diagrams.md
 ```
 
-This contains every [_syntax diagram_](#syntax-diagram) that is generated from all of the [_syntax rules_](#syntax-rule) that are found in the [_diagram definition file_](#diagram-definition-file).
+The grammar [diagrams file](https://docs.yugabyte.com/preview/api/ysql/syntax_resources/grammar_diagrams/#abort) contains every [_syntax diagram_](#syntax-diagram) that is generated from all of the [_syntax rules_](#syntax-rule) that are found in the [_diagram definition file_](#diagram-definition-file).
 
 ### Generated grammar-diagram pair
 

@@ -210,7 +210,7 @@ Inserts the contents of a markdown file, rendered as part of the calling page. W
 
 Note that the way you invoke a shortcode matters. Use angle brackets (< and >) to output plain text, and percent signs (%) to have Hugo render the output as Markdown.
 
-For example, use `{{</* slack-invite */>}}` to output a bare URL for inclusion in a Markdown-style link, such as `[YugabyteDB Community Slack]({{</* slack-invite */>}})`, and use `{{%/* slack-invite */%}}` to output a clickable URL ({{% slack-invite %}}).
+For example, use `{{</* slack-invite */>}}` to output a bare URL for inclusion in a Markdown-style link, such as `[YugabyteDB Community Slack]({{</* slack-invite */>}})`: [YugabyteDB Community Slack]({{< slack-invite >}}). Use `{{%/* slack-invite */%}}` to output a clickable URL: {{% slack-invite %}}.
 
 ### Incomplete list of other shortcodes
 
