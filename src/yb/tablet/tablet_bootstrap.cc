@@ -138,6 +138,9 @@ DEFINE_test_flag(bool, dump_docdb_after_tablet_bootstrap, false,
                  "Dump the contents of DocDB after tablet bootstrap. Should only be used when "
                  "data is small.")
 
+DEFINE_test_flag(bool, play_pending_uncommitted_entries, false,
+                 "Play all the pending entries present in the log even if they are uncommitted.");
+
 namespace yb {
 namespace tablet {
 
@@ -908,6 +911,12 @@ class TabletBootstrap {
     // bootstrap.
     replay_state_->UpdateCommittedOpId(OpId::FromPB(replicate.committed_op_id()));
 
+    // Test only flag to replay pending uncommitted entries.
+    if (FLAGS_TEST_play_pending_uncommitted_entries) {
+      LOG(INFO) << "Playing pending uncommitted entires for test only scenario";
+      replay_state_->UpdateCommittedOpId(op_id);
+    }
+
     return ApplyCommittedPendingReplicates();
   }
 
@@ -963,7 +972,8 @@ class TabletBootstrap {
     operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
     operation.set_op_id(OpId::FromPB(replicate_msg->id()));
 
-    return operation.Replicated(/* leader_term= */ yb::OpId::kUnknownTerm);
+    return operation.Replicated(/* leader_term= */ OpId::kUnknownTerm,
+                                WasPending::kFalse);
   }
 
   Status PlayHistoryCutoffRequest(ReplicateMsg* replicate_msg) {
