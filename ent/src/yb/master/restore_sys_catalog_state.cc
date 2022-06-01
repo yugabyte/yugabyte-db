@@ -661,7 +661,7 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
 }
 
 Status RestoreSysCatalogState::ProcessPgCatalogRestores(
-    yb::tablet::TableInfo* pg_yb_catalog_meta,
+    tablet::TableInfo* pg_yb_catalog_meta,
     const docdb::DocDB& restoring_db,
     const docdb::DocDB& existing_db,
     docdb::DocWriteBatch* write_batch,
@@ -709,7 +709,7 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
     RETURN_NOT_OK(existing_state.SetPrefix(prefix));
 
     PgCatalogRestorePatch restore_patch(
-        &existing_state, &restoring_state, write_batch, table, *pg_yb_catalog_meta);
+        &existing_state, &restoring_state, write_batch, table, pg_yb_catalog_meta);
 
     RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
 
@@ -750,7 +750,7 @@ Status PgCatalogRestorePatch::ProcessEqualEntries(
     SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
     if (sub_doc_key.subkeys()[0].type() == docdb::KeyEntryType::kColumnId) {
       auto column_id = sub_doc_key.subkeys()[0].GetColumnId();
-      const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_meta_.schema().column_by_id(
+      const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_meta_->schema().column_by_id(
           column_id));
       if (column.name() == "current_version") {
         docdb::Value value;
