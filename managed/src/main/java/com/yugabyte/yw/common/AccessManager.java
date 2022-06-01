@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +12,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
@@ -19,7 +21,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -37,11 +38,11 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
+import org.apache.commons.lang3.ObjectUtils;
 import org.slf4j.LoggerFactory;
 
 import lombok.extern.slf4j.Slf4j;
 
-@Slf4j
 @Singleton
 public class AccessManager extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(AccessManager.class);
@@ -572,6 +573,57 @@ public class AccessManager extends DevopsBase {
           CustomerTask.TargetType.Universe,
           CustomerTask.TaskType.RotateAccessKey,
           universe.name);
+    }
+  }
+
+  public AccessKeyFormData setOrValidateRequestDataWithExistingKey(
+      AccessKeyFormData formData, UUID providerUUID) {
+    List<AccessKey> accessKeys = AccessKey.getAll(providerUUID);
+    if (accessKeys.size() == 0) {
+      return formData;
+    }
+    AccessKey providerAccessKey = accessKeys.get(0);
+    AccessKey.KeyInfo keyInfo = providerAccessKey.getKeyInfo();
+    formData.sshUser = setOrValidate(formData.sshUser, keyInfo.sshUser, "sshUser");
+    formData.sshPort = setOrValidate(formData.sshPort, keyInfo.sshPort, "sshPort");
+    formData.nodeExporterUser =
+        setOrValidate(formData.nodeExporterUser, keyInfo.nodeExporterUser, "nodeExporterUser");
+    formData.nodeExporterPort =
+        setOrValidate(formData.nodeExporterPort, keyInfo.nodeExporterPort, "nodeExporterPort");
+    checkEqual(formData.airGapInstall, keyInfo.airGapInstall, "airGapInstall");
+    checkEqual(formData.skipProvisioning, keyInfo.skipProvisioning, "skipProvisioning");
+    checkEqual(formData.setUpChrony, keyInfo.setUpChrony, "setUpChrony");
+    checkEqual(formData.showSetUpChrony, keyInfo.showSetUpChrony, "showSetUpChrony");
+    checkEqual(
+        formData.passwordlessSudoAccess, keyInfo.passwordlessSudoAccess, "passwordlessSudoAccess");
+    checkEqual(formData.installNodeExporter, keyInfo.installNodeExporter, "installNodeExporter");
+    return formData;
+  }
+
+  private void failAccessKeyRequest(String unmatchedParam) {
+    throw new PlatformServiceException(
+        BAD_REQUEST,
+        "Request parameters do not match with existing keys of the provider. Alter param: "
+            + unmatchedParam);
+  }
+
+  // for objects - set or fail if not equal
+  private <T> T setOrValidate(T formParam, T providerKeyParam, String param) {
+    if (formParam == null) {
+      // set if null
+      return providerKeyParam;
+    } else if (ObjectUtils.notEqual(formParam, providerKeyParam)) {
+      // fail if not matching
+      failAccessKeyRequest(param);
+    }
+    // were equal
+    return formParam;
+  }
+
+  // for primitive types
+  private <T> void checkEqual(T formParam, T providerKeyParam, String param) {
+    if (formParam != providerKeyParam) {
+      failAccessKeyRequest(param);
     }
   }
 }

@@ -10,6 +10,26 @@
 
 package com.yugabyte.yw.common;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.UUID;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -49,6 +69,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -56,35 +77,17 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.UUID;
-import lombok.extern.slf4j.Slf4j;
+
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @Singleton
@@ -1969,11 +1972,16 @@ public class NodeManager extends DevopsBase {
           log.info("Adding a new key to authorized keys of node {}", nodeTaskParam.nodeName);
           NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
           commandArgs.addAll(getNodeSSHCommand(taskParams));
-          String pubKeyContent = taskParams.taskAccessKey.getPublicKeyContent();
-          if (pubKeyContent.equals("")) {
-            throw new RuntimeException("Public key content is empty!");
+          // for uploaded private key case, public  key content is taken from private key file
+          if (taskParams.taskAccessKey.getKeyInfo().publicKey != null) {
+            String pubKeyContent = taskParams.taskAccessKey.getPublicKeyContent();
+            if (pubKeyContent.equals("")) {
+              throw new RuntimeException("Public key content is empty!");
+            }
+            sensitiveData.put("--public_key_content", pubKeyContent);
+          } else {
+            sensitiveData.put("--public_key_content", "");
           }
-          sensitiveData.put("--public_key_content", pubKeyContent);
           String newPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
           sensitiveData.put("--new_private_key_file", newPrivateKeyFilePath);
           break;
@@ -1986,11 +1994,16 @@ public class NodeManager extends DevopsBase {
           log.info("Removing a key from authorized keys of node {}", nodeTaskParam.nodeName);
           NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
           commandArgs.addAll(getNodeSSHCommand(taskParams));
-          String pubKeyContent = taskParams.taskAccessKey.getPublicKeyContent();
-          if (pubKeyContent.equals("")) {
-            throw new RuntimeException("Public key content is empty!");
+          // for uploaded private key case, public  key content is taken from private key file
+          if (taskParams.taskAccessKey.getKeyInfo().publicKey != null) {
+            String pubKeyContent = taskParams.taskAccessKey.getPublicKeyContent();
+            if (pubKeyContent.equals("")) {
+              throw new RuntimeException("Public key content is empty!");
+            }
+            sensitiveData.put("--public_key_content", pubKeyContent);
+          } else {
+            sensitiveData.put("--public_key_content", "");
           }
-          sensitiveData.put("--public_key_content", pubKeyContent);
           String oldPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
           sensitiveData.put("--old_private_key_file", oldPrivateKeyFilePath);
           break;

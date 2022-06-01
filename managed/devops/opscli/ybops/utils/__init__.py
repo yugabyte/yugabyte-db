@@ -652,7 +652,8 @@ def validate_cron_status(host_name, port, username, ssh_key_file):
         ssh_client.close()
 
 
-def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SSH_TIMEOUT, retries_on_failure=3, retry_delay=SSH_RETRY_DELAY):
+def remote_exec_command(host_name, port, username, ssh_key_file, cmd,
+                        timeout=SSH_TIMEOUT, retries_on_failure=3, retry_delay=SSH_RETRY_DELAY):
     """This method will execute the given cmd on remote host and return the output.
     Args:
         host_name (str): SSH host IP address
@@ -675,11 +676,11 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SS
         try:
             logging.info("Attempt #{} to execute remote command...".format(retries_on_failure + 1))
             ssh_client.connect(hostname=host_name,
-                              username=username,
-                              pkey=ssh_key,
-                              port=port,
-                              timeout=timeout,
-                              banner_timeout=timeout)
+                               username=username,
+                               pkey=ssh_key,
+                               port=port,
+                               timeout=timeout,
+                               banner_timeout=timeout)
 
             _, stdout, stderr = ssh_client.exec_command(cmd)
             return stdout.channel.recv_exit_status(), stdout.readlines(), stderr.readlines()
@@ -693,7 +694,7 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SS
         finally:
             ssh_client.close()
 
-    return 1, None, None # treat this as a non-zero return code
+    return 1, None, None  # treat this as a non-zero return code
 
 
 def scp_to_tmp(filepath, host, user, port, private_key):
@@ -805,3 +806,9 @@ def get_mount_roots(ssh_options, paths):
     return ",".join(
         [mroot.strip() for mroot in mount_roots if mroot.strip()]
     )
+
+
+def get_public_key_content(private_key_file):
+    rsa_key = validated_key_file(private_key_file)
+    public_key_content = format_rsa_key(rsa_key, public_key=True)
+    return public_key_content
