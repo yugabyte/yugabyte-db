@@ -102,7 +102,7 @@ Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
 : The path to the configuration file.
 
 --data_dir *data-directory*
-: The directory where yugabyted stores data. Must be an absolute path.
+: The directory where yugabyted stores data. Must be an absolute path. Changing the value of this flag after the cluster has already been created is not supported.
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
