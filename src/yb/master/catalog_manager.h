@@ -898,6 +898,11 @@ class CatalogManager :
 
   std::vector<std::string> GetMasterAddresses();
 
+  // Returns true if there is at-least one snapshot schedule on any database/keyspace
+  // in the cluster.
+  Status CheckIfPitrActive(
+    const CheckIfPitrActiveRequestPB* req, CheckIfPitrActiveResponsePB* resp);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;

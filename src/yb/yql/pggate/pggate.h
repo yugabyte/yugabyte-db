@@ -570,6 +570,8 @@ class PgApiImpl {
   // System Validation.
   Status ValidatePlacement(const char *placement_info);
 
+  Result<bool> CheckIfPitrActive();
+
  private:
   // Control variables.
   PggateOptions pggate_options_;

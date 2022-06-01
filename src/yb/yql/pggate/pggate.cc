@@ -1738,5 +1738,9 @@ void PgApiImpl::RegisterSysTableForPrefetching(
   }
 }
 
+Result<bool> PgApiImpl::CheckIfPitrActive() {
+  return pg_session_->CheckIfPitrActive();
+}
+
 } // namespace pggate
 } // namespace yb
