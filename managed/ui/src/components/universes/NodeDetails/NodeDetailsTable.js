@@ -16,6 +16,7 @@ import { isNotHidden, isDisabled, isHidden } from '../../../utils/LayoutUtils';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
 import { setCookiesFromLocalStorage } from '../../../routes';
+import { getUniverseStatus, universeState } from '../helpers/universeHelpers';
 
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 
@@ -34,7 +35,6 @@ export default class NodeDetailsTable extends Component {
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
     const sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
     const universeUUID = currentUniverse.data.universeUUID;
-    const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     const providerConfig = providers.data.find((provider) => provider.uuid === providerUUID)
       ?.config;
 
@@ -253,9 +253,11 @@ export default class NodeDetailsTable extends Component {
     };
 
     const panelTitle = clusterType === 'primary' ? 'Primary Cluster' : 'Read Replicas';
+
+    const universeStatus = getUniverseStatus(currentUniverse.data);
     const displayNodeActions =
       !this.props.isReadOnlyUniverse &&
-      !universePaused &&
+      universeStatus.state !== universeState.PAUSED &&
       isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
 
     return (
