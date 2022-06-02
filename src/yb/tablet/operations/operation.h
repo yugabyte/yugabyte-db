@@ -70,6 +70,8 @@ YB_DEFINE_ENUM(
     ((kHistoryCutoff, consensus::HISTORY_CUTOFF_OP))
     ((kSplit, consensus::SPLIT_OP)));
 
+YB_STRONGLY_TYPED_BOOL(WasPending);
+
 // Base class for transactions.  There are different implementations for different types (Write,
 // AlterSchema, etc.) OperationDriver implementations use Operations along with Consensus to execute
 // and replicate operations in a consensus configuration.
@@ -96,7 +98,7 @@ class Operation {
   // Applies replicated operation, the actual actions of this phase depend on the
   // operation type, but usually this is the method where data-structures are changed.
   // Also it should notify callback if necessary.
-  Status Replicated(int64_t leader_term);
+  Status Replicated(int64_t leader_term, WasPending was_pending);
 
   // Abort operation. Release resources and notify callbacks.
   void Aborted(const Status& status, bool was_pending);
@@ -206,7 +208,7 @@ class Operation {
   void AddedToFollower();
 
   void Aborted(bool was_pending);
-  void Replicated();
+  void Replicated(WasPending was_pending);
 
   virtual ~Operation();
 

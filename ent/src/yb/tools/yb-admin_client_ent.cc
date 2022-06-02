@@ -10,9 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/tools/yb-admin_cli.h"
-#include "yb/tools/yb-admin_client.h"
-
 #include <iostream>
 
 #include <boost/algorithm/string.hpp>
@@ -41,6 +38,11 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_admin.proxy.h"
+
+#include "yb/tools/yb-admin_cli.h"
+#include "yb/tools/yb-admin_client.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
@@ -529,10 +531,58 @@ Result<TxnSnapshotId> ClusterAdminClient::SuitableSnapshotId(
   }
 }
 
+Status ClusterAdminClient::DisableTabletSplitsDuringRestore(CoarseTimePoint deadline) {
+  // TODO(Sanket): Eventually all of this logic needs to be moved
+  // to the master and exposed as APIs for the clients to consume.
+  const std::string feature_name = "PITR";
+  const auto splitting_disabled_until =
+      CoarseMonoClock::Now() + MonoDelta::FromSeconds(kPitrSplitDisableDurationSecs);
+  // Disable splitting and then wait for all pending splits to complete before
+  // starting restoration.
+  VERIFY_RESULT_PREPEND(
+      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, feature_name),
+      "Failed to disable tablet split before restore.");
+
+  while (CoarseMonoClock::Now() < std::min(splitting_disabled_until, deadline)) {
+    // Wait for existing split operations to complete.
+    const auto resp =
+        VERIFY_RESULT_PREPEND(IsTabletSplittingCompleteInternal(),
+                              "Tablet splitting did not complete. Cannot restore.");
+    if (resp.is_tablet_splitting_complete()) {
+      break;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(kPitrSplitDisableCheckFreqMs));
+  }
+
+  if (CoarseMonoClock::now() >= deadline) {
+    return STATUS(TimedOut, "Timed out waiting for tablet splitting to complete.");
+  }
+
+  // Return if we have used almost all of our time in waiting for splitting to complete,
+  // since we can't guarantee that another split does not start.
+  if (CoarseMonoClock::now() + MonoDelta::FromSeconds(3) >= splitting_disabled_until) {
+    return STATUS(TimedOut, "Not enough time after disabling splitting to disable ",
+                            "splitting again.");
+  }
+
+  // Disable for kPitrSplitDisableDurationSecs again so the restore has the full amount of time with
+  // splitting disables. This overwrites the previous value since the feature_name is the same so
+  // overall the time is still kPitrSplitDisableDurationSecs.
+  VERIFY_RESULT_PREPEND(
+      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, feature_name),
+      "Failed to disable tablet split before restore.");
+
+  return Status::OK();
+}
+
 Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
     const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
   auto deadline = CoarseMonoClock::now() + timeout_;
 
+  // Disable splitting for the entire run of restore.
+  RETURN_NOT_OK(DisableTabletSplitsDuringRestore(deadline));
+
+  // Get the suitable snapshot to restore from.
   auto snapshot_id = VERIFY_RESULT(SuitableSnapshotId(schedule_id, restore_at, deadline));
 
   for (;;) {

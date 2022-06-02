@@ -8,11 +8,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -32,11 +39,15 @@ import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Singleton
 public class AccessManager extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(AccessManager.class);
 
   @Inject play.Configuration appConfig;
+  @Inject Commissioner commissioner;
 
   private static final String YB_CLOUD_COMMAND_TYPE = "access";
   private static final String PEM_PERMISSIONS = "r--------";
@@ -524,5 +535,43 @@ public class AccessManager extends DevopsBase {
     Files.write(pullSecretFile, pullSecretFileContent.getBytes());
 
     return pullSecretFile.toAbsolutePath().toString();
+  }
+
+  public void rotateAccessKey(
+      UUID customerUUID, UUID providerUUID, List<UUID> universeUUIDs, String newKeyCode) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    AccessKey newAccessKey = AccessKey.getOrBadRequest(providerUUID, newKeyCode);
+    Set<Universe> universes =
+        universeUUIDs
+            .stream()
+            .map((universeUUID) -> Universe.getOrBadRequest(universeUUID))
+            .collect(Collectors.toSet());
+    Set<Universe> providerUniverses = customer.getUniversesForProvider(providerUUID);
+
+    // prechecks
+    if (universes.stream().anyMatch((universe) -> universe.getUniverseDetails().universePaused)) {
+      throw new RuntimeException("One of the universes in the list is paused");
+    } else if (universes.stream().anyMatch((universe) -> !universe.allNodesLive())) {
+      throw new RuntimeException("One of the universes has non-live nodes");
+    } else if (universes.stream().anyMatch((universe) -> !providerUniverses.contains(universe))) {
+      throw new RuntimeException("One of the universes does not belong to the provider mentioned");
+    }
+
+    for (Universe universe : universes) {
+      // create universe task params
+      UUID universeUUID = universe.universeUUID;
+      RotateAccessKeyParams taskParams =
+          new RotateAccessKeyParams(customerUUID, providerUUID, universeUUID, newAccessKey);
+      // trigger universe task
+      UUID taskUUID = commissioner.submit(TaskType.RotateAccessKey, taskParams);
+
+      CustomerTask.create(
+          customer,
+          universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.RotateAccessKey,
+          universe.name);
+    }
   }
 }

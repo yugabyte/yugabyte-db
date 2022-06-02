@@ -529,7 +529,8 @@ class UniverseDetail extends Component {
     };
 
     const enableThirdpartyUpgrade =
-        featureFlags.test['enableThirdpartyUpgrade'] || featureFlags.released['enableThirdpartyUpgrade'];
+      featureFlags.test['enableThirdpartyUpgrade'] ||
+      featureFlags.released['enableThirdpartyUpgrade'];
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -611,20 +612,19 @@ class UniverseDetail extends Component {
                           </YBLabelWithIcon>
                         </YBMenuItem>
                       )}
-                      {!universePaused &&
-                       enableThirdpartyUpgrade && (
+                      {!universePaused && enableThirdpartyUpgrade && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showThirdpartyUpgradeModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
-                              'universes.details.overview.thirdpartyUpgrade'
-                            )}
-                          >
-                            <YBLabelWithIcon icon="fa fa-wrench fa-fw">
-                              Upgrade 3rd-party Software
-                            </YBLabelWithIcon>
-                          </YBMenuItem>
+                            'universes.details.overview.thirdpartyUpgrade'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-wrench fa-fw">
+                            Upgrade 3rd-party Software
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
                       )}
                       {!isReadOnlyUniverse &&
                         !universePaused &&
@@ -772,9 +772,10 @@ class UniverseDetail extends Component {
                       <MenuItem divider />
 
                       {/* TODO:
-                      1. For now, we're enabling the Pause Universe for providerType==='aws'
-                      only. This functionality needs to be enabled for all the cloud
-                      providers and once that's done this condition needs to be removed.
+                      1. For now, we're enabling the Pause Universe for providerType one of
+                      'aws', 'gcp' or 'azu' only. This functionality needs to be enabled for
+                      all the cloud providers and once that's done this condition needs
+                      to be removed.
                       2. One more condition needs to be added which specifies the
                       current status of the universe. */}
 

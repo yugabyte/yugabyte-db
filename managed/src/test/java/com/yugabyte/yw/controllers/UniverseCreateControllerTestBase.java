@@ -30,6 +30,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyMap;
 import static org.mockito.Mockito.times;
@@ -83,12 +84,17 @@ import play.mvc.Result;
 @RunWith(JUnitParamsRunner.class)
 public abstract class UniverseCreateControllerTestBase extends UniverseControllerTestBase {
 
+  protected static final String FORBIDDEN_IP_1 = "1.2.3.4";
+  protected static final String FORBIDDEN_IP_2 = "2.3.4.5";
+
   private String TMP_CHART_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/charts";
 
   @Before
   public void setUp() {
     super.setUp();
     new File(TMP_CHART_PATH).mkdirs();
+    when(mockAppConfig.getString(eq("yb.security.forbidden_ips"), anyString()))
+        .thenReturn(FORBIDDEN_IP_1 + ", " + FORBIDDEN_IP_2);
   }
 
   @After

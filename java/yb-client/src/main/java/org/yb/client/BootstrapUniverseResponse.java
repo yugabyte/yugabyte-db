@@ -1,20 +1,19 @@
 package org.yb.client;
 
+import java.util.List;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.cdc.CdcService;
-
-import java.util.List;
 
 @InterfaceAudience.Public
 public class BootstrapUniverseResponse extends YRpcResponse {
   private final CdcService.CDCErrorPB cdcError;
-  private final List<String> bootstrapIDs;
+  private final List<String> bootstrapIds;
 
   public BootstrapUniverseResponse(
-    long elapsedMillis, String tsUUID, CdcService.CDCErrorPB cdcError, List<String> bootstrapIDs) {
+    long elapsedMillis, String tsUUID, CdcService.CDCErrorPB cdcError, List<String> bootstrapIds) {
     super(elapsedMillis, tsUUID);
     this.cdcError = cdcError;
-    this.bootstrapIDs = bootstrapIDs;
+    this.bootstrapIds = bootstrapIds;
   }
 
   public boolean hasError() {
@@ -29,7 +28,7 @@ public class BootstrapUniverseResponse extends YRpcResponse {
     return cdcError.getStatus().getMessage();
   }
 
-  public List<String> bootstrapIDs() {
-    return bootstrapIDs;
+  public List<String> bootstrapIds() {
+    return bootstrapIds;
   }
 }

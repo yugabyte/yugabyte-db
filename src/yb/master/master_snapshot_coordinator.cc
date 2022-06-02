@@ -1416,6 +1416,9 @@ class MasterSnapshotCoordinator::Impl {
       return;
     }
     SubmitWrite(std::move(write_batch), leader_term, &context_);
+
+    // Enable tablet splitting again.
+    context_.EnableTabletSplitting("PITR");
   }
 
   void UpdateSchedule(const SnapshotState& snapshot) REQUIRES(mutex_) {

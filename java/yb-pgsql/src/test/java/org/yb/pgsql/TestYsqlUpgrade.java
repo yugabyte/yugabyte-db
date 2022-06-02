@@ -15,6 +15,7 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
+import java.io.File;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.sql.Timestamp;
@@ -33,8 +34,12 @@ import java.util.TreeSet;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.LineIterator;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.commons.lang3.tuple.Pair;
@@ -875,6 +880,54 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   public void migrationInGeoPartitionedSetup() throws Exception {
     setupGeoPartitioning();
     runMigrations();
+  }
+
+  /** Ensure migration filename comment makes sense. */
+  @Test
+  public void migrationFilenameComment() throws Exception {
+    Pattern commentRe = Pattern.compile("^# .*(V(\\d+)(\\.\\d+)?__\\S+__\\S+.sql)$");
+    Pattern recordRe = Pattern.compile("^\\{ major => '(\\d+)', minor => '(\\d+)',");
+
+    File datFile = new File(
+        TestUtils.getBuildRootDir(), "postgres_build/src/include/catalog/pg_yb_migration.dat");
+    assertTrue(datFile + " does not exist", datFile.exists());
+
+    LineIterator it = FileUtils.lineIterator(datFile);
+    try {
+      String filename = null, commentMajor = null, commentMinor = null;
+      while (it.hasNext()) {
+        Matcher matcher = commentRe.matcher(it.nextLine());
+        if (matcher.find()) {
+          filename = matcher.group(1);
+          commentMajor = matcher.group(2);
+          commentMinor = matcher.group(3) == null ? "0" : matcher.group(3);
+          break;
+        }
+      }
+      assertNotNull("Failed to find migration filename comment line", filename);
+
+      // Check that a file with that filename exists.
+      File migrationFile = new File(TestUtils.getBuildRootDir(),
+                                    "share/ysql_migrations/" + filename);
+      assertTrue("Migration file " + filename + " does not exist", migrationFile.exists());
+
+      // Get record version.  Record line comes right after comment line:
+      //         | # For better version control conflict detection, list latest migration filename
+      // comment | # here: V19__6560__pg_collation_icu_70.sql
+      // record  | { major => '19', minor => '0', name => '<baseline>', time_applied => '_null_' }
+      assertTrue("Expected line after filename comment line", it.hasNext());
+      String recordLine = it.nextLine();
+      Matcher matcher = recordRe.matcher(recordLine);
+      assertTrue(recordLine + " does not match regex " + recordRe, matcher.find());
+      String recordMajor = matcher.group(1);
+      String recordMinor = matcher.group(2);
+
+      // Check comment version matches record version.
+      assertEquals("Major version mismatch between comment and record:", commentMajor, recordMajor);
+      assertEquals("Minor version mismatch between comment and record:", commentMinor, recordMinor);
+    } finally {
+      it.close();
+    }
   }
 
   /** Invalid stuff which doesn't belong to other test cases. */

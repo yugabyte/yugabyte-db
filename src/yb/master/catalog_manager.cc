@@ -181,6 +181,7 @@
 #include "yb/util/oid_generator.h"
 #include "yb/util/random_util.h"
 #include "yb/util/rw_mutex.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
@@ -2804,11 +2805,11 @@ Status CatalogManager::SplitTablet(
                    tserver::TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY) {
           LOG(INFO) << "AsyncGetTabletSplitKey task failed for tablet " << tablet->tablet_id()
               << ". Tablet split not supported for tablets with TTL file expiration.";
-          tablet_split_manager()->MarkTtlTableForSplitIgnore(tablet->table()->id());
+          tablet_split_manager()->DisableSplittingForTtlTable(tablet->table()->id());
         } else if (tserver::TabletServerError(result.status()) ==
                    tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL) {
           LOG(INFO) << "Tablet key range is too small to split, disabling splitting temporarily.";
-          tablet_split_manager()->MarkSmallKeyRangeTabletForSplitIgnore(tablet->id());
+          tablet_split_manager()->DisableSplittingForSmallKeyRangeTablet(tablet->id());
         } else {
           LOG(WARNING) << "AsyncGetTabletSplitKey task failed with status: " << result.status();
         }
@@ -4106,7 +4107,7 @@ Status CatalogManager::CreateTransactionStatusTableInternal(
     return STATUS_SUBSTITUTE(AlreadyPresent, "Table already exists: $0", table_name);
   }
 
-  LOG(INFO) << "Creating transaction status table " << table_name;
+  LOG(INFO) << "Creating transaction status table: " << table_name;
   // Set up a CreateTable request internally.
   CreateTableRequestPB req;
   CreateTableResponsePB resp;
@@ -4377,8 +4378,8 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   const auto& pb = l->pb;
 
   // 2. Verify if the create is in-progress.
-  TRACE("Verify if the table creation is in progress for $0", table->ToString());
   auto result = !table->IsCreateInProgress();
+  TRACE("Verify if the table creation is in progress for $0, $1", table->ToString(), result);
 
   // 3. Set any current errors, if we are experiencing issues creating the table. This will be
   // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in
@@ -6041,6 +6042,24 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
   } else {
     // There's no AlterTable, the regular schema is "fully applied".
     resp->mutable_schema()->CopyFrom(l->pb.schema());
+  }
+
+  // Due to pgschema_name being added after 2.13, older tables may not have this field.
+  // So backfill pgschema_name for non-system YSQL table schema.
+  if (!table->is_system() && l->table_type() == TableType::PGSQL_TABLE_TYPE &&
+      !resp->schema().has_pgschema_name()) {
+    SharedLock lock(mutex_);
+    TRACE("Acquired catalog manager lock for schema name lookup");
+
+    auto pgschema_name = GetPgSchemaName(table);
+    if (!pgschema_name.ok() || pgschema_name->empty()) {
+      Status s = STATUS_SUBSTITUTE(NotFound,
+          "Unable to find schema name for YSQL table $0.$1 due to error: $2",
+          table->namespace_name(), table->name(), pgschema_name.ToString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    } else {
+      resp->mutable_schema()->set_pgschema_name(*pgschema_name);
+    }
   }
 
   if (get_fully_applied_indexes && l->pb.has_fully_applied_schema()) {
@@ -8562,24 +8581,37 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
   return Status::OK();
 }
 
+void CatalogManager::DisableTabletSplittingInternal(
+    const MonoDelta& duration, const std::string& feature) {
+  tablet_split_manager_.DisableSplittingFor(duration, feature);
+}
+
 Status CatalogManager::DisableTabletSplitting(
     const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
     rpc::RpcContext* rpc) {
   const MonoDelta disable_duration = MonoDelta::FromMilliseconds(req->disable_duration_ms());
-  tablet_split_manager_.DisableSplittingFor(disable_duration);
+  DisableTabletSplittingInternal(disable_duration, req->feature_name());
   return Status::OK();
 }
 
 Status CatalogManager::IsTabletSplittingComplete(
     const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
     rpc::RpcContext* rpc) {
-  TableInfoMap table_info_map;
+  vector<TableInfoPtr> tables;
   {
     SharedLock lock(mutex_);
-    table_info_map = *table_ids_map_;
+    tables.reserve(table_ids_map_->size());
+    for (const auto& table : *table_ids_map_) {
+      tables.push_back(table.second);
+    }
   }
-  resp->set_is_tablet_splitting_complete(
-      tablet_split_manager_.IsTabletSplittingComplete(table_info_map));
+  for (const auto& table : tables) {
+    if (!tablet_split_manager_.IsTabletSplittingComplete(*table)) {
+      resp->set_is_tablet_splitting_complete(false);
+      return Status::OK();
+    }
+  }
+  resp->set_is_tablet_splitting_complete(true);
   return Status::OK();
 }
 

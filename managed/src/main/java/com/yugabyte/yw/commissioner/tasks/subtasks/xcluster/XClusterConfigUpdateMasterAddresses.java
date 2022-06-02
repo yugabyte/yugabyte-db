@@ -41,11 +41,6 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
     super(baseTaskDependencies);
   }
 
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-  }
-
   public static class Params extends XClusterConfigTaskParams {
     // The target universe UUID must be stored in universeUUID field.
     // Source universe UUID.
@@ -60,11 +55,8 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
   @Override
   public String getName() {
     return String.format(
-        "%s %s(targetUniverse=%s, sourceUniverse=%s)",
-        super.getName(),
-        this.getClass().getSimpleName(),
-        taskParams().universeUUID,
-        taskParams().sourceUniverseUuid);
+        "%s (targetUniverse=%s, sourceUniverse=%s)",
+        super.getName(), taskParams().universeUUID, taskParams().sourceUniverseUuid);
   }
 
   @Override

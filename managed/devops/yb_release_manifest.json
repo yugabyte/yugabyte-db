@@ -14,7 +14,8 @@
     "send_sudo_pass.yml",
     "yb_custom_ami_builder.yml",
     "remote_role.yml",
-    "setup-cgroup.yml"
+    "setup-cgroup.yml",
+    "edit_authorized_keys.yml"
   ],
   "bin": [
     "bin/common.sh",

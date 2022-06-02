@@ -6,6 +6,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import java.util.Set;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -21,46 +23,60 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    XClusterConfigEditFormData editFormData = taskParams().editFormData;
+    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    if (xClusterConfig == null) {
+      throw new RuntimeException("xClusterConfig in task params cannot be null");
+    }
 
+    lockUniverseForUpdate(getUniverse().version);
     try {
-      lockUniverseForUpdate(getUniverse().version);
-
-      XClusterConfig xClusterConfig = getXClusterConfig();
-      if (xClusterConfig.status != XClusterConfigStatusType.Running
-          && xClusterConfig.status != XClusterConfigStatusType.Paused) {
-        throw new RuntimeException(
-            String.format(
-                "XClusterConfig(%s) must be in `Running` or `Paused` state to edit",
-                xClusterConfig.uuid));
-      }
+      XClusterConfigEditFormData editFormData = taskParams().editFormData;
 
       XClusterConfigStatusType initialStatus = xClusterConfig.status;
-      setXClusterConfigStatus(XClusterConfigStatusType.Updating);
+      createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
       if (editFormData.name != null) {
         createXClusterConfigRenameTask()
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       } else if (editFormData.status != null) {
-        createXClusterConfigToggleStatusTask()
+        createXClusterConfigSetStatusTask(initialStatus, editFormData.status)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      } else if (editFormData.tables != null) {
+        Set<String> currentTableIds = xClusterConfig.getTables();
+        Set<String> tableIdsToAdd =
+            taskParams()
+                .editFormData
+                .tables
+                .stream()
+                .filter(tableId -> !currentTableIds.contains(tableId))
+                .collect(Collectors.toSet());
+        // Save the to-be-added tables in the DB.
+        xClusterConfig.addTables(tableIdsToAdd);
+        Set<String> tableIdsToRemove =
+            currentTableIds
+                .stream()
+                .filter(tableId -> !taskParams().editFormData.tables.contains(tableId))
+                .collect(Collectors.toSet());
+        createXClusterConfigModifyTablesTask(tableIdsToAdd, tableIdsToRemove)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       } else {
-        createXClusterConfigModifyTablesTask()
+        throw new RuntimeException("No edit operation was specified in editFormData");
+      }
+
+      // If the edit operation is not change status, set it to the initial status.
+      if (editFormData.status == null) {
+        createXClusterConfigSetStatusTask(initialStatus)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
+
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
       getRunnableTask().runSubTasks();
-
-      // ToggleStatus already handles updating the status
-      if (editFormData.status == null) {
-        refreshXClusterConfig();
-        setXClusterConfigStatus(initialStatus);
-      }
-
     } catch (Exception e) {
-      setXClusterConfigStatus(XClusterConfigStatusType.Failed);
       log.error("{} hit error : {}", getName(), e.getMessage());
+      setXClusterConfigStatus(XClusterConfigStatusType.Failed);
       throw new RuntimeException(e);
     } finally {
       unlockUniverseForUpdate();

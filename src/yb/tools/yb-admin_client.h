@@ -39,6 +39,7 @@
 
 #include "yb/client/yb_table_name.h"
 
+#include "yb/master/master_admin.pb.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/status_fwd.h"
@@ -275,7 +276,7 @@ class ClusterAdminClient {
 
   Status SplitTablet(const std::string& tablet_id);
 
-  Status DisableTabletSplitting(int64_t disable_duration_ms);
+  Status DisableTabletSplitting(int64_t disable_duration_ms, const std::string& feature_name);
 
   Status IsTabletSplittingComplete();
 
@@ -370,6 +371,11 @@ class ClusterAdminClient {
   }
 
   void ResetMasterProxy(const HostPort& leader_addr = HostPort());
+
+  Result<master::DisableTabletSplittingResponsePB> DisableTabletSplitsInternal(
+      int64_t disable_duration_ms, const std::string& feature_name);
+
+  Result<master::IsTabletSplittingCompleteResponsePB> IsTabletSplittingCompleteInternal();
 
   std::string master_addr_list_;
   HostPort init_master_addr_;

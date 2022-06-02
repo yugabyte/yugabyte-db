@@ -74,6 +74,12 @@ bool TableDeleted(const SysTablesEntryPB& table) {
          table.hide_state() == SysTablesEntryPB::HIDDEN;
 }
 
+bool TabletDeleted(const SysTabletsEntryPB& tablet) {
+  return tablet.state() == SysTabletsEntryPB::REPLACED ||
+         tablet.state() == SysTabletsEntryPB::DELETED ||
+         tablet.hide_hybrid_time() != 0;
+}
+
 bool IsSequencesDataObject(const NamespaceId& id, const SysNamespaceEntryPB& pb) {
   return id == kPgSequencesDataNamespaceId;
 }
@@ -411,6 +417,11 @@ Status RestoreSysCatalogState::DetermineEntries(
     if (it == tables.end()) {
       continue;
     }
+    // We could have DELETED/HIDDEN tablets for a RUNNING table,
+    // for instance in the case of tablet splitting.
+    if (TabletDeleted(id_and_metadata.second)) {
+      continue;
+    }
     RETURN_NOT_OK(process_entry(id_and_metadata.first, &id_and_metadata.second));
     VLOG(2) << "Tablet to restore: " << id_and_metadata.first << ", "
             << id_and_metadata.second.ShortDebugString();
@@ -662,7 +673,7 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
 }
 
 Status RestoreSysCatalogState::ProcessPgCatalogRestores(
-    yb::tablet::TableInfo* pg_yb_catalog_meta,
+    tablet::TableInfo* pg_yb_catalog_meta,
     const docdb::DocDB& restoring_db,
     const docdb::DocDB& existing_db,
     docdb::DocWriteBatch* write_batch,
@@ -712,7 +723,7 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
     RETURN_NOT_OK(existing_state.SetPrefix(prefix));
 
     PgCatalogRestorePatch restore_patch(
-        &existing_state, &restoring_state, write_batch, table, *pg_yb_catalog_meta);
+        &existing_state, &restoring_state, write_batch, table, pg_yb_catalog_meta);
 
     RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
 
@@ -759,7 +770,7 @@ Status PgCatalogRestorePatch::ProcessEqualEntries(
     SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
     if (sub_doc_key.subkeys()[0].type() == docdb::KeyEntryType::kColumnId) {
       auto column_id = sub_doc_key.subkeys()[0].GetColumnId();
-      const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_meta_.schema().column_by_id(
+      const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_meta_->schema().column_by_id(
           column_id));
       if (column.name() == "current_version") {
         docdb::Value value;

@@ -85,7 +85,7 @@ add_dependencies(integration-tests
 ADD_YB_TEST_LIBRARY(
     cql_test_util
     SRCS cql_test_base.cc cql_test_util.cc
-    DEPS cassandra integration-tests yb-cql yb_test_util)
+    DEPS cassandra integration-tests yb-cql yb_test_util tools_test_utils)
 
 # Requires ql-dml-test-base, so separating from integration-tests.
 add_library(tablet-split-itest-base tablet-split-itest-base.cc)
@@ -101,6 +101,7 @@ set(YB_TEST_LINK_LIBS
     master_test_common
     yb_common_test_util
     tablet-split-itest-base
+    cql_test_util
     ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(alter_table-test)
@@ -168,7 +169,7 @@ ADD_YB_TEST_DEPENDENCIES(yb-ts-cli-itest
   yb-ts-cli)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
-set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra cql_test_util)
+set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
 set(CASS_DRIVER_VERSION "2.9.0-yb-4")
 set(CASS_DRIVER_INTERNAL_INCLUDE
     "${YB_THIRDPARTY_DIR}/src/cassandra-cpp-driver-${CASS_DRIVER_VERSION}/src")

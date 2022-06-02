@@ -41,6 +41,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
 
@@ -153,6 +154,12 @@ DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshott
 DECLARE_int32(num_concurrent_backfills_allowed);
 DECLARE_int32(svc_queue_length_default);
 
+constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
+
+DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
+             "Default timeout for the YBClient embedded into the tablet server that is used "
+             "for distributed transactions.");
+
 namespace yb {
 namespace tserver {
 
@@ -181,6 +188,21 @@ std::string TabletServer::ToString() const {
   return strings::Substitute("TabletServer : rpc=$0, uuid=$1",
                              yb::ToString(first_rpc_address()),
                              fs_manager_->uuid());
+}
+
+MonoDelta TabletServer::default_client_timeout() {
+  return std::chrono::milliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
+}
+
+void TabletServer::SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) {
+  // If enabled, creates a proxy to call this tablet server locally.
+  if (FLAGS_enable_direct_local_tablet_server_call) {
+    proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
+    async_client_init->AddPostCreateHook(
+        [proxy = proxy_, uuid = permanent_uuid(), tserver = this](client::YBClient* client) {
+      client->SetLocalTabletServer(uuid, proxy, tserver);
+    });
+  }
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {
@@ -265,12 +287,7 @@ Status TabletServer::Init() {
   // our heartbeat thread will loop until successfully connecting.
   RETURN_NOT_OK(ValidateMasterAddressResolution());
 
-  RETURN_NOT_OK(RpcAndWebServerBase::Init());
-
-  // If enabled, creates a proxy to call this tablet server locally.
-  if (FLAGS_enable_direct_local_tablet_server_call) {
-    proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
-  }
+  RETURN_NOT_OK(DbServerBase::Init());
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
@@ -405,7 +422,7 @@ Status TabletServer::Start() {
   AutoInitServiceFlags();
 
   RETURN_NOT_OK(RegisterServices());
-  RETURN_NOT_OK(RpcAndWebServerBase::Start());
+  RETURN_NOT_OK(DbServerBase::Start());
 
   RETURN_NOT_OK(tablet_manager_->Start());
 
@@ -598,10 +615,10 @@ TabletPeerLookupIf* TabletServer::tablet_peer_lookup() {
 }
 
 const std::shared_future<client::YBClient*>& TabletServer::client_future() const {
-  return tablet_manager_->client_future();
+  return DbServerBase::client_future();
 }
 
-client::TransactionPool* TabletServer::TransactionPool() {
+client::TransactionPool& TabletServer::TransactionPool() {
   return DbServerBase::TransactionPool();
 }
 

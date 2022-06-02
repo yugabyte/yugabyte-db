@@ -13,6 +13,10 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.CommonNet;
@@ -24,29 +28,43 @@ import org.yb.util.Pair;
 public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicationResponse> {
 
   private final String replicationGroupName;
-  private final Set<String> sourceTableIDs;
   private final Set<CommonNet.HostPortPB> sourceMasterAddresses;
+  // A map of table ids to their bootstrap id if any.
+  private final Map<String, String> sourceTableIdsBootstrapIdMap;
 
   SetupUniverseReplicationRequest(
     YBTable table,
     String replicationGroupName,
-    Set<String> sourceTableIDs,
+    Map<String, String> sourceTableIdsBootstrapIdMap,
     Set<HostPortPB> sourceMasterAddresses) {
     super(table);
     this.replicationGroupName = replicationGroupName;
-    this.sourceTableIDs = sourceTableIDs;
     this.sourceMasterAddresses = sourceMasterAddresses;
+    this.sourceTableIdsBootstrapIdMap = sourceTableIdsBootstrapIdMap;
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
+    // Add table IDs and bootstrap IDs.
+    List<String> sourceTableIds = new ArrayList<>();
+    List<String> sourceBootstrapIds = new ArrayList<>();
+    sourceTableIdsBootstrapIdMap.forEach((tableId, bootstrapId) -> {
+      sourceTableIds.add(tableId);
+      sourceBootstrapIds.add(bootstrapId);
+    });
+
     final MasterReplicationOuterClass.SetupUniverseReplicationRequestPB.Builder builder =
       MasterReplicationOuterClass.SetupUniverseReplicationRequestPB.newBuilder()
         .setProducerId(replicationGroupName)
-        .addAllProducerTableIds(sourceTableIDs)
+        .addAllProducerTableIds(sourceTableIds)
         .addAllProducerMasterAddresses(sourceMasterAddresses);
+
+    // If all bootstrap IDs are null, it is not required.
+    if (sourceBootstrapIds.stream().anyMatch(Objects::nonNull)){
+      builder.addAllProducerBootstrapIds(sourceBootstrapIds);
+    }
 
     return toChannelBuffer(header, builder.build());
   }

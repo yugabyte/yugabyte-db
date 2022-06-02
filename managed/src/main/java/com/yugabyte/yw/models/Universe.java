@@ -387,6 +387,17 @@ public class Universe extends Model {
   }
 
   /**
+   * Checks if all nodes in universe have the node state 'Live'
+   *
+   * @return true if all nodes are in LIVE state
+   */
+  public boolean allNodesLive() {
+    return getNodes()
+        .stream()
+        .allMatch(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live));
+  }
+
+  /**
    * Checks if there is any node in a transit state across the universe.
    *
    * @return true if there is any such node.
@@ -595,6 +606,16 @@ public class Universe extends Model {
    */
   public String getTserverHTTPAddresses() {
     return getHostPortsString(getTServers(), ServerType.TSERVER, PortType.HTTP);
+  }
+
+  /**
+   * It returns a comma separated list of <privateIp:tserverHTTPPort> for all tservers in the
+   * primary cluster of this universe.
+   *
+   * @return A comma separated string of 'host:port'
+   */
+  public String getTserverAddresses() {
+    return getHostPortsString(getTServersInPrimaryCluster(), ServerType.TSERVER, PortType.RPC);
   }
 
   /**

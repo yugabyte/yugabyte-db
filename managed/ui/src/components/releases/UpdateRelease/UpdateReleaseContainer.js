@@ -5,6 +5,8 @@ import { toast } from 'react-toastify';
 import { UpdateRelease } from '../../../components/releases';
 import {
   deleteYugaByteRelease,
+  fetchSoftwareVersionsFailure,
+  fetchSoftwareVersionsSuccess,
   getYugaByteReleases,
   getYugaByteReleasesResponse,
   updateYugaByteRelease,
@@ -25,6 +27,11 @@ const mapDispatchToProps = (dispatch) => {
         else
           dispatch(getYugaByteReleases()).then((response) => {
             dispatch(getYugaByteReleasesResponse(response.payload));
+            if (response.payload.status !== 200) {
+              dispatch(fetchSoftwareVersionsFailure(response.payload));
+            } else {
+              dispatch(fetchSoftwareVersionsSuccess(response.payload));
+            }
           });
       });
     }

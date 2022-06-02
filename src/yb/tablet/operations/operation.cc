@@ -65,10 +65,10 @@ std::string Operation::ToString() const {
 }
 
 
-Status Operation::Replicated(int64_t leader_term) {
+Status Operation::Replicated(int64_t leader_term, WasPending was_pending) {
   Status complete_status = Status::OK();
   RETURN_NOT_OK(DoReplicated(leader_term, &complete_status));
-  Replicated();
+  Replicated(was_pending);
   Release();
   CompleteWithStatus(complete_status);
   return Status::OK();
@@ -152,12 +152,13 @@ void Operation::Aborted(bool was_pending) {
   }
 }
 
-void Operation::Replicated() {
+void Operation::Replicated(WasPending was_pending) {
   if (use_mvcc()) {
     tablet()->mvcc_manager()->Replicated(hybrid_time(), op_id());
   }
-
-  RemovedFromPending();
+  if (was_pending) {
+    RemovedFromPending();
+  }
 }
 
 void Operation::Release() {

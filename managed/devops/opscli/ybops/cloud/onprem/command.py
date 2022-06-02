@@ -11,7 +11,8 @@
 from ybops.cloud.common.base import AbstractPerCloudCommand
 from ybops.cloud.common.command import InstanceCommand
 from ybops.cloud.common.method import ConfigureInstancesMethod, ListInstancesMethod, \
-    InitYSQLMethod, CronCheckMethod, TransferXClusterCerts
+    InitYSQLMethod, CronCheckMethod, TransferXClusterCerts, \
+    VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey
 from ybops.cloud.onprem.method import OnPremCreateInstancesMethod, OnPremDestroyInstancesMethod, \
     OnPremProvisionInstancesMethod, OnPremValidateMethod, \
     OnPremFillInstanceProvisionTemplateMethod, OnPremListInstancesMethod, \
@@ -37,3 +38,6 @@ class OnPremInstanceCommand(InstanceCommand):
         self.add_method(InitYSQLMethod(self))
         self.add_method(CronCheckMethod(self))
         self.add_method(TransferXClusterCerts(self))
+        self.add_method(VerifySSHConnection(self))
+        self.add_method(AddAuthorizedKey(self))
+        self.add_method(RemoveAuthorizedKey(self))

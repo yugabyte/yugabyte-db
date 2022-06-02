@@ -206,7 +206,8 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
                                     Relation rel,
                                     TupleDesc tupleDesc,
                                     HeapTuple tuple,
-                                    bool is_single_row_txn)
+                                    bool is_single_row_txn,
+									OnConflictAction onConflictAction)
 {
 	Oid            relid    = RelationGetRelid(rel);
 	AttrNumber     minattr  = YBGetFirstLowInvalidAttributeNumber(rel);
@@ -286,7 +287,7 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 		CacheInvalidateHeapTuple(rel, tuple, NULL);
 	}
 
-	if (yb_enable_upsert_mode)
+	if (onConflictAction == ONCONFLICT_YB_REPLACE || yb_enable_upsert_mode)
     {
         HandleYBStatus(YBCPgInsertStmtSetUpsertMode(insert_stmt));
     }
@@ -305,47 +306,55 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 
 Oid YBCExecuteInsert(Relation rel,
                      TupleDesc tupleDesc,
-                     HeapTuple tuple)
+                     HeapTuple tuple,
+					 OnConflictAction onConflictAction)
 {
 	return YBCExecuteInsertForDb(YBCGetDatabaseOid(rel),
 	                             rel,
 	                             tupleDesc,
-	                             tuple);
+	                             tuple,
+								 onConflictAction);
 }
 
 Oid YBCExecuteInsertForDb(Oid dboid,
                           Relation rel,
                           TupleDesc tupleDesc,
-                          HeapTuple tuple)
+                          HeapTuple tuple,
+						  OnConflictAction onConflictAction)
 {
 	bool non_transactional = !IsSystemRelation(rel) && yb_disable_transactional_writes;
 	return YBCExecuteInsertInternal(dboid,
 	                                rel,
 	                                tupleDesc,
 	                                tuple,
-	                                non_transactional);
+	                                non_transactional,
+									onConflictAction);
 }
 
 Oid YBCExecuteNonTxnInsert(Relation rel,
                            TupleDesc tupleDesc,
-                           HeapTuple tuple)
+                           HeapTuple tuple,
+						   OnConflictAction onConflictAction)
 {
 	return YBCExecuteNonTxnInsertForDb(YBCGetDatabaseOid(rel),
 	                                   rel,
 	                                   tupleDesc,
-	                                   tuple);
+	                                   tuple,
+									   onConflictAction);
 }
 
 Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
                                 Relation rel,
                                 TupleDesc tupleDesc,
-                                HeapTuple tuple)
+                                HeapTuple tuple,
+								OnConflictAction onConflictAction)
 {
 	return YBCExecuteInsertInternal(dboid,
 	                                rel,
 	                                tupleDesc,
 	                                tuple,
-	                                true /* is_single_row_txn */);
+	                                true /* is_single_row_txn */,
+									onConflictAction);
 }
 
 Oid YBCHeapInsert(TupleTableSlot *slot,
@@ -379,14 +388,16 @@ Oid YBCHeapInsertForDb(Oid dboid,
 		return YBCExecuteNonTxnInsertForDb(dboid,
 		                                   resultRelationDesc,
 		                                   slot->tts_tupleDescriptor,
-		                                   tuple);
+		                                   tuple,
+										   ONCONFLICT_NONE);
 	}
 	else
 	{
 		return YBCExecuteInsertForDb(dboid,
 		                             resultRelationDesc,
 		                             slot->tts_tupleDescriptor,
-		                             tuple);
+		                             tuple,
+									 ONCONFLICT_NONE);
 	}
 }
 
@@ -961,7 +972,10 @@ Oid YBCExecuteUpdateReplace(Relation rel,
 
 	YBCExecuteDelete(rel, slot, estate, mtstate, false /* changingPart */);
 
-	Oid tupleoid = YBCExecuteInsert(rel, RelationGetDescr(rel), tuple);
+	Oid tupleoid = YBCExecuteInsert(rel,
+									RelationGetDescr(rel),
+									tuple,
+									ONCONFLICT_NONE);
 
 	return tupleoid;
 }

@@ -373,6 +373,10 @@ uint64_t TransactionManager::GetLoadedStatusTabletsVersion() {
   return impl_->GetLoadedStatusTabletsVersion();
 }
 
+void TransactionManager::Shutdown() {
+  impl_->Shutdown();
+}
+
 TransactionManager::TransactionManager(TransactionManager&& rhs) = default;
 TransactionManager& TransactionManager::operator=(TransactionManager&& rhs) = default;
 

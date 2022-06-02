@@ -49,12 +49,12 @@ public class ConcurrentPoller {
   BlockingQueue<AbstractMap.SimpleImmutableEntry<String, String>> queue;
   List<Deferred<GetChangesResponse>> deferredList;
 
-  YBClient synClient;
+  YBClient syncClient;
 
   // We need the schema information in a DDL the very first time we send a getChanges request.
   boolean needSchemaInfo = false;
 
-  public ConcurrentPoller(YBClient synClient,
+  public ConcurrentPoller(YBClient syncClient,
                           AsyncYBClient client,
                           OutputClient outputClient,
                           String streamId,
@@ -64,7 +64,7 @@ public class ConcurrentPoller {
                           boolean stopExecution,
                           boolean enableSnapshot,
                           boolean bootstrap) throws IOException {
-    this.synClient = synClient;
+    this.syncClient = syncClient;
     this.asyncYBClient = client;
     this.streamId = streamId;
     this.format = format;
@@ -81,7 +81,7 @@ public class ConcurrentPoller {
 
     tableIdsToTabletIds.keySet().forEach(tabletId -> {
       try {
-        tableIdToTable.put(tabletId, synClient.openTableByUUID(tabletId));
+        tableIdToTable.put(tabletId, syncClient.openTableByUUID(tabletId));
       } catch (Exception e) {
         e.printStackTrace();
       }
@@ -119,16 +119,14 @@ public class ConcurrentPoller {
 
     for (AbstractMap.SimpleImmutableEntry<String, String> entry: listTabletIdTableIdPair) {
       final YBTable table = tableIdToTable.get(entry.getValue());
-      asyncYBClient.setCheckpoint(table, streamId, entry.getKey(), 0, 0, true);
 
-      GetCheckpointResponse getCheckpointResponse = synClient.getCheckpoint(table, streamId,
+      GetCheckpointResponse getCheckpointResponse = syncClient.getCheckpoint(table, streamId,
                                                                             entry.getKey());
 
       if (bootstrap) {
         if (getCheckpointResponse.getTerm() == -1 && getCheckpointResponse.getIndex() == -1) {
           LOG.info(String.format("Bootstrapping tablet %s", entry.getKey()));
-          asyncYBClient.setCheckpointWithBootstrap(table, streamId, entry.getKey(), 0, 0, true,
-                                                   true);
+          syncClient.bootstrapTablet(table, streamId, entry.getKey(), 0, 0, true, true);
         } else {
           LOG.info(String.format("Skipping bootstrap for tablet %s as it has checkpoint %d.%d",
                                  entry.getKey(), getCheckpointResponse.getTerm(),
@@ -136,9 +134,7 @@ public class ConcurrentPoller {
         }
       } else {
         LOG.info("Skipping bootstrap because the --bootstrap flag was not specified");
-        asyncYBClient.setCheckpointWithBootstrap(table, streamId, entry.getKey(), 0, 0,
-                                                 true /* initialCheckpoint */,
-                                                 false /* bootstrap */);
+        syncClient.bootstrapTablet(table, streamId, entry.getKey(), 0, 0, true, false);
       }
     }
 
