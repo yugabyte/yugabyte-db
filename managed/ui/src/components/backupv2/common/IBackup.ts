@@ -77,6 +77,7 @@ export interface IUniverse {
   name: string;
   universeDetails: {
     universePaused: boolean;
+    [key: string]: any;
   };
 }
 
