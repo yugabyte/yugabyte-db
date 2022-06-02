@@ -576,7 +576,6 @@ class UniverseDetail extends Component {
                           </YBLabelWithIcon>
                         </YBMenuItem>
                       )}
-
                       {!isReadOnlyUniverse &&
                         !universePaused &&
                         isNotHidden(
