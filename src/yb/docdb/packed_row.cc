@@ -262,7 +262,7 @@ bool IsNull(const Slice& slice) {
 }
 
 void PackValue(const QLValuePB& value, ValueBuffer* result) {
-  AppendEncodedValue(value, CheckIsCollate::kTrue, result);
+  AppendEncodedValue(value, result);
 }
 
 void PackValue(const Slice& value, ValueBuffer* result) {
