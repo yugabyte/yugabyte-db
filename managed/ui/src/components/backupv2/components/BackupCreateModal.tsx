@@ -38,6 +38,7 @@ import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
 
 import Close from '../../universes/images/close.svg';
 
+import { PARALLEL_THREADS_RANGE } from '../common/BackupUtils';
 import './BackupCreateModal.scss';
 
 interface BackupCreateModalProps {
@@ -58,11 +59,6 @@ const TABLES_NOT_PRESENT_MSG = (api: string) => (
     <i className="fa fa-warning" /> There are no {api} databases in this universe to backup.
   </span>
 );
-
-const PARALLEL_THREADS_RANGE = {
-  MIN: 1,
-  MAX: 100
-};
 
 const DURATION_OPTIONS = DURATIONS.map((t: string) => {
   return {

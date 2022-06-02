@@ -41,7 +41,7 @@ import { toast } from 'react-toastify';
 import { components } from 'react-select';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import { isFunction } from 'lodash';
+import { find, isFunction } from 'lodash';
 import { BACKUP_API_TYPES, TableType } from '../common/IBackup';
 import clsx from 'clsx';
 import './BackupRestoreModal.scss';
@@ -385,6 +385,15 @@ function RestoreChooseUniverseForm({
             onChange={(_: any, val: any) => {
               setFieldValue('targetUniverseUUID', val ?? undefined);
               if (!val) return;
+              const targetUniverse = sourceUniverseNameAtFirst.find(
+                (u) => u.universeUUID === val.value
+              );
+              if (targetUniverse) {
+                const primaryCluster = find(targetUniverse.universeDetails?.clusters, {
+                  clusterType: 'PRIMARY'
+                });
+                setFieldValue('parallelThreads', primaryCluster?.userIntent?.numNodes);
+              }
               setSubmitting(true);
               validateTablesAndRestore(
                 {
