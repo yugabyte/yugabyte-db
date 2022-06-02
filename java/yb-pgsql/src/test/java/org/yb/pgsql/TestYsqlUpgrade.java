@@ -36,7 +36,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.After;
 import org.junit.Before;
@@ -44,7 +43,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
-import com.yugabyte.jdbc.PgArray;
 import com.yugabyte.util.PGobject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -861,6 +859,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       postSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
     }
 
+    assertYbbasectidIsConsistent("template1");
+    assertYbbasectidIsConsistent(customDbName);
+
     assertMigrationsWorked(preSnapshotCustom, postSnapshotCustom);
     assertMigrationsWorked(preSnapshotTemplate1, postSnapshotTemplate1);
 
@@ -1249,7 +1250,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
   /** Whether this OID looks like it was auto-generated during initdb. */
   private boolean isSysGeneratedOid(Long oid) {
-    return oid >= 10000 /* FirstBootstrapObjectId */ && oid < 16384 /* FirstNormalObjectId */;
+    return oid >= FIRST_BOOTSTRAP_OID && oid < FIRST_NORMAL_OID;
   }
 
   private void assertAllOidsAreSysGenerated(Statement stmt, String tableName) throws Exception {
@@ -1413,6 +1414,43 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         assertRow("Table '" + tableName + "': ", reinitdbRows.get(i), migratedRows.get(i));
       }
     });
+  }
+
+  /**
+   * In issue #12258 we found that index's ybbasectid referencing table's ybctid was broken for
+   * shared inserts (operations used to insert a row across all databases) and indexed tables
+   * without primary key.
+   * <p>
+   * This test ensures this is no longer the case.
+   */
+  private void assertYbbasectidIsConsistent(String databaseName) throws Exception {
+    try (Connection conn = getConnectionBuilder().withDatabase(databaseName).connect();
+         Statement stmt = conn.createStatement()) {
+      // pg_depend has no primary key, so we use it and its pg_depend_reference_index to ensure
+      // index consistency after upgrade.
+      String seqScanSql = "SELECT * FROM pg_depend";
+      assertFalse(isIndexScan(stmt, seqScanSql, "" /* should not use any index */));
+      List<Row> seqScanRows =
+          getRowList(stmt, seqScanSql)
+              .stream()
+              .filter(r -> r.getLong(3) == 1259L /* pg_class oid*/)
+              .filter(r -> r.getLong(4) >= FIRST_YB_OID && r.getLong(4) < FIRST_BOOTSTRAP_OID)
+              .sorted()
+              .collect(Collectors.toList());
+      assertFalse(seqScanRows.isEmpty());
+
+      // Without a fix for #12258, this query results in "DocKey(...) not found in indexed table".
+      String indexScanSql =
+          "SELECT * FROM pg_depend"
+              + " WHERE refclassid = 1259"
+              + " AND refobjid >= " + FIRST_YB_OID
+              + " AND refobjid < " + FIRST_BOOTSTRAP_OID;
+      assertTrue(isIndexScan(stmt, indexScanSql, "pg_depend_reference_index"));
+      List<Row> indexScanRows = getRowList(stmt, indexScanSql);
+      Collections.sort(indexScanRows);
+
+      assertEquals(seqScanRows, indexScanRows);
+    }
   }
 
   /** Returns the deep copy with referenced OIDs replaced with entity names. */
