@@ -48,6 +48,7 @@ This tutorial assumes that you have installed the following:
 
 - YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start/).
 - Visual Studio.
+- [.NET SDK 6.0](https://dotnet.microsoft.com/en-us/download) or later.
 
 {{< warning title="Warning" >}}
 

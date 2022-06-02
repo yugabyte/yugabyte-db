@@ -33,6 +33,8 @@ The following section breaks down the quick start example to demonstrate how to 
 
 After completing these steps, you should have a working C# application that uses the Npgsql driver to connect to your cluster, set up tables, run a query, and print out results.
 
+The quick start example requires you to run the steps from the [Prerequisites](../../../quick-start/build-apps/csharp/ysql/#prerequisites) section before proceeding with building the C# application.
+
 ### Step 1: Add the Npgsql driver dependency
 
 If you are using Visual Studio, add the Npgsql package to your project as follows:
@@ -54,7 +56,7 @@ After setting up the dependencies, implement a C# client application that uses t
 
 Import Npgsql and use the `NpgsqlConnection` class for getting connection objects for the YugabyteDB database that can be used for performing DDLs and DMLs against the database.
 
-The following is an example URL for connecting to YugabyteDB.
+The following is an example connecting string parameter for connecting to YugabyteDB.
 
 ```csharp
 var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
@@ -71,16 +73,14 @@ NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 
 #### Use SSL (Optional)
 
-Set up the driver properties to configure the credentials and SSL certificates for connecting to your cluster. The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers.
+Set up the driver properties to configure the credentials and SSL certificates for connecting to your cluster. The following table describes the additional parameters the .NET Npgsql driver requires as part of the connection string when using SSL.
 
-Learn more about how in [Configure SSL/TLS](../../../reference/drivers/csharp/postgres-npgsql-reference/#configure-ssl-tls) section.
+| Npgsql Parameter | Description |
+| :---------- | :---------- |
+| Sslmode  | SSL Mode |
+| RootCertificate | Path to the root certificate on your computer |
 
-| Npgsql Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| sslmode  | SSL Mode | require
-| TrustServerCertificate |  Trust the server certificate configured on the YugabyteDB cluster | false
-
-The following is an example URL for connecting to YugabyteDB.
+The following is an example connecting string parameter for connecting to YugabyteDB using SSL.
 
 ```csharp
 var connStringBuilder = new NpgsqlConnectionStringBuilder();
@@ -96,11 +96,11 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
 
 If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
-Refer to [Configure SSL/TLS](../../../reference/drivers/csharp/postgres-npgsql-reference/#configure-ssl-tls) for more information on default and supported modes with examples for setting up your connection strings.
+Refer to [Configure SSL/TLS](../../../reference/drivers/csharp/postgres-npgsql-reference/#configure-ssl-tls) for more information on default and supported modes with examples for setting up your connection strings when using SSL.
 
 ### Step 3: Query the YugabyteDB cluster from your application
 
-Copy the following code to the `Program.cs` file to set up YugbyteDB tables and query the table contents from the C# client. Replace the connection string `yburl` with the credentials of your cluster, and SSL certificates if required.
+Copy the following code to the `Program.cs` file to set up YugbyteDB tables and query the table contents from the C# client. Replace the connection string `connStringBuilder` with the credentials of your cluster, and SSL certificates if required.
 
 ```csharp
 using System;

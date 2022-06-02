@@ -29,7 +29,7 @@ Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows program
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a C# application](/preview/quick-start/build-apps/csharp/ysql).
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a C# application](../../../../quick-start/build-apps/csharp/ysql).
 
 ## Download the driver dependency
 
@@ -56,11 +56,11 @@ After setting up the dependencies, implement the C# client application that uses
 
 Import Npgsql and use the `NpgsqlConnection` class to create the connection object to perform DDLs and DMLs against the database.
 
-Example URL for connecting to YugabyteDB can be seen below.
+Example connection string parameter (connStringBuilder) for connecting to YugabyteDB is as follows:
 
 ```csharp
-var yburl = "host=localhost;port=5433;database=yb_demo;user id=yugabyte;password="
-NpgsqlConnection conn = new NpgsqlConnection(yburl);
+var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
+NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
 ```
 
 | Parameters | Description | Default |
@@ -150,7 +150,7 @@ For versions 6.0 or later, the client driver supports the following SSL modes:
 
 The `Require` SSL mode currently requires explicitly setting the `TrustServerCertificate=true` field.
 
-The following is an example connection string builder for connecting to a YugabyteDB cluster with the `Require` SSL mode.
+The following is an example connection string parameter (connStringBuilder) for connecting to a YugabyteDB cluster with the `Require` SSL mode.
 
 ```csharp
 var connStringBuilder = new NpgsqlConnectionStringBuilder();
@@ -164,7 +164,7 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     CRUD(connStringBuilder.ConnectionString);
 ```
 
-The following is an example connection string builder for connecting to a YugabyteDB cluster with the `VerifyCA` or `VerifyFull` SSL mode.
+The following is an example connection string parameter (connStringBuilder) for connecting to a YugabyteDB cluster with the `VerifyCA` or `VerifyFull` SSL mode.
 
 ```csharp
 var connStringBuilder = new NpgsqlConnectionStringBuilder();
