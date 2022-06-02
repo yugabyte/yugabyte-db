@@ -196,6 +196,50 @@ For detailed information on the relative time formatting, refer to the [`restore
 
 ## Limitations
 
+###  CDC
+
+Combination of PITR and [CDC](../../../explore/change-data-capture/) is currently not supported.
+
+Tracking issue: TBD
+
+### xCluster replication
+
+Combination of PITR and [xCluster replication](../../../explore/multi-region-deployments/asynchronous-replication-ysql/) is not fully tested and is considered beta.
+
+xCluster does not replicate any commands related to PITR, so if you have two clusters with replication between them, you should enable PITR on both ends separately. In case of restore, the recommended procedure is the following:
+1. Stop application workloads and make sure there are no active transactions.
+1. Wait for replication to complete.
+1. Restore to the same time on both clusters.
+1. Resume the application workloads.
+
+Tracking issue: [#10820](https://github.com/yugabyte/yugabyte-db/issues/10820)
+
+### Tablegroups
+
+Combination of PITR and [tablegroups](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-tablegroups.md) is currently not supported. If you attempt to create a PITR schedule within a cluster with tablegroups, you will get an error. An attempt to create a tablegroup if a schedule exists on **any** of the databases will also end up in an error.
+
+Tracking issue: TBD
+
+### Tablespaces
+
+PITR does not support restoration of [tablespaces](explore/ysql-language-features/going-beyond-sql/tablespaces/). For that reason, `DROP TABLESPACE` command is disallowed if a schedule exists on **any** of the databases within the cluster.
+
+Tracking issue: TBD
+
+
+
+----
+
+### Common limitations
+
+
+
+* Combination of PITR and xCluster replication is not yet fully tested and is not guaranteed to work - [issue 10820](https://github.com/yugabyte/yugabyte-db/issues/10820).
+* Combination of PITR and CDC is not yet fully tested and is not guaranteed to work - [issue TBD](TBD).
+
+
+
+
 This feature is in active development. YSQL and YCQL support different features, as detailed in the sections that follow.
 
 ### YSQL limitations
