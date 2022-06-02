@@ -487,7 +487,6 @@ string PrimitiveValue::ToValue() const {
 
     case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kCollString:
-      LOG(DFATAL) << "collation encoded string found for docdb value";
       FALLTHROUGH_INTENDED;
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString:
@@ -1955,16 +1954,16 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       return PrimitiveValue::VarInt(value.varint_value(), sort_order);
     case QLValuePB::kStringValue: {
       const string& val = value.string_value();
-      // In both Postgres and YCQL, character value cannot have embedded \0 byte.
-      // Redis allows embedded \0 byte but it does not use QLValuePB so will not
-      // come here to pick up 'is_collate'. Therefore, if the value is not empty
-      // and the first byte is \0, it indicates this is a collation encoded string.
-      if (!val.empty() && val[0] == '\0') {
-        // An empty collation encoded string is at least 3 bytes.
-        CHECK_GE(val.size(), 3);
-        return PrimitiveValue(val, sort_order, true /* is_collate */);
-      }
-      return PrimitiveValue(val, sort_order);
+      // In Postgres, character value cannot have embedded \0 byte. Redis allows embedded
+      // \0 byte but it does not use QLValuePB so will not come here. YCQL also allows
+      // embedded \0 byte but in YCQL there is no collation concept so kCollString becomes
+      // a synonym for kString. If the value is not empty and the first byte is \0, in
+      // Postgres it indicates this is a collation encoded string. We use kCollString for
+      // both Postgres and YCQL:
+      // (1) in Postgres kCollString means a collation encoded string;
+      // (2) in YCQL kCollString is a synonym for kString so it is also correct;
+      const bool is_collate = !val.empty() && val[0] == '\0';
+      return PrimitiveValue(val, sort_order, is_collate);
     }
     case QLValuePB::kBinaryValue:
       // TODO consider using dedicated encoding for binary (not string) to avoid overhead of
