@@ -19,6 +19,7 @@ import { EncryptionInTransit } from './EncryptionInTransit';
 import GFlagComponent from '../../../universes/UniverseForm/GFlagComponent';
 import { FlexShrink, FlexContainer } from '../../flexbox/YBFlexBox';
 import clsx from 'clsx';
+import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
 import WarningIcon from './images/warning.svg';
 
 export default class RollingUpgradeForm extends Component {
@@ -545,6 +546,7 @@ export default class RollingUpgradeForm extends Component {
                 type="number"
                 component={YBInputField}
                 label="Rolling Upgrade Delay Between Servers (secs)"
+                initValue={TASK_LONG_TIMEOUT/1000}
               />
             </div>
             {errorAlert}
