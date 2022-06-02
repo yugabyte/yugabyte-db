@@ -13,7 +13,7 @@
   gap: 18px;
   font-family: 'Inter';
   font-style: normal;
-
+  position: relative;
   .sub-text {
     color: $YB_DARKER_GRAY;
     font-weight: 400;
@@ -54,6 +54,12 @@
       cursor: not-allowed;
       z-index: 2;
     }
+  }
+  .advanced-restore {
+    text-decoration: underline;
+    position: absolute;
+    top: 20px;
+    right: 20px;
   }
 }
 
