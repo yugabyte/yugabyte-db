@@ -67,7 +67,7 @@ The following table describes the default YSQL roles and users in YugabyteDB clu
 | :--- | :---------- |
 | postgres | Superuser role created during database creation. |
 | yb_extension | Role that allows non-superuser users to create PostgreSQL extensions. |
-| yb_fdw | Role that allows non-superuser users to [CREATE](https://www.postgresql.org/docs/11/sql-createforeigndatawrapper.html), [ALTER](https://www.postgresql.org/docs/11/sql-alterforeigndatawrapper.html), and [DROP](https://www.postgresql.org/docs/11/sql-dropforeigndatawrapper.html) the [Foreign data wrapper](https://www.postgresql.org/docs/12/ddl-foreign-data.html)(beta feature). |
+| yb_fdw | Role that allows non-superuser users to [CREATE](../../../api/ysql/the-sql-language/statements/ddl_create_foreign_data_wrapper/), [ALTER](../../../api/ysql/the-sql-language/statements/ddl_alter_foreign_data_wrapper/), and [DROP](../../../api/ysql/the-sql-language/statements/ddl_drop_foreign_data_wrapper/) [foreign data wrappers](../../../explore/ysql-language-features/foreign-data-wrappers/). |
 | yugabyte | Superuser role used during database creation, by Yugabyte support to perform maintenance operations, and for backups (using ysql_dump). |
 
 ### yb_extension
