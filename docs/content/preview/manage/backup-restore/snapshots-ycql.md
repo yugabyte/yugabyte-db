@@ -48,18 +48,18 @@ The distributed snapshots feature allows you to back up a keyspace or a table, a
 To back up a keyspace with all its tables and indexes, create a snapshot using the [`create_keyspace_snapshot`](../../../admin/yb-admin/#create-keyspace-snapshot) command:
 
 ```sh
-yb-admin create_keyspace_snapshot my_keyspace
+./bin/yb-admin create_keyspace_snapshot my_keyspace
 ```
 
 If you want to back up a single table with its indexes, use the [`create_snapshot`](../../../admin/yb-admin/#create-snapshot) command instead:
 
 ```sh
-yb-admin create_snapshot my_keyspace my_table
+./bin/yb-admin create_snapshot my_keyspace my_table
 ```
 
 When you run either of these commands, it returns a unique ID for the snapshot:
 
-```output
+```
 Started snapshot creation: a9442525-c7a2-42c8-8d2e-658060028f0e
 ```
 
@@ -68,12 +68,12 @@ You can then use this ID to check the status of the snapshot, [delete it](#delet
 Both `create_keyspace_snapshot` and `create_snapshot` commands exit immediately, but the snapshot may take some time to complete. Before using the snapshot, verify its status with the [`list_snapshots`](../../../admin/yb-admin/#list-snapshots) command:
 
 ```sh
-yb-admin list_snapshots
+./bin/yb-admin list_snapshots
 ```
 
 This command lists the snapshots in the cluster, along with their states. Locate the ID of the new snapshot and make sure its state is COMPLETE:
 
-```output
+```
 Snapshot UUID                         State
 a9442525-c7a2-42c8-8d2e-658060028f0e  COMPLETE
 ```
@@ -83,7 +83,7 @@ a9442525-c7a2-42c8-8d2e-658060028f0e  COMPLETE
 Snapshots never expire and are retained as long as the cluster exists. If you no longer need a snapshot, you can delete it with the [`delete_snapshot`](../../../admin/yb-admin/#delete-snapshot) command:
 
 ```sh
-yb-admin delete_snapshot a9442525-c7a2-42c8-8d2e-658060028f0e
+./bin/yb-admin delete_snapshot a9442525-c7a2-42c8-8d2e-658060028f0e
 ```
 
 ## Restore a snapshot
@@ -91,7 +91,7 @@ yb-admin delete_snapshot a9442525-c7a2-42c8-8d2e-658060028f0e
 To restore the data backed up in one of the previously created snapshots, run the [`restore_snapshot`](../../../admin/yb-admin/#restore-snapshot) command:
 
 ```sh
-yb-admin restore_snapshot a9442525-c7a2-42c8-8d2e-658060028f0e
+./bin/yb-admin restore_snapshot a9442525-c7a2-42c8-8d2e-658060028f0e
 ```
 
 This command rolls back the database to the state which it had when the snapshot was created. The restore happens in-place: in other words, it changes the state of the existing database within the same cluster.
@@ -109,14 +109,14 @@ To move a snapshot to external storage, gather all the relevant files from all t
 1. Create the snapshot metadata file by running the [`export_snapshot`](../../../admin/yb-admin/#export-snapshot) command and providing the ID of the snapshot:
 
     ```sh
-    yb-admin export_snapshot a9442525-c7a2-42c8-8d2e-658060028f0e my_keyspace.snapshot
+    ./bin/yb-admin export_snapshot a9442525-c7a2-42c8-8d2e-658060028f0e my_keyspace.snapshot
     ```
 
 1. Copy the newly created snapshot metadata file (`my_keyspace.snapshot`) to the external storage.
 
 1. Copy the data files for all the tablets. The file path structure is:
 
-    ```sh
+    ```
     <yb_data_dir>/node-<node_number>/disk-<disk_number>/yb-data/tserver/data/rocksdb/table-<table_id>/[tablet-<tablet_id>.snapshots]/<snapshot_id>
     ```
 
@@ -146,12 +146,12 @@ To restore a snapshot that had been [moved to external storage](#move-a-snapshot
 1. Fetch the snapshot metadata file from the external storage and apply it by running the [`import_snapshot`](../../../admin/yb-admin/#import-snapshot) command:
 
     ```sh
-    yb-admin import_snapshot my_keyspace.snapshot my_keyspace
+    ./bin/yb-admin import_snapshot my_keyspace.snapshot my_keyspace
     ```
 
     The output will contain the mapping between the old tablet IDs and the new tablet IDs:
 
-    ```output
+    ```
     Read snapshot meta file my_keyspace.snapshot
     Importing snapshot a9442525-c7a2-42c8-8d2e-658060028f0e (COMPLETE)
     Table type: table
@@ -173,7 +173,7 @@ To restore a snapshot that had been [moved to external storage](#move-a-snapshot
 
     Use the tablet mappings to copy the tablet snapshot files from the external location to appropriate location.
 
-    ```sh
+    ```
     yb-data/tserver/data/rocksdb/table-<tableid>/tablet-<tabletid>.snapshots
     ```
 
@@ -181,12 +181,12 @@ To restore a snapshot that had been [moved to external storage](#move-a-snapshot
 
     ```sh
     cp -r snapshot/tablet-b0de9bc6a4cb46d4aaacf4a03bcaf6be.snapshots/0d4b4935-2c95-4523-95ab-9ead1e95e794 \
-        ~/yugabyte-data-restore/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/tablet-50046f422aa6450ca82538e919581048.snapshots/6beb9c0e-52ea-4f61-89bd-c160ec02c729
+          ~/yugabyte-data-restore/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/tablet-50046f422aa6450ca82538e919581048.snapshots/6beb9c0e-52ea-4f61-89bd-c160ec02c729
     ```
 
     ```sh
     cp -r snapshot/tablet-27ce76cade8e4894a4f7ffa154b33c3b.snapshots/0d4b4935-2c95-4523-95ab-9ead1e95e794 \
-        ~/yugabyte-data-restore/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/tablet-111ab9d046d449d995ee9759bf32e028.snapshots/6beb9c0e-52ea-4f61-89bd-c160ec02c729
+          ~/yugabyte-data-restore/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/tablet-111ab9d046d449d995ee9759bf32e028.snapshots/6beb9c0e-52ea-4f61-89bd-c160ec02c729
     ```
 
     {{< note title="Note" >}}
