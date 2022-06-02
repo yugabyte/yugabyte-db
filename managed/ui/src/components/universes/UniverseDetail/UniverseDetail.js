@@ -529,7 +529,8 @@ class UniverseDetail extends Component {
     };
 
     const enableThirdpartyUpgrade =
-        featureFlags.test['enableThirdpartyUpgrade'] || featureFlags.released['enableThirdpartyUpgrade'];
+      featureFlags.test['enableThirdpartyUpgrade'] ||
+      featureFlags.released['enableThirdpartyUpgrade'];
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -611,20 +612,19 @@ class UniverseDetail extends Component {
                           </YBLabelWithIcon>
                         </YBMenuItem>
                       )}
-                      {!universePaused &&
-                       enableThirdpartyUpgrade && (
+                      {!universePaused && enableThirdpartyUpgrade && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showThirdpartyUpgradeModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
-                              'universes.details.overview.thirdpartyUpgrade'
-                            )}
-                          >
-                            <YBLabelWithIcon icon="fa fa-wrench fa-fw">
-                              Upgrade 3rd-party Software
-                            </YBLabelWithIcon>
-                          </YBMenuItem>
+                            'universes.details.overview.thirdpartyUpgrade'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-wrench fa-fw">
+                            Upgrade 3rd-party Software
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
                       )}
                       {!isReadOnlyUniverse &&
                         !universePaused &&
