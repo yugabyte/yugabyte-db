@@ -43,13 +43,15 @@ To access a cluster database, you need to ask an Admin for the username and pass
 
 ## Manage login methods
 
-Users can log in to YugabyteDB managed using either an email-based account or a social login. The available social logins include Google, GitHub, and LinkedIn. All three are enabled by default. Only an Admin user can modify the login methods.
+Users can log in to YugabyteDB Managed using either an email-based account or a social login. The available social logins include Google, GitHub, and LinkedIn. All three are enabled by default. Only an Admin user can modify the login methods.
 
 To manage the social logins available to users, do the following:
 
 1. On the **Admin** page, select the **Users** tab, then click **Login Methods** to display the **Login Methods** dialog.
 1. Enable the social logins you want to use.
 1. Click **Save Changes**.
+
+If you revoke a social login that is already in use, users using that social login can either [reset their password](#reset-your-password) to configure email-based login, or sign in using a different social login. The social account must be associated with the same email address.
 
 ## Invite users
 
