@@ -63,6 +63,15 @@ import java.util.stream.Collectors;
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
 
+  /** Corresponds to the original value of YB_MIN_UNUSED_OID. */
+  protected final long FIRST_YB_OID = 8000;
+
+  /** Matches Postgres' FirstBootstrapObjectId */
+  protected final long FIRST_BOOTSTRAP_OID = 10000;
+
+  /** Matches Postgres' FirstNormalObjectId */
+  protected final long FIRST_NORMAL_OID = 16384;
+
   // Postgres settings.
   protected static final String DEFAULT_PG_DATABASE = "yugabyte";
   protected static final String DEFAULT_PG_USER = "yugabyte";

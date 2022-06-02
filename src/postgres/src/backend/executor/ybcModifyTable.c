@@ -241,7 +241,8 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
                                     Relation rel,
                                     TupleDesc tupleDesc,
                                     HeapTuple tuple,
-                                    bool is_single_row_txn)
+                                    bool is_single_row_txn,
+                                    Datum *ybctid)
 {
 	Oid            relid    = RelationGetRelid(rel);
 	AttrNumber     minattr  = YBGetFirstLowInvalidAttributeNumber(rel);
@@ -267,8 +268,16 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 	                              &insert_stmt));
 
 	/* Get the ybctid for the tuple and bind to statement */
-	tuple->t_ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, tupleDesc);
+	tuple->t_ybctid =
+		ybctid != NULL && *ybctid != 0 ? *ybctid
+		                               : YBCGetYBTupleIdFromTuple(rel, tuple, tupleDesc);
+
 	YBCBindTupleId(insert_stmt, tuple->t_ybctid);
+
+	if (ybctid != NULL)
+	{
+		*ybctid = tuple->t_ybctid;
+	}
 
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
@@ -419,20 +428,23 @@ Oid YBCExecuteInsert(Relation rel,
 	return YBCExecuteInsertForDb(YBCGetDatabaseOid(rel),
 	                             rel,
 	                             tupleDesc,
-	                             tuple);
+	                             tuple,
+	                             NULL /* ybctid */);
 }
 
 Oid YBCExecuteInsertForDb(Oid dboid,
                           Relation rel,
                           TupleDesc tupleDesc,
-                          HeapTuple tuple)
+                          HeapTuple tuple,
+                          Datum *ybctid)
 {
 	bool non_transactional = !IsSystemRelation(rel) && yb_disable_transactional_writes;
 	return YBCExecuteInsertInternal(dboid,
 	                                rel,
 	                                tupleDesc,
 	                                tuple,
-	                                non_transactional);
+	                                non_transactional,
+	                                ybctid);
 }
 
 Oid YBCExecuteNonTxnInsert(Relation rel,
@@ -442,19 +454,22 @@ Oid YBCExecuteNonTxnInsert(Relation rel,
 	return YBCExecuteNonTxnInsertForDb(YBCGetDatabaseOid(rel),
 	                                   rel,
 	                                   tupleDesc,
-	                                   tuple);
+	                                   tuple,
+	                                   NULL /* ybctid */);
 }
 
 Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
                                 Relation rel,
                                 TupleDesc tupleDesc,
-                                HeapTuple tuple)
+                                HeapTuple tuple,
+                                Datum *ybctid)
 {
 	return YBCExecuteInsertInternal(dboid,
 	                                rel,
 	                                tupleDesc,
 	                                tuple,
-	                                true /* is_single_row_txn */);
+	                                true /* is_single_row_txn */,
+	                                ybctid);
 }
 
 Oid YBCHeapInsert(TupleTableSlot *slot,
@@ -462,13 +477,14 @@ Oid YBCHeapInsert(TupleTableSlot *slot,
                   EState *estate)
 {
 	Oid dboid = YBCGetDatabaseOid(estate->es_result_relation_info->ri_RelationDesc);
-	return YBCHeapInsertForDb(dboid, slot, tuple, estate);
+	return YBCHeapInsertForDb(dboid, slot, tuple, estate, NULL /* ybctid */);
 }
 
 Oid YBCHeapInsertForDb(Oid dboid,
                        TupleTableSlot* slot,
                        HeapTuple tuple,
-                       EState* estate)
+                       EState* estate,
+                       Datum* ybctid)
 {
 	/*
 	 * get information on the (current) result relation
@@ -488,14 +504,16 @@ Oid YBCHeapInsertForDb(Oid dboid,
 		return YBCExecuteNonTxnInsertForDb(dboid,
 		                                   resultRelationDesc,
 		                                   slot->tts_tupleDescriptor,
-		                                   tuple);
+		                                   tuple,
+		                                   ybctid);
 	}
 	else
 	{
 		return YBCExecuteInsertForDb(dboid,
 		                             resultRelationDesc,
 		                             slot->tts_tupleDescriptor,
-		                             tuple);
+		                             tuple,
+		                             ybctid);
 	}
 }
 
