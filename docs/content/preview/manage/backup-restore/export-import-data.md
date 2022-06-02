@@ -1,8 +1,8 @@
 ---
-title: Export and import data for YSQL
-headerTitle: Export and import data
-linkTitle: Export and import data
-description: Export and import data for YSQL
+title: Export and import for YSQL
+headerTitle: Export and import
+linkTitle: Export and import
+description: Export and import for YSQL
 aliases:
   - /preview/manage/backup-restore/back-up-data/
   - /preview/manage/backup-restore/restore-data/
