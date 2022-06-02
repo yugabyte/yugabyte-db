@@ -611,11 +611,29 @@ Default: `11000`
 
 ### Performance flags
 
+Use the following two flags to select the SSTable compression type.
+
 ##### --enable_ondisk_compression
 
-Enable Snappy compression at the cluster level.
+Enable SSTable compression at the cluster level.
 
 Default: `true`
+
+##### --compression_type
+
+Change the SSTable compression type. The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
+
+Default: `Snappy`
+
+{{< note title="Note" >}}
+
+If you select an invalid option, the cluster will not come up.
+
+If you change this flag, the change takes effect after you restart the cluster nodes.
+
+{{< /note >}}
+
+Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
 
 ##### --regular_tablets_data_block_key_value_encoding
 
@@ -663,15 +681,17 @@ Default: `256MB`
 
 ### Network compression
 
-Use the following two gflags to configure RPC compression:
+Use the following two gflags to configure RPC compression.
 
 ##### --enable_stream_compression
 
-Controls whether YugabyteDB uses RPC compression. Valid values are `true` or `false`.
+Controls whether YugabyteDB uses RPC compression.
+
+Default: `true`
 
 ##### --stream_compression_algo
 
-Specifies which compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
+Specifies which RPC compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
 
 - 0: No compression (default value)
 - 1: Gzip

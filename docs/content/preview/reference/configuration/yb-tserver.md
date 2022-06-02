@@ -622,7 +622,7 @@ Default: `11000`
 
 ### Performance flags
 
-Use the followings two flags to select the SSTable compression type.
+Use the following two flags to select the SSTable compression type.
 
 ##### --enable_ondisk_compression
 
@@ -632,20 +632,19 @@ Default: `true`
 
 ##### --compression_type
 
-Change the SSTable compression type
-The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
+Change the SSTable compression type. The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
 
 Default: `Snappy`
 
-{{< note title="Notes" >}}
+{{< note title="Note" >}}
 
-- If you select an invalid option, the cluster will not come up.
-- If you change this flag, the change takes effect after you restart the cluster nodes.
+If you select an invalid option, the cluster will not come up.
+
+If you change this flag, the change takes effect after you restart the cluster nodes.
 
 {{< /note >}}
 
 Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
-
 
 ##### --regular_tablets_data_block_key_value_encoding
 
@@ -693,7 +692,7 @@ Default: `256MB`
 
 ### Network compression
 
-Use the following two gflags to configure RPC compression:
+Use the following two gflags to configure RPC compression.
 
 ##### --enable_stream_compression
 
