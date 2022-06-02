@@ -55,6 +55,10 @@ typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
 /*
  * Insert data into YugaByte table.
  * This function is equivalent to "heap_insert", but it sends data to DocDB (YugaByte storage).
+ *
+ * ybctid argument can be supplied to keep it consistent across shared inserts.
+ * If non-zero, it will be used instead of generation, otherwise it will be set
+ * to the generated value.
  */
 extern Oid YBCHeapInsert(TupleTableSlot *slot,
                          HeapTuple tuple,
@@ -62,11 +66,16 @@ extern Oid YBCHeapInsert(TupleTableSlot *slot,
 extern Oid YBCHeapInsertForDb(Oid dboid,
                               TupleTableSlot *slot,
                               HeapTuple tuple,
-                              EState *estate);
+                              EState *estate,
+                              Datum *ybctid);
 
 /*
  * Insert a tuple into a YugaByte table. Will execute within a distributed
  * transaction if the table is transactional (YSQL default).
+ *
+ * ybctid argument can be supplied to keep it consistent across shared inserts.
+ * If non-zero, it will be used instead of generation, otherwise it will be set
+ * to the generated value.
  */
 extern Oid YBCExecuteInsert(Relation rel,
                             TupleDesc tupleDesc,
@@ -74,11 +83,16 @@ extern Oid YBCExecuteInsert(Relation rel,
 extern Oid YBCExecuteInsertForDb(Oid dboid,
                                  Relation rel,
                                  TupleDesc tupleDesc,
-                                 HeapTuple tuple);
+                                 HeapTuple tuple,
+                                 Datum *ybctid);
 
 /*
  * Execute the insert outside of a transaction.
  * Assumes the caller checked that it is safe to do so.
+ *
+ * ybctid argument can be supplied to keep it consistent across shared inserts.
+ * If non-zero, it will be used instead of generation, otherwise it will be set
+ * to the generated value.
  */
 extern Oid YBCExecuteNonTxnInsert(Relation rel,
                                   TupleDesc tupleDesc,
@@ -86,7 +100,8 @@ extern Oid YBCExecuteNonTxnInsert(Relation rel,
 extern Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
                                        Relation rel,
                                        TupleDesc tupleDesc,
-                                       HeapTuple tuple);
+                                       HeapTuple tuple,
+                                       Datum *ybctid);
 
 /*
  * Insert a tuple into the an index's backing YugaByte index table.
