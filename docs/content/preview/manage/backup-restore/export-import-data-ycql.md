@@ -1,8 +1,8 @@
 ---
-title: Export and import data for YCQL
-headerTitle: Export and import data
-linkTitle: Export and import data
-description: Export and import data for YCQL
+title: Export and import for YCQL
+headerTitle: Export and import
+linkTitle: Export and import
+description: Export and import for YCQL
 aliases:
   - /preview/manage/backup-restore/back-up-data-ycql/
   - /preview/manage/backup-restore/restore-data-ycql/

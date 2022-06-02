@@ -72,7 +72,7 @@ Creating a snapshot schedule for a database or a keyspace effectively enables PI
 
 ### Create a schedule
 
-To create a schedule and enable PITR, use the [`create-snapshot-schedule`](../../../admin/yb-admin/#create-snapshot-schedule) command. This command takes the following parameters:
+To create a schedule and enable PITR, use the [`create_snapshot_schedule`](../../../admin/yb-admin/#create-snapshot-schedule) command. This command takes the following parameters:
 
 * Interval between snapshots (in minutes).
 * Retention time for every snapshot (in minutes).
@@ -81,12 +81,12 @@ To create a schedule and enable PITR, use the [`create-snapshot-schedule`](../..
 Assuming the retention target is 3 days, you should create a schedule that creates a snapshot once a day (every 1,440 minutes), and retains it for 3 days (4,320 minutes):
 
 ```sh
-$ ./bin/yb_admin create-snapshot-schedule 1440 4320 my_database
+./bin/yb-admin create_snapshot_schedule 1440 4320 my_database
 ```
 
 Once completed, the command will return and print out the unique ID of the newly created snapshot schedule:
 
-```output.json
+```json
 {
   "schedule_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
 }
@@ -96,21 +96,21 @@ You can use this ID to [delete the schedule](#deleting-a-schedule) or [restore t
 
 ### Delete a schedule
 
-To delete a schedule and disable PITR, use the [`delete-snapshot-schedule`](../../../admin/yb-admin/#delete-snapshot-schedule) command. It takes a single parameter: the ID of the schedule to be deleted.
+To delete a schedule and disable PITR, use the [`delete_snapshot_schedule`](../../../admin/yb-admin/#delete-snapshot-schedule) command. It takes a single parameter: the ID of the schedule to be deleted.
 
 ```sh
-$ ./bin/yb_admin delete-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+./bin/yb-admin delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
 ### List existing schedules
 
-When you want to see the list of schedules that currently exist in the cluster, use the [`list-snapshot-schedules`](../../../admin/yb-admin/#list-snapshot-schedules) command:
+When you want to see the list of schedules that currently exist in the cluster, use the [`list_snapshot_schedules`](../../../admin/yb-admin/#list-snapshot-schedules) command:
 
 ```sh
-$ ./bin/yb_admin list-snapshot-schedules
+./bin/yb-admin list_snapshot_schedules
 ```
 
-```output.json
+```json
 {
   "schedules": [
     {
@@ -138,14 +138,14 @@ $ ./bin/yb_admin list-snapshot-schedules
 You can also use the same command to view the information about a particular schedule by providing its ID as a parameter:
 
 ```sh
-$ ./bin/yb_admin list-snapshot-schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+./bin/yb-admin list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
 ## Restore to a point in time
 
 If a database or a keyspace has an associated snapshot schedule, you can use that schedule to restore the database or keyspace to a particular point in time.
 
-To restore, use the [`restore-snapshot-schedule`](../../../admin/yb-admin/#restore-snapshot-schedule) command. This command takes two parameters:
+To restore, use the [`restore_snapshot_schedule`](../../../admin/yb-admin/#restore-snapshot-schedule) command. This command takes two parameters:
 
 * The ID of the schedule.
 * Target restore time.
@@ -163,15 +163,15 @@ To restore to an absolute time you need to provide a timestamp you want to resto
 For example, the following command restores to 1:00 PM PDT on May 1st 2022 using a Unix timestamp:
 
 ```sh
-$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                           1651435200
+./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+                                         1651435200
 ```
 
 The equivalent command that uses a YCQL timestamp is:
 
 ```sh
-$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                           2022-05-01 13:00-0700
+./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+                                         2022-05-01 13:00-0700
 ```
 
 ### Restore to a relative time
@@ -181,18 +181,18 @@ Alternatively, you can restore to a time relative to the current moment, by spec
 For example, to restore to 5 minutes ago, run the following command:
 
 ```sh
-$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                           minus 5m
+./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+                                         minus 5m
 ```
 
 Or, to restore to 1 hour ago, use the following:
 
 ```sh
-$ ./bin/yb_admin restore-snapshot-schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                           minus 1h
+./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+                                         minus 1h
 ```
 
-For detailed information on the relative time formatting, refer to the [`restore-snapshot-schedule` reference](../../../admin/yb-admin/#restore-snapshot-schedule).
+For detailed information on the relative time formatting, refer to the [`restore_snapshot_schedule` reference](../../../admin/yb-admin/#restore-snapshot-schedule).
 
 ## Limitations
 
