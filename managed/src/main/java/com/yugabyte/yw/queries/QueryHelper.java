@@ -154,18 +154,22 @@ public class QueryHelper {
                   /*
                    * Formula to calculate std dev of two samples: Let mean, std dev, and size of
                    * sample A be X_a, S_a, n_a respectively; and mean, std dev, and size of sample B
-                   * be X_b, S_b, n_b respectively. Then mean of combined sample X is given by n_a
-                   * X_a + n_b X_b X = ----------------- n_a + n_b
+                   * be X_b, S_b, n_b respectively. Then mean of combined sample X is given by
+                   *              n_a X_a + n_b X_b
+                   *          X = -----------------
+                   *                  n_a + n_b
                    *
-                   * <p>The std dev of combined sample S is n_a ( S_a^2 + (X_a - X)^2) + n_b(S_b^2 +
-                   * (X_b - X)^2) S = ----------------------------------------------------- n_a +
-                   * n_b
+                   * The std dev of combined sample S is
+                   *                    n_a ( S_a^2 + (X_a - X)^2) + n_b(S_b^2 + (X_b - X)^2)
+                   *          S = sqrt( -----------------------------------------------------  )
+                   *                                  n_a + n_b
                    */
                   double averageTime = (n_a * X_a + n_b * X_b) / totalCalls;
                   double stdDevTime =
-                      (n_a * (Math.pow(S_a, 2) + Math.pow(X_a - averageTime, 2))
-                              + n_b * (Math.pow(S_b, 2) + Math.pow(X_b - averageTime, 2)))
-                          / totalCalls;
+                      Math.sqrt(
+                          (n_a * (Math.pow(S_a, 2) + Math.pow(X_a - averageTime, 2))
+                                  + n_b * (Math.pow(S_b, 2) + Math.pow(X_b - averageTime, 2)))
+                              / totalCalls);
                   previousQueryObj.put("total_time", totalTime);
                   previousQueryObj.put("calls", totalCalls);
                   previousQueryObj.put("rows", rows);
