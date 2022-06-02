@@ -15,19 +15,18 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="/preview/reference/drivers/python/postgres-psycopg2-reference" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Psycopg2
-    </a>
-  </li>
     <li >
     <a href="/preview/reference/drivers/python/yugabyte-psycopg2-reference" class="nav-link ">
       <i class="icon-java-bold" aria-hidden="true"></i>
       YugabyteDB Psycopg2
     </a>
   </li>
-
+  <li >
+    <a href="/preview/reference/drivers/python/postgres-psycopg2-reference" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PostgreSQL Psycopg2
+    </a>
+  </li>
 </ul>
 
 Psycopg is the most popular PostgreSQL database adapter for the Python programming language. Its main features are the complete implementation of the Python DB API 2.0 specification and the thread safety (several threads can share the same connection). YugabyteDB has full support for [Psycopg2](https://www.psycopg.org/).

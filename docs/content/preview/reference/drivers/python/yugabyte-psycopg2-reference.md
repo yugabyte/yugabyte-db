@@ -9,25 +9,24 @@ menu:
     name: Python Drivers
     identifier: ref-yugabyte-psycopg2-driver
     parent: drivers
-    weight: 650
+    weight: 600
 isTocNested: true
 showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/reference/drivers/python/postgres-psycopg2-reference" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Psycopg2
-    </a>
-  </li>
-  <li >
     <a href="/preview/reference/drivers/python/yugabyte-psycopg2-reference" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       YugabyteDB Psycopg2
     </a>
   </li>
-
+  <li >
+    <a href="/preview/reference/drivers/python/postgres-psycopg2-reference" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PostgreSQL Psycopg2
+    </a>
+  </li>
 </ul>
 
 This page provides details for getting started with `YugabyteDB Psycopg2 Driver` for connecting to YugabyteDB YSQL API.
