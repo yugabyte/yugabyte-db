@@ -282,13 +282,26 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           onActionButtonClick={() => {
             setShowBackupCreateModal(true);
           }}
-          disabled={tablesInUniverse?.data.length === 0 || currentUniverse?.data?.universeConfig?.takeBackups === 'false'}
+          onAdvancedRestoreButtonClick={() => {
+            setShowAdvancedRestore(true);
+          }}
+          disabled={
+            tablesInUniverse?.data.length === 0 ||
+            currentUniverse?.data?.universeConfig?.takeBackups === 'false'
+          }
         />
         <BackupCreateModal
           visible={showBackupCreateModal}
           onHide={() => {
             setShowBackupCreateModal(false);
           }}
+          currentUniverseUUID={universeUUID}
+        />
+        <BackupAdvancedRestore
+          onHide={() => {
+            setShowAdvancedRestore(false);
+          }}
+          visible={showAdvancedRestore}
           currentUniverseUUID={universeUUID}
         />
       </>
@@ -411,7 +424,10 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
                 }}
                 btnClass="btn btn-orange backup-now-button"
                 btnIcon="fa fa-upload"
-                disabled={tablesInUniverse?.data.length === 0 || currentUniverse?.data?.universeConfig?.takeBackups === 'false'}
+                disabled={
+                  tablesInUniverse?.data.length === 0 ||
+                  currentUniverse?.data?.universeConfig?.takeBackups === 'false'
+                }
               />
               <DropdownButton
                 className="actions-btn"
