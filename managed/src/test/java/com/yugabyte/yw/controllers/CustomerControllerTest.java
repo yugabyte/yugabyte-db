@@ -34,6 +34,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
@@ -43,6 +44,8 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
+import com.yugabyte.yw.metrics.MetricSettings;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -53,6 +56,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.XClusterConfig;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Date;
@@ -60,10 +64,13 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
+import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Http;
@@ -77,8 +84,13 @@ public class CustomerControllerTest extends FakeDBApplication {
   private Customer customer;
   private Users user;
 
+  @Captor private ArgumentCaptor<ArrayList<MetricSettings>> metricKeys;
+
+  @Captor private ArgumentCaptor<Map<String, String>> queryParams;
+
   @Before
   public void setUp() {
+    MockitoAnnotations.initMocks(this);
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
   }
@@ -749,6 +761,102 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     assertThat(filters.get("table_name"), nullValue());
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testCustomerMetricsWithTableIdParams()
+      throws InterruptedException, ExecutionException, TimeoutException {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
+    Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
+    u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
+    customer.addUniverseUUID(u1.universeUUID);
+    customer.addUniverseUUID(u2.universeUUID);
+    customer.save();
+
+    ObjectNode response = Json.newObject();
+    response.put("foo", "bar");
+    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
+        .thenReturn(response);
+
+    ObjectNode params = Json.newObject();
+    params.set("metrics", Json.toJson(ImmutableList.of("metric")));
+    params.put("start", "1479281737");
+    params.put("end", "1479285337");
+    params.put("nodePrefix", "host-1");
+    params.put("tableId", "fd601f9c19074262906638c8bd203971");
+
+    routeWithYWErrHandler(
+        fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
+            .cookie(validCookie)
+            .bodyJson(params));
+    verify(mockMetricQueryHelper)
+        .query(metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
+    assertThat(queryParams.getValue(), is(notNullValue()));
+    JsonNode filters = Json.parse(queryParams.getValue().get("filters"));
+    String tableId = filters.get("table_id").asText();
+    assertThat(tableId, allOf(notNullValue(), equalTo("fd601f9c19074262906638c8bd203971")));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testCustomerMetricsWithXClusterConfigUuidParams()
+      throws InterruptedException, ExecutionException, TimeoutException {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
+    Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
+    u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
+    customer.addUniverseUUID(u1.universeUUID);
+    customer.addUniverseUUID(u2.universeUUID);
+    customer.save();
+
+    // Create an xCluster config.
+    XClusterConfigCreateFormData xClusterConfigCreateFormData = new XClusterConfigCreateFormData();
+    xClusterConfigCreateFormData.name = "Repl1";
+    xClusterConfigCreateFormData.sourceUniverseUUID = u1.universeUUID;
+    xClusterConfigCreateFormData.targetUniverseUUID = u2.universeUUID;
+    xClusterConfigCreateFormData.tables =
+        ImmutableSet.of("fd601f9c19074262906638c8bd203971", "fd601f9c19074262906638c8bd203972");
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(
+            xClusterConfigCreateFormData, XClusterConfig.XClusterConfigStatusType.Running);
+
+    ObjectNode response = Json.newObject();
+    response.put("foo", "bar");
+    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
+        .thenReturn(response);
+
+    ObjectNode params = Json.newObject();
+    params.set("metrics", Json.toJson(ImmutableList.of("metric")));
+    params.put("start", "1479281737");
+    params.put("end", "1479285337");
+    params.put("nodePrefix", "host-1");
+    params.put("xClusterConfigUuid", xClusterConfig.uuid.toString());
+
+    routeWithYWErrHandler(
+        fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
+            .cookie(validCookie)
+            .bodyJson(params));
+    verify(mockMetricQueryHelper)
+        .query(metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
+    assertThat(queryParams.getValue(), is(notNullValue()));
+    JsonNode filters = Json.parse(queryParams.getValue().get("filters"));
+    String tableId = filters.get("table_id").asText();
+    assertThat(
+        tableId,
+        allOf(
+            notNullValue(),
+            Matchers.either(
+                    Matchers.is(
+                        "fd601f9c19074262906638c8bd203971|fd601f9c19074262906638c8bd203972"))
+                .or(
+                    Matchers.is(
+                        "fd601f9c19074262906638c8bd203972|fd601f9c19074262906638c8bd203971"))));
     assertAuditEntry(1, customer.uuid);
   }
 

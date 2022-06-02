@@ -441,6 +441,9 @@ public class CustomerController extends AuthenticatedController {
     if (params.containsKey("tableName")) {
       filterJson.put("table_name", params.remove("tableName"));
     }
+    if (params.containsKey("tableId")) {
+      filterJson.put("table_id", params.remove("tableId"));
+    }
     if (params.containsKey("xClusterConfigUuid")) {
       XClusterConfig xClusterConfig =
           XClusterConfig.getOrBadRequest(UUID.fromString(params.remove("xClusterConfigUuid")));
