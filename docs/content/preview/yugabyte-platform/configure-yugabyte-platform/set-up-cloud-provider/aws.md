@@ -121,14 +121,20 @@ For deployment, YugabyteDB Anywhere aims to provide you with easy access to the 
 
 ### YugabyteDB Anywhere-managed configuration
 
-If you choose to use YugabyteDB Anywhere to configure, own, and manage a full cross-region deployment of Virtual Private Cloud (VPC), YugabyteDB Anywhere will generate a YugabyteDB-specific VPC in each selected region, then interconnect them, as well as the VPC in which YugabyteDB Anywhere was deployed, using [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant subcomponents in all regions, such as Subnets, Security Groups, and Routing Table entries.
+If you choose to use YugabyteDB Anywhere to configure, own, and manage a full cross-region deployment of Virtual Private Cloud (VPC), YugabyteDB Anywhere will generate a YugabyteDB-specific VPC in each selected region, then interconnect them, as well as the VPC in which YugabyteDB Anywhere was deployed, using [VPC peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant subcomponents in all regions, such as Subnets, Security Groups, and Routing Table entries.
 
 You have an option to provide the following:
 
 - A custom classless inter-domain routing (CIDR) block for each regional VPC. If not provided, YugabyteDB Anywhere will choose defaults, aiming to not overlap across regions.
 
-- A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle 8 support](#ubuntu-18-and-oracle-8-support). If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.<br><br>
+- A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle 8 support](#ubuntu-18-and-oracle-8-support).<br> 
 
+  To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu.<br>
+  
+  If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.<br> 
+  
+  <br>
+  
   ![New Region Modal](/images/ee/aws-setup/aws_new_region.png)
 
 ### Self-managed configuration
