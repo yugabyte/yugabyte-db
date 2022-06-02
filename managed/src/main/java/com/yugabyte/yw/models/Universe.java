@@ -609,6 +609,16 @@ public class Universe extends Model {
   }
 
   /**
+   * It returns a comma separated list of <privateIp:tserverHTTPPort> for all tservers in the
+   * primary cluster of this universe.
+   *
+   * @return A comma separated string of 'host:port'
+   */
+  public String getTserverAddresses() {
+    return getHostPortsString(getTServersInPrimaryCluster(), ServerType.TSERVER, PortType.RPC);
+  }
+
+  /**
    * Returns the certificate path in case node to node TLS is enabled.
    *
    * @return path to the certfile.

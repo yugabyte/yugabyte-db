@@ -164,7 +164,7 @@ export const isOnpremUniverse = (universe) => {
 };
 
 export const isPausableUniverse = (universe) => {
-  return isUniverseType(universe, 'aws') || isUniverseType(universe, 'gcp');
+  return isUniverseType(universe, 'aws') || isUniverseType(universe, 'gcp') || isUniverseType(universe, 'azu');
 };
 
 // Reads file and passes content into Promise.resolve

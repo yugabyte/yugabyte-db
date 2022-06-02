@@ -86,6 +86,8 @@ Specifies a comma-separated list of mount directories, where `yb-master` will ad
 
 Required.
 
+Changing the value of this flag after the cluster has already been created is not supported.
+
 ##### --fs_wal_dirs
 
 Specifies a comma-separated list of directories, where `yb-master` will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
