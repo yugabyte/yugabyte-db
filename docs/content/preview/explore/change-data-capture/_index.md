@@ -33,7 +33,6 @@ Change data capture (CDC) is a process to capture changes made to data in the da
 ## Prerequisites
 
 * The database and its tables must be created using YugabyteDB version 2.13 or later.
-* There should be a primary key on the table you want to stream the changes from.
 
 Be aware of the following:
 
@@ -130,10 +129,6 @@ In case CDC is lagging or away for some time, the disk usage may grow and may ca
 
 The commands used to manipulate CDC DB streams are described in the [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands) reference documentation.
 
-## DDL command support
-
-CDC supports schema changes (for example, adding a default value to column, adding a new column, or adding constraints to column) for tables as well. When you run a DDL command, the schema is altered, and YugabyteDB emits a DDL record with the new schema values; after that, further records will use the new schema format.
-
 ## Snapshot support
 
 Initially, if you create a stream for a particular table that already contains some records, the stream takes a snapshot of the table, and streams all the data that resides in the table. After the snapshot of the whole table is completed, YugabyteDB starts streaming the changes that happen in the table.
@@ -147,8 +142,10 @@ The snapshot feature uses the `cdc_snapshot_batch_size` GFlag. This flag's defau
 * DROP and TRUNCATE commands aren't supported. If a user tries to issue these commands on a table while a stream ID is there for the table, the server might crash, the behaviour is unstable. Issues for TRUNCATE [10010](https://github.com/yugabyte/yugabyte-db/issues/10010) and DROP [10069](https://github.com/yugabyte/yugabyte-db/issues/10069).
 * If a stream ID is created, and after that a new table is created, the existing stream ID is not able to stream data from the newly created table. The user needs to create a new stream ID. Issue [10921](https://github.com/yugabyte/yugabyte-db/issues/10921).
 * CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
+* The support for DDLs is not there yet.
 * A single stream can only be used to stream data from one namespace only.
 * Enabling CDC on tables created using previous versions of YugabyteDB is not supported, even after YugabyteDB is upgraded to version 2.13 or higher.
+* There should be a primary key on the table you want to stream the changes from.
 
 In addition, CDC support for the following features will be added in upcoming releases:
 
