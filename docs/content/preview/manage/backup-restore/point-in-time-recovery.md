@@ -164,14 +164,14 @@ For example, the following command restores to 1:00 PM PDT on May 1st 2022 using
 
 ```sh
 ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                           1651435200
+                                         1651435200
 ```
 
 The equivalent command that uses a YCQL timestamp is:
 
 ```sh
 ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                           2022-05-01 13:00-0700
+                                         2022-05-01 13:00-0700
 ```
 
 ### Restore to a relative time
@@ -182,14 +182,14 @@ For example, to restore to 5 minutes ago, run the following command:
 
 ```sh
 ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                           minus 5m
+                                         minus 5m
 ```
 
 Or, to restore to 1 hour ago, use the following:
 
 ```sh
 ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                           minus 1h
+                                         minus 1h
 ```
 
 For detailed information on the relative time formatting, refer to the [`restore_snapshot_schedule` reference](../../../admin/yb-admin/#restore-snapshot-schedule).
