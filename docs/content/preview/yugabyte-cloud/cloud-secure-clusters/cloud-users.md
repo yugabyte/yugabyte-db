@@ -66,7 +66,7 @@ Although not a superuser, `yb_superuser` includes sufficient privileges to perfo
 
 ### yb_db_admin
 
-The `yb_db_admin` role is specific to YugabyteDB Managed clusters and allows non-superuser roles to perform a number of privileged operations in a manner similar to a superuser, such as performing operations on objects it does not own. A user granted this role can only alter the BYPASSRLS attribute of a role.
+The `yb_db_admin` role is specific to YugabyteDB Managed clusters and allows non-superuser roles to perform a number of privileged operations in a manner similar to a superuser, such as performing operations on objects it does not own.
 
 `yb_superuser` and, by extension, the default admin user, is a member of `yb_db_admin`.
 
