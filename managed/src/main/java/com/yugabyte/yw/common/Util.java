@@ -460,7 +460,7 @@ public class Util {
       RuntimeConfig<Universe> config, Map<String, String> configKeysMap) {
     configKeysMap.forEach(
         (key, value) -> {
-          config.setValue(key, value, false);
+          config.setValue(key, value);
         });
   }
 
