@@ -353,7 +353,7 @@ You can create a support bundle as follows:
 
 ## Configure storage class volume binding
 
-On Kubernetes, it is recommended to set volume binding mode on a StorageClass to `WaitForFirstConsumer` for dynamically provisioned volumes. This will delay provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints will be respected. However, scheduling might fail if the storage volume is not accessible from all the nodes in a cluster and the default volume binding mode is set to `Immediate` for certain cloud or multi-regional deployments.
+On Kubernetes, it is recommended to set volume binding mode on a StorageClass to `WaitForFirstConsumer` for dynamically provisioned volumes. This will delay provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints will be respected. However, scheduling might fail if the storage volume is not accessible from all the nodes in a cluster and the default volume binding mode is set to `Immediate` for certain regional cloud deployments.
 
 For more information, see [Kubernetes: volume binding mode](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode).
 
