@@ -109,8 +109,15 @@ message GetCDCDBStreamInfoResponsePB {
 }
 
 message UpdateCDCStreamRequestPB {
+  message StreamUpdateInfo {
+    optional bytes stream_id = 1;
+    optional SysCDCStreamEntryPB entry = 2;
+  }
+
   optional bytes stream_id = 1;
   optional SysCDCStreamEntryPB entry = 2;
+  // For batch update.
+  repeated StreamUpdateInfo streams = 3;
 }
 
 message UpdateCDCStreamResponsePB {
