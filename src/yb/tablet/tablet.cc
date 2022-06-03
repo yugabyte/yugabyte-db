@@ -3581,6 +3581,7 @@ Status Tablet::TriggerPostSplitCompactionIfNeeded(
 
 void Tablet::TriggerPostSplitCompactionSync() {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compaction);
+  LOG_WITH_PREFIX(INFO) << "Beginning post-split compaction on this tablet";
   WARN_WITH_PREFIX_NOT_OK(
       ForceFullRocksDBCompact(), LogPrefix() + "Failed to compact post-split tablet.");
 }
