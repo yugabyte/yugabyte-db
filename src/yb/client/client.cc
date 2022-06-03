@@ -1471,16 +1471,25 @@ void YBClient::GetCDCDBStreamInfo(
   data_->GetCDCDBStreamInfo(this, db_stream_id, db_stream_info, deadline, callback);
 }
 
-Status YBClient::UpdateCDCStream(const CDCStreamId& stream_id,
-                                 const master::SysCDCStreamEntryPB& new_entry) {
-  if (stream_id.empty()) {
-    return STATUS(InvalidArgument, "Stream id is required.");
+Status YBClient::UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
+                                 const std::vector<master::SysCDCStreamEntryPB>& new_entries) {
+  if (stream_ids.size() != new_entries.size()) {
+    return STATUS(InvalidArgument, "Mismatched number of stream IDs and entries.");
+  }
+  if (stream_ids.empty()) {
+    return STATUS(InvalidArgument, "At least one stream ID is required.");
   }
 
   // Setting up request.
   UpdateCDCStreamRequestPB req;
-  req.set_stream_id(stream_id);
-  req.mutable_entry()->CopyFrom(new_entry);
+  for (size_t i = 0; i < stream_ids.size(); i++) {
+    if (stream_ids[i].empty()) {
+      return STATUS(InvalidArgument, "Stream ID cannot be empty.");
+    }
+    auto stream = req.add_streams();
+    stream->set_stream_id(stream_ids[i]);
+    stream->mutable_entry()->CopyFrom(new_entries[i]);
+  }
 
   UpdateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateCDCStream);
