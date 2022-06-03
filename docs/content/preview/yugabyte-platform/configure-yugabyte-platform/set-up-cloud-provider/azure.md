@@ -97,10 +97,6 @@ You configure the Microsoft Azure cloud provider by completing the fields of the
 - **Client Secret** represents the secret of an application registered in your Azure Active Directory.
 - **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [How to define a private DNS zone](#how-to-define-a-private-dns-zone).
 - **Virtual Network Setup** allows you to customize your network, including the virtual network.
-- **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
-  - Select **Use provider’s NTP server** to enable cluster nodes to connect to the Azure internal time servers. For more information, consult the Microsoft Azure documentation such as [Time sync for Linux VMs in Azure](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/time-sync). 
-  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers. 
-  - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ### How to obtain Azure resource IDs
 
@@ -196,3 +192,19 @@ You set up a shared gallery image on Azure as follows:
 
    <br>The gallery image ID could be defined by a full URL containing a subscription ID, a resource group name, and the resource name itself. If the subscription ID or the resource group is different from the default values, YugabyteDB Anywhere will use them instead.
 
+
+### Troubleshoot Installation Failures
+
+If the installation fails for some reason, from the Yugabyte platform page, click on tasks and click on "See Details" as shown here<br><br>
+
+  ![img](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-5.png)
+
+
+On Task details page, it will indicate what was the cause of failure. A typical failure is when your subscription does not have enough quota on Azure to create the specific size VM cores in a specific region as shown here<br><br>
+
+
+
+  ![img](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-6.png)
+
+
+If your installation failed due to this error, follow azure [documentation](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/per-vm-quota-requests) to increase the quota limit.
