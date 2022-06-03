@@ -403,6 +403,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   const CHECKED_STATUS GetSchema(Schema* schema) const;
 
+  bool has_pgschema_name() const;
+
+  const std::string& pgschema_name() const;
+
+  // True if all the column schemas have pg_type_oid set.
+  bool has_pg_type_oid() const;
+
+  // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   bool colocated() const;
 
   std::string matview_pg_table_id() const;
