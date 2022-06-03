@@ -333,6 +333,23 @@ const Status TableInfo::GetSchema(Schema* schema) const {
   return SchemaFromPB(LockForRead()->schema(), schema);
 }
 
+bool TableInfo::has_pgschema_name() const {
+  return LockForRead()->schema().has_pgschema_name();
+}
+
+const string& TableInfo::pgschema_name() const {
+  return LockForRead()->schema().pgschema_name();
+}
+
+bool TableInfo::has_pg_type_oid() const {
+  for (const auto& col : LockForRead()->schema().columns()) {
+    if (!col.has_pg_type_oid()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool TableInfo::colocated() const {
   return LockForRead()->pb.colocated();
 }

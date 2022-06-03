@@ -178,6 +178,10 @@ class SysCatalogTable {
   Result<std::string> ReadPgNamespaceNspname(const uint32_t database_oid,
                                              const uint32_t relnamespace_oid);
 
+  // Read attname and atttypid from pg_attribute catalog table.
+  Result<std::unordered_map<string, uint32_t>> ReadPgTypeOid(
+      const uint32_t database_oid, const uint32_t table_oid);
+
   // Read the pg_tablespace catalog table and return a map with all the tablespaces and their
   // respective placement information.
   Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> ReadPgTablespaceInfo();

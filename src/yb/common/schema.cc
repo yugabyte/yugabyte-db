@@ -776,6 +776,16 @@ Status SchemaBuilder::RenameColumn(const string& old_name, const string& new_nam
   return STATUS(IllegalState, "Unable to rename existing column");
 }
 
+Status SchemaBuilder::SetColumnPGType(const string& name, const uint32_t pg_type_oid) {
+  for (ColumnSchema& col_schema : cols_) {
+    if (name == col_schema.name()) {
+      col_schema.set_pg_type_oid(pg_type_oid);
+      return Status::OK();
+    }
+  }
+  return STATUS(NotFound, "The specified column does not exist", name);
+}
+
 Status SchemaBuilder::AddColumn(const ColumnSchema& column, bool is_key) {
   if (ContainsKey(col_names_, column.name())) {
     return STATUS(AlreadyPresent, "The column already exists", column.name());
