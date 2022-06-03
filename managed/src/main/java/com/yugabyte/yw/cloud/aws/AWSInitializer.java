@@ -8,7 +8,7 @@
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.cloud;
+package com.yugabyte.yw.cloud.aws;
 
 import static com.yugabyte.yw.cloud.PublicCloudConstants.GP2_SIZE;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_PIOPS;
@@ -33,6 +33,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.AbstractInitializer;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -172,7 +174,7 @@ public class AWSInitializer extends AbstractInitializer {
           Region.find
               .query()
               .where()
-              .eq("provider_uuid", context.provider.uuid)
+              .eq("provider_uuid", context.getProvider().uuid)
               .eq("name", regionJson.textValue())
               .findOne();
       if (region == null) {
@@ -260,7 +262,7 @@ public class AWSInitializer extends AbstractInitializer {
     priceDetails.effectiveDate = product.get("effectiveDate").textValue();
 
     // Save to db
-    PriceComponent.upsert(context.provider.uuid, region.code, componentCode, priceDetails);
+    PriceComponent.upsert(context.getProvider().uuid, region.code, componentCode, priceDetails);
   }
 
   /**
@@ -352,7 +354,7 @@ public class AWSInitializer extends AbstractInitializer {
         Region.find
             .query()
             .where()
-            .eq("provider_uuid", context.provider.uuid)
+            .eq("provider_uuid", context.getProvider().uuid)
             .eq("name", regionName)
             .findOne();
     if (region == null) {
@@ -386,7 +388,7 @@ public class AWSInitializer extends AbstractInitializer {
 
     // Save to db
     if (Double.parseDouble(pricePerUnit) != 0.0) {
-      PriceComponent.upsert(context.provider.uuid, region.code, instanceCode, priceDetails);
+      PriceComponent.upsert(context.getProvider().uuid, region.code, instanceCode, priceDetails);
     }
   }
 
@@ -462,7 +464,7 @@ public class AWSInitializer extends AbstractInitializer {
             productAttrs.get("sku"),
             productAttrs.get("instanceType"));
       }
-      context.availableInstances.add(productAttrs);
+      context.getAvailableInstances().add(productAttrs);
     }
   }
 
@@ -505,12 +507,12 @@ public class AWSInitializer extends AbstractInitializer {
    */
   private void storeInstanceTypeInfoToDB(InitializationContext context) {
     LOG.info("Storing AWS instance type and pricing info in Yugaware DB");
-    Provider provider = context.provider;
+    Provider provider = context.getProvider();
     // First reset all the JSON details of all entries in the table, as we are about to refresh it.
     InstanceType.resetInstanceTypeDetailsForProvider(provider.uuid);
     String instanceTypeCode;
 
-    for (Map<String, String> productAttrs : context.availableInstances) {
+    for (Map<String, String> productAttrs : context.getAvailableInstances()) {
       // Get the instance type.
       instanceTypeCode = productAttrs.get("instanceType");
 

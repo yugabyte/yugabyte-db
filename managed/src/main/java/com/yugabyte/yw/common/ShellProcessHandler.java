@@ -226,8 +226,11 @@ public class ShellProcessHandler {
           status,
           response.durationMs);
       shellLogsManager.onProcessStop(processUUID);
+      if (context.getUuid() != null) {
+        // TODO revisit this leak fix for backup for a cleaner approach.
+        Util.removeProcess(context.getUuid());
+      }
     }
-
     return response;
   }
 

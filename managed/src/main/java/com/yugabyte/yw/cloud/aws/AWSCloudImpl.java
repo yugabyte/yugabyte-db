@@ -42,11 +42,11 @@ import play.libs.Json;
 
 // TODO - Better handling of UnauthorizedOperation. Ideally we should trigger alert so that
 // site admin knows about it
-class AWSCloudImpl implements CloudAPI {
+public class AWSCloudImpl implements CloudAPI {
   public static final Logger LOG = LoggerFactory.getLogger(AWSCloudImpl.class);
 
   // TODO use aws sdk 2.x and switch to async
-  public AmazonEC2 getEcC2Client(Provider provider, Region r) {
+  public AmazonEC2 getEC2Client(Provider provider, Region r) {
     return getEC2ClientInternal(provider.getUnmaskedConfig(), r.code);
   }
 
@@ -80,7 +80,7 @@ class AWSCloudImpl implements CloudAPI {
    *
    * @param provider the cloud provider bean for the AWS provider.
    * @param azByRegionMap user selected availabilityZones by their parent region.
-   * @param instanceTypesFilter list of instanceTypes we want to list the offerings for
+   * @param instanceTypesFilter list of instanceTypes for which we want to list the offerings.
    * @return a map. Key of this map is instance type like "c5.xlarge" and value is all the
    *     availabilityZones for which the instance type is being offered.
    */
@@ -98,7 +98,7 @@ class AWSCloudImpl implements CloudAPI {
                 regionAZListEntry -> {
                   Filter locationFilter =
                       new Filter().withName("location").withValues(regionAZListEntry.getValue());
-                  return getEcC2Client(provider, regionAZListEntry.getKey())
+                  return getEC2Client(provider, regionAZListEntry.getKey())
                       .describeInstanceTypeOfferings(
                           new DescribeInstanceTypeOfferingsRequest()
                               .withLocationType(LocationType.AvailabilityZone)
