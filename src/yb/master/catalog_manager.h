@@ -792,6 +792,9 @@ class CatalogManager :
 
   Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
 
+  Result<std::unordered_map<std::string, uint32_t>> GetPgTypeOid(const TableInfoPtr& table_info)
+      REQUIRES_SHARED(mutex_);
+
   void AssertLeaderLockAcquiredForReading() const override {
     leader_lock_.AssertAcquiredForReading();
   }

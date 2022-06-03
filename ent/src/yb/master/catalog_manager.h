@@ -108,6 +108,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
                                      IsEncryptionEnabledResponsePB* resp);
 
+  // Backfills pg_type_oid and pgschema_name in tablet metadata if not present.
+  Status BackfillMetadataForCDC(scoped_refptr<TableInfo> table, rpc::RpcContext* rpc);
+
   // Create a new CDC stream with the specified attributes.
   Status CreateCDCStream(const CreateCDCStreamRequestPB* req,
                                  CreateCDCStreamResponsePB* resp,
