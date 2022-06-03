@@ -11,11 +11,13 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,12 +25,18 @@ public class SessionHandler {
 
   public static final Logger LOG = LoggerFactory.getLogger(SessionHandler.class);
   public static final String FILTERED_LOGS_SCRIPT = "bin/filtered_logs.sh";
+  public static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
   @Inject private Config config;
 
   @Inject private ShellProcessHandler shellProcessHandler;
 
-  public Path getFilteredLogs(Integer maxLines, Universe universe, String queryRegex)
+  public Path getFilteredLogs(
+      Integer maxLines,
+      Universe universe,
+      String queryRegex,
+      String startDateStr,
+      String endDateStr)
       throws PlatformServiceException {
     String appHomeDir =
         config.hasPath("application.home") ? config.getString("application.home") : ".";
@@ -50,7 +58,13 @@ public class SessionHandler {
     String grepRegex = buildRegexString(regexBuilder);
     String saveFileStr = "/tmp/" + UUID.randomUUID().toString() + "-logs";
     ShellResponse response =
-        execCommand(logPath.toAbsolutePath().toString(), saveFileStr, grepRegex, maxLines);
+        execCommand(
+            logPath.toAbsolutePath().toString(),
+            saveFileStr,
+            grepRegex,
+            maxLines,
+            startDateStr,
+            endDateStr);
     if (response.code != 0) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Could not run filter_logs.sh script.");
@@ -92,13 +106,24 @@ public class SessionHandler {
   }
 
   private ShellResponse execCommand(
-      String logDir, String savePath, String grepRegex, Integer maxLines) {
+      String logDir,
+      String savePath,
+      String grepRegex,
+      Integer maxLines,
+      @Nullable String startDateStr,
+      @Nullable String endDateStr) {
     List<String> commandArgs = new ArrayList<>();
     commandArgs.add(FILTERED_LOGS_SCRIPT);
     commandArgs.add(logDir);
     commandArgs.add(savePath);
     commandArgs.add(grepRegex);
     commandArgs.add(maxLines.toString());
+    if (startDateStr != null) {
+      commandArgs.add(startDateStr);
+    }
+    if (endDateStr != null) {
+      commandArgs.add(endDateStr);
+    }
     String description = String.join(" ", commandArgs);
     return shellProcessHandler.run(
         commandArgs,

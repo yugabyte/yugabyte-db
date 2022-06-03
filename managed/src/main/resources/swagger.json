@@ -15084,6 +15084,18 @@
           "name" : "queryRegex",
           "required" : false,
           "type" : "string"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "startDate",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "endDate",
+          "required" : false,
+          "type" : "string"
         } ],
         "produces" : [ "text/plain" ],
         "responses" : {
