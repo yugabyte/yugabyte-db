@@ -686,10 +686,15 @@ export default class ClusterFields extends Component {
         updateFormField(`${clusterType}.provider`, firstProviderUuid);
         this.providerChanged(firstProviderUuid);
       }
-    } else if (type === 'Create' && clusterType === 'async' && formValues['primary']?.provider) {
-      const providerUUID = formValues['primary'].provider;
-      updateFormField(`${clusterType}.provider`, providerUUID);
-      this.providerChanged(providerUUID);
+    } else if (
+      type === 'Create' &&
+      clusterType === 'async' &&
+      formValues['primary']?.provider &&
+      !formValues[clusterType]?.provider
+    ) {
+      const primaryClusterProviderUUID = formValues['primary'].provider;
+      updateFormField(`${clusterType}.provider`, primaryClusterProviderUUID);
+      this.providerChanged(primaryClusterProviderUUID);
     }
     this.props.fetchRunTimeConfigs();
   }
