@@ -124,7 +124,7 @@ public class PlatformReplicationHelper {
   void setBackupScheduleEnabled(boolean enabled) {
     runtimeConfigFactory
         .globalRuntimeConf()
-        .setValue(REPLICATION_SCHEDULE_ENABLED_KEY, Boolean.toString(enabled), false);
+        .setValue(REPLICATION_SCHEDULE_ENABLED_KEY, Boolean.toString(enabled));
   }
 
   boolean isBackupScheduleRunning(Cancellable schedule) {
@@ -155,7 +155,7 @@ public class PlatformReplicationHelper {
   public void setReplicationFrequency(Duration duration) {
     runtimeConfigFactory
         .globalRuntimeConf()
-        .setValue(REPLICATION_FREQUENCY_KEY, String.format("%d ms", duration.toMillis()), false);
+        .setValue(REPLICATION_FREQUENCY_KEY, String.format("%d ms", duration.toMillis()));
   }
 
   JsonNode getBackupInfoJson(long frequency, boolean isRunning) {
