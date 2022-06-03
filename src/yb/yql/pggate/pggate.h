@@ -17,6 +17,7 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "yb/client/async_initializer.h"
 #include "yb/client/client_fwd.h"
@@ -51,6 +52,35 @@ namespace yb {
 namespace pggate {
 class PgSysTablePrefetcher;
 class PgSession;
+
+struct PgMemctxComparator {
+  using is_transparent = void;
+
+  bool operator()(PgMemctx* l, PgMemctx* r) const {
+    return l == r;
+  }
+
+  template<class T1, class T2>
+  bool operator()(const T1& l, const T2& r) const {
+    return (*this)(GetPgMemctxPtr(l), GetPgMemctxPtr(r));
+  }
+
+ private:
+  static PgMemctx* GetPgMemctxPtr(PgMemctx* value) {
+    return value;
+  }
+
+  static PgMemctx* GetPgMemctxPtr(const std::unique_ptr<PgMemctx>& value) {
+    return value.get();
+  }
+};
+
+struct PgMemctxHasher {
+  using is_transparent = void;
+
+  size_t operator()(const std::unique_ptr<PgMemctx>& value) const;
+  size_t operator()(PgMemctx* value) const;
+};
 
 //--------------------------------------------------------------------------------------------------
 
@@ -110,14 +140,10 @@ class PgApiImpl {
   // If database_name is empty, a session is created without connecting to any database.
   Status InitSession(const PgEnv *pg_env, const std::string& database_name);
 
-  // YB Memctx: Create, Destroy, and Reset must be "static" because a few contexts are created
-  //            before YugaByte environments including PgGate are created and initialized.
-  // Create YB Memctx. Each memctx will be associated with a Postgres's MemoryContext.
-  static PgMemctx *CreateMemctx();
-  // Destroy YB Memctx.
-  static Status DestroyMemctx(PgMemctx *memctx);
-  // Reset YB Memctx.
-  static Status ResetMemctx(PgMemctx *memctx);
+  PgMemctx *CreateMemctx();
+  Status DestroyMemctx(PgMemctx *memctx);
+  Status ResetMemctx(PgMemctx *memctx);
+
   // Cache statements in YB Memctx. When Memctx is destroyed, the statement is destructed.
   Status AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
                                       PgStatement **handle);
@@ -617,6 +643,7 @@ class PgApiImpl {
 
   scoped_refptr<PgSession> pg_session_;
   std::unique_ptr<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
+  std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;
 };
 
 }  // namespace pggate

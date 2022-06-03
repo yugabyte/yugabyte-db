@@ -37,9 +37,9 @@ bool PerformFuture::Ready() const {
 }
 
 Result<rpc::CallResponsePtr> PerformFuture::Get() {
+  PgSession* session = nullptr;
+  std::swap(session, session_);
   auto result = future_.get();
-  auto session = session_;
-  session_ = nullptr;
   session->TrySetCatalogReadPoint(result.catalog_read_time);
   RETURN_NOT_OK(session->PatchStatus(result.status, relations_));
   return result.response;

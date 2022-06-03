@@ -338,6 +338,18 @@ PggateOptions::PggateOptions() : ServerBaseOptions(kDefaultPort) {
   SetMasterAddresses(make_shared<server::MasterAddresses>(std::move(master_addresses)));
 }
 
+//--------------------------------------------------------------------------------------------------
+
+size_t PgMemctxHasher::operator()(const std::unique_ptr<PgMemctx>& value) const {
+  return (*this)(value.get());
+}
+
+size_t PgMemctxHasher::operator()(PgMemctx* value) const {
+  return std::hash<PgMemctx*>()(value);
+}
+
+//--------------------------------------------------------------------------------------------------
+
 PgApiContext::MessengerHolder::MessengerHolder(
     std::unique_ptr<rpc::SecureContext> security_context_,
     std::unique_ptr<rpc::Messenger> messenger_)
@@ -446,6 +458,8 @@ PgApiImpl::PgApiImpl(
 }
 
 PgApiImpl::~PgApiImpl() {
+  mem_contexts_.clear();
+  pg_session_.reset();
   interrupter_.reset();
   pg_txn_manager_.reset();
   pg_client_.Shutdown();
@@ -507,17 +521,23 @@ bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
 
 PgMemctx *PgApiImpl::CreateMemctx() {
   // Postgres will create YB Memctx when it first use the Memctx to allocate YugaByte object.
-  return PgMemctx::Create();
+  return mem_contexts_.insert(std::make_unique<PgMemctx>()).first->get();
 }
 
 Status PgApiImpl::DestroyMemctx(PgMemctx *memctx) {
   // Postgres will destroy YB Memctx by releasing the pointer.
-  return PgMemctx::Destroy(memctx);
+  auto it = mem_contexts_.find(memctx);
+  SCHECK(it != mem_contexts_.end(), InternalError, "Invalid memory context handle");
+  mem_contexts_.erase(it);
+  return Status::OK();
 }
 
 Status PgApiImpl::ResetMemctx(PgMemctx *memctx) {
   // Postgres reset YB Memctx when clearing a context content without clearing its nested context.
-  return PgMemctx::Reset(memctx);
+  auto it = mem_contexts_.find(memctx);
+  SCHECK(it != mem_contexts_.end(), InternalError, "Invalid memory context handle");
+  (**it).Clear();
+  return Status::OK();
 }
 
 // TODO(neil) Use Arena in the future.
