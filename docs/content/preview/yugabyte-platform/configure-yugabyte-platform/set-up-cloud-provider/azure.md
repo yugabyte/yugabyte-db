@@ -195,12 +195,12 @@ You set up a shared gallery image on Azure as follows:
 
 ### Troubleshoot Installation Failures
 
-If the installation fails for some reason, from the Yugabyte platform page, click on tasks and click on "See Details" as shown here<br><br>
+If the installation fails for some reason, from the Yugabyte platform page, click on tasks and click on "See Details" as shown here:<br><br>
 
   ![img](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-5.png)
 
 
-On Task details page, it will indicate what was the cause of failure. A typical failure is when your subscription does not have enough quota on Azure to create the specific size VM cores in a specific region as shown here<br><br>
+On Task details page, it will indicate what was the cause of failure. A typical failure is when your subscription does not have enough quota on Azure to create the specific size VM cores in a specific region as shown here:<br><br>
 
 
 
