@@ -265,6 +265,14 @@ METRIC_DEFINE_coarse_histogram(server, ts_bootstrap_time, "TServer Bootstrap Tim
                         MetricUnit::kMicroseconds,
                         "Time that the tablet server takes to bootstrap all of its tablets.");
 
+METRIC_DEFINE_gauge_uint64(server, ts_split_op_apply, "Split Apply",
+                        MetricUnit::kOperations,
+                        "Number of split operations successfully applied in Raft.");
+
+METRIC_DEFINE_gauge_uint64(server, ts_split_compaction_added, "Post-Split Compaction Submitted",
+                        MetricUnit::kRequests,
+                        "Number of post-split compaction requests submitted.");
+
 THREAD_POOL_METRICS_DEFINE(
     server, post_split_trigger_compaction_pool, "Thread pool for tablet compaction jobs.");
 
@@ -389,6 +397,9 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
               .set_metrics(THREAD_POOL_METRICS_INSTANCE(
                   server_->metric_entity(), admin_triggered_compaction_pool))
               .Build(&admin_triggered_compaction_pool_));
+  ts_split_op_apply_ = METRIC_ts_split_op_apply.Instantiate(server_->metric_entity(), 0);
+  ts_split_compaction_added_ =
+      METRIC_ts_split_compaction_added.Instantiate(server_->metric_entity(), 0);
 
   mem_manager_ = std::make_shared<TabletMemoryManager>(
       &tablet_options_,
@@ -928,6 +939,7 @@ Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log:
 
   successfully_completed = true;
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation has been applied";
+  ts_split_op_apply_->Increment();
   return Status::OK();
 }
 
@@ -1449,11 +1461,16 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   }
 
   if (PREDICT_TRUE(!FLAGS_TEST_skip_post_split_compaction)) {
-    WARN_NOT_OK(
-    tablet->TriggerPostSplitCompactionIfNeeded([&]() {
-      return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
-    }),
-    "Failed to submit compaction for post-split tablet.");
+    auto status =
+        tablet->TriggerPostSplitCompactionIfNeeded([&]() {
+          return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
+        });
+    if (status.ok()) {
+      ts_split_compaction_added_->Increment();
+    } else {
+      LOG_WITH_PREFIX(WARNING) << "Failed to submit compaction for post-split tablet:"
+          << status.ToString();
+    }
   } else {
     LOG(INFO) << "Skipping post split compaction " << meta->raft_group_id();
   }

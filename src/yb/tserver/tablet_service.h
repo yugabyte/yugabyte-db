@@ -286,6 +286,7 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   mutable std::mutex backfill_lock_;
   std::condition_variable backfill_cond_;
   std::atomic<int32_t> num_tablets_backfilling_{0};
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_added_;
 };
 
 class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
