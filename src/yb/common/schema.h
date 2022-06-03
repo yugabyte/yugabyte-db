@@ -207,6 +207,10 @@ class ColumnSchema {
     return pg_type_oid_;
   }
 
+  void set_pg_type_oid(uint32_t pg_type_oid) {
+    pg_type_oid_ = pg_type_oid;
+  }
+
   SortingType sorting_type() const {
     return sorting_type_;
   }
@@ -1206,6 +1210,7 @@ class SchemaBuilder {
 
   Status RemoveColumn(const std::string& name);
   Status RenameColumn(const std::string& old_name, const std::string& new_name);
+  Status SetColumnPGType(const std::string& name, const uint32_t pg_type_oid);
   Status AlterProperties(const TablePropertiesPB& pb);
 
  private:
