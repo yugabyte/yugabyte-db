@@ -2309,7 +2309,7 @@ Status Tablet::BackfillIndexes(
   auto iter = VERIFY_RESULT(NewRowIterator(
       projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline));
   QLTableRow row;
-  std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests;
+  docdb::IndexRequests index_requests;
 
   BackfillParams backfill_params{deadline};
   constexpr auto kProgressInterval = 1000;
@@ -2389,7 +2389,7 @@ Status Tablet::UpdateIndexInBatches(
     const std::vector<IndexInfo>& indexes,
     const HybridTime write_time,
     const CoarseTimePoint deadline,
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+    docdb::IndexRequests* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   const QLTableRow& kEmptyRow = QLTableRow::empty_row();
   QLExprExecutor expr_executor;
@@ -2422,7 +2422,7 @@ Result<std::shared_ptr<YBSession>> Tablet::GetSessionForVerifyOrBackfill(
 Status Tablet::FlushWriteIndexBatchIfRequired(
     const HybridTime write_time,
     const CoarseTimePoint deadline,
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+    docdb::IndexRequests* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   if (index_requests->size() < FLAGS_backfill_index_write_batch_size) {
     return Status::OK();
@@ -2433,7 +2433,7 @@ Status Tablet::FlushWriteIndexBatchIfRequired(
 Status Tablet::FlushWriteIndexBatch(
     const HybridTime write_time,
     const CoarseTimePoint deadline,
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+    docdb::IndexRequests* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   if (!client_future_.valid()) {
     return STATUS_FORMAT(IllegalState, "Client future is not set up for $0", tablet_id());

@@ -14,6 +14,8 @@
 #ifndef YB_DOCDB_DOCDB_FWD_H
 #define YB_DOCDB_DOCDB_FWD_H
 
+#include "yb/common/common_fwd.h"
+
 #include "yb/docdb/docdb.fwd.h"
 
 #include "yb/util/enums.h"
@@ -40,6 +42,7 @@ class PgsqlWriteOperation;
 class PrimitiveValue;
 class QLWriteOperation;
 class RedisWriteOperation;
+class RowPacker;
 class SchemaPacking;
 class SchemaPackingStorage;
 class SharedLockManager;
@@ -54,10 +57,13 @@ struct DocReadContext;
 struct IntentKeyValueForCDC;
 struct KeyBounds;
 struct LockBatchEntry;
+struct ValueControlFields;
 
 using DocKeyHash = uint16_t;
 using LockBatchEntries = std::vector<LockBatchEntry>;
 using DocReadContextPtr = std::shared_ptr<DocReadContext>;
+
+using IndexRequests = std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>;
 
 enum class KeyEntryType;
 enum class ValueEntryType;
