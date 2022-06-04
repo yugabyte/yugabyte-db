@@ -199,6 +199,8 @@ class ColumnSchema {
     return is_counter_;
   }
 
+  bool is_collection() const;
+
   int32_t order() const {
     return order_;
   }

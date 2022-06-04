@@ -90,6 +90,8 @@ class TypeInfo {
   void CopyMinValue(void* dst) const {
     memcpy(dst, min_value, size);
   }
+
+  bool is_collection() const;
 };
 
 template<DataType Type> struct DataTypeTraits {};

@@ -13,6 +13,8 @@
 
 #include "yb/docdb/doc_read_context.h"
 
+#include "yb/integration-tests/packed_row_test_base.h"
+
 #include "yb/master/mini_master.h"
 
 #include "yb/rocksdb/db/db_impl.h"
@@ -32,15 +34,8 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 namespace yb {
 namespace pgwrapper {
 
-class PgPackedRowTest : public PgMiniTestBase {
+class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase> {
  protected:
-  void SetUp() override {
-    FLAGS_max_packed_row_columns = 10;
-    FLAGS_timestamp_history_retention_interval_sec = 0;
-    FLAGS_history_cutoff_propagation_interval_ms = 1;
-    PgMiniTestBase::SetUp();
-  }
-
   void TestCompaction(const std::string& expr_suffix);
 };
 
@@ -345,16 +340,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackDuringCompaction)) {
 
   ASSERT_OK(cluster_->CompactTablets());
 
-  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
-
-  for (const auto& peer : peers) {
-    if (!peer->tablet()->doc_db().regular) {
-      continue;
-    }
-    auto count = peer->tablet()->TEST_CountRegularDBRecords();
-    LOG(INFO) << peer->LogPrefix() << "records: " << count;
-    ASSERT_EQ(count, kNumKeys);
-  }
+  ASSERT_NO_FATALS(CheckNumRecords(cluster_.get(), kNumKeys));
 
   auto fetched_rows = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY key"));
   ASSERT_EQ(fetched_rows, all_rows);

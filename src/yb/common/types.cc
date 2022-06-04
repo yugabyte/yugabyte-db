@@ -128,4 +128,9 @@ void DataTypeTraits<TIMEUUID>::AppendDebugStringForValue(const void *val, std::s
   str->append(CHECK_RESULT(Uuid::FromSlice(*s)).ToString());
 }
 
+bool TypeInfo::is_collection() const {
+  return type == DataType::LIST || type == DataType::MAP || type == DataType::SET ||
+         type == DataType::USER_DEFINED_TYPE;
+}
+
 } // namespace yb
