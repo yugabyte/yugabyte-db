@@ -77,6 +77,8 @@ public class Util {
 
   public static final String UNIVERSE_NAME_REGEX = "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$";
 
+  public static final double EPSILON = 0.000001d;
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
@@ -556,5 +558,9 @@ public class Util {
       return false;
     }
     return true;
+  }
+
+  public static boolean doubleEquals(double d1, double d2) {
+    return Math.abs(d1 - d2) < Util.EPSILON;
   }
 }

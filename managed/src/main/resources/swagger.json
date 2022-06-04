@@ -4168,7 +4168,7 @@
         },
         "state" : {
           "description" : "Node state",
-          "enum" : [ "ToBeAdded", "InstanceCreated", "ServerSetup", "ToJoinCluster", "Reprovisioning", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "Resizing", "SystemdUpgrade", "Terminating", "Terminated" ],
+          "enum" : [ "ToBeAdded", "InstanceCreated", "ServerSetup", "ToJoinCluster", "Reprovisioning", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "MetricsUnavailable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "Resizing", "SystemdUpgrade", "Terminating", "Terminated" ],
           "example" : "Provisioned",
           "type" : "string"
         },
@@ -4313,7 +4313,7 @@
         },
         "state" : {
           "description" : "Node state",
-          "enum" : [ "ToBeAdded", "InstanceCreated", "ServerSetup", "ToJoinCluster", "Reprovisioning", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "Resizing", "SystemdUpgrade", "Terminating", "Terminated" ],
+          "enum" : [ "ToBeAdded", "InstanceCreated", "ServerSetup", "ToJoinCluster", "Reprovisioning", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "MetricsUnavailable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "Resizing", "SystemdUpgrade", "Terminating", "Terminated" ],
           "example" : "Provisioned",
           "type" : "string"
         },
