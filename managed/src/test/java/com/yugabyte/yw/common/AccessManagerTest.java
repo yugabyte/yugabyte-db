@@ -38,7 +38,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -94,7 +93,7 @@ public class AccessManagerTest extends FakeDBApplication {
       throws IOException {
     ShellResponse response = new ShellResponse();
     if (mimicError) {
-      response.message = "{\"error\": \"Unknown Error\"}";
+      response.message = "Unknown error occurred";
       response.code = 99;
       return Json.toJson(
           accessManager.uploadKeyFile(
@@ -135,7 +134,7 @@ public class AccessManagerTest extends FakeDBApplication {
   private JsonNode runCommand(UUID regionUUID, String commandType, boolean mimicError) {
     ShellResponse response = new ShellResponse();
     if (mimicError) {
-      response.message = "{\"error\": \"Unknown Error\"}";
+      response.message = "Unknown error occurred";
       response.code = 99;
       when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
     } else {
@@ -282,7 +281,9 @@ public class AccessManagerTest extends FakeDBApplication {
           allOf(
               notNullValue(),
               equalTo(
-                  "Parsing of Region failed with : YBCloud command access (add-key) failed to execute.")));
+                  "Parsing of Region failed with :"
+                      + " YBCloud command access (add-key) failed to execute."
+                      + " Unknown error occurred")));
     }
     Mockito.verify(shellProcessHandler, times(1)).run(anyList(), anyMap(), anyString());
   }
@@ -341,7 +342,10 @@ public class AccessManagerTest extends FakeDBApplication {
     String commandStr = String.join(" ", command.getValue());
     String expectedCmd = getBaseCommand(defaultRegion, "list-keys");
     assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
-    assertValue(result, "error", "YBCloud command access (list-keys) failed to execute.");
+    assertValue(
+        result,
+        "error",
+        "YBCloud command access (list-keys) failed to execute. Unknown error occurred");
   }
 
   @Test
@@ -536,7 +540,11 @@ public class AccessManagerTest extends FakeDBApplication {
     } catch (RuntimeException re) {
       assertThat(
           re.getMessage(),
-          allOf(notNullValue(), equalTo("YBCloud command access (delete-key) failed to execute.")));
+          allOf(
+              notNullValue(),
+              equalTo(
+                  "YBCloud command access (delete-key) failed to execute."
+                      + " Unknown error occurred")));
     }
   }
 
