@@ -43,8 +43,10 @@ public abstract class DevopsBase {
       return Json.parse(response.message);
     } else {
       String errorMsg =
-          "YBCloud command " + getCommandType() + " (" + command + ") failed to execute.";
-      LOG.error((response.message != null) ? response.message : errorMsg);
+          String.format(
+              "YBCloud command %s (%s) failed to execute. %s",
+              getCommandType(), command, response.message);
+      LOG.error(errorMsg);
       return ApiResponse.errorJSON(errorMsg);
     }
   }
