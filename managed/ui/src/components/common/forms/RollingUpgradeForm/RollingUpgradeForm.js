@@ -193,8 +193,7 @@ export default class RollingUpgradeForm extends Component {
       handleSubmit,
       universe,
       modal: { visibleModal },
-      universe: { error },
-      softwareVersions,
+      universe: { error, supportedReleases },
       formValues,
       certificates
     } = this.props;
@@ -202,7 +201,7 @@ export default class RollingUpgradeForm extends Component {
     const currentVersion = this.getCurrentVersion();
     const submitAction = handleSubmit(this.setRollingUpgradeProperties);
 
-    const softwareVersionOptions = softwareVersions.map((item, idx) => (
+    const softwareVersionOptions = supportedReleases?.data?.map((item, idx) => (
       <option key={idx} disabled={item === currentVersion} value={item}>
         {item}
       </option>
@@ -555,38 +554,38 @@ export default class RollingUpgradeForm extends Component {
       }
       case 'thirdpartyUpgradeModal': {
         return (
-               <YBModal
-                   className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
-                   visible={modalVisible}
-                   formName="RollingUpgradeForm"
-                   onHide={this.resetAndClose}
-                   submitLabel="Upgrade"
-                   showCancelButton
-                   title="Initiate Third-party Software Upgrade"
-                   onFormSubmit={submitAction}
-                   error={error}
-                   footerAccessory={
-                     <YBCheckBox
-                         label="Confirm third-party software upgrade"
-                         input={{
-                           checked: this.state.formConfirmed,
-                           onChange: this.toggleConfirmValidation
-                         }}
-                     />
-                   }
-                   asyncValidating={!this.state.formConfirmed}
-               >
-                 <div className="form-right-aligned-labels rolling-upgrade-form">
-                   <Field
-                       name="timeDelay"
-                       type="number"
-                       component={YBInputField}
-                       label="Rolling Upgrade Delay Between Servers (secs)"
-                   />
-                 </div>
-                 {errorAlert}
-               </YBModal>
-               );
+          <YBModal
+            className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
+            visible={modalVisible}
+            formName="RollingUpgradeForm"
+            onHide={this.resetAndClose}
+            submitLabel="Upgrade"
+            showCancelButton
+            title="Initiate Third-party Software Upgrade"
+            onFormSubmit={submitAction}
+            error={error}
+            footerAccessory={
+              <YBCheckBox
+                label="Confirm third-party software upgrade"
+                input={{
+                  checked: this.state.formConfirmed,
+                  onChange: this.toggleConfirmValidation
+                }}
+              />
+            }
+            asyncValidating={!this.state.formConfirmed}
+          >
+            <div className="form-right-aligned-labels rolling-upgrade-form">
+              <Field
+                name="timeDelay"
+                type="number"
+                component={YBInputField}
+                label="Rolling Upgrade Delay Between Servers (secs)"
+              />
+            </div>
+            {errorAlert}
+          </YBModal>
+        );
       }
       default: {
         return null;
