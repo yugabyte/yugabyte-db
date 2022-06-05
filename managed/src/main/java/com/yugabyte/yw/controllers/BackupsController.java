@@ -22,8 +22,8 @@ import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
-import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
 import com.yugabyte.yw.models.Audit;
@@ -41,10 +41,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
+import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -58,6 +57,7 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -585,13 +585,17 @@ public class BackupsController extends AuthenticatedController {
           taskParams.backupUUID = backupUUID;
           UUID taskUUID = commissioner.submit(TaskType.DeleteBackupYb, taskParams);
           LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, backupUUID);
+          String target =
+              !StringUtils.isEmpty(backup.universeName)
+                  ? backup.universeName
+                  : String.format("univ-%s", backup.universeUUID.toString());
           CustomerTask.create(
               customer,
               backup.universeUUID,
               taskUUID,
               CustomerTask.TargetType.Backup,
               CustomerTask.TaskType.Delete,
-              "Backup");
+              target);
           taskList.add(new YBPTask(taskUUID, taskParams.backupUUID));
           auditService()
               .createAuditEntryWithReqBody(
