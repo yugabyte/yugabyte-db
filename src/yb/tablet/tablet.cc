@@ -3824,6 +3824,12 @@ Schema Tablet::GetKeySchema(const std::string& table_id) const {
 }
 
 HybridTime Tablet::DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMetaData*>& inputs) {
+  auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
+  if (!scoped_read_operation.ok()) {
+    // Prevent markers from being deleted when we cannot calculate retention time during shutdown.
+    return HybridTime::kMin;
+  }
+
   // Query order is important. Since it is not atomic, we should be sure that write would not sneak
   // our queries. So we follow write record travel order.
 
