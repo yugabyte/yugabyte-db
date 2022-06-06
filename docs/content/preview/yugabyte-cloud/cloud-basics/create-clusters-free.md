@@ -63,12 +63,6 @@ Save your database credentials. If you lose them, you won't be able to use the d
 
 After you complete the wizard, YugabyteDB Managed bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes.
 
-## Viewing the cluster
-
-After you complete the wizard, the **Clusters** page appears, showing the provisioning of your new cluster in progress.
-
-![Cluster being provisioned](/images/yb-cloud/cloud-cluster-provisioning.png)
-
 When the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) tab is displayed.
 
 You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed with the database admin credentials you specified.

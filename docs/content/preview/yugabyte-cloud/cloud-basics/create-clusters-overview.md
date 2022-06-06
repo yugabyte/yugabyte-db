@@ -32,25 +32,31 @@ The following best practices are recommended for production clusters.
 
 ### Topology
 
-A YugabyteDB cluster consists of three or more nodes that communicate with each other and across which data is distributed. You can place the nodes of a YugabyteDB cluster across different zones in a single region, and across regions. The topology you choose depends on your requirements for latency, availability, and geo-distribution.
+A YugabyteDB cluster typically consists of three or more nodes that communicate with each other and across which data is distributed. You can place the nodes in a single availability zone, across multiple zones in a single region, and across regions. With more advanced topologies, you can place multiple clusters across multiple regions. The [topology](../create-clusters-topology/) you choose depends on your requirements for latency, availability, and geo-distribution.
 
 #### Single Region
 
-Single-region clusters are not resilient to region-level outages.
+Single-region clusters are available in the following topologies:
 
-- Single availability zone. Resilient to node outages.
-- Multiple availability zones. Resilient to node and availability zone outages.
+- **Single availability zone**. Resilient to node outages.
+- **Multiple availability zones**. Resilient to node and availability zone outages.
 
 Cloud providers like AWS and Google Cloud design zones to minimize the risk of correlated failures caused by physical infrastructure outages like power, cooling, or networking. In other words, single failure events usually affect only a single zone. By deploying nodes across zones in a region, you get resilience to a zone failure as well as high availability.
 
+Single-region clusters are not resilient to region-level outages.
+
 #### Multiple Region
 
-Multi-region clusters are resilient to region-level outages.
+Multi-region clusters are resilient to region-level outages, and are available in the following topologies:
 
-- Synchronous replication. Cluster nodes are deployed in separate regions. Data is synchronously replicated across multiple regions.
-- Geo partitioned. Cluster nodes are deployed in separate regions. Data is pinned to specific geographic regions. Allows fine-grained control over pinning rows in a user table to specific geographic locations.
-- Cross-cluster. Two clusters are deployed in separate regions. Data is shared between the clusters, either in one direction, or asynchronously.
-- Read replica. Multiple clusters are deployed in separate regions. Data is written in a single region, and copied to the other regions, where it can be read. The primary cluster gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest.
+- **Synchronous replication**. Cluster nodes are deployed in separate regions. Data is synchronously replicated across multiple regions.
+- **Geo partitioned**. Cluster nodes are deployed in separate regions. Data is pinned to specific geographic regions. Allows fine-grained control over pinning rows in a user table to specific geographic locations.
+- **Cross-cluster**. Two clusters are deployed in separate regions. Data is shared between the clusters, either in one direction, or asynchronously.
+- **Read replica**. Multiple clusters are deployed in separate regions. Data is written in a single region, and copied to the other regions, where it can be read. The primary cluster gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest.
+
+Multi-region clusters must be deployed in VPCs, with each region or read replica deployed in its own VPC. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
+
+For more details, refer to [Topologies](../create-clusters-topology/).
 
 ### Provider and region
 
@@ -118,7 +124,11 @@ YugabyteDB Managed performs full cluster (all namespaces) level backups, and the
 
 Clusters are secure by default. You need to explicitly allow access to clusters by adding IP addresses of clients connecting to the cluster to the cluster IP allow list. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
 
-If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. You also need to add the CIDR ranges of any application VPCs to your cluster IP allow list. You need to create the VPC before you deploy the cluster. YugabyteDB Managed supports AWS and GCP for VPCs. Refer to [VPC network](../../cloud-basics/cloud-vpcs/).
+If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. You also need to add the CIDR ranges of any application VPCs to your cluster IP allow list.
+
+Multi-region clusters must be deployed in VPCs, with each region or read replica deployed in its own VPC.
+
+You need to create VPCs before you deploy the cluster. YugabyteDB Managed supports AWS and GCP for VPCs. Refer to [VPC network](../../cloud-basics/cloud-vpcs/).
 
 #### User authorization
 

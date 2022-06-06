@@ -33,22 +33,15 @@ Multi-region synchronous clusters include the following features:
 - Create VPCs in the regions where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 - Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
 
-## Create a cluster
+## Create a synchronous multi-region cluster
 
-To create a cluster, on the **Clusters** page, click **Add Cluster** to start the **Create Cluster** wizard.
+To create a multi-region synchronous cluster, on the **Clusters** page, click **Add Cluster**, and choose **Dedicated** to start the **Create Cluster** wizard.
 
 The **Create Cluster** wizard has the following pages:
 
-1. [Select Cluster Type](#select-cluster-type)
 1. [General Settings](#general-settings)
 1. [Cluster Setup](#cluster-setup)
 1. [DB Credentials](#database-credentials)
-
-### Select Cluster Type
-
-![Add Cluster Wizard - Select Type](/images/yb-cloud/cloud-addcluster-paid1.png)
-
-Select **Dedicated** and click **Choose** to display the **General Settings** page.
 
 ### General Settings
 
@@ -70,7 +63,7 @@ Set the following options:
 
   ![Add Cluster Wizard - Multi-region and size](/images/yb-cloud/cloud-addcluster-multisync.png)
 
-  - **Regions**: For each of the 3 regions, choose the [region](../../release-notes#cloud-provider-regions) where the nodes will be located, and the VPC in which to deploy the nodes. Choose the number of nodes to deploy in the regions; each region has the same number of nodes. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
+  - **Regions**: For each of the 3 regions, choose the [region](../../release-notes#cloud-provider-regions) where the nodes will be located, and the VPC in which to deploy the nodes. Choose the number of nodes to deploy in the regions; each region has the same number of nodes. Only VPCs using the selected cloud provider are listed. The VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
   - **Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
 

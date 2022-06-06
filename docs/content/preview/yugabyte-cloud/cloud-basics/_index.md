@@ -60,7 +60,7 @@ Using YugabyteDB Managed, you can create single- and multi-region clusters that 
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-clusters-multisync/">
+    <a class="section-link icon-offset" href="create-clusters-free/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts/single_node.png" aria-hidden="true" />
         <div class="title">Create a Sandbox cluster</div>

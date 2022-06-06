@@ -39,7 +39,7 @@ In a single-region multi-zone cluster, the nodes of the YugabyteDB cluster are p
 
 **Consistency**: YugabyteDB automatically shards the tables of the database, places the data across the nodes, and replicates all writes synchronously. The cluster ensures strong consistency of all I/O and distributed transactions.
 
-**Latency**: Because the zones are close to each other, you also get low read and write latencies for clients located in the same region as the cluster, typically 1 – 10ms latency for basic row access.
+**Latency**: Because the zones are close to each other, you get low read and write latencies for clients located in the same region as the cluster, typically 1 – 10ms latency for basic row access.
 
 **Strengths**
 
@@ -52,7 +52,7 @@ In a single-region multi-zone cluster, the nodes of the YugabyteDB cluster are p
 - Applications accessing data from remote regions may experience higher read/write latencies
 - Not resilient to region-level outages, such as those caused by natural disasters like floods or ice storms
 
-To deploy a multi-zone cluster, refer to [Create a Dedicated cluster](../create-clusters/).
+To deploy a multi-zone cluster, refer to [Create a single-region cluster](../create-clusters/).
 
 ## Sync across all regions
 
@@ -80,7 +80,7 @@ Write latencies in this deployment mode can be high. This is because the tablet 
 
 To deploy a multi-region synchronous cluster, refer to [Deploy a multi-region synchronous cluster](../create-clusters-multisync/).
 
-## Geo-partitioned with data pinning
+## Geo-partitioned
 
 Applications that need to keep user data in a particular geographic region to comply with data sovereignty regulations can use row-level geo-partitioning in YugabyteDB. This feature allows fine-grained control over pinning rows in a user table to specific geographic locations.
 
@@ -205,7 +205,7 @@ To deploy a read replica cluster, contact {{<support-cloud>}}.
 
 ## Learn more
 
-- [Multi-DC deployments](../../deploy/multi-dc/)
+- [Multi-DC deployments](../../../deploy/multi-dc/)
 - Webinar: [Engineering Around the Physics of Latency](https://vimeo.com/548171949)
 - Blog: [9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://blog.yugabyte.com/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/)
 - Blog: [Geo-partitioning of Data in YugabyteDB](https://blog.yugabyte.com/geo-partitioning-of-data-in-yugabytedb/)
@@ -213,4 +213,5 @@ To deploy a read replica cluster, contact {{<support-cloud>}}.
 ## Next steps
 
 - [Plan your cluster](../create-clusters-overview/)
-- [Create a cluster](../create-clusters/)
+- [Create a single region cluster](../create-clusters/)
+- [Create a synchronous mulit-region cluster](../create-clusters-multisync/)

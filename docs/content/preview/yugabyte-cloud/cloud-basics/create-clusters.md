@@ -1,6 +1,6 @@
 ---
-title: Create a Dedicated cluster
-linkTitle: Create a Dedicated cluster
+title: Create a single-region cluster
+linkTitle: Create a single-region cluster
 description: Deploy production clusters in YugabyteDB Managed.
 headcontent:
 aliases:
@@ -15,16 +15,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Dedicated clusters support multi-node and highly available deployments and are suitable for production deployments.
+Single-region dedicated clusters support multi-node and highly available deployments and are suitable for production deployments.
 
 {{< youtube id="qYMcNzWotkI" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
 
 ## Features
 
-Dedicated clusters include the following features:
+Single-region dedicated clusters include the following features:
 
 - No limit on cluster size - choose any cluster size based on your use case.
-- Multi node [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3 clusters with availability zone and node level fault tolerance. To deploy multi-region clusters, contact {{<support-cloud>}}.
+- Multi node [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3 clusters with availability zone and node level fault tolerance.
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking support.
 - Automated and on-demand backups.
@@ -38,22 +38,15 @@ Dedicated clusters include the following features:
 - Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
 - If you want to use dedicated VPCs for network isolation and security, create the VPC before you create your cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
-## Create a cluster
+## Create a single-region cluster
 
-To create a cluster, on the **Clusters** page, click **Add Cluster** to start the **Create Cluster** wizard.
+To create a single-region cluster, on the **Clusters** page, click **Add Cluster**, and choose **Dedicated** to start the **Create Cluster** wizard.
 
 The **Create Cluster** wizard has the following pages:
 
-1. [Select Cluster Type](#select-cluster-type)
 1. [General Settings](#general-settings)
 1. [Cluster Setup](#cluster-setup)
 1. [DB Credentials](#db-credentials)
-
-### Select Cluster Type
-
-![Add Cluster Wizard - Select Type](/images/yb-cloud/cloud-addcluster-paid1.png)
-
-Select **Dedicated** and click **Choose** to display the **General Settings** page.
 
 ### General Settings
 
@@ -67,7 +60,7 @@ Set the following options:
 
 ### Cluster Setup
 
-Set the following options:
+Select **Single-Region Deployment** and set the following options:
 
 - **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failures.
 
