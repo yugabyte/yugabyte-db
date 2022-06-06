@@ -231,6 +231,10 @@ Replace the `'localhost'` from the following commands with an appropriate host-n
       END;
       /
 
+- [OPTIONAL] Grant `SELECT_CATALOG_ROLE` to `ybmigrate`. The role might be required in migration planning and debugging:
+
+      GRANT SELECT_CATALOG_ROLE TO ybmigrate;
+
 - The `ybmigrate` user can now be used for migration.
 
 
