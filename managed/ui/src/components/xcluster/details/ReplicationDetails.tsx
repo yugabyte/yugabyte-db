@@ -177,7 +177,6 @@ export function ReplicationDetails({ params }: Props) {
                         sourceUniverseUUID={replication.sourceUniverseUUID}
                       />
                     </span>
-                    <span> ms</span>
                   </Col>
                 </Row>
                 <div className="replication-divider" />
@@ -188,8 +187,7 @@ export function ReplicationDetails({ params }: Props) {
                       <GetConfiguredThreshold
                         currentUniverseUUID={replication.sourceUniverseUUID}
                       />
-                    </span>{' '}
-                    ms
+                    </span>
                   </Col>
                 </Row>
               </div>

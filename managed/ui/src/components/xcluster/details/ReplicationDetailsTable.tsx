@@ -153,7 +153,7 @@ export function ReplicationDetailsTable({ replication }: props) {
                   </span>
                 )}
               >
-                Current lag (ms)
+                Current lag
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="action"

@@ -1,5 +1,7 @@
 import React from 'react';
 import { useQuery } from 'react-query';
+import moment from 'moment';
+
 import { getAlertConfigurations } from '../../actions/universe';
 import {
   getUniverseInfo,
@@ -7,7 +9,7 @@ import {
   queryLagMetricsForUniverse
 } from '../../actions/xClusterReplication';
 import { IReplicationStatus } from './IClusterReplication';
-import moment from 'moment';
+import { formatDuration } from '../../utils/Formatters';
 
 import './ReplicationUtils.scss';
 
@@ -82,7 +84,8 @@ export const GetConfiguredThreshold = ({
   if (!metricsData) {
     return <span>0</span>;
   }
-  return <span>{metricsData?.[0]?.thresholds?.SEVERE.threshold}</span>;
+  const maxAcceptableLag = metricsData?.[0]?.thresholds?.SEVERE.threshold;
+  return <span>{formatDuration(maxAcceptableLag)}</span>;
 };
 
 export const GetCurrentLag = ({
@@ -124,7 +127,7 @@ export const GetCurrentLag = ({
   ) {
     return <span>-</span>;
   }
-  let maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
+  const maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
 
   const metricAliases = metricsData.data.tserver_async_replication_lag_micros.layout.yaxis.alias;
   const committedLagName = metricAliases['async_replication_committed_lag_micros'];
@@ -136,13 +139,15 @@ export const GetCurrentLag = ({
         return a.y.slice(-1);
       })
   );
+  const formattedLag = formatDuration(latestLag);
+
   return (
     <span
       className={`replication-lag-value ${
         maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'
       }`}
     >
-      {latestLag ?? '-'}
+      {formattedLag ?? '-'}
     </span>
   );
 };
@@ -188,7 +193,7 @@ export const GetCurrentLagForTable = ({
     return <span>-</span>;
   }
 
-  let maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
+  const maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
 
   const metricAliases = metricsData.data.tserver_async_replication_lag_micros.layout.yaxis.alias;
   const committedLagName = metricAliases['async_replication_committed_lag_micros'];
@@ -200,13 +205,15 @@ export const GetCurrentLagForTable = ({
         return a.y.slice(-1);
       })
   );
+  const formattedLag = formatDuration(latestLag);
+
   return (
     <span
       className={`replication-lag-value ${
         maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'
       }`}
     >
-      {latestLag ?? '-'}
+      {formattedLag ?? '-'}
     </span>
   );
 };
