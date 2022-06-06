@@ -158,6 +158,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
+  void DropTable(Cluster* cluster, const char* table_name = kTableName) {
+    auto conn = EXPECT_RESULT(cluster->ConnectToDB(kNamespaceName));
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
+  }
+
   Status WriteRowsHelper(uint32_t start, uint32_t end, Cluster* cluster, bool flag) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
@@ -387,6 +392,19 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     }
 
     return change_resp;
+  }
+
+  bool DeleteCDCStream(const std::string& db_stream_id) {
+    RpcController delete_rpc;
+    delete_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+
+    DeleteCDCStreamRequestPB delete_req;
+    DeleteCDCStreamResponsePB delete_resp;
+    delete_req.add_stream_id(db_stream_id);
+
+    // The following line assumes that cdc_proxy_ has been initialized in the test already
+    auto result = cdc_proxy_->DeleteCDCStream(delete_req, &delete_resp, &delete_rpc);
+    return result.ok() && !delete_resp.has_error();
   }
 
   Result<GetChangesResponsePB> GetChangesFromCDCSnapshot(
@@ -1220,6 +1238,52 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNoGarbageCollectionBeforeInte
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpoint)) {
   TestSetCDCCheckpoint(1, false);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeCDCStreamDelete)) {
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  DropTable(&test_cluster_, kTableName);
+
+  // Deleting the created DB Stream ID.
+  ASSERT_EQ(DeleteCDCStream(stream_id), true);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStreamDelete)) {
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  RpcController rpc;
+  CreateCDCStreamRequestPB create_req;
+  CreateCDCStreamResponsePB create_resp;
+
+  create_req.set_table_id(table_id);
+  create_req.set_source_type(XCLUSTER);
+  ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
+  DropTable(&test_cluster_, kTableName);
+
+  RpcController delete_rpc;
+  delete_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+
+  DeleteCDCStreamRequestPB delete_req;
+  DeleteCDCStreamResponsePB delete_resp;
+  delete_req.add_stream_id(create_resp.stream_id());
+  // The following line assumes that cdc_proxy_ has been initialized in the test already
+  ASSERT_OK(cdc_proxy_->DeleteCDCStream(delete_req, &delete_resp, &delete_rpc));
+  ASSERT_EQ(!delete_resp.has_error(), true);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRestart)) {

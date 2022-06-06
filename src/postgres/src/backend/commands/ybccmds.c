@@ -643,8 +643,8 @@ YBCDropTable(Oid relationId)
 	YBCPgStatement handle = NULL;
 	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
 	/* Whether the table is colocated (via DB or tablegroup) */
-	bool		colocated = YbIsUserTableColocated(databaseId, relationId);
 	Relation	relation = relation_open(relationId, AccessExclusiveLock);
+	bool		colocated = YbIsUserTableColocated(databaseId, YbGetStorageRelid(relation));
 
 	/* Create table-level tombstone for colocated/tablegroup tables */
 	if (colocated)

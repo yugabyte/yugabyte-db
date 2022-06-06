@@ -44,17 +44,11 @@ public class ConfigHelper {
   public List<String> getAWSInstancePrefixesSupported() {
     if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
       return CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED;
-    } else if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.internal.graviton")) {
-      return Stream.concat(
-              AWS_INSTANCE_PREFIXES_SUPPORTED.stream(),
-              GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED.stream())
-          .collect(Collectors.toList());
     }
-    return AWS_INSTANCE_PREFIXES_SUPPORTED;
-  }
-
-  public List<String> getGravitonInstancePrefixList() {
-    return GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED;
+    return Stream.concat(
+            AWS_INSTANCE_PREFIXES_SUPPORTED.stream(),
+            GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED.stream())
+        .collect(Collectors.toList());
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(ConfigHelper.class);

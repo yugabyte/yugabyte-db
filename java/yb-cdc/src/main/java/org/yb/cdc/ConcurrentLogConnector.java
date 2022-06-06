@@ -115,7 +115,7 @@ public class ConcurrentLogConnector {
             .getTableInfoList()) {
       if (tableInfo.getName().equals(tableName) &&
         tableInfo.getNamespace().getName().equals(namespace) &&
-        tableInfo.getPgschemaName().equals(schemaName)) {
+        (tableInfo.getPgschemaName().isEmpty() || tableInfo.getPgschemaName().equals(schemaName))) {
         tableId = tableInfo.getId().toStringUtf8();
         // If the tableId is found, there's no point in iterating further.
         break;

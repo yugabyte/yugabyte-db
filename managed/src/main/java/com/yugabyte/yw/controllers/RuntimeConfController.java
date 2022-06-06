@@ -248,9 +248,13 @@ public class RuntimeConfController extends AuthenticatedController {
         scopeUUID,
         (logValue.length() < 50 ? logValue : "[long value hidden]"),
         logValue.length());
-    boolean isObject = mutableObjects.contains(path);
-    getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID)
-        .setValue(path, newValue, isObject);
+    final RuntimeConfig<?> mutableRuntimeConfig =
+        getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID);
+    if (mutableObjects.contains(path)) {
+      mutableRuntimeConfig.setObject(path, newValue);
+    } else {
+      mutableRuntimeConfig.setValue(path, newValue);
+    }
     postConfigChange(customerUUID, scopeUUID, path);
     auditService()
         .createAuditEntryWithReqBody(

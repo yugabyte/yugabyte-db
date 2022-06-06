@@ -108,16 +108,14 @@ public class LogUtil {
       @NotNull String level,
       @Nullable String rolloverPattern,
       @Nullable Integer maxHistory) {
-    sConfigFactory.globalRuntimeConf().setValue(LOGGING_CONFIG_KEY, level, false);
+    sConfigFactory.globalRuntimeConf().setValue(LOGGING_CONFIG_KEY, level);
     if (rolloverPattern != null) {
-      sConfigFactory
-          .globalRuntimeConf()
-          .setValue(LOGGING_ROLLOVER_PATTERN_KEY, rolloverPattern, false);
+      sConfigFactory.globalRuntimeConf().setValue(LOGGING_ROLLOVER_PATTERN_KEY, rolloverPattern);
     }
     if (maxHistory != null) {
       sConfigFactory
           .globalRuntimeConf()
-          .setValue(LOGGING_MAX_HISTORY_KEY, String.valueOf(maxHistory), false);
+          .setValue(LOGGING_MAX_HISTORY_KEY, String.valueOf(maxHistory));
     }
   }
 
@@ -131,16 +129,14 @@ public class LogUtil {
 
     sConfigFactory
         .globalRuntimeConf()
-        .setValue(AUDIT_LOG_OUTPUT_TO_STDOUT_KEY, String.valueOf(outputToStdout), false);
+        .setValue(AUDIT_LOG_OUTPUT_TO_STDOUT_KEY, String.valueOf(outputToStdout));
     sConfigFactory
         .globalRuntimeConf()
-        .setValue(AUDIT_LOG_OUTPUT_TO_FILE_KEY, String.valueOf(outputToFile), false);
+        .setValue(AUDIT_LOG_OUTPUT_TO_FILE_KEY, String.valueOf(outputToFile));
+    sConfigFactory.globalRuntimeConf().setValue(AUDIT_LOG_ROLLOVER_PATTERN_KEY, rolloverPattern);
     sConfigFactory
         .globalRuntimeConf()
-        .setValue(AUDIT_LOG_ROLLOVER_PATTERN_KEY, rolloverPattern, false);
-    sConfigFactory
-        .globalRuntimeConf()
-        .setValue(AUDIT_LOG_MAX_HISTORY_KEY, String.valueOf(maxHistory), false);
+        .setValue(AUDIT_LOG_MAX_HISTORY_KEY, String.valueOf(maxHistory));
   }
 
   /**

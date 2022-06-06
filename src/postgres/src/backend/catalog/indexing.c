@@ -286,6 +286,9 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 
 	if (IsYugaByteEnabled())
 	{
+		/* Keep ybctid consistent across all databases. */
+		Datum ybctid = 0;
+
 		if (yb_shared_insert)
 		{
 			if (!IsYsqlUpgrade)
@@ -304,7 +307,8 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 									  heapRel,
 									  RelationGetDescr(heapRel),
 									  tup,
-									  ONCONFLICT_NONE);
+									  ONCONFLICT_NONE,
+									  &ybctid);
 			}
 			YB_FOR_EACH_DB_END;
 		}
@@ -312,7 +316,8 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 									heapRel,
 									RelationGetDescr(heapRel),
 									tup,
-									ONCONFLICT_NONE);
+									ONCONFLICT_NONE,
+									&ybctid);
 		/* Update the local cache automatically */
 		YBSetSysCacheTuple(heapRel, tup);
 	}
@@ -350,6 +355,9 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 
 	if (IsYugaByteEnabled())
 	{
+		/* Keep ybctid consistent across all databases. */
+		Datum ybctid = 0;
+
 		if (yb_shared_insert)
 		{
 			if (!IsYsqlUpgrade)
@@ -368,7 +376,8 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 									  heapRel,
 									  RelationGetDescr(heapRel),
 									  tup,
-									  ONCONFLICT_NONE);
+									  ONCONFLICT_NONE,
+									  &ybctid);
 			}
 			YB_FOR_EACH_DB_END;
 		}
@@ -376,7 +385,8 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 									heapRel,
 									RelationGetDescr(heapRel),
 									tup,
-									ONCONFLICT_NONE);
+									ONCONFLICT_NONE,
+									&ybctid);
 		/* Update the local cache automatically */
 		YBSetSysCacheTuple(heapRel, tup);
 	}

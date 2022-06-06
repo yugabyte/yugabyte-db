@@ -246,7 +246,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const std::vector<IndexInfo>& indexes,
       const HybridTime write_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
   Result<std::shared_ptr<client::YBSession>> GetSessionForVerifyOrBackfill(
@@ -255,12 +255,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Status FlushWriteIndexBatchIfRequired(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
   Status FlushWriteIndexBatch(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
   template <typename SomeYBqlOp>

@@ -295,9 +295,11 @@ class LibraryPackager:
         dependencies: Set[Dependency] = set()
 
         ldd_result_stdout_str = ldd_result.stdout
+        ldd_result_stderr_str = ldd_result.stderr
         if ldd_result.returncode != 0:
-            # Interestingly, the below error message is printed to stdout, not stderr.
-            if ldd_result_stdout_str == 'not a dynamic executable':
+            # The below error message is printed to stdout on some platforms (CentOS) and
+            # stderr on other platforms (Ubuntu).
+            if 'not a dynamic executable' in (ldd_result_stdout_str, ldd_result_stderr_str):
                 logging.debug(
                     "Not a dynamic executable: {}, ignoring dependency tracking".format(
                         elf_file_path))

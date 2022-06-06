@@ -23,6 +23,7 @@ from pprint import pprint
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
     generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
+    get_public_key_content, \
     YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
     DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT, \
     DEFAULT_SSH_USER
@@ -359,9 +360,14 @@ class AddAuthorizedKey(AbstractInstancesMethod):
             return
 
         # add public new key
+        public_key_content = args.public_key_content
+        if args.public_key_content == "":
+            # public key is taken by parsing private key file in cases when
+            # a customer uploads only private key file
+            public_key_content = get_public_key_content(args.private_key_file)
         updated_vars = {
             "command": "add-authorized-key",
-            "public_key_content": args.public_key_content
+            "public_key_content": public_key_content
         }
         self.update_ansible_vars_with_args(args)
         self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
@@ -420,9 +426,14 @@ class RemoveAuthorizedKey(AbstractInstancesMethod):
             return
 
         # remove public key
+        public_key_content = args.public_key_content
+        if args.public_key_content == "":
+            # public key is taken by parsing private key file in cases when
+            # a customer uploads only private key file
+            public_key_content = get_public_key_content(args.old_private_key_file)
         updated_vars = {
             "command": "remove-authorized-key",
-            "public_key_content": args.public_key_content
+            "public_key_content": public_key_content
         }
         self.update_ansible_vars_with_args(args)
         self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
@@ -618,8 +629,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  type=str.lower)
         self.parser.add_argument("--disable_custom_ssh", action="store_true",
                                  help="Disable running the ansible task for using custom SSH.")
-        self.parser.add_argument("--install_python", action="store_true", default=False,
-                                 help="Flag to set if host OS needs python installed for Ansible.")
         self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
                                  help="Max memory for postgress process.")
         self.parser.add_argument("--use_chrony", action="store_true",
@@ -706,8 +715,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         use_default_port = not ssh_port_updated
         host_info = self.wait_for_host(args, default_port=use_default_port)
         ansible = self.cloud.setup_ansible(args)
-        if (args.install_python):
-            self.extra_vars["install_python"] = True
         ansible.run("preprovision.yml", self.extra_vars, host_info)
 
         if not args.disable_custom_ssh and use_default_port:
