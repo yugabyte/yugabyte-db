@@ -200,12 +200,14 @@ export default class RollingUpgradeForm extends Component {
 
     const currentVersion = this.getCurrentVersion();
     const submitAction = handleSubmit(this.setRollingUpgradeProperties);
-
-    const softwareVersionOptions = supportedReleases?.data?.map((item, idx) => (
-      <option key={idx} disabled={item === currentVersion} value={item}>
-        {item}
-      </option>
-    ));
+    let softwareVersionOptions = [];
+    if (getPromiseState(supportedReleases).isSuccess()) {
+      softwareVersionOptions = (supportedReleases?.data || [])?.map((item, idx) => (
+        <option key={idx} disabled={item === currentVersion} value={item}>
+          {item}
+        </option>
+      ));
+    }
 
     const tlsCertificateOptions = certificates.map((item) => (
       <option
@@ -545,7 +547,7 @@ export default class RollingUpgradeForm extends Component {
                 type="number"
                 component={YBInputField}
                 label="Rolling Upgrade Delay Between Servers (secs)"
-                initValue={TASK_LONG_TIMEOUT/1000}
+                initValue={TASK_LONG_TIMEOUT / 1000}
               />
             </div>
             {errorAlert}
