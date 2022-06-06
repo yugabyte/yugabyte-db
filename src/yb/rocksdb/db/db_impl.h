@@ -486,6 +486,9 @@ class DBImpl : public DB {
 
   Result<std::string> GetMiddleKey() override;
 
+  // Returns a table reader for the largest SST file.
+  Result<TableReader*> TEST_GetLargestSstTableReader() override;
+
   // Used in testing to make the old memtable immutable and start writing to a new one.
   void TEST_SwitchMemtable() override;
 
