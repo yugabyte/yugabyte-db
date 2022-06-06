@@ -189,7 +189,49 @@ Replace the `'localhost'` from the following commands with an appropriate host-n
 
 ### Oracle
 
-[TODO]
+- Create a role that has following privileges:
+
+  -- `SELECT` permission is required on all VIEW, SEQUENCE, TABLE PARTITION,
+     TABLE, SYNONYM, MATERIALIZED VIEW in the source schema.
+
+  -- `EXECUTE` permission on all PROCEDURE, FUNCTION, PACKAGE, PACKAGE BODY, TYPE
+      in the source schema.
+
+      -- Change the <SCHEMA_NAME> appropriately in the following snippets.
+      -- Run the following steps with a privileged user.
+      CREATE ROLE schema_ro_role;
+
+      BEGIN
+        FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner='<SCHEMA_NAME>' and object_type in ('VIEW','SEQUENCE','TABLE PARTITION','TABLE','SYNONYM','MATERIALIZED VIEW')) LOOP
+            EXECUTE IMMEDIATE 'grant select on '||R.owner||'."'||R.object_name||'" to schema_ro_role';
+        END LOOP;
+      END;
+      /
+
+      BEGIN
+        FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner='<SCHEMA_NAME>' and object_type in ('PROCEDURE','FUNCTION','PACKAGE','PACKAGE BODY', 'TYPE')) LOOP
+            EXECUTE IMMEDIATE 'grant execute on '||R.owner||'."'||R.object_name||'" to schema_ro_role';
+        END LOOP;
+      END;
+      /
+
+- Create a user `ybmigrate` and grant `CONNECT` and `schema_ro_role` to the user:
+
+      CREATE USER ybmigrate IDENTIFIED BY password;
+      GRANT CONNECT TO ybmigrate;
+      GRANT schema_ro_role TO ybmigrate;
+
+- Create a trigger to set change current schema whenever the `ybmigrate` user connects:
+
+      CREATE OR REPLACE TRIGGER ybmigrate.after_logon_trg
+      AFTER LOGON ON ybmigrate.SCHEMA
+      BEGIN
+          DBMS_APPLICATION_INFO.set_module(USER, 'Initialized');
+          EXECUTE IMMEDIATE 'ALTER SESSION SET current_schema=<SCHEMA_NAME>';
+      END;
+      /
+
+- The `ybmigrate` user can now be used for migration.
 
 
 You will need to provide the user and the source database details in the subsequent invocations of yb_migrate. For convenience, you can populate the information in the following environment variables:
