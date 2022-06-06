@@ -40,43 +40,42 @@ A typical migration workflow using yb-voyager consists of the following steps:
 - Import the schema in the target YugabyteDB database using the [`yb-voyager import schema`](#step-5-import-the-schema) command.
 - Import the data in the target YugabyteDB database using the [`yb-voyager import data`](#step-6-import-data) command.
 
-
 ```goat
-                                                .------------------.
-                                                |    Analysis      |
-                                                |                  |
-                                                | .--------------. |
-                                                | |Analyze schema| |
-                                                | .--.-----------. |
-.-------------------.     .---------------.     |    |      ^      |
-|                   |     |               |     |    v      |      |
-| Set up yb_voyager .---->| Export schema .---->| .---------.----. |
-|                   |     |               |     | |Manual changes| |
-.---------.---------.     .---------.-----.     | .--------------. |
-                                                |                  |
-                                                .--------.---------.
-                                                         |
-                                                         v
-                                               .-------------.     .------------------.
-                                               |             |     |      Import      |
-                                               | Export data .---->|                  |
-                                               |             |     | .--------------. |
-                                               .-----.-------.     | |Import schema | |
-                                                                   | .------.-------. |
-                                                                   |        |         |
-                                                                   |        v         |
-                                                                   | .--------------. |
-                                                                   | | Import data  | |
-                                                                   | .--------------. |
-                                                                   |                  |
-                                                                   .--------.---------.
-                                                                            |
-                                                                            v
-                                                                  .---------------------.
-                                                                  |                     |
-                                                                  | Manual verification |
-                                                                  |                     |
-                                                                  .---------------------.
+                                              .------------------.
+                                              |  Analysis        |
+                                              |                  |
+                                              | .--------------. |
+                                              | |Analyze schema| |
+                                              | .--.-----------. |
+.-------------------.    .---------------.    |    |      ^      |
+|                   |    |               |    |    v      |      |
+| Set up yb_voyager .--->| Export schema .--->| .---------.----. |
+|                   |    |               |    | |Manual changes| |
+.---------.---------.    .---------.-----.    | .--------------. |
+                                              |                  |
+                                              .-------.----------.
+                                                      |
+                                                      v
+                                              .-------------.    .------------------.
+                                              |             |    |  Import          |
+                                              | Export data .--->|                  |
+                                              |             |    | .--------------. |
+                                              .-----.-------.    | |Import schema | |
+                                                                 | .------.-------. |
+                                                                 |        |         |
+                                                                 |        v         |
+                                                                 | .--------------. |
+                                                                 | | Import data  | |
+                                                                 | .--------------. |
+                                                                 |                  |
+                                                                 .--------.---------.
+                                                                          |
+                                                                          v
+                                                                 .------------------.
+                                                                 |                  |
+                                                                 | Verify migration |
+                                                                 |                  |
+                                                                 .------------------.
 
 ```
 
