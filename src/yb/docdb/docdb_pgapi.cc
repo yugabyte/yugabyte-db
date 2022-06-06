@@ -25,6 +25,7 @@
 
 
 #include "yb/util/result.h"
+#include "yb/util/logging.h"
 
 // This file comes from this directory:
 // postgres_build/src/include/catalog
@@ -88,6 +89,7 @@ class DocPgTypeAnalyzer {
     if (iter != type_map_.end()) {
       return iter->second;
     }
+    LOG(INFO) << "Could not find type entity for oid " << type_oid;
     return nullptr;
   }
 
@@ -565,8 +567,7 @@ Status SetValueFromQLBinaryHelper(
   YBCPgTypeAttrs type_attrs{-1 /* typmod */};
 
   cdc_datum_message->set_column_type(pg_data_type);
-
-  switch (arg_type->type_oid) {
+  switch (pg_data_type) {
     case BOOLOID: {
       func_name = "boolout";
       bool bool_val = ql_value.bool_value();
@@ -1192,12 +1193,13 @@ Status SetValueFromQLBinaryHelper(
       break;
     }
     case ANYENUMOID: {
-      func_name = "anyenum_out";
-      int64_t anyenum_val = ql_value.int64_value();
-      size = arg_type->datum_fixed_size;
-      uint64_t datum =
-          arg_type->yb_to_datum(reinterpret_cast<int64 *>(&anyenum_val), size, &type_attrs);
-      set_string_value(datum, func_name, cdc_datum_message);
+      // func_name = "anyenum_out";
+      // int64_t anyenum_val = ql_value.int64_value();
+      // size = arg_type->datum_fixed_size;
+      // uint64_t datum =
+      //     arg_type->yb_to_datum(reinterpret_cast<int64 *>(&anyenum_val), size, &type_attrs);
+      // set_string_value(datum, func_name, cdc_datum_message);
+      cdc_datum_message->set_datum_string("");
       break;
     }
     case FDW_HANDLEROID: {
@@ -1754,7 +1756,12 @@ Status SetValueFromQLBinaryHelper(
     }
 
     default:
-      LOG(INFO) << "Unknown type in SetValueFromQLBinaryHelper: " << arg_type->type_oid;
+      YB_LOG_EVERY_N_SECS(WARNING, 5)
+          << Format(
+                 "For column: $0 unsuppported pg_type_oid: $1 found in SetValueFromQLBinaryHelper",
+                 cdc_datum_message->column_name(), pg_data_type)
+          << THROTTLE_MSG;
+      cdc_datum_message->set_datum_string("");
       break;
   }
 
