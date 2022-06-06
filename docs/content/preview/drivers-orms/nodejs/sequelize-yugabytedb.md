@@ -28,7 +28,12 @@ showAsideToc: true
       sequelize-yugabytedb
     </a>
   </li>
-
+<li >
+    <a href="/preview/drivers-orms/nodejs/prisma/" class="nav-link ">
+      <i class="fab fa-node-js" aria-hidden="true"></i>
+      Prisma
+    </a>
+  </li>
 </ul>
 
 [Sequelize ORM](https://sequelize.org/v6/) is an Object/Relational Mapping (ORM) framework for Node.js applications. It is a promise-based ORM for Node.js that enables JavaScript developers to work with relational databases, with support for features such as solid transaction support, relations, read replication, and more.

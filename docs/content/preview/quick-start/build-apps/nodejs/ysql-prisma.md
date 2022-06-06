@@ -6,7 +6,7 @@ menu:
   preview:
     parent: build-apps
     name: Node.js
-    identifier: nodejs-2
+    identifier: nodejs-4
     weight: 551
 type: page
 isTocNested: true
@@ -21,13 +21,13 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link active">
+    <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Sequelize
     </a>
   </li>
   <li>
-    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link ">
+    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YSQL - Prisma
     </a>
@@ -38,6 +38,7 @@ showAsideToc: true
       YCQL
     </a>
   </li>
+  
 </ul>
 
 ## Prerequisites
@@ -50,31 +51,45 @@ This tutorial assumes that you have installed YugabyteDB and created a cluster. 
 $ git clone https://github.com/yugabyte/orm-examples.git
 ```
 
-This repository has a Node.js example that implements a REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through the Sequelize ORM. It consists of the following:
+This repository has a Node.js example that implements a REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through the [Prisma](https://prisma.io). It consists of the following:
 
 - The `users` table contains the users of the e-commerce site.
 - The `products` table contains a list of products the e-commerce site sells.
 - Orders placed by the users are populated in the `orders` table. An order can consist of multiple line items, each of these are inserted in the `orderline` table.
 
-The application source is in the [repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize). You can customize a number of options using the properties file located at `config/config.json`.
+The application source is in the [repository](https://github.com/yugabyte/orm-examples/tree/master/node/prisma).
 
 ## Build the application
 
 ```sh
-$ cd ./node/sequelize/
+$ cd ./node/prisma/
 ```
 
 ```sh
 npm install
 ```
+## Specify the Configuration for the YugabyteDB Cluster 
 
+Add the `DATABASE_URL` in the `.env` file to be used the example using:
+```
+echo 'DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"' > .env 
+```
+
+## Apply the Migrations 
+
+Create the tables in the YugabyteDB by applying the migration for the data models in the file `prisma/schema.prisma` using the following command and generate the <b>PrismaClient</b>: 
+```
+prisma migrate dev --name first_migration
+```
+ 
 ## Run the application
 
-Start the Node.js API server at <http://localhost:8080> with DEBUG logs on.
+Start the Node.js API server at <http://localhost:8080> :
 
 ```sh
-$ DEBUG=sequelize:* npm start
+$ npm start
 ```
+Note: If your `PORT` 8080 is already in use, change the port using `export PORT=<new_port>`
 
 ## Send requests to the application
 
@@ -108,7 +123,7 @@ Create 2 orders.
 
 ```sh
 $ curl \
-  --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 } ] }' \
+  --data '{ "userId": "1", "products": [ { "productId": 1, "units": 2 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
 
@@ -187,8 +202,7 @@ $ curl http://localhost:8080/users
       "lastName": "Smith",
       "email": "jsmith@example.com"
     }
-  ],
-  ...
+  ]
 }
 ```
 
@@ -211,8 +225,7 @@ $ curl http://localhost:8080/products
       "description": "200 page notebook",
       "price": 7.5
     }
-  ],
-  ...
+  ]
 }
 ```
 
@@ -224,36 +237,35 @@ $ curl http://localhost:8080/orders
 {
   "content": [
     {
-      "orderTime": "2019-05-10T04:26:54.590+0000",
       "orderId": "999ae272-f2f4-46a1-bede-5ab765bb27fe",
-      "user": {
-        "userId": 2,
-        "firstName": "Tom",
-        "lastName": "Stewart",
-        "email": "tstewart@example.com"
-      },
-      "userId": null,
+      "userId": 2,
       "orderTotal": 25,
-      "products": []
+      "orderLines":[
+        {
+          "productId": 1,
+          "quantity": 2
+        },
+        { 
+          "productId": 2, 
+          "quantity": 4
+        }
+      ]
     },
     {
-      "orderTime": "2019-05-10T04:26:48.074+0000",
       "orderId": "1598c8d4-1857-4725-a9ab-14deb089ab4e",
-      "user": {
-        "userId": 2,
-        "firstName": "Tom",
-        "lastName": "Stewart",
-        "email": "tstewart@example.com"
-      },
-      "userId": null,
+      "userId": 1,
       "orderTotal": 15,
-      "products": []
+      "orderLines":[
+        {
+          "productId": 1,
+          "quantity": 2
+        }
+      ]
     }
-  ],
-  ...
+  ]
 }
 ```
 
 ## Explore the source
 
-The application source is in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize).
+The application source is in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/node/prisma).
