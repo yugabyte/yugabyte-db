@@ -2587,7 +2587,7 @@ std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable
     auto ltm = entry.second->LockForRead();
     // for xCluster the first entry will be the table_id
     if (!ltm->table_id().empty() && ltm->table_id().Get(0) == table_id &&
-        !ltm->started_deleting()) {
+        !ltm->started_deleting() && ltm->namespace_id().empty()) {
       streams.push_back(entry.second);
     }
   }
