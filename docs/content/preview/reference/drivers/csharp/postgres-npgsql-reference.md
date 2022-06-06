@@ -56,12 +56,7 @@ After setting up the dependencies, implement the C# client application that uses
 
 Import Npgsql and use the `NpgsqlConnection` class to create the connection object to perform DDLs and DMLs against the database.
 
-Example connection string parameter (connStringBuilder) for connecting to YugabyteDB is as follows:
-
-```csharp
-var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
-NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
-```
+The following table describes the connection parameters required to connect to the YugabyteDB database.
 
 | Parameters | Description | Default |
 | :---------- | :---------- | :------ |
@@ -70,6 +65,13 @@ NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
 | database | Database name | yugabyte
 | user | User connecting to the database | yugabyte
 | password | Password for the user | yugabyte
+
+Example connection string parameter (connStringBuilder) for connecting to YugabyteDB is as follows:
+
+```csharp
+var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
+NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
+```
 
 ### Create table
 
