@@ -44,8 +44,10 @@ struct SnapshotScheduleRestoration {
   std::vector<std::pair<TabletId, SysTabletsEntryPB>> non_system_obsolete_tablets;
   std::vector<std::pair<TableId, SysTablesEntryPB>> non_system_obsolete_tables;
   std::unordered_map<std::string, SysRowEntryType> non_system_objects_to_restore;
-  // pg_catalog_tables to restore for YSQL tables.
-  std::unordered_map<TableId, TableName> system_tables_to_restore;
+  // YSQL pg_catalog_tables in the current state (as of restore request time).
+  std::unordered_map<TableId, TableName> existing_system_tables;
+  // YSQL pg_catalog_tables present in the snapshot to restore to.
+  std::unordered_set<TableId> restoring_system_tables;
 };
 
 // Class that coordinates transaction aware snapshots at master.

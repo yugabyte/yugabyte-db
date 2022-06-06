@@ -130,6 +130,24 @@ template<> struct GetEntryType<SysTablesEntryPB>
 template<> struct GetEntryType<SysTabletsEntryPB>
     : public std::integral_constant<SysRowEntryType, SysRowEntryType::TABLET> {};
 
+Status ValidateSysCatalogTables(
+    const std::unordered_set<TableId>& restoring_tables,
+    const std::unordered_map<TableId, TableName>& existing_tables) {
+  if (existing_tables.size() != restoring_tables.size()) {
+    return STATUS(NotSupported, "Snapshot state and current state have different system catalogs");
+  }
+  for (const auto& current_table : existing_tables) {
+    auto restoring_table = restoring_tables.find(current_table.first);
+    if (restoring_table == restoring_tables.end()) {
+      return STATUS(
+          NotSupported, Format(
+                            "Sys catalog at restore state is missing a table: id $0, name $1",
+                            current_table.first, current_table.second));
+    }
+  }
+  return Status::OK();
+}
+
 } // namespace
 
 RestoreSysCatalogState::RestoreSysCatalogState(SnapshotScheduleRestoration* restoration)
@@ -143,13 +161,7 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysTablesEntryPB* pb) {
   if (pb->schema().table_properties().is_ysql_catalog_table()) {
-    if (restoration_.system_tables_to_restore.count(id) == 0) {
-      return STATUS_FORMAT(
-          NotFound,
-          "PG Catalog table $0 not found in the present set of tables"
-          " but found in the objects to restore.",
-          pb->name());
-    }
+    restoration_.restoring_system_tables.emplace(id);
     return false;
   }
 
@@ -517,7 +529,7 @@ Status RestoreSysCatalogState::CheckExistingEntry(
   VLOG_WITH_FUNC(4) << "Table: " << id << ", " << pb.ShortDebugString();
   if (pb.schema().table_properties().is_ysql_catalog_table()) {
     LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
-    restoration_.system_tables_to_restore.emplace(id, pb.name());
+    restoration_.existing_system_tables.emplace(id, pb.name());
 
     return Status::OK();
   }
@@ -666,9 +678,11 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
     const docdb::DocDB& existing_db,
     docdb::DocWriteBatch* write_batch,
     const docdb::DocReadContext& doc_read_context) {
-  if (restoration_.system_tables_to_restore.empty()) {
+  if (restoration_.existing_system_tables.empty()) {
     return Status::OK();
   }
+  RETURN_NOT_OK(ValidateSysCatalogTables(
+      restoration_.restoring_system_tables, restoration_.existing_system_tables));
   // For backwards compatibility.
   if (!pg_yb_catalog_meta) {
     LOG(INFO) << "PITR: pg_yb_catalog_version table not found. "
@@ -681,17 +695,17 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
   char tombstone_char = docdb::ValueEntryTypeAsChar::kTombstone;
   Slice tombstone(&tombstone_char, 1);
 
-  std::vector<PgCatalogTableData> tables(restoration_.system_tables_to_restore.size());
+  std::vector<PgCatalogTableData> tables(restoration_.existing_system_tables.size());
   size_t idx = 0;
   if (pg_yb_catalog_meta) {
     LOG(INFO) << "PITR: pg_yb_catalog_version table found with schema "
               << pg_yb_catalog_meta->schema().ToString();
-    tables.resize(restoration_.system_tables_to_restore.size() + 1);
+    tables.resize(restoration_.existing_system_tables.size() + 1);
     RETURN_NOT_OK(tables[0].SetTableId(kPgYbCatalogVersionTableId));
     tables[0].name = nullptr;
     ++idx;
   }
-  for (auto& id_and_name : restoration_.system_tables_to_restore) {
+  for (auto& id_and_name : restoration_.existing_system_tables) {
     auto& table = tables[idx];
     RETURN_NOT_OK(table.SetTableId(id_and_name.first));
     table.name = &id_and_name.second;
@@ -716,8 +730,14 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
     size_t total_changes = restore_patch.TotalTickerCount();
 
     if (total_changes != 0 || VLOG_IS_ON(3)) {
-      LOG(INFO) << "PITR: Pg system table: " << AsString(table.name)
-                << ", " << restore_patch.TickersToString();
+      LOG(INFO) << "PITR: Pg system table: " << AsString(table.name) << ", "
+                << restore_patch.TickersToString();
+    }
+    if (table.pg_table_oid == kPgYbMigrationTableOid && total_changes != 0) {
+      LOG(INFO) << "PITR: YSQL upgrade was performed since the restore time"
+                << ", total changes: " << total_changes;
+      return STATUS(
+          NotSupported, "Unable to restore as YSQL upgrade was performed since the restore time.");
     }
   }
 

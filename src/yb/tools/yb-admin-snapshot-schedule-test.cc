@@ -578,17 +578,19 @@ TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
   }, deadline, "Deleted table cleanup"));
 }
 
-class YbAdminSnapshotScheduleTestWithYsqlParam : public YbAdminSnapshotScheduleTestWithYsql,
-                                                 public ::testing::WithParamInterface<bool> {
+class YbAdminSnapshotScheduleTestWithYsqlColocatedParam
+    : public YbAdminSnapshotScheduleTestWithYsql,
+      public ::testing::WithParamInterface<bool> {
+ public:
+  Result<std::string> PreparePgWithColocatedParam() { return PreparePg(GetParam()); }
 };
 
-INSTANTIATE_TEST_CASE_P(PITRFlags, YbAdminSnapshotScheduleTestWithYsqlParam,
+INSTANTIATE_TEST_CASE_P(PITRFlags, YbAdminSnapshotScheduleTestWithYsqlColocatedParam,
                         ::testing::Values(false, true));
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, Pgsql) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, Pgsql) {
   YB_SKIP_TEST_IN_TSAN();
-  bool colocated = GetParam();
-  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
 
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -607,10 +609,9 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, Pgsql) {
   ASSERT_EQ(res, "before");
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDatabaseAndSchedule) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, PgsqlDropDatabaseAndSchedule) {
   YB_SKIP_TEST_IN_TSAN();
-  bool colocated = GetParam();
-  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
 
   auto conn = ASSERT_RESULT(PgConnect());
 
@@ -623,10 +624,9 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDatabaseAndSchedule) {
   ASSERT_OK(conn.Execute(Format("DROP DATABASE $0", client::kTableName.namespace_name())));
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, PgsqlCreateTable) {
   YB_SKIP_TEST_IN_TSAN();
-  bool colocated = GetParam();
-  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
@@ -667,6 +667,23 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
   ASSERT_EQ(res, "after");
 }
 
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, FailAfterMigration) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Save time to restore to: " << time;
+  LOG(INFO) << "Insert new row into pb_yg_migration table.";
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO pg_yb_migration (major, minor, name) VALUES (2147483640, 0, 'version n')"));
+  LOG(INFO) << "Assert restore for time " << time
+            << " fails because of new row in pg_yb_migration.";
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_NOK(restore_status);
+  ASSERT_STR_CONTAINS(
+      restore_status.message().ToBuffer(), "Unable to restore as YSQL upgrade was performed");
+}
+
 TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateIndex),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
@@ -690,10 +707,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateIndex)
   ASSERT_EQ(res, "after");
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropTable) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, PgsqlDropTable) {
   YB_SKIP_TEST_IN_TSAN();
-  bool colocated = GetParam();
-  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
@@ -738,10 +754,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropIndex),
   ASSERT_EQ(res, "after");
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddColumn) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, PgsqlAddColumn) {
   YB_SKIP_TEST_IN_TSAN();
-  bool colocated = GetParam();
-  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
 
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1592,6 +1607,30 @@ TEST_F(YbAdminSnapshotScheduleUpgradeTestWithYsql,
   ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'after'"));
   res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table WHERE key = 1"));
   ASSERT_EQ(res, "after");
+}
+
+TEST_F(
+    YbAdminSnapshotScheduleUpgradeTestWithYsql,
+    YB_DISABLE_TEST_IN_TSAN(PgsqlTestMigrationFromEarliestSysCatalogSnapshot)) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Assert pg_yb_migration table does not exist.";
+  std::string query = "SELECT count(*) FROM pg_yb_migration LIMIT 1";
+  auto query_status = conn.Execute(query);
+  ASSERT_NOK(query_status);
+  ASSERT_STR_CONTAINS(query_status.message().ToBuffer(), "does not exist");
+  LOG(INFO) << "Save time to restore to.";
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Run upgrade_ysql to create and populate pg_yb_migration table.";
+  auto result = ASSERT_RESULT(CallAdmin("-timeout_ms", 10 * 60 * 1000, "upgrade_ysql"));
+  LOG(INFO) << "Assert pg_yb_migration table exists.";
+  ASSERT_RESULT(conn.FetchValue<int64_t>(query));
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  LOG(INFO) << "Assert restore fails because of system catalog changes.";
+  ASSERT_NOK(restore_status);
+  ASSERT_STR_CONTAINS(
+      restore_status.message().ToBuffer(),
+      "Snapshot state and current state have different system catalogs");
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
