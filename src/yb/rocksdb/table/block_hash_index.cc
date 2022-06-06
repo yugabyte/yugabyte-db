@@ -159,8 +159,7 @@ bool BlockHashIndex::Add(const Slice& prefix, uint32_t restart_index,
   return result.second;
 }
 
-const BlockHashIndex::RestartIndex* BlockHashIndex::GetRestartIndex(
-    const Slice& key) {
+const BlockHashIndex::RestartIndex* BlockHashIndex::GetRestartIndex(const Slice& key) const {
   auto key_prefix = hash_key_extractor_->Transform(key);
 
   auto pos = restart_indices_.find(key_prefix);
