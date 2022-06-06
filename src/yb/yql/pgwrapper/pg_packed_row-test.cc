@@ -13,6 +13,8 @@
 
 #include "yb/docdb/doc_read_context.h"
 
+#include "yb/integration-tests/packed_row_test_base.h"
+
 #include "yb/master/mini_master.h"
 
 #include "yb/rocksdb/db/db_impl.h"
@@ -32,15 +34,8 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 namespace yb {
 namespace pgwrapper {
 
-class PgPackedRowTest : public PgMiniTestBase {
+class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase> {
  protected:
-  void SetUp() override {
-    FLAGS_max_packed_row_columns = 10;
-    FLAGS_timestamp_history_retention_interval_sec = 0;
-    FLAGS_history_cutoff_propagation_interval_ms = 1;
-    PgMiniTestBase::SetUp();
-  }
-
   void TestCompaction(const std::string& expr_suffix);
 };
 
@@ -313,6 +308,42 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Colocated)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
   TestCompaction("WITH (colocated = true)");
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Serial)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE sbtest1(id SERIAL, PRIMARY KEY (id))"));
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackDuringCompaction)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_packed_row_columns) = 0;
+
+  const auto kNumKeys = 10;
+  const auto kKeys = Range(1, kNumKeys + 1);
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 INT NOT NULL) SPLIT INTO 1 TABLETS"));
+
+  std::string all_rows;
+  for (auto i : kKeys) {
+    auto expr = Format("$0, $0, -$0", i);
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, v1, v2) VALUES ($0)", expr));
+    if (!all_rows.empty()) {
+      all_rows += "; ";
+    }
+    all_rows += expr;
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_packed_row_columns) = 10;
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  ASSERT_NO_FATALS(CheckNumRecords(cluster_.get(), kNumKeys));
+
+  auto fetched_rows = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY key"));
+  ASSERT_EQ(fetched_rows, all_rows);
 }
 
 } // namespace pgwrapper

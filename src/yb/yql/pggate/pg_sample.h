@@ -28,24 +28,25 @@ class PgSample : public PgDmlRead {
  public:
   PgSample(PgSession::ScopedRefPtr pg_session,
            const int targrows,
-           const PgObjectId& table_id);
+           const PgObjectId& table_id,
+           bool is_region_local);
   virtual ~PgSample();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_SAMPLE; }
 
   // Prepare query
-  CHECKED_STATUS Prepare() override;
+  Status Prepare() override;
 
   // Prepare PgSamplePicker's random state
-  CHECKED_STATUS InitRandomState(double rstate_w, uint64 rand_state);
+  Status InitRandomState(double rstate_w, uint64 rand_state);
 
   // Make PgSamplePicker to process next block of rows in the table.
   // The has_more parameter is set to true if table has and needs more blocks.
   // PgSampler is not ready to be executed until this function returns false
-  CHECKED_STATUS SampleNextBlock(bool *has_more);
+  Status SampleNextBlock(bool *has_more);
 
   // Retrieve estimated number of live and dead rows. Available after execution.
-  CHECKED_STATUS GetEstimatedRowCount(double *liverows, double *deadrows);
+  Status GetEstimatedRowCount(double *liverows, double *deadrows);
 
  private:
   // How many sample rows are needed
@@ -58,14 +59,15 @@ class PgSample : public PgDmlRead {
 class PgSamplePicker : public PgSelectIndex {
  public:
   PgSamplePicker(PgSession::ScopedRefPtr pg_session,
-                 const PgObjectId& table_id);
+                 const PgObjectId& table_id,
+                 bool is_region_local);
   virtual ~PgSamplePicker();
 
   // Prepare picker
-  CHECKED_STATUS Prepare() override;
+  Status Prepare() override;
 
   // Seed random numbers generator before execution
-  CHECKED_STATUS PrepareSamplingState(int targrows, double rstate_w, uint64 rand_state);
+  Status PrepareSamplingState(int targrows, double rstate_w, uint64 rand_state);
 
   // Process next block of table rows and update the reservoir with ybctids of randomly selected
   // rows from the block. Returns true if there is another block to process.
@@ -77,7 +79,7 @@ class PgSamplePicker : public PgSelectIndex {
   virtual Result<bool> FetchYbctidBatch(const vector<Slice> **ybctids) override;
 
   // Retrieve estimated number of live and dead rows. Available after execution.
-  CHECKED_STATUS GetEstimatedRowCount(double *liverows, double *deadrows);
+  Status GetEstimatedRowCount(double *liverows, double *deadrows);
 
  private:
   // The reservoir to keep ybctids of selected sample rows

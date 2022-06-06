@@ -49,6 +49,7 @@
 #include <cassert>
 #include <deque>
 #include <functional>
+#include <optional>
 #include <set>
 #include <vector>
 
@@ -468,7 +469,7 @@ class TemplatedElementDeleter : public BaseDeleter {
       : container_ptr_(ptr) {
   }
 
-  virtual ~TemplatedElementDeleter<STLContainer>() {
+  virtual ~TemplatedElementDeleter() {
     STLDeleteElements(container_ptr_);
   }
 
@@ -508,7 +509,7 @@ class TemplatedValueDeleter : public BaseDeleter {
       : container_ptr_(ptr) {
   }
 
-  virtual ~TemplatedValueDeleter<STLContainer>() {
+  virtual ~TemplatedValueDeleter() {
     STLDeleteValues(container_ptr_);
   }
 
@@ -535,30 +536,6 @@ class ValueDeleter {
   BaseDeleter *deleter_;
 
   DISALLOW_EVIL_CONSTRUCTORS(ValueDeleter);
-};
-
-
-// STLElementDeleter and STLValueDeleter are similar to ElementDeleter and
-// ValueDeleter, except that:
-// - The classes are templated, making them less convenient to use.
-// - Their destructors are not virtual, making them potentially more efficient.
-// New code should typically use ElementDeleter and ValueDeleter unless
-// efficiency is a large concern.
-
-template<class STLContainer> class STLElementDeleter {
- public:
-  STLElementDeleter<STLContainer>(STLContainer *ptr) : container_ptr_(ptr) {}
-  ~STLElementDeleter<STLContainer>() { STLDeleteElements(container_ptr_); }
- private:
-  STLContainer *container_ptr_;
-};
-
-template<class STLContainer> class STLValueDeleter {
- public:
-  STLValueDeleter<STLContainer>(STLContainer *ptr) : container_ptr_(ptr) {}
-  ~STLValueDeleter<STLContainer>() { STLDeleteValues(container_ptr_); }
- private:
-  STLContainer *container_ptr_;
 };
 
 
@@ -1029,6 +1006,16 @@ void MakeAtMost(const Key& key, const Value& value, Map* map) {
   } else {
     it->second = std::min(it->second, value);
   }
+}
+
+template <class T>
+const T* OptionalToPointer(const std::optional<T>& opt) {
+  return opt ? &*opt : nullptr;
+}
+
+template <class T>
+T* OptionalToPointer(std::optional<T>* opt) {
+  return *opt ? &**opt : nullptr;
 }
 
 } // namespace yb

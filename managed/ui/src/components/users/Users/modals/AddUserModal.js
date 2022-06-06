@@ -2,6 +2,7 @@
 
 import React from 'react';
 import * as Yup from 'yup';
+import { isSSOEnabled } from '../../../../config';
 import { Row, Col } from 'react-bootstrap';
 import { Field, Formik } from 'formik';
 import { YBModal, YBFormSelect, YBFormInput } from '../../../common/forms/fields';
@@ -31,6 +32,8 @@ export const AddUserModal = (props) => {
     role: undefined
   };
 
+  const oidcEnabled = isSSOEnabled();
+
   const submitForm = async (values) => {
     values.role = values.role.value;
     try {
@@ -49,20 +52,24 @@ export const AddUserModal = (props) => {
     }
   };
 
-  const validationSchema = Yup.object().shape({
-    email: Yup.string().required('Email is required').email('Enter a valid email'),
+  //Validation schemas
+  const passwordSchema = {
     password: Yup.string()
       .required('Password is required')
       .min(8, `Password is too short - must be ${minPasswordLength} characters minimum.`)
       .matches(
         /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
         `Password must contain at least ${passwordValidationInfo?.minDigits} digit,
-          ${passwordValidationInfo?.minUppercase} capital,
-          ${passwordValidationInfo?.minLowercase} lowercase
-          and ${passwordValidationInfo?.minSpecialCharacters} of the !@#$%^&* (special) characters.`
+        ${passwordValidationInfo?.minUppercase} capital,
+        ${passwordValidationInfo?.minLowercase} lowercase
+        and ${passwordValidationInfo?.minSpecialCharacters} of the !@#$%^&* (special) characters.`
       ),
-    confirmPassword: Yup.string().oneOf([Yup.ref('password')], 'Passwords must match'),
-    role: Yup.object().required('Role is required')
+    confirmPassword: Yup.string().oneOf([Yup.ref('password')], 'Passwords must match')
+  };
+  const validationSchema = Yup.object().shape({
+    email: Yup.string().required('Email is required').email('Enter a valid email'),
+    role: Yup.object().required('Role is required'),
+    ...(!oidcEnabled ? passwordSchema : {})
   });
 
   return (
@@ -87,32 +94,37 @@ export const AddUserModal = (props) => {
                 <Field name="email" placeholder="Email address" component={YBFormInput} />
               </Col>
             </Row>
-            <Row className="config-provider-row">
-              <Col lg={3}>
-                <div className="form-item-custom-label">Password</div>
-              </Col>
-              <Col lg={7}>
-                <Field
-                  name="password"
-                  placeholder="Password"
-                  type="password"
-                  component={YBFormInput}
-                />
-              </Col>
-            </Row>
-            <Row className="config-provider-row">
-              <Col lg={3}>
-                <div className="form-item-custom-label">Confirm Password</div>
-              </Col>
-              <Col lg={7}>
-                <Field
-                  name="confirmPassword"
-                  placeholder="Confirm Password"
-                  type="password"
-                  component={YBFormInput}
-                />
-              </Col>
-            </Row>
+            {!oidcEnabled && (
+              <>
+                <Row className="config-provider-row">
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">Password</div>
+                  </Col>
+                  <Col lg={7}>
+                    <Field
+                      name="password"
+                      placeholder="Password"
+                      type="password"
+                      component={YBFormInput}
+                    />
+                  </Col>
+                </Row>
+                <Row className="config-provider-row">
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">Confirm Password</div>
+                  </Col>
+                  <Col lg={7}>
+                    <Field
+                      name="confirmPassword"
+                      placeholder="Confirm Password"
+                      type="password"
+                      component={YBFormInput}
+                    />
+                  </Col>
+                </Row>
+              </>
+            )}
+
             <Row className="config-provider-row">
               <Col lg={3}>
                 <div className="form-item-custom-label">Role</div>

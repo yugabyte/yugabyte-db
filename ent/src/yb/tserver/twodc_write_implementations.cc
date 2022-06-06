@@ -49,7 +49,7 @@ using namespace yb::size_literals;
 namespace tserver {
 namespace enterprise {
 
-CHECKED_STATUS CombineExternalIntents(
+Status CombineExternalIntents(
     const tablet::TransactionStatePB& transaction_state,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
     google::protobuf::RepeatedPtrField<docdb::KeyValuePairPB> *out) {
@@ -102,7 +102,7 @@ CHECKED_STATUS CombineExternalIntents(
   return Status::OK();
 }
 
-CHECKED_STATUS AddRecord(
+Status AddRecord(
     const cdc::CDCRecordPB& record,
     docdb::KeyValueWriteBatchPB* write_batch) {
   if (record.operation() == cdc::CDCRecordPB::APPLY) {

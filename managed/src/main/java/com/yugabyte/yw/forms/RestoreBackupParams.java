@@ -2,11 +2,14 @@ package com.yugabyte.yw.forms;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.NoArgsConstructor;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
+@NoArgsConstructor
 public class RestoreBackupParams extends UniverseTaskParams {
 
   public enum ActionType {
@@ -79,5 +82,17 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
     @ApiModelProperty(value = "Is SSE")
     public boolean sse = false;
+  }
+
+  public RestoreBackupParams(
+      RestoreBackupParams otherParams, BackupStorageInfo backupStorageInfo, ActionType actionType) {
+    this.customerUUID = otherParams.customerUUID;
+    this.universeUUID = otherParams.universeUUID;
+    this.storageConfigUUID = otherParams.storageConfigUUID;
+    this.restoreTimeStamp = otherParams.restoreTimeStamp;
+    this.kmsConfigUUID = otherParams.kmsConfigUUID;
+    this.actionType = actionType;
+    this.backupStorageInfoList = new ArrayList<>();
+    this.backupStorageInfoList.add(backupStorageInfo);
   }
 }

@@ -13,7 +13,8 @@
 
 package org.yb.cdc.util;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.OutputClient;
 import org.yb.client.YBTable;
@@ -22,7 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class CDCSubscriberClient implements OutputClient {
-  private static final Logger LOG = Logger.getLogger(CDCSubscriberClient.class);
+  private static final Logger LOG = LoggerFactory.getLogger(CDCSubscriberClient.class);
 
   public CDCSubscriberClient(List records) {
     this.records = records;

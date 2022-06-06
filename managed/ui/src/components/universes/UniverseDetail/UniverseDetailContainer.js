@@ -9,7 +9,9 @@ import {
   getHealthCheck,
   getHealthCheckResponse,
   updateBackupState,
-  updateBackupStateResponse
+  updateBackupStateResponse,
+  fetchReleasesByProvider,
+  fetchReleasesResponse
 } from '../../../actions/universe';
 import {
   abortTask,
@@ -19,7 +21,13 @@ import {
   fetchCustomerTasksFailure
 } from '../../../actions/tasks';
 
-import { getAlerts, getAlertsSuccess, getAlertsFailure } from '../../../actions/customers';
+import {
+  fetchRunTimeConfigs,
+  fetchRunTimeConfigsResponse,
+  getAlerts,
+  getAlertsSuccess,
+  getAlertsFailure
+} from '../../../actions/customers';
 
 import { openDialog, closeDialog } from '../../../actions/modal';
 
@@ -36,8 +44,8 @@ import { toast } from 'react-toastify';
 const mapDispatchToProps = (dispatch) => {
   return {
     getUniverseInfo: (uuid) => {
-      dispatch(fetchUniverseInfo(uuid)).then((response) => {
-        dispatch(fetchUniverseInfoResponse(response.payload));
+      return dispatch(fetchUniverseInfo(uuid)).then((response) => {
+        return dispatch(fetchUniverseInfoResponse(response.payload));
       });
     },
 
@@ -48,6 +56,12 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(fetchUniverseTablesSuccess(response.payload));
         }
+      });
+    },
+
+    fetchSupportedReleases: (pUUID) => {
+      dispatch(fetchReleasesByProvider(pUUID)).then((response) => {
+        dispatch(fetchReleasesResponse(response.payload));
       });
     },
 
@@ -75,6 +89,9 @@ const mapDispatchToProps = (dispatch) => {
     showSoftwareUpgradesModal: () => {
       dispatch(openDialog('softwareUpgradesModal'));
     },
+    showVMImageUpgradeModal: () => {
+      dispatch(openDialog('vmImageUpgradeModal'));
+    },
     showRunSampleAppsModal: () => {
       dispatch(openDialog('runSampleAppsModal'));
     },
@@ -93,6 +110,10 @@ const mapDispatchToProps = (dispatch) => {
     showToggleBackupModal: () => {
       dispatch(openDialog('toggleBackupModalForm'));
     },
+    showThirdpartyUpgradeModal: () => {
+      dispatch(openDialog('thirdpartyUpgradeModal'));
+    },
+
     updateBackupState: (universeUUID, flag) => {
       dispatch(updateBackupState(universeUUID, flag)).then((response) => {
         if (response.error) {
@@ -144,6 +165,11 @@ const mapDispatchToProps = (dispatch) => {
     },
     showTaskAbortModal: () => {
       dispatch(openDialog('confirmAbortTask'));
+    },
+    fetchRunTimeConfigs: () => {
+      return dispatch(
+        fetchRunTimeConfigs('00000000-0000-0000-0000-000000000000', true)
+      ).then((response) => dispatch(fetchRunTimeConfigsResponse(response.payload)));
     }
   };
 };

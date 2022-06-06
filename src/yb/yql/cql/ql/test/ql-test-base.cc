@@ -172,7 +172,7 @@ std::string TestQLProcessor::CurrentKeyspace() const {
   return processor_->ql_env_.CurrentKeyspace();
 }
 
-CHECKED_STATUS TestQLProcessor::UseKeyspace(const std::string& keyspace_name) {
+Status TestQLProcessor::UseKeyspace(const std::string& keyspace_name) {
   return processor_->ql_env_.UseKeyspace(keyspace_name);
 }
 
@@ -213,13 +213,13 @@ void QLTestBase::VerifyPaginationSelect(TestQLProcessor* processor,
   EXPECT_EQ(expected_rows, rows);
 }
 
-CHECKED_STATUS QLTestBase::TestParser(const std::string& stmt) {
+Status QLTestBase::TestParser(const std::string& stmt) {
   ParseTree::UniPtr parse_tree;
   return GetQLProcessor()->ql_processor().Parse(stmt, &parse_tree);
 }
 
 // Tests parser and analyzer
-CHECKED_STATUS QLTestBase::TestAnalyzer(const string& stmt, ParseTree::UniPtr* parse_tree) {
+Status QLTestBase::TestAnalyzer(const string& stmt, ParseTree::UniPtr* parse_tree) {
   QLProcessor& processor = GetQLProcessor()->ql_processor();
   RETURN_NOT_OK(processor.Parse(stmt, parse_tree));
   RETURN_NOT_OK(processor.Analyze(parse_tree));

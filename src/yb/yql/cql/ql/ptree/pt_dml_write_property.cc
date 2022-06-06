@@ -48,7 +48,7 @@ PTDmlWriteProperty::PTDmlWriteProperty(MemoryContext *memctx,
 PTDmlWriteProperty::~PTDmlWriteProperty() {
 }
 
-CHECKED_STATUS PTDmlWriteProperty::Analyze(SemContext *sem_context) {
+Status PTDmlWriteProperty::Analyze(SemContext *sem_context) {
 
   // Verify we have a valid property name in the lhs.
   const auto& update_property_name = lhs_->c_str();
@@ -84,7 +84,7 @@ void PTDmlWriteProperty::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
 }
 
-CHECKED_STATUS PTDmlWritePropertyListNode::Analyze(SemContext *sem_context) {
+Status PTDmlWritePropertyListNode::Analyze(SemContext *sem_context) {
   // Set to ensure we don't have duplicate update properties.
   std::set<string> update_properties;
   std::unordered_map<string, PTDmlWriteProperty::SharedPtr> order_tnodes;
@@ -141,7 +141,7 @@ PTDmlWritePropertyMap::PTDmlWritePropertyMap(MemoryContext *memctx,
 PTDmlWritePropertyMap::~PTDmlWritePropertyMap() {
 }
 
-CHECKED_STATUS PTDmlWritePropertyMap::Analyze(SemContext *sem_context) {
+Status PTDmlWritePropertyMap::Analyze(SemContext *sem_context) {
   // Verify we have a valid property name in the lhs.
   const auto &property_name = lhs_->c_str();
   auto iterator = kPropertyDataTypes.find(property_name);

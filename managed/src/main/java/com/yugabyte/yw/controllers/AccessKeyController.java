@@ -27,10 +27,9 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.data.Form;
-import play.libs.Json;
 import play.mvc.Http.MultipartFormData;
 import play.mvc.Http.MultipartFormData.FilePart;
 import play.mvc.Result;
@@ -73,20 +72,25 @@ public class AccessKeyController extends AuthenticatedController {
       value = "Create an access key",
       response = AccessKey.class)
   public Result create(UUID customerUUID, UUID providerUUID) throws IOException {
-    Form<AccessKeyFormData> formData = formFactory.getFormDataOrBadRequest(AccessKeyFormData.class);
-
-    UUID regionUUID = formData.get().regionUUID;
+    AccessKeyFormData formData = formFactory.getFormDataOrBadRequest(AccessKeyFormData.class).get();
+    formData = accessManager.setOrValidateRequestDataWithExistingKey(formData, providerUUID);
+    UUID regionUUID = formData.regionUUID;
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
 
-    String keyCode = formData.get().keyCode;
-    String keyContent = formData.get().keyContent;
-    AccessManager.KeyType keyType = formData.get().keyType;
-    String sshUser = formData.get().sshUser;
-    Integer sshPort = formData.get().sshPort;
-    boolean airGapInstall = formData.get().airGapInstall;
-    boolean skipProvisioning = formData.get().skipProvisioning;
-    boolean setUpChrony = formData.get().setUpChrony;
-    List<String> ntpServers = formData.get().ntpServers;
+    String keyCode = formData.keyCode;
+    String keyContent = formData.keyContent;
+    AccessManager.KeyType keyType = formData.keyType;
+    String sshUser = formData.sshUser;
+    Integer sshPort = formData.sshPort;
+    boolean airGapInstall = formData.airGapInstall;
+    boolean skipProvisioning = formData.skipProvisioning;
+    boolean setUpChrony = formData.setUpChrony;
+    List<String> ntpServers = formData.ntpServers;
+    boolean showSetUpChrony = formData.showSetUpChrony;
+    boolean passwordlessSudoAccess = formData.passwordlessSudoAccess;
+    boolean installNodeExporter = formData.installNodeExporter;
+    Integer nodeExporterPort = formData.nodeExporterPort;
+    String nodeExporterUser = formData.nodeExporterUser;
     AccessKey accessKey;
 
     LOG.info(
@@ -101,6 +105,11 @@ public class AccessKeyController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "NTP servers not provided for on-premises provider for which chrony setup is desired");
+    }
+
+    if (region.provider.code.equals(onprem.name()) && sshUser == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "sshUser cannot be null for onprem providers.");
     }
 
     // Check if a public/private key was uploaded as part of the request
@@ -122,7 +131,8 @@ public class AccessKeyController extends AuthenticatedController {
               airGapInstall,
               skipProvisioning,
               setUpChrony,
-              ntpServers);
+              ntpServers,
+              showSetUpChrony);
     } else if (keyContent != null && !keyContent.isEmpty()) {
       if (keyType == null) {
         throw new PlatformServiceException(BAD_REQUEST, "keyType params required.");
@@ -143,17 +153,21 @@ public class AccessKeyController extends AuthenticatedController {
               airGapInstall,
               skipProvisioning,
               setUpChrony,
-              ntpServers);
+              ntpServers,
+              showSetUpChrony);
     } else {
       accessKey =
           accessManager.addKey(
               regionUUID,
               keyCode,
+              null,
+              sshUser,
               sshPort,
               airGapInstall,
               skipProvisioning,
               setUpChrony,
-              ntpServers);
+              ntpServers,
+              showSetUpChrony);
     }
 
     // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
@@ -162,12 +176,12 @@ public class AccessKeyController extends AuthenticatedController {
       templateManager.createProvisionTemplate(
           accessKey,
           airGapInstall,
-          formData.get().passwordlessSudoAccess,
-          formData.get().installNodeExporter,
-          formData.get().nodeExporterPort,
-          formData.get().nodeExporterUser,
-          formData.get().setUpChrony,
-          formData.get().ntpServers);
+          passwordlessSudoAccess,
+          installNodeExporter,
+          nodeExporterPort,
+          nodeExporterUser,
+          setUpChrony,
+          ntpServers);
     }
     auditService()
         .createAuditEntryWithReqBody(
@@ -175,7 +189,7 @@ public class AccessKeyController extends AuthenticatedController {
             Audit.TargetType.AccessKey,
             Objects.toString(accessKey.idKey, null),
             Audit.ActionType.Create,
-            Json.toJson(formData.rawData()));
+            request().body().asJson());
     return PlatformResults.withData(accessKey);
   }
 

@@ -135,14 +135,15 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
   if (decode_dockey) {
     for (const auto& entry : dwb.key_value_pairs()) {
       // Skip key validation for external intents.
-      if (!entry.first.empty() && entry.first[0] == KeyEntryTypeAsChar::kExternalTransactionId) {
+      if (!entry.key.empty() && entry.key[0] == KeyEntryTypeAsChar::kExternalTransactionId) {
         continue;
       }
       SubDocKey subdoc_key;
       // We don't expect any invalid encoded keys in the write batch. However, these encoded keys
       // don't contain the HybridTime.
-      RETURN_NOT_OK_PREPEND(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(entry.first),
-          Substitute("when decoding key: $0", FormatBytesAsStr(entry.first)));
+      RETURN_NOT_OK_PREPEND(
+          subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(entry.key),
+          Substitute("when decoding key: $0", FormatBytesAsStr(entry.key)));
     }
   }
 
@@ -169,13 +170,13 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
         // HybridTime provided. Append a PrimitiveValue with the HybridTime to the key.
         const KeyBytes encoded_ht =
             KeyEntryValue(DocHybridTime(hybrid_time, write_id)).ToKeyBytes();
-        rocksdb_key = entry.first + encoded_ht.ToStringBuffer();
+        rocksdb_key = entry.key + encoded_ht.ToStringBuffer();
       } else {
         // Useful when printing out a write batch that does not yet know the HybridTime it will be
         // committed with.
-        rocksdb_key = entry.first;
+        rocksdb_key = entry.key;
       }
-      rocksdb_write_batch->Put(rocksdb_key, entry.second);
+      rocksdb_write_batch->Put(rocksdb_key, entry.value);
       if (increment_write_id) {
         ++write_id;
       }
@@ -460,7 +461,11 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
       &intents_db_options_, "[I] " /* log_prefix */, intents_db_options_.statistics,
       tablet_options);
   regular_db_options_.compaction_context_factory = CreateCompactionContextFactory(
-      retention_policy_, &KeyBounds::kNoBounds, /* schema_packing_provider= */ nullptr);
+      retention_policy_, &KeyBounds::kNoBounds,
+      [this](const std::vector<rocksdb::FileMetaData*>&) {
+        return delete_marker_retention_time_;
+      } ,
+      /* schema_packing_provider= */ nullptr);
   regular_db_options_.compaction_file_filter_factory =
       compaction_file_filter_factory_;
   regular_db_options_.max_file_size_for_compaction =

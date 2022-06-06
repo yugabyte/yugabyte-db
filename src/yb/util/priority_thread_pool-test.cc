@@ -36,9 +36,12 @@ const auto kWaitTime = kStepTime * 3;
 const int kNoDrive = 0;
 const int kDrive1 = 1;
 const int kDrive2 = 2;
+const int kNoDiskPriority = 0;
 const int kTopDiskCompactionPriority = 100;
 const int kTopDiskFlushPriority = 200;
 
+// Used as an analog to the task_ignore_disk_priority flag for test tasks.
+bool ignore_disk_priority = false;
 
 class Share {
  public:
@@ -121,6 +124,9 @@ class Task : public PriorityThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
+    if (ignore_disk_priority) {
+      return kNoDiskPriority;
+    }
     return compaction_
         ? kTopDiskCompactionPriority - active_tasks
         : kTopDiskFlushPriority - active_tasks;
@@ -230,6 +236,9 @@ class RandomTask : public PriorityThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
+    if (ignore_disk_priority) {
+      return kNoDiskPriority;
+    }
     return kTopDiskFlushPriority - active_tasks;
   }
 };
@@ -377,6 +386,8 @@ TEST(PriorityThreadPoolTest, PicksTaskOnLessBusyDrive) {
     8 /* priority */, &share, &thread_pool, kDrive1, false /* pause */, true /* compaction */);
   SubmitTask(
     7 /* priority */, &share, &thread_pool, kDrive2, false /* pause */, true /* compaction */);
+  SubmitTask(
+    6 /* priority */, &share, &thread_pool, kDrive2, false /* pause */, true /* compaction */);
 
   // Since we turned the ability to pause off,
   // we should see tasks 10 and 9 running, as they were submitted first.
@@ -388,6 +399,13 @@ TEST(PriorityThreadPoolTest, PicksTaskOnLessBusyDrive) {
   // it should run first.
   share.FillRunningTaskPriorities(&running);
   ASSERT_EQ(running, std::vector<int>({7, 9}));
+
+  ANNOTATE_UNPROTECTED_WRITE(ignore_disk_priority) = true;
+  // With disk priority disabled, task 8 should run before task 6.
+  share.Stop(7);
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(running, std::vector<int>({8, 9}));
+  ANNOTATE_UNPROTECTED_WRITE(ignore_disk_priority) = false;
 }
 
 TEST(PriorityThreadPoolTest, OtherTasksRunBeforeCompactionTasks) {

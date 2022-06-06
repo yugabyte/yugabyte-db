@@ -13,13 +13,22 @@
 
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/docdb/primitive_value.h"
+
 #include "yb/integration-tests/cql_test_base.h"
 
 #include "yb/master/mini_master.h"
 
+#include "yb/rocksdb/db.h"
+
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
+
+#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/range.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -27,9 +36,14 @@
 
 using namespace std::literals;
 
+DECLARE_bool(cleanup_intents_sst_files);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int64(cql_processors_limit);
 DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 DECLARE_int32(client_read_write_timeout_ms);
@@ -317,6 +331,219 @@ TEST_F(CqlTest, TestTruncateTable) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_truncate_table) = true;
   ASSERT_NOK(session.ExecuteQuery("TRUNCATE TABLE users"));
+}
+
+TEST_F(CqlTest, CompactDeleteMarkers) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  FLAGS_TEST_transaction_ignore_applying_probability = 1.0;
+  FLAGS_cleanup_intents_sst_files = false;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (i INT PRIMARY KEY) WITH transactions = { 'enabled' : true }"));
+  ASSERT_OK(session.ExecuteQuery(
+      "BEGIN TRANSACTION "
+      "  INSERT INTO t (i) VALUES (42);"
+      "END TRANSACTION;"));
+  ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE i = 42"));
+  ASSERT_OK(cluster_->FlushTablets());
+  FLAGS_TEST_transaction_ignore_applying_probability = 0.0;
+  ASSERT_OK(WaitFor([this] {
+    auto list = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    for (const auto& peer : list) {
+      auto* participant = peer->tablet()->transaction_participant();
+      if (!participant) {
+        continue;
+      }
+      if (participant->MinRunningHybridTime() != HybridTime::kMax) {
+        return false;
+      }
+    }
+    return true;
+  }, 10s, "Transaction complete"));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+  auto count_str = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(count_str, "0");
+}
+
+class CqlRF1Test : public CqlTest {
+ public:
+  int num_tablet_servers() override {
+    return 1;
+  }
+};
+
+namespace {
+
+class CompactionListener : public rocksdb::EventListener {
+ public:
+  void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
+    LOG(INFO) << "Compaction time: " << ci.stats.elapsed_micros;
+  }
+};
+
+}
+
+// Check that we correctly update SST file range values, after removing delete markers.
+TEST_F_EX(CqlTest, RangeGC, CqlRF1Test) {
+  constexpr int kKeys = 20;
+  constexpr int kKeptKey = kKeys / 2;
+  constexpr int kRangeMultiplier = 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE t (h INT, r INT, v INT, PRIMARY KEY ((h), r))"));
+  auto insert_prepared = ASSERT_RESULT(session.Prepare("INSERT INTO t (h, r, v) VALUES (?, ?, ?)"));
+  for (auto key : Range(kKeys)) {
+    auto stmt = insert_prepared.Bind();
+    stmt.Bind(0, key);
+    stmt.Bind(1, key * kRangeMultiplier);
+    stmt.Bind(2, -key);
+    ASSERT_OK(session.Execute(stmt));
+  }
+
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto delete_prepared = ASSERT_RESULT(session.Prepare("DELETE FROM t WHERE h = ?"));
+  for (auto key : Range(kKeys)) {
+    if (key == kKeptKey) {
+      continue;
+    }
+    auto stmt = delete_prepared.Bind();
+    stmt.Bind(0, key);
+    ASSERT_OK(session.Execute(stmt));
+  }
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    auto* db = peer->tablet()->TEST_db();
+    if (!db) {
+      continue;
+    }
+    auto files = db->GetLiveFilesMetaData();
+    for (const auto& file : files) {
+      auto value = ASSERT_RESULT(docdb::KeyEntryValue::FullyDecodeFromKey(
+          file.smallest.user_values[0].AsSlice()));
+      ASSERT_EQ(value.GetInt32(), kKeptKey * kRangeMultiplier);
+      value = ASSERT_RESULT(docdb::KeyEntryValue::FullyDecodeFromKey(
+          file.largest.user_values[0].AsSlice()));
+      ASSERT_EQ(value.GetInt32(), kKeptKey * kRangeMultiplier);
+    }
+  }
+}
+
+// This test fill table with multiple value columns and long (1KB) range value.
+// Then performs compaction.
+// Test was created to measure compaction performance for the above scenario.
+TEST_F_EX(CqlTest, CompactRanges, CqlRF1Test) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+#ifndef NDEBUG
+  constexpr int kKeys = 2000;
+#else
+  constexpr int kKeys = 20000;
+#endif
+  constexpr int kColumns = 10;
+  const std::string kRangeValue = RandomHumanReadableString(1_KB);
+
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->GetTabletManager(i)->TEST_tablet_options()->listeners.push_back(
+        std::make_shared<CompactionListener>());
+  }
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  std::string expr = "CREATE TABLE t (h INT, r TEXT";
+  for (auto column : Range(kColumns)) {
+    expr += Format(", v$0 INT", column);
+  }
+  expr += ", PRIMARY KEY ((h), r))";
+  ASSERT_OK(session.ExecuteQuery(expr));
+
+  expr = "INSERT INTO t (h, r";
+  for (auto column : Range(kColumns)) {
+    expr += Format(", v$0", column);
+  }
+  expr += ") VALUES (?, ?";
+  for (auto column [[maybe_unused]] : Range(kColumns)) {
+    expr += ", ?";
+  }
+  expr += ")";
+
+  auto insert_prepared = ASSERT_RESULT(session.Prepare(expr));
+  std::deque<CassandraFuture> futures;
+  for (int key = 1; key <= kKeys; ++key) {
+    while (!futures.empty() && futures.front().Ready()) {
+      ASSERT_OK(futures.front().Wait());
+      futures.pop_front();
+    }
+    if (futures.size() >= 0x40) {
+      std::this_thread::sleep_for(10ms);
+      continue;
+    }
+    auto stmt = insert_prepared.Bind();
+    int idx = 0;
+    stmt.Bind(idx++, key);
+    stmt.Bind(idx++, kRangeValue);
+    for (auto column : Range(kColumns)) {
+      stmt.Bind(idx++, key * column);
+    }
+    futures.push_back(session.ExecuteGetFuture(stmt));
+  }
+
+  for (auto& future : futures) {
+    ASSERT_OK(future.Wait());
+  }
+
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(cluster_->CompactTablets());
+}
+
+TEST_F(CqlTest, ManyColumns) {
+  constexpr int kNumRows = 10;
+#ifndef NDEBUG
+  constexpr int kColumns = RegularBuildVsSanitizers(100, 10);
+#else
+  constexpr int kColumns = 1000;
+#endif
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  std::string expr = "CREATE TABLE t (id INT PRIMARY KEY";
+  for (int i = 1; i <= kColumns; ++i) {
+    expr += Format(", c$0 INT", i);
+  }
+  expr += ") WITH tablets = 1";
+  ASSERT_OK(session.ExecuteQuery(expr));
+  expr = "UPDATE t SET";
+  for (int i = 2;; ++i) { // Don't set first column.
+    expr += Format(" c$0 = ?", i);
+    if (i == kColumns) {
+      break;
+    }
+    expr += ",";
+  }
+  expr += " WHERE id = ?";
+  auto insert_prepared = ASSERT_RESULT(session.Prepare(expr));
+
+  for (int i = 1; i <= kNumRows; ++i) {
+    auto stmt = insert_prepared.Bind();
+    int idx = 0;
+    for (int c = 2; c <= kColumns; ++c) {
+      stmt.Bind(idx++, c);
+    }
+    stmt.Bind(idx++, i);
+    ASSERT_OK(session.Execute(stmt));
+  }
+  auto start = CoarseMonoClock::Now();
+  for (int i = 0; i <= 100; ++i) {
+    auto value = ASSERT_RESULT(session.FetchValue<int64_t>("SELECT COUNT(c1) FROM t"));
+    if (i == 0) {
+      ASSERT_EQ(value, 0);
+      start = CoarseMonoClock::Now();
+    }
+  }
+  MonoDelta passed = CoarseMonoClock::Now() - start;
+  LOG(INFO) << "Passed: " << passed;
 }
 
 }  // namespace yb

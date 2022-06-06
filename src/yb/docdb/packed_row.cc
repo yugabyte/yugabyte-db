@@ -32,11 +32,18 @@ namespace docdb {
 
 namespace {
 
+// Used to mark column as skipped by packer. For instance in case of collection column.
+constexpr int64_t kSkippedColumnIdx = -1;
+
 bool IsVarlenColumn(const ColumnSchema& column_schema) {
   return column_schema.is_nullable() || column_schema.type_info()->var_length();
 }
 
 size_t EncodedValueSize(const ColumnSchema& column_schema) {
+  if (column_schema.type_info()->type == DataType::BOOL) {
+    // Boolean values are encoded as value type only.
+    return 1;
+  }
   return 1 + column_schema.type_info()->size;
 }
 
@@ -71,7 +78,12 @@ SchemaPacking::SchemaPacking(const Schema& schema) {
   columns_.reserve(schema.num_columns() - schema.num_key_columns());
   for (auto i = schema.num_key_columns(); i != schema.num_columns(); ++i) {
     const auto& column_schema = schema.column(i);
-    column_to_idx_.emplace(schema.column_id(i), columns_.size());
+    auto column_id = schema.column_id(i);
+    if (column_schema.is_collection()) {
+      column_to_idx_.emplace(column_id, kSkippedColumnIdx);
+      continue;
+    }
+    column_to_idx_.emplace(column_id, columns_.size());
     bool varlen = IsVarlenColumn(column_schema);
     columns_.emplace_back(ColumnPackingData {
       .id = schema.column_id(i),
@@ -99,10 +111,18 @@ SchemaPacking::SchemaPacking(const SchemaPackingPB& pb) : varlen_columns_count_(
       ++varlen_columns_count_;
     }
   }
+  for (auto skipped_column_id : pb.skipped_column_ids()) {
+    column_to_idx_.emplace(skipped_column_id, kSkippedColumnIdx);
+  }
 }
 
 size_t LoadEnd(size_t idx, const Slice& packed) {
   return LittleEndian::Load32(packed.data() + idx * sizeof(uint32_t));
+}
+
+bool SchemaPacking::SkippedColumn(ColumnId column_id) const {
+  auto it = column_to_idx_.find(column_id);
+  return it != column_to_idx_.end() && it->second == kSkippedColumnIdx;
 }
 
 Slice SchemaPacking::GetValue(size_t idx, const Slice& packed) const {
@@ -116,10 +136,10 @@ Slice SchemaPacking::GetValue(size_t idx, const Slice& packed) const {
   return Slice(packed.data() + offset, packed.data() + end);
 }
 
-boost::optional<Slice> SchemaPacking::GetValue(ColumnId column, const Slice& packed) const {
-  auto it = column_to_idx_.find(column);
-  if (it == column_to_idx_.end()) {
-    return boost::none;
+std::optional<Slice> SchemaPacking::GetValue(ColumnId column_id, const Slice& packed) const {
+  auto it = column_to_idx_.find(column_id);
+  if (it == column_to_idx_.end() || it->second == kSkippedColumnIdx) {
+    return {};
   }
   return GetValue(it->second, packed);
 }
@@ -131,6 +151,11 @@ std::string SchemaPacking::ToString() const {
 void SchemaPacking::ToPB(SchemaPackingPB* out) const {
   for (const auto& column : columns_) {
     column.ToPB(out->add_columns());
+  }
+  for (const auto& [column_id, column_idx] : column_to_idx_) {
+    if (column_idx == kSkippedColumnIdx) {
+      out->add_skipped_column_ids(column_id);
+    }
   }
 }
 
@@ -222,12 +247,12 @@ void RowPacker::Restart() {
   result_.Truncate(prefix_end_);
 }
 
-Status RowPacker::AddValue(ColumnId column, const QLValuePB& value) {
-  return DoAddValue(column, value);
+Status RowPacker::AddValue(ColumnId column_id, const QLValuePB& value) {
+  return DoAddValue(column_id, value);
 }
 
-Status RowPacker::AddValue(ColumnId column, const Slice& value) {
-  return DoAddValue(column, value);
+Status RowPacker::AddValue(ColumnId column_id, const Slice& value) {
+  return DoAddValue(column_id, value);
 }
 
 namespace {
@@ -247,29 +272,43 @@ void PackValue(const Slice& value, ValueBuffer* result) {
 } // namespace
 
 template <class Value>
-Status RowPacker::DoAddValue(ColumnId column, const Value& value) {
+Status RowPacker::DoAddValue(ColumnId column_id, const Value& value) {
   if (idx_ >= packing_.columns()) {
-    return STATUS_FORMAT(InvalidArgument, "Add value for unknown column: $0, idx: $1",
-                         column, idx_);
+    CHECK(false);
+    return STATUS_FORMAT(
+        InvalidArgument, "Add extra column $0, while already have $1 of $2 columns",
+        column_id, idx_, packing_.columns());
   }
-  const auto& column_data = packing_.column_packing_data(idx_);
-  if (column_data.id != column) {
-    return STATUS_FORMAT(InvalidArgument, "Add value for unknown column: $0 vs $1",
-                         column, column_data.id);
-  }
+  for (;;) {
+    const auto& column_data = packing_.column_packing_data(idx_);
+    if (column_data.id > column_id) {
+      return STATUS_FORMAT(InvalidArgument, "Add unexpected column $0, while $1 is expected",
+                           column_id, column_data.id);
+    }
 
-  ++idx_;
-  size_t prev_size = result_.size();
-  if (!column_data.nullable || !IsNull(value)) {
-    PackValue(value, &result_);
-  }
-  if (column_data.varlen()) {
-    LittleEndian::Store32(result_.mutable_data() + varlen_write_pos_,
-                          narrow_cast<uint32_t>(result_.size() - prefix_end_));
-    varlen_write_pos_ += sizeof(uint32_t);
-  } else if (prev_size + column_data.size != result_.size()) {
-    return STATUS_FORMAT(Corruption, "Wrong encoded size: $0 vs $1",
-                         result_.size() - prev_size, column_data.size);
+    ++idx_;
+    size_t prev_size = result_.size();
+    if (column_data.id < column_id) {
+      if (!column_data.nullable) {
+        return STATUS_FORMAT(
+            InvalidArgument, "Missing value for non nullable column $0, while adding $1",
+            column_data.id, column_id);
+      }
+    } else if (!column_data.nullable || !IsNull(value)) {
+      PackValue(value, &result_);
+    }
+    if (column_data.varlen()) {
+      LittleEndian::Store32(result_.mutable_data() + varlen_write_pos_,
+                            narrow_cast<uint32_t>(result_.size() - prefix_end_));
+      varlen_write_pos_ += sizeof(uint32_t);
+    } else if (prev_size + column_data.size != result_.size()) {
+      return STATUS_FORMAT(Corruption, "Wrong encoded size: $0 vs $1",
+                           result_.size() - prev_size, column_data.size);
+    }
+
+    if (column_data.id == column_id) {
+      break;
+    }
   }
 
   return Status::OK();

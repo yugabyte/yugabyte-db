@@ -89,11 +89,11 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   // but then actually tries to the get the committed consensus configuration to make sure.
   itest::TServerDetails* GetLeaderReplicaOrNull(const std::string& tablet_id);
 
-  CHECKED_STATUS GetLeaderReplicaWithRetries(const std::string& tablet_id,
+  Status GetLeaderReplicaWithRetries(const std::string& tablet_id,
                                              itest::TServerDetails** leader,
                                              int max_attempts = 100);
 
-  CHECKED_STATUS GetTabletLeaderUUIDFromMaster(const std::string& tablet_id,
+  Status GetTabletLeaderUUIDFromMaster(const std::string& tablet_id,
                                                std::string* leader_uuid);
 
   itest::TServerDetails* GetReplicaWithUuidOrNull(const std::string& tablet_id,
@@ -114,14 +114,14 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   int64_t GetFurthestAheadReplicaIdx(const std::string& tablet_id,
                                      const std::vector<itest::TServerDetails*>& replicas);
 
-  CHECKED_STATUS ShutdownServerWithUUID(const std::string& uuid);
+  Status ShutdownServerWithUUID(const std::string& uuid);
 
-  CHECKED_STATUS RestartServerWithUUID(const std::string& uuid);
+  Status RestartServerWithUUID(const std::string& uuid);
 
   // Since we're fault-tolerant we might mask when a tablet server is
   // dead. This returns Status::IllegalState() if fewer than 'num_tablet_servers'
   // are alive.
-  CHECKED_STATUS CheckTabletServersAreAlive(size_t num_tablet_servers);
+  Status CheckTabletServersAreAlive(size_t num_tablet_servers);
 
   void TearDown() override;
 

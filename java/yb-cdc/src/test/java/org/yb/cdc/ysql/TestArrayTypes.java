@@ -13,10 +13,11 @@
 
 package org.yb.cdc.ysql;
 
-import org.apache.log4j.Logger;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
@@ -34,7 +35,7 @@ import java.util.List;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestArrayTypes extends CDCBaseClass {
-  private final static Logger LOG = Logger.getLogger(TestArrayTypes.class);
+  private final static Logger LOG = LoggerFactory.getLogger(TestArrayTypes.class);
 
   private void assertArrayRecord(ExpectedRecordYSQL<?> expectedRecord,
                                  CDCSubscriber testSubscriber) throws Exception {
@@ -112,7 +113,6 @@ public class TestArrayTypes extends CDCBaseClass {
       assertFalse(statement.execute(HelperValues.createTableWithMultiDimensionalArrayColumns));
       CDCSubscriber testSubscriber = new CDCSubscriber("testmulti", getMasterAddresses());
       testSubscriber.createStream("proto");
-      testSubscriber.setCheckpoint(0, 0, true);
 
       String varBit = "'{{1011, 011101, 1101110111}, {1011, 011101, 1101110111}}'::varbit(10)[]";
       String booleanVal = "'{{FALSE, TRUE, TRUE, FALSE}, {FALSE, TRUE, TRUE, FALSE}}'::boolean[]";
@@ -229,7 +229,6 @@ public class TestArrayTypes extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber("testsingle", getMasterAddresses());
       testSubscriber.createStream("proto");
-      testSubscriber.setCheckpoint(0, 0, true);
       String insertIntoTable = "insert into testsingle values (1, " +
         "'{1011, 011101, 1101110111}', " +
         "'{FALSE, TRUE, TRUE, FALSE}', " +

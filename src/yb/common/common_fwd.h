@@ -35,6 +35,7 @@ class IndexMap;
 class Partition;
 class PartitionSchema;
 class PgsqlScanSpec;
+class QLResultSet;
 class QLRow;
 class QLRowBlock;
 class QLScanSpec;

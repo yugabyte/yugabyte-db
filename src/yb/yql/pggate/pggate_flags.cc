@@ -32,9 +32,6 @@ DEFINE_int32(pggate_ybclient_reactor_threads, 2,
              "The number of reactor threads to be used for processing ybclient "
              "requests originating in the PostgreSQL proxy server");
 
-DEFINE_string(pggate_proxy_bind_address, "",
-              "Address to which the PostgreSQL proxy server is bound.");
-
 DEFINE_string(pggate_master_addresses, "",
               "Addresses of the master servers to which the PostgreSQL proxy server connects.");
 
@@ -53,7 +50,7 @@ DEFINE_uint64(ysql_prefetch_limit, 1024,
 DEFINE_double(ysql_backward_prefetch_scale_factor, 0.0625 /* 1/16th */,
               "Scale factor to reduce ysql_prefetch_limit for backward scan");
 
-DEFINE_uint64(ysql_session_max_batch_size, 3072,
+DEFINE_uint64(ysql_session_max_batch_size, 512,
               "Use session variable ysql_session_max_batch_size instead. "
               "Maximum batch size for buffered writes between PostgreSQL server and YugaByte DocDB "
               "services");

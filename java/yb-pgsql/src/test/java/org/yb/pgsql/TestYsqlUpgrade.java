@@ -15,6 +15,7 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
+import java.io.File;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.sql.Timestamp;
@@ -33,10 +34,13 @@ import java.util.TreeSet;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.LineIterator;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.After;
 import org.junit.Before;
@@ -44,7 +48,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
-import com.yugabyte.jdbc.PgArray;
 import com.yugabyte.util.PGobject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -499,6 +502,14 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       stmtTpl.execute(createSharedIndexSql);
       LOG.info("Created shared index {}", sharedIndexName);
 
+      // Create index concurrently is not supported for system catalog.
+      String sharedIndexNameConcurrently = sharedIndexName + "_concurrently";
+      String createConcurrentIndexSql = "CREATE INDEX CONCURRENTLY " + sharedIndexNameConcurrently
+          + " ON pg_catalog." + sharedRelName + " (v ASC)"
+          + " WITH (table_oid = " + newSysOid() + ")";
+      runInvalidQuery(stmtTpl, createConcurrentIndexSql,
+          "CREATE INDEX CONCURRENTLY is currently not supported for system catalog");
+
       // Checking index flags.
       String indexFlagsSql = "SELECT indislive, indisready, indisvalid FROM pg_index"
           + " WHERE indexrelid = '" + sharedIndexName + "'::regclass";
@@ -853,6 +864,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       postSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
     }
 
+    assertYbbasectidIsConsistent("template1");
+    assertYbbasectidIsConsistent(customDbName);
+
     assertMigrationsWorked(preSnapshotCustom, postSnapshotCustom);
     assertMigrationsWorked(preSnapshotTemplate1, postSnapshotTemplate1);
 
@@ -867,6 +881,54 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   public void migrationInGeoPartitionedSetup() throws Exception {
     setupGeoPartitioning();
     runMigrations();
+  }
+
+  /** Ensure migration filename comment makes sense. */
+  @Test
+  public void migrationFilenameComment() throws Exception {
+    Pattern commentRe = Pattern.compile("^# .*(V(\\d+)(\\.\\d+)?__\\S+__\\S+.sql)$");
+    Pattern recordRe = Pattern.compile("^\\{ major => '(\\d+)', minor => '(\\d+)',");
+
+    File datFile = new File(
+        TestUtils.getBuildRootDir(), "postgres_build/src/include/catalog/pg_yb_migration.dat");
+    assertTrue(datFile + " does not exist", datFile.exists());
+
+    LineIterator it = FileUtils.lineIterator(datFile);
+    try {
+      String filename = null, commentMajor = null, commentMinor = null;
+      while (it.hasNext()) {
+        Matcher matcher = commentRe.matcher(it.nextLine());
+        if (matcher.find()) {
+          filename = matcher.group(1);
+          commentMajor = matcher.group(2);
+          commentMinor = matcher.group(3) == null ? "0" : matcher.group(3);
+          break;
+        }
+      }
+      assertNotNull("Failed to find migration filename comment line", filename);
+
+      // Check that a file with that filename exists.
+      File migrationFile = new File(TestUtils.getBuildRootDir(),
+                                    "share/ysql_migrations/" + filename);
+      assertTrue("Migration file " + filename + " does not exist", migrationFile.exists());
+
+      // Get record version.  Record line comes right after comment line:
+      //         | # For better version control conflict detection, list latest migration filename
+      // comment | # here: V19__6560__pg_collation_icu_70.sql
+      // record  | { major => '19', minor => '0', name => '<baseline>', time_applied => '_null_' }
+      assertTrue("Expected line after filename comment line", it.hasNext());
+      String recordLine = it.nextLine();
+      Matcher matcher = recordRe.matcher(recordLine);
+      assertTrue(recordLine + " does not match regex " + recordRe, matcher.find());
+      String recordMajor = matcher.group(1);
+      String recordMinor = matcher.group(2);
+
+      // Check comment version matches record version.
+      assertEquals("Major version mismatch between comment and record:", commentMajor, recordMajor);
+      assertEquals("Minor version mismatch between comment and record:", commentMinor, recordMinor);
+    } finally {
+      it.close();
+    }
   }
 
   /** Invalid stuff which doesn't belong to other test cases. */
@@ -1241,7 +1303,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
   /** Whether this OID looks like it was auto-generated during initdb. */
   private boolean isSysGeneratedOid(Long oid) {
-    return oid >= 10000 /* FirstBootstrapObjectId */ && oid < 16384 /* FirstNormalObjectId */;
+    return oid >= FIRST_BOOTSTRAP_OID && oid < FIRST_NORMAL_OID;
   }
 
   private void assertAllOidsAreSysGenerated(Statement stmt, String tableName) throws Exception {
@@ -1405,6 +1467,43 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         assertRow("Table '" + tableName + "': ", reinitdbRows.get(i), migratedRows.get(i));
       }
     });
+  }
+
+  /**
+   * In issue #12258 we found that index's ybbasectid referencing table's ybctid was broken for
+   * shared inserts (operations used to insert a row across all databases) and indexed tables
+   * without primary key.
+   * <p>
+   * This test ensures this is no longer the case.
+   */
+  private void assertYbbasectidIsConsistent(String databaseName) throws Exception {
+    try (Connection conn = getConnectionBuilder().withDatabase(databaseName).connect();
+         Statement stmt = conn.createStatement()) {
+      // pg_depend has no primary key, so we use it and its pg_depend_reference_index to ensure
+      // index consistency after upgrade.
+      String seqScanSql = "SELECT * FROM pg_depend";
+      assertFalse(isIndexScan(stmt, seqScanSql, "" /* should not use any index */));
+      List<Row> seqScanRows =
+          getRowList(stmt, seqScanSql)
+              .stream()
+              .filter(r -> r.getLong(3) == 1259L /* pg_class oid*/)
+              .filter(r -> r.getLong(4) >= FIRST_YB_OID && r.getLong(4) < FIRST_BOOTSTRAP_OID)
+              .sorted()
+              .collect(Collectors.toList());
+      assertFalse(seqScanRows.isEmpty());
+
+      // Without a fix for #12258, this query results in "DocKey(...) not found in indexed table".
+      String indexScanSql =
+          "SELECT * FROM pg_depend"
+              + " WHERE refclassid = 1259"
+              + " AND refobjid >= " + FIRST_YB_OID
+              + " AND refobjid < " + FIRST_BOOTSTRAP_OID;
+      assertTrue(isIndexScan(stmt, indexScanSql, "pg_depend_reference_index"));
+      List<Row> indexScanRows = getRowList(stmt, indexScanSql);
+      Collections.sort(indexScanRows);
+
+      assertEquals(seqScanRows, indexScanRows);
+    }
   }
 
   /** Returns the deep copy with referenced OIDs replaced with entity names. */

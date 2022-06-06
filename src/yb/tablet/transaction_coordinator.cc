@@ -217,7 +217,7 @@ class TransactionState {
   }
 
   // Applies new state to transaction.
-  CHECKED_STATUS ProcessReplicated(const TransactionCoordinator::ReplicatedData& data) {
+  Status ProcessReplicated(const TransactionCoordinator::ReplicatedData& data) {
     VLOG_WITH_PREFIX(4)
         << Format("ProcessReplicated: $0, replicating: $1", data, replicating_);
 
@@ -258,6 +258,7 @@ class TransactionState {
         case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
         case TransactionStatus::SEALED: FALLTHROUGH_INTENDED;
         case TransactionStatus::COMMITTED: FALLTHROUGH_INTENDED;
+        case TransactionStatus::PROMOTED: FALLTHROUGH_INTENDED;
         case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
         case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS: FALLTHROUGH_INTENDED;
         case TransactionStatus::IMMEDIATE_CLEANUP: FALLTHROUGH_INTENDED;
@@ -359,6 +360,7 @@ class TransactionState {
         return TransactionStatusResult{TransactionStatus::PENDING, status_ht.Decremented()};
       }
       case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
+      case TransactionStatus::PROMOTED: FALLTHROUGH_INTENDED;
       case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
       case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS: FALLTHROUGH_INTENDED;
       case TransactionStatus::IMMEDIATE_CLEANUP: FALLTHROUGH_INTENDED;
@@ -475,7 +477,7 @@ class TransactionState {
     }
   }
 
-  CHECKED_STATUS AppliedInOneOfInvolvedTablets(const TransactionStatePB& state) {
+  Status AppliedInOneOfInvolvedTablets(const TransactionStatePB& state) {
     if (status_ != TransactionStatus::COMMITTED && status_ != TransactionStatus::SEALED) {
       // We could ignore this request, because it will be re-send if required.
       LOG_WITH_PREFIX(DFATAL)
@@ -545,7 +547,7 @@ class TransactionState {
   }
 
   // Process operation that was replicated in RAFT.
-  CHECKED_STATUS DoProcessReplicated(const TransactionCoordinator::ReplicatedData& data) {
+  Status DoProcessReplicated(const TransactionCoordinator::ReplicatedData& data) {
     switch (data.state.status()) {
       case TransactionStatus::ABORTED:
         return AbortedReplicationFinished(data);
@@ -554,6 +556,7 @@ class TransactionState {
       case TransactionStatus::COMMITTED:
         return CommittedReplicationFinished(data);
       case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
+      case TransactionStatus::PROMOTED: FALLTHROUGH_INTENDED;
       case TransactionStatus::PENDING:
         return PendingReplicationFinished(data);
       case TransactionStatus::APPLYING:
@@ -606,7 +609,7 @@ class TransactionState {
     CHECK(submitted) << "Status: " << TransactionStatus_Name(txn_status);
   }
 
-  CHECKED_STATUS HandleCommit() {
+  Status HandleCommit() {
     auto hybrid_time = context_.coordinator_context().clock().Now();
     if (ExpiredAt(hybrid_time)) {
       auto status = STATUS(Expired, "Commit of expired transaction");
@@ -660,7 +663,7 @@ class TransactionState {
     }
   }
 
-  CHECKED_STATUS AbortedReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
+  Status AbortedReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
     if (status_ != TransactionStatus::ABORTED &&
         status_ != TransactionStatus::PENDING) {
       LOG_WITH_PREFIX(DFATAL) << "Invalid status of aborted transaction: "
@@ -673,7 +676,7 @@ class TransactionState {
     return Status::OK();
   }
 
-  CHECKED_STATUS SealedReplicationFinished(
+  Status SealedReplicationFinished(
       const TransactionCoordinator::ReplicatedData& data) {
     if (status_ != TransactionStatus::PENDING) {
       auto status = STATUS_FORMAT(
@@ -711,7 +714,7 @@ class TransactionState {
     return Status::OK();
   }
 
-  CHECKED_STATUS CommittedReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
+  Status CommittedReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
     if (status_ != TransactionStatus::PENDING) {
       auto status = STATUS_FORMAT(
           IllegalState,
@@ -743,7 +746,7 @@ class TransactionState {
     return Status::OK();
   }
 
-  CHECKED_STATUS AppliedInAllInvolvedTabletsReplicationFinished(
+  Status AppliedInAllInvolvedTabletsReplicationFinished(
       const TransactionCoordinator::ReplicatedData& data) {
     if (status_ != TransactionStatus::COMMITTED && status_ != TransactionStatus::SEALED) {
       // That could happen in old version, because we could drop all entries before
@@ -765,7 +768,7 @@ class TransactionState {
 
   // Used for PENDING and CREATED records. Because when we apply replicated operations they have
   // the same meaning.
-  CHECKED_STATUS PendingReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
+  Status PendingReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
     if (context_.leader() && ExpiredAt(data.hybrid_time)) {
       VLOG_WITH_PREFIX(4) << "Expired during replication of PENDING or CREATED operations.";
       Abort();
@@ -778,6 +781,10 @@ class TransactionState {
     }
     last_touch_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
+    // TODO -- consider swapping instead of copying here.
+    if (data.state.aborted().set_size() > aborted_.set_size()) {
+      aborted_ = data.state.aborted();
+    }
     return Status::OK();
   }
 
@@ -932,7 +939,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     rpcs_.Shutdown();
   }
 
-  CHECKED_STATUS GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
+  Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
                            CoarseTimePoint deadline,
                            tserver::GetTransactionStatusResponsePB* response) {
     AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
@@ -975,8 +982,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
 
         auto mutable_aborted_set_pb = response->add_aborted_subtxn_set();
-        if (txn_status_with_ht.status == TransactionStatus::COMMITTED &&
-            it != managed_transactions_.end()) {
+        if (it != managed_transactions_.end() &&
+            (txn_status_with_ht.status == TransactionStatus::COMMITTED ||
+             txn_status_with_ht.status == TransactionStatus::PENDING)) {
           *mutable_aborted_set_pb = it->GetAbortedSubTransactionSetPB();
         }
       }
@@ -1134,7 +1142,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     return managed_transactions_.size();
   }
 
-  CHECKED_STATUS ProcessReplicated(const ReplicatedData& data) {
+  Status ProcessReplicated(const ReplicatedData& data) {
     auto id = FullyDecodeTransactionId(data.state.transaction_id());
     if (!id.ok()) {
       return std::move(id.status());
@@ -1212,7 +1220,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       postponed_leader_actions_.leader_term = term;
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
-        if (state.status() == TransactionStatus::CREATED) {
+        if (state.status() == TransactionStatus::CREATED ||
+            state.status() == TransactionStatus::PROMOTED) {
           it = managed_transactions_.emplace(
               this, *id, context_.clock().Now(), log_prefix_).first;
         } else {

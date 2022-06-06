@@ -267,6 +267,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
 
   Result<YBTableName> CreateTable(Cluster* cluster,
                                   const std::string& namespace_name,
+                                  const std::string& schema_name,
                                   const std::string& table_name,
                                   const boost::optional<std::string>& tablegroup_name,
                                   uint32_t num_tablets,
@@ -277,7 +278,14 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     if (colocation_id > 0) {
       colocation_id_string = Format("colocation_id = $0", colocation_id);
     }
-    std::string query = Format("CREATE TABLE $0($1 int PRIMARY KEY) ", table_name, kKeyColumnName);
+    if (!schema_name.empty()) {
+      EXPECT_OK(conn.Execute(Format("CREATE SCHEMA IF NOT EXISTS $0;", schema_name)));
+    }
+    std::string full_table_name =
+        schema_name.empty() ? table_name
+                            : Format("$0.$1", schema_name, table_name);
+    std::string query = Format(
+        "CREATE TABLE $0($1 int PRIMARY KEY) ", full_table_name, kKeyColumnName);
     // One cannot use tablegroup together with split into tablets.
     if (tablegroup_name.has_value()) {
       std::string with_clause =
@@ -289,10 +297,14 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
       std::string with_clause =
           colocation_id_string.empty() ? colocated_clause
                                        : Format("$0, $1", colocation_id_string, colocated_clause);
-      query += Format("WITH ($0) SPLIT INTO $1 TABLETS", with_clause, num_tablets);
+      query += Format("WITH ($0)", with_clause);
+      if (!colocated) {
+         query += Format(" SPLIT INTO $0 TABLETS", num_tablets);
+      }
     }
     EXPECT_OK(conn.Execute(query));
-    return GetTable(cluster, namespace_name, table_name);
+    return GetTable(cluster, namespace_name, schema_name, table_name,
+                    true /* verify_table_name */, !schema_name.empty() /* verify_schema_name*/);
   }
 
   Status CreateTable(uint32_t idx, uint32_t num_tablets, Cluster* cluster,
@@ -302,16 +314,26 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     // Generate colocation_id based on index so that we have the same colocation_id for
     // producer/consumer.
     const int colocation_id = (tablegroup_name.has_value() || colocated) ? (idx + 1) * 111111 : 0;
-    auto table = VERIFY_RESULT(CreateTable(cluster, kNamespaceName, Format("test_table_$0", idx),
-                                           tablegroup_name, num_tablets, colocated, colocation_id));
+    auto table = VERIFY_RESULT(CreateTable(cluster, kNamespaceName, "" /* schema_name */,
+                                           Format("test_table_$0", idx), tablegroup_name,
+                                           num_tablets, colocated, colocation_id));
     tables->push_back(table);
     return Status::OK();
   }
 
+  std::string GetCompleteTableName(const YBTableName& table) {
+    // Append schema name before table name, if schema is available.
+    return table.has_pgschema_name()
+        ? Format("$0.$1", table.pgschema_name(), table.table_name())
+        : table.table_name();
+  }
+
   Result<YBTableName> GetTable(Cluster* cluster,
                                const std::string& namespace_name,
+                               const std::string& schema_name,
                                const std::string& table_name,
                                bool verify_table_name = true,
+                               bool verify_schema_name = false,
                                bool exclude_system_tables = true) {
     master::ListTablesRequestPB req;
     master::ListTablesResponsePB resp;
@@ -340,11 +362,20 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
       // If !verify_table_name, just return the first table.
       if (!verify_table_name ||
           (table.name() == table_name && table.namespace_().name() == namespace_name)) {
-        YBTableName yb_table;
-        yb_table.set_table_id(table.id());
-        yb_table.set_namespace_id(table.namespace_().id());
-        yb_table.set_pgschema_name(table.pgschema_name());
-        return yb_table;
+
+        // In case of a match, further check for match in schema_name.
+        if (!verify_schema_name ||
+            (!table.has_pgschema_name() && schema_name.empty()) ||
+            (table.has_pgschema_name() && table.pgschema_name() == schema_name)) {
+
+          YBTableName yb_table;
+          yb_table.set_table_id(table.id());
+          yb_table.set_table_name(table_name);
+          yb_table.set_namespace_id(table.namespace_().id());
+          yb_table.set_namespace_name(namespace_name);
+          yb_table.set_pgschema_name(table.has_pgschema_name() ? table.pgschema_name() : "");
+          return yb_table;
+        }
       }
     }
     return STATUS(IllegalState,
@@ -425,16 +456,17 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
   void WriteWorkload(uint32_t start, uint32_t end, Cluster* cluster, const YBTableName& table,
                      bool delete_op = false) {
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
+    std::string table_name_str = GetCompleteTableName(table);
 
     LOG(INFO) << "Writing " << end-start << (delete_op ? " deletes" : " inserts");
     for (uint32_t i = start; i < end; i++) {
       if (delete_op) {
         EXPECT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = $2",
-                                     table.table_name(), kKeyColumnName, i));
+                                     table_name_str, kKeyColumnName, i));
       } else {
         // TODO(#6582) transactions currently don't work, so don't use ON CONFLICT DO NOTHING now.
         EXPECT_OK(conn.ExecuteFormat("INSERT INTO $0($1) VALUES ($2)", // ON CONFLICT DO NOTHING",
-                                     table.table_name(), kKeyColumnName, i));
+                                     table_name_str, kKeyColumnName, i));
       }
     }
   }
@@ -442,10 +474,11 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
   void WriteTransactionalWorkload(uint32_t start, uint32_t end, Cluster* cluster,
                                   const YBTableName& table) {
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
+    std::string table_name_str = GetCompleteTableName(table);
     EXPECT_OK(conn.Execute("BEGIN"));
     for (uint32_t i = start; i < end; i++) {
       EXPECT_OK(conn.ExecuteFormat("INSERT INTO $0($1) VALUES ($2) ON CONFLICT DO NOTHING",
-                                   table.table_name(), kKeyColumnName, i));
+                                   table_name_str, kKeyColumnName, i));
     }
     EXPECT_OK(conn.Execute("COMMIT"));
   }
@@ -456,8 +489,9 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
 
   PGResultPtr ScanToStrings(const YBTableName& table_name, Cluster* cluster) {
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(table_name.namespace_name()));
-    auto result =
-        EXPECT_RESULT(conn.FetchFormat("SELECT * FROM $0 ORDER BY key", table_name.table_name()));
+    std::string table_name_str = GetCompleteTableName(table_name);
+    auto result = EXPECT_RESULT(conn.FetchFormat(
+        "SELECT * FROM $0 ORDER BY $1", table_name_str, kKeyColumnName));
     return result;
   }
 
@@ -500,10 +534,11 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     return Status::OK();
   }
 };
-INSTANTIATE_TEST_CASE_P(TwoDCTestParams, TwoDCYsqlTest,
-                        ::testing::Values(TwoDCTestParams(1, true), TwoDCTestParams(1, false),
-                                          TwoDCTestParams(0, true), TwoDCTestParams(0, false)));
-
+INSTANTIATE_TEST_CASE_P(
+    TwoDCTestParams, TwoDCYsqlTest,
+    ::testing::Values(
+        TwoDCTestParams(1, true, true), TwoDCTestParams(1, false, false),
+        TwoDCTestParams(0, true, true), TwoDCTestParams(0, false, false)));
 
 TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   YB_SKIP_TEST_IN_TSAN();
@@ -795,6 +830,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   // Also create an additional non-colocated table in each database.
   auto non_colocated_table = ASSERT_RESULT(CreateTable(&producer_cluster_,
                                                        kNamespaceName,
+                                                       "" /* schema_name */,
                                                        "test_table_2",
                                                        boost::none /* tablegroup */,
                                                        kNTabletsPerTable,
@@ -803,6 +839,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   ASSERT_OK(producer_client()->OpenTable(non_colocated_table, &non_colocated_producer_table));
   non_colocated_table = ASSERT_RESULT(CreateTable(&consumer_cluster_,
                                                   kNamespaceName,
+                                                  "" /* schema_name */,
                                                   "test_table_2",
                                                   boost::none /* tablegroup */,
                                                   kNTabletsPerTable,
@@ -941,6 +978,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentColocationIds) {
   auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName));
   auto table_info = ASSERT_RESULT(CreateTable(&producer_cluster_,
                                               kNamespaceName,
+                                              "" /* schema_name */,
                                               "test_table_0",
                                               boost::none /* tablegroup */,
                                               1 /* num_tablets */,
@@ -948,6 +986,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentColocationIds) {
                                               123456 /* colocation_id */));
   ASSERT_RESULT(CreateTable(&consumer_cluster_,
                             kNamespaceName,
+                            "" /* schema_name */,
                             "test_table_0",
                             boost::none /* tablegroup */,
                             1 /* num_tablets */,
@@ -1178,12 +1217,17 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
   rpc::RpcController rpc;
   cdc::IsBootstrapRequiredRequestPB req;
   cdc::IsBootstrapRequiredResponsePB resp;
-  req.set_stream_id(stream_resp.streams(0).stream_id());
+  auto stream_id = stream_resp.streams(0).stream_id();
+  req.set_stream_id(stream_id);
   req.add_tablet_ids(tablet_ids[0]);
 
   ASSERT_OK(producer_cdc_proxy->IsBootstrapRequired(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error());
   ASSERT_FALSE(resp.bootstrap_required());
+
+  auto should_bootstrap = ASSERT_RESULT(producer_cluster_.client_->IsBootstrapRequired(
+                                          producer_tables[0]->id(), stream_id));
+  ASSERT_FALSE(should_bootstrap);
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
@@ -1221,13 +1265,18 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
   // Write some data.
   WriteWorkload(0, 50, &producer_cluster_, table->name());
 
+  auto tablet_ids = ListTabletIdsForTable(producer_cluster(), table->id());
+  ASSERT_EQ(tablet_ids.size(), 1);
+  auto tablet_to_flush = *tablet_ids.begin();
+
   std::unique_ptr<client::YBClient> client;
   std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
   client = ASSERT_RESULT(consumer_cluster()->CreateClient());
   producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
       &client->proxy_cache(),
       HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
-  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+  ASSERT_OK(WaitFor([this, tablet_to_flush]() -> Result<bool> {
+    LOG(INFO) << "Cleaning tablet logs";
     RETURN_NOT_OK(producer_cluster()->CleanTabletLogs());
     auto leaders = ListTabletPeers(producer_cluster(), ListPeersFilter::kLeaders);
     if (leaders.empty()) {
@@ -1236,10 +1285,13 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
     // locate the leader with the expected logs
     tablet::TabletPeerPtr tablet_peer = leaders.front();
     for (auto leader : leaders) {
-      if (leader->GetLatestLogEntryOpId().index == 51) {
+      LOG(INFO) << leader->tablet_id() << " @OpId " << leader->GetLatestLogEntryOpId().index;
+      if (leader->tablet_id() == tablet_to_flush) {
         tablet_peer = leader;
+        break;
       }
     }
+    SCHECK(tablet_peer, InternalError, "Missing tablet peer with the WriteWorkload");
 
     RETURN_NOT_OK(producer_cluster()->FlushTablets());
     RETURN_NOT_OK(producer_cluster()->CleanTabletLogs());
@@ -1257,35 +1309,35 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
   // locate the leader with the expected logs
   tablet::TabletPeerPtr tablet_peer = leaders.front();
   for (auto leader : leaders) {
-    if (leader->GetLatestLogEntryOpId().index == 51) {
+    if (leader->tablet_id() == tablet_to_flush) {
       tablet_peer = leader;
+      break;
     }
   }
 
-  // Setup replication.
-  FLAGS_check_bootstrap_required = false;
-  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
-                                     kUniverseId, producer_tables));
-  // Verify everything is setup correctly.
-  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
-      &get_universe_replication_resp));
-
-
-  master::ListCDCStreamsResponsePB stream_resp;
-  ASSERT_OK(GetCDCStreamForTable(table->id(), &stream_resp));
-
+  // IsBootstrapRequired for this specific tablet should fail.
   rpc::RpcController rpc;
   cdc::IsBootstrapRequiredRequestPB req;
   cdc::IsBootstrapRequiredResponsePB resp;
-  req.set_stream_id(stream_resp.streams(0).stream_id());
   req.add_tablet_ids(tablet_peer->log()->tablet_id());
 
   ASSERT_OK(producer_cdc_proxy->IsBootstrapRequired(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error());
   ASSERT_TRUE(resp.bootstrap_required());
 
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  // The high level API should also fail.
+  auto should_bootstrap = ASSERT_RESULT(producer_client()->IsBootstrapRequired(table->id()));
+  ASSERT_TRUE(should_bootstrap);
+
+  // Setup replication should fail if this check is enabled.
+  FLAGS_check_bootstrap_required = true;
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+                                     kUniverseId, producer_tables));
+  master::IsSetupUniverseReplicationDoneResponsePB is_resp;
+  ASSERT_OK(VerifyUniverseReplicationFailed(consumer_cluster(), consumer_client(),
+                                            kUniverseId, &is_resp));
+  ASSERT_TRUE(is_resp.has_replication_error());
+  ASSERT_TRUE(StatusFromPB(is_resp.replication_error()).IsIllegalState());
 }
 
 // TODO adapt rest of twodc-test.cc tests.
@@ -1578,7 +1630,7 @@ void PrepareSetCheckpointRequest(
   set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_index(0);
 }
 
-CHECKED_STATUS SetInitialCheckpoint(const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
+Status SetInitialCheckpoint(const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
     YBClient* client,
     const CDCStreamId& stream_id,
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
@@ -1786,6 +1838,56 @@ TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKExplictTransaction) {
 TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKUpdateCDCInterval) {
   YB_SKIP_TEST_IN_TSAN();
   ValidateRecordsTwoDCWithCDCSDK(true, true, false);
+}
+
+TEST_P(TwoDCYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
+  YB_SKIP_TEST_IN_TSAN();
+  constexpr int kNumTables = 3;
+  constexpr int kNTabletsPerTable = 3;
+  auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, 1));
+
+  // Create 3 producer tables with the same name but different schema-name.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<YBTableName> producer_table_names;
+  producer_tables.reserve(kNumTables);
+  producer_table_names.reserve(kNumTables);
+  for (int i = 0; i < kNumTables; i++) {
+    auto t = ASSERT_RESULT(CreateTable(
+        &producer_cluster_, kNamespaceName, Format("test_schema_$0", i),
+        "test_table_1", boost::none /* tablegroup */, kNTabletsPerTable));
+    producer_table_names.push_back(t);
+
+    std::shared_ptr<client::YBTable> producer_table;
+    ASSERT_OK(producer_client()->OpenTable(t, &producer_table));
+    producer_tables.push_back(producer_table);
+  }
+
+  // Create 3 consumer tables with similar setting but in reverse order to complicate the test.
+  std::vector<YBTableName> consumer_table_names;
+  consumer_table_names.reserve(kNumTables);
+  for (int i = kNumTables - 1; i >= 0; i--) {
+    auto t = ASSERT_RESULT(CreateTable(
+        &consumer_cluster_, kNamespaceName, Format("test_schema_$0", i),
+        "test_table_1", boost::none /* tablegroup */, kNTabletsPerTable));
+    consumer_table_names.push_back(t);
+
+    std::shared_ptr<client::YBTable> consumer_table;
+    ASSERT_OK(consumer_client()->OpenTable(t, &consumer_table));
+  }
+  std::reverse(consumer_table_names.begin(), consumer_table_names.end());
+
+  // Setup universe replication for the 3 tables.
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // Write different numbers of records to the 3 producers, and verify that the
+  // corresponding receivers receive the records.
+  for (int i = 0; i < kNumTables; i++) {
+    WriteWorkload(0, 2 * (i + 1), &producer_cluster_, producer_table_names[i]);
+    ASSERT_OK(VerifyWrittenRecords(producer_table_names[i], consumer_table_names[i]));
+  }
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
 } // namespace enterprise

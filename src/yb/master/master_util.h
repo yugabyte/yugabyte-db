@@ -42,7 +42,7 @@ namespace master {
 
 // Given a hostport, return the master server information protobuf.
 // Does not apply to tablet server.
-CHECKED_STATUS GetMasterEntryForHosts(
+Status GetMasterEntryForHosts(
     rpc::ProxyCache* proxy_cache,
     const std::vector<HostPort>& hostports,
     MonoDelta timeout,
@@ -76,7 +76,7 @@ Result<bool> TableMatchesIdentifier(const TableId& id,
                                     const SysTablesEntryPB& table,
                                     const TableIdentifierPB& table_identifier);
 
-CHECKED_STATUS SetupError(MasterErrorPB* error, const Status& s);
+Status SetupError(MasterErrorPB* error, const Status& s);
 
 // TODO(alex): Merge with stuff in entity_ids?
 
@@ -98,6 +98,12 @@ TableId GetTablegroupParentTableId(const TablegroupId& tablegroup_id);
 TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id);
 
 TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id);
+
+bool IsBlacklisted(const ServerRegistrationPB& registration, const BlacklistSet& blacklist);
+
+bool IsRunningOn(const ServerRegistrationPB& registration, const HostPortPB& hp);
+
+BlacklistSet ToBlacklistSet(const BlacklistPB& blacklist);
 
 } // namespace master
 } // namespace yb

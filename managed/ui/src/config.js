@@ -1,5 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 import _ from 'lodash';
+import Cookies from 'js-cookie';
 
 export const IN_DEVELOPMENT_MODE = process.env.NODE_ENV === 'development';
 
@@ -16,6 +17,12 @@ export const MAP_SERVER_URL = IN_DEVELOPMENT_MODE
 
 // get SSO flag from global config loaded in index.html before UI app started
 export const USE_SSO = _.get(window, 'YB_Platform_Config.use_oauth', false);
+
+export const isSSOLogin = () => Cookies.get('apiToken') || localStorage.getItem('apiToken');
+
+export const isSSOEnabled = () => _.get(window, 'YB_Platform_Config.use_oauth', false);
+
+export const setSSO = (value) => _.set(window, 'YB_Platform_Config.use_oauth', value);
 
 // TODO : probably fetch the provider metadata (name and code from backend)
 export const PROVIDER_TYPES = [

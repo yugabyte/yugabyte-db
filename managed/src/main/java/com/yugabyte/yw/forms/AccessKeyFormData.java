@@ -18,8 +18,6 @@ public class AccessKeyFormData {
 
   public String sshUser;
 
-  // Normally cloud access keys are created on provider creation, so default to 22 for onprem
-  // providers.
   public Integer sshPort = 22;
 
   // Not used anymore. This field should be passed directly to the pre-provision script.
@@ -38,4 +36,9 @@ public class AccessKeyFormData {
   public boolean setUpChrony = false;
 
   public List<String> ntpServers;
+
+  // Indicates whether the provider was created before or after PLAT-3009.
+  // True if it was created after, else it was created before.
+  // This should be true so that all new providers are marked as true by default.
+  public boolean showSetUpChrony = true;
 }

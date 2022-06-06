@@ -132,6 +132,8 @@ Specifies the data directory for YugabyteDB.
 
 Default: `$HOME/yugabyte-data/`
 
+Changing the value of this flag after the cluster has already been created is not supported.
+
 ##### --master_flags
 
 Specifies a list of YB-Master flags, separated by commas.

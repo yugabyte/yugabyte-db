@@ -160,7 +160,7 @@ Result<ProcessCallsResult> YBInboundConnectionContext::ProcessCalls(
 
 namespace {
 
-CHECKED_STATUS ThrottleRpcStatus(const MemTrackerPtr& throttle_tracker, const YBInboundCall& call) {
+Status ThrottleRpcStatus(const MemTrackerPtr& throttle_tracker, const YBInboundCall& call) {
   if (ShouldThrottleRpc(throttle_tracker, call.request_data().size(), "Rejecting RPC call: ")) {
     return STATUS_FORMAT(ServiceUnavailable, "Call rejected due to memory pressure: $0", call);
   } else {
@@ -435,6 +435,8 @@ Status YBInboundCall::ParseParam(RpcCallParams* params) {
 
   if (PREDICT_FALSE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms > 0 &&
           implicit_cast<ssize_t>(request_data_.size()) > FLAGS_rpc_throttle_threshold_bytes)) {
+    LOG(INFO) << Format("Sleeping for $0ms due to FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms",
+                        FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms);
     std::this_thread::sleep_for(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms * 1ms);
   }
 
@@ -481,7 +483,11 @@ void YBInboundCall::Respond(AnyMessageConstPtr response, bool is_success) {
   TRACE_EVENT_FLOW_END0("rpc", "InboundCall", this);
   Status s = SerializeResponseBuffer(response, is_success);
   if (PREDICT_FALSE(!s.ok())) {
-    RespondFailure(ErrorStatusPB::ERROR_APPLICATION, s);
+    if (is_success) {
+      RespondFailure(ErrorStatusPB::ERROR_APPLICATION, s);
+    } else {
+      LOG(DFATAL) << "Failed to serialize failure: " << s;
+    }
     return;
   }
 

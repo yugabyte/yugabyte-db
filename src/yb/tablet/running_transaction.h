@@ -82,8 +82,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     return local_commit_time_;
   }
 
-  const AbortedSubTransactionSet& local_commit_aborted_subtxn_set() const {
-    return local_commit_aborted_subtxn_set_;
+  const AbortedSubTransactionSet& last_known_aborted_subtxn_set() const {
+    return last_known_aborted_subtxn_set_;
   }
 
   void SetLocalCommitData(HybridTime time, const AbortedSubTransactionSet& aborted_subtxn_set);
@@ -93,7 +93,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   void RequestStatusAt(const StatusRequest& request,
                        std::unique_lock<std::mutex>* lock);
   bool WasAborted() const;
-  CHECKED_STATUS CheckAborted() const;
+  Status CheckAborted() const;
   void Aborted();
 
   void Abort(client::YBClient* client,
@@ -117,6 +117,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Whether this transactions is currently applying intents.
   bool ProcessingApply() const;
+
+  void UpdateTransactionStatusLocation(const TabletId& new_status_tablet);
 
   std::string LogPrefix() const;
 
@@ -163,10 +165,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   RunningTransactionContext& context_;
   RemoveIntentsTask remove_intents_task_;
   HybridTime local_commit_time_ = HybridTime::kInvalid;
-  AbortedSubTransactionSet local_commit_aborted_subtxn_set_;
 
   TransactionStatus last_known_status_ = TransactionStatus::CREATED;
   HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
+  AbortedSubTransactionSet last_known_aborted_subtxn_set_;
   std::vector<StatusRequest> status_waiters_;
   rpc::Rpcs::Handle get_status_handle_;
   rpc::Rpcs::Handle abort_handle_;
@@ -183,7 +185,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   HybridTime abort_check_ht_;
 };
 
-CHECKED_STATUS MakeAbortedStatus(const TransactionId& id);
+Status MakeAbortedStatus(const TransactionId& id);
 
 } // namespace tablet
 } // namespace yb

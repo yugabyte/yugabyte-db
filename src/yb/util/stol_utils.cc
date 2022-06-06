@@ -21,7 +21,7 @@ namespace yb {
 
 namespace {
 
-CHECKED_STATUS CreateInvalid(Slice input, int err = 0) {
+Status CreateInvalid(Slice input, int err = 0) {
   auto message = Format("$0 is not a valid number", input.ToDebugString());
   if (err != 0) {
     message += ": ";
@@ -30,7 +30,7 @@ CHECKED_STATUS CreateInvalid(Slice input, int err = 0) {
   return STATUS(InvalidArgument, message);
 }
 
-CHECKED_STATUS CheckNotSpace(Slice slice) {
+Status CheckNotSpace(Slice slice) {
   if (slice.empty() || isspace(*slice.cdata())) {
     // disable skip of spaces.
     return CreateInvalid(slice);

@@ -25,7 +25,9 @@ namespace yb {
 namespace tools {
 
 // Runs backup command against specified cluster.
-CHECKED_STATUS RunBackupCommand(
+// Note: to get detailed output from 'yb_backup' tool for debug purposes add into your test:
+//       FLAGS_verbose_yb_backup = true;
+Status RunBackupCommand(
     const HostPort& pg_hp, const std::string& master_addresses,
     const std::string& tserver_http_addresses, const std::string& tmp_dir,
     const std::vector<std::string>& extra_args);

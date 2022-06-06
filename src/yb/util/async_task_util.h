@@ -24,7 +24,7 @@ namespace yb {
 
 class AsyncTaskTracker {
  public:
-  CHECKED_STATUS Start();
+  Status Start();
   bool Started() const;
   void Abort();
 

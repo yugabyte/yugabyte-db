@@ -61,8 +61,14 @@ public class UserTaskDetails {
     // Bootstrapping Region
     BootstrappingRegion,
 
+    // Bootstrapping a source universe to set up xCluster replication
+    BootstrappingProducer,
+
     // Creating Access Key
     CreateAccessKey,
+
+    // Rotate access key to all nodes of a universe
+    RotateAccessKey,
 
     // Initializing Cloud Metadata
     InitializeCloudMetadata,
@@ -72,6 +78,9 @@ public class UserTaskDetails {
 
     // Creating Table
     CreatingTable,
+
+    // Creating Tablespaces
+    CreatingTablespaces,
 
     // Importing Data
     ImportingData,
@@ -111,6 +120,9 @@ public class UserTaskDetails {
 
     // Deleting Backup
     DeletingBackup,
+
+    // Creating a backup
+    CreatingBackup,
 
     // Creating Table Backup
     CreatingTableBackup,
@@ -255,6 +267,10 @@ public class UserTaskDetails {
         title = "Bootstrapping Region";
         description = "Set up AccessKey, Region, and Provider for a given cloud Provider.";
         break;
+      case BootstrappingProducer:
+        title = "Bootstrapping Source Universe";
+        description = "Creating a checkpoint on the source universe.";
+        break;
       case CreateAccessKey:
         title = "Creating AccessKey";
         description = "Set up AccessKey in the given Provider Vault";
@@ -270,6 +286,10 @@ public class UserTaskDetails {
       case CreatingTable:
         title = "Creating Table";
         description = "Create a table.";
+        break;
+      case CreatingTablespaces:
+        title = "Creating Tablespaces";
+        description = "Create tablespaces.";
         break;
       case ImportingData:
         title = "Importing Data";
@@ -314,6 +334,10 @@ public class UserTaskDetails {
       case DeletingBackup:
         title = "Deleting Backup";
         description = "Delete an existing backup of a universe.";
+        break;
+      case CreatingBackup:
+        title = "Creating Backup";
+        description = "Creating backup for either a keyspace or a set of tables.";
         break;
       case CreatingTableBackup:
         title = "Creating Table Backup";
@@ -402,6 +426,10 @@ public class UserTaskDetails {
       case ToggleTls:
         title = "Toggle TLS";
         description = "Add certificates and toggle TLS gflags";
+        break;
+      case RotateAccessKey:
+        title = "Rotate Access Key";
+        description = "Rotate the access key for a universe";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

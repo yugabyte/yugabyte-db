@@ -184,18 +184,6 @@ The directory to write `yb-tserver` log files.
 
 Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
 
-##### --logemaillevel
-
-Email log messages logged at this level, or higher. Values: `0` (all), 1, 2, `3` (FATAL), `999` (none)
-
-Default: `999`
-
-##### --logmailer
-
-The mailer used to send logging email messages.
-
-Default: `"/bin/mail"`
-
 ##### --logtostderr
 
 Write log messages to `stderr` instead of `logfiles`.
@@ -513,7 +501,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED`<sup>$</sup>
 
-<sup>$</sup> Read Committed Isolation is supported only if the gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed Isolation is supported only if the tserver gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -623,11 +611,29 @@ Default: `11000`
 
 ### Performance flags
 
+Use the following two flags to select the SSTable compression type.
+
 ##### --enable_ondisk_compression
 
-Enable Snappy compression at the cluster level.
+Enable SSTable compression at the cluster level.
 
 Default: `true`
+
+##### --compression_type
+
+Change the SSTable compression type. The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
+
+Default: `Snappy`
+
+{{< note title="Note" >}}
+
+If you select an invalid option, the cluster will not come up.
+
+If you change this flag, the change takes effect after you restart the cluster nodes.
+
+{{< /note >}}
+
+Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
 
 ##### --regular_tablets_data_block_key_value_encoding
 
@@ -675,15 +681,17 @@ Default: `256MB`
 
 ### Network compression
 
-Use the following two gflags to configure RPC compression:
+Use the following two gflags to configure RPC compression.
 
 ##### --enable_stream_compression
 
-Controls whether YugabyteDB uses RPC compression. Valid values are `true` or `false`.
+Controls whether YugabyteDB uses RPC compression.
+
+Default: `true`
 
 ##### --stream_compression_algo
 
-Specifies which compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
+Specifies which RPC compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
 
 - 0: No compression (default value)
 - 1: Gzip

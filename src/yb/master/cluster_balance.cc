@@ -88,7 +88,7 @@ DEFINE_int32(load_balancer_max_concurrent_removals,
              "load balancer.");
 
 DEFINE_int32(load_balancer_max_concurrent_moves,
-             2,
+             10,
              "Maximum number of tablet leaders on tablet servers (across the cluster) to move in "
              "any one run of the load balancer.");
 
@@ -1440,7 +1440,7 @@ Status ClusterLoadBalancer::MoveLeader(const TabletId& tablet_id,
 
 void ClusterLoadBalancer::GetAllAffinitizedZones(
   const ReplicationInfoPB& replication_info, vector<AffinitizedZonesSet>* affinitized_zones) const {
-  CatalogManagerUtil::GetAllAffinitizedZones(&replication_info, affinitized_zones);
+  CatalogManagerUtil::GetAllAffinitizedZones(replication_info, affinitized_zones);
 }
 
 void ClusterLoadBalancer::InitializeTSDescriptors() {

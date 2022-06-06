@@ -139,7 +139,7 @@ libraryDependencies ++= Seq(
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "1.29",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
-  "org.springframework.security" % "spring-security-core" % "5.3.10.RELEASE",
+  "org.springframework.security" % "spring-security-core" % "5.5.6",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.12.129",
@@ -179,7 +179,8 @@ libraryDependencies ++= Seq(
   "com.github.dikhan" % "pagerduty-client" % "3.1.2",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
-  "io.fabric8" % "kubernetes-client" % "5.10.2"
+  "io.fabric8" % "kubernetes-client" % "5.10.2",
+  "org.apache.commons" % "commons-text" % "1.9"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -375,7 +376,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.17-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.19-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:

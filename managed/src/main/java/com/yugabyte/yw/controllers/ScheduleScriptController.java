@@ -12,6 +12,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -40,12 +41,16 @@ import play.mvc.Result;
 public class ScheduleScriptController extends AuthenticatedController {
 
   @Inject SettableRuntimeConfigFactory sConfigFactory;
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   public static final String PLT_EXT_SCRIPT_CONTENT = "platform_ext_script_content";
   public static final String PLT_EXT_SCRIPT_PARAM = "platform_ext_script_params";
   public static final String PLT_EXT_SCRIPT_SCHEDULE = "platform_ext_script_schedule";
+  public static final String PLT_EXT_SCRIPT_ACCESS_FULL_PATH = "yb.security.enable_external_script";
 
   public Result externalScriptSchedule(UUID customerUUID, UUID universeUUID) throws IOException {
+    // Validate Access
+    canAccess();
     // Extract script file, parameters and cronExpression.
     MultipartFormData<File> body = request().body().asMultipartFormData();
     String scriptContent = extractScriptString(body);
@@ -96,6 +101,8 @@ public class ScheduleScriptController extends AuthenticatedController {
   }
 
   public Result stopScheduledScript(UUID customerUUID, UUID universeUUID) {
+    // Validate Access
+    canAccess();
     // Validate Customer
     Customer.getOrBadRequest(customerUUID);
 
@@ -128,7 +135,8 @@ public class ScheduleScriptController extends AuthenticatedController {
   }
 
   public Result updateScheduledScript(UUID customerUUID, UUID universeUUID) throws IOException {
-
+    // Validate Access
+    canAccess();
     // Extract script file, parameters and cronExpression.
     MultipartFormData<File> body = request().body().asMultipartFormData();
     String scriptContent = extractScriptString(body);
@@ -161,8 +169,8 @@ public class ScheduleScriptController extends AuthenticatedController {
     configKeysMap.put(PLT_EXT_SCRIPT_CONTENT, scriptContent);
     configKeysMap.put(PLT_EXT_SCRIPT_PARAM, scriptParam);
 
-    // updating exsisting schedule task params and cronExperssion.
-    schedule.setCronExperssionandTaskParams(cronExpression, taskParams);
+    // updating existing schedule task params and cronExpression.
+    schedule.setCronExpressionAndTaskParams(cronExpression, taskParams);
     // Inserting the set of keys in synchronized way as they are interconnected and the task in
     // execution should not extract partially inserted keys.
     Util.setLockedMultiKeyConfig(config, configKeysMap);
@@ -235,5 +243,12 @@ public class ScheduleScriptController extends AuthenticatedController {
           BAD_REQUEST, "Please provide valid timeLimitMins for script execution.");
     }
     return timeLimitMins;
+  }
+
+  private void canAccess() {
+    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean(PLT_EXT_SCRIPT_ACCESS_FULL_PATH)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "External Script APIs are disabled. Please contact support team");
+    }
   }
 }

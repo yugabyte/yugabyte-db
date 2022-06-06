@@ -35,7 +35,7 @@ If you have a VPC configured, add one or more IP addresses from the peered VPC t
 
 If you are connected to a cluster in Cloud Shell and the message Connection Closed appears.
 
-Cloud Shell has a hard limit of 15 minutes for connections. Close the shell window and [launch a new session](../cloud-connect/connect-cloud-shell/).
+Cloud Shell has a hard limit of 1 hour for connections. In addition, if a Cloud Shell session is inactive for more than five minutes (for example, if you switch to another browser tab), your browser may disconnect the session. Close the shell window and [launch a new session](../cloud-connect/connect-cloud-shell/).
 
 ### SSL off
 
@@ -83,7 +83,7 @@ If you are unable to successfully create the VPC, contact {{<support-cloud>}}.
 
 #### Peering connection status is Pending
 
-A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Create a peering connection](../cloud-basics/cloud-vpcs/cloud-add-peering/).
+A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Accept the peering request in AWS](../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/#accept-the-peering-request-in-aws) or [Complete the peering in GCP](../cloud-basics/cloud-vpcs/cloud-add-vpc-gcp/#complete-the-peering-in-gcp).
 
 #### Peering connection status is Expired (AWS only)
 

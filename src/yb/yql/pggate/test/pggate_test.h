@@ -65,10 +65,10 @@ class PggateTest : public YBTest {
   void TearDown() override;
 
   // Init cluster for each test case.
-  CHECKED_STATUS Init(const char *test_name, int num_tablet_servers = kNumOfTablets);
+  Status Init(const char *test_name, int num_tablet_servers = kNumOfTablets);
 
   // Create simulated cluster.
-  CHECKED_STATUS CreateCluster(int num_tablet_servers);
+  Status CreateCluster(int num_tablet_servers);
 
   //------------------------------------------------------------------------------------------------
   // Setup the database for testing.

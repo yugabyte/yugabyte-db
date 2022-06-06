@@ -71,9 +71,9 @@ class PgWrapper {
   explicit PgWrapper(PgProcessConf conf);
 
   // Checks if we have a valid configuration in order to be able to run PostgreSQL.
-  CHECKED_STATUS PreflightCheck();
+  Status PreflightCheck();
 
-  CHECKED_STATUS Start();
+  Status Start();
 
   Status ReloadConfig();
 
@@ -81,13 +81,13 @@ class PgWrapper {
 
   // Calls initdb if the data directory does not exist. This is intended to use during tablet server
   // initialization.
-  CHECKED_STATUS InitDbLocalOnlyIfNeeded();
+  Status InitDbLocalOnlyIfNeeded();
 
   // Calls PostgreSQL's initdb program for initial database initialization.
   // yb_enabled - whether initdb should be talking to YugaByte cluster, or just initialize a
   //              PostgreSQL data directory. The former is only done once from outside of the YB
   //              cluster, and the latter is done on every tablet server startup.
-  CHECKED_STATUS InitDb(bool yb_enabled);
+  Status InitDb(bool yb_enabled);
 
   // Waits for the running PostgreSQL process to complete. Returns the exit code or an error.
   // Non-zero exit codes are considered non-error cases for the purpose of this function.
@@ -104,7 +104,7 @@ class PgWrapper {
   static std::string GetPostgresLibPath();
   static std::string GetPostgresThirdPartyLibPath();
   static std::string GetInitDbExecutablePath();
-  static CHECKED_STATUS CheckExecutableValid(const std::string& executable_path);
+  static Status CheckExecutableValid(const std::string& executable_path);
 
   // Set common environment for a child process (initdb or postgres itself).
   void SetCommonEnv(Subprocess* proc, bool yb_enabled);
@@ -126,7 +126,7 @@ class PgSupervisor {
   explicit PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver);
   ~PgSupervisor();
 
-  CHECKED_STATUS Start();
+  Status Start();
   void Stop();
   PgProcessState GetState();
 
@@ -137,10 +137,10 @@ class PgSupervisor {
   Status ReloadConfig();
 
  private:
-  CHECKED_STATUS ExpectStateUnlocked(PgProcessState state);
-  CHECKED_STATUS StartServerUnlocked();
+  Status ExpectStateUnlocked(PgProcessState state);
+  Status StartServerUnlocked();
   void RunThread();
-  CHECKED_STATUS CleanupOldServerUnlocked();
+  Status CleanupOldServerUnlocked();
 
   PgProcessConf conf_;
   boost::optional<PgWrapper> pg_wrapper_;

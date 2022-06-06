@@ -13,8 +13,9 @@
 
 package org.yb.cdc.ysql;
 
-import org.apache.log4j.Logger;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
@@ -33,7 +34,7 @@ import java.util.List;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestAllDatatypes extends CDCBaseClass {
-  private final Logger LOG = Logger.getLogger(TestAllDatatypes.class);
+  private final Logger LOG = LoggerFactory.getLogger(TestAllDatatypes.class);
 
   public void assertRecordsOnly(ExpectedRecordYSQL<?>[] expectedRecords,
                                 CDCSubscriber testSubscriber) throws Exception {
@@ -91,6 +92,8 @@ public class TestAllDatatypes extends CDCBaseClass {
     statement.execute("create table testtsrange (a int primary key, b tsrange);");
     statement.execute("create table testtstzrange (a int primary key, b tstzrange);");
     statement.execute("create table testdaterange (a int primary key, b daterange);");
+    statement.execute("CREATE TYPE coupon_discount_type AS ENUM ('FIXED','PERCENTAGE');");
+    statement.execute("create table testdiscount (a int primary key, b coupon_discount_type);");
   }
 
   @Before
@@ -107,103 +110,72 @@ public class TestAllDatatypes extends CDCBaseClass {
 
       CDCSubscriber bitSub = new CDCSubscriber("testbit", getMasterAddresses());
       bitSub.createStream("proto");
-      bitSub.setCheckpoint(0,0, true);
       CDCSubscriber booleanSub = new CDCSubscriber("testboolean", getMasterAddresses());
       booleanSub.createStream("proto");
-      booleanSub.setCheckpoint(0, 0, true);
       CDCSubscriber boxSub = new CDCSubscriber("testbox", getMasterAddresses());
       boxSub.createStream("proto");
-      boxSub.setCheckpoint(0, 0, true);
       CDCSubscriber byteaSub = new CDCSubscriber("testbytea", getMasterAddresses());
       byteaSub.createStream("proto");
-      byteaSub.setCheckpoint(0, 0, true);
       CDCSubscriber cidrSub = new CDCSubscriber("testcidr", getMasterAddresses());
       cidrSub.createStream("proto");
-      cidrSub.setCheckpoint(0, 0, true);
       CDCSubscriber circleSub = new CDCSubscriber("testcircle", getMasterAddresses());
       circleSub.createStream("proto");
-      circleSub.setCheckpoint(0, 0, true);
       CDCSubscriber dateSub = new CDCSubscriber("testdate", getMasterAddresses());
       dateSub.createStream("proto");
-      dateSub.setCheckpoint(0, 0, true);
       CDCSubscriber doubleSub = new CDCSubscriber("testdouble", getMasterAddresses());
       doubleSub.createStream("proto");
-      doubleSub.setCheckpoint(0, 0, true);
       CDCSubscriber inetSub = new CDCSubscriber("testinet", getMasterAddresses());
       inetSub.createStream("proto");
-      inetSub.setCheckpoint(0, 0, true);
       CDCSubscriber intSub = new CDCSubscriber("testint", getMasterAddresses());
       intSub.createStream("proto");
-      intSub.setCheckpoint(0, 0, true);
       CDCSubscriber jsonSub = new CDCSubscriber("testjson", getMasterAddresses());
       jsonSub.createStream("proto");
-      jsonSub.setCheckpoint(0, 0, true);
       CDCSubscriber jsonbSub = new CDCSubscriber("testjsonb", getMasterAddresses());
       jsonbSub.createStream("proto");
-      jsonbSub.setCheckpoint(0, 0, true);
       CDCSubscriber lineSub = new CDCSubscriber("testline", getMasterAddresses());
       lineSub.createStream("proto");
-      lineSub.setCheckpoint(0, 0, true);
       CDCSubscriber lsegSub = new CDCSubscriber("testlseg", getMasterAddresses());
       lsegSub.createStream("proto");
-      lsegSub.setCheckpoint(0, 0, true);
       CDCSubscriber macaddr8Sub = new CDCSubscriber("testmacaddr8", getMasterAddresses());
       macaddr8Sub.createStream("proto");
-      macaddr8Sub.setCheckpoint(0, 0, true);
       CDCSubscriber macaddrSub = new CDCSubscriber("testmacaddr", getMasterAddresses());
       macaddrSub.createStream("proto");
-      macaddrSub.setCheckpoint(0, 0, true);
       CDCSubscriber moneySub = new CDCSubscriber("testmoney", getMasterAddresses());
       moneySub.createStream("proto");
-      moneySub.setCheckpoint(0, 0, true);
       CDCSubscriber numericSub = new CDCSubscriber("testnumeric", getMasterAddresses());
       numericSub.createStream("proto");
-      numericSub.setCheckpoint(0, 0, true);
       CDCSubscriber pathSub = new CDCSubscriber("testpath", getMasterAddresses());
       pathSub.createStream("proto");
-      pathSub.setCheckpoint(0, 0, true);
       CDCSubscriber pointSub = new CDCSubscriber("testpoint", getMasterAddresses());
       pointSub.createStream("proto");
-      pointSub.setCheckpoint(0, 0, true);
       CDCSubscriber polygonSub = new CDCSubscriber("testpolygon", getMasterAddresses());
       polygonSub.createStream("proto");
-      polygonSub.setCheckpoint(0, 0, true);
       CDCSubscriber textSub = new CDCSubscriber("testtext", getMasterAddresses());
       textSub.createStream("proto");
-      textSub.setCheckpoint(0, 0, true);
       CDCSubscriber timeSub = new CDCSubscriber("testtime", getMasterAddresses());
       timeSub.createStream("proto");
-      timeSub.setCheckpoint(0, 0, true);
       CDCSubscriber timestampSub = new CDCSubscriber("testtimestamp", getMasterAddresses());
       timestampSub.createStream("proto");
-      timestampSub.setCheckpoint(0, 0, true);
       CDCSubscriber timetzSub = new CDCSubscriber("testtimetz", getMasterAddresses());
       timetzSub.createStream("proto");
-      timetzSub.setCheckpoint(0, 0, true);
       CDCSubscriber uuidSub = new CDCSubscriber("testuuid", getMasterAddresses());
       uuidSub.createStream("proto");
-      uuidSub.setCheckpoint(0, 0, true);
       CDCSubscriber varbitSub = new CDCSubscriber("testvarbit", getMasterAddresses());
       varbitSub.createStream("proto");
-      varbitSub.setCheckpoint(0, 0, true);
       CDCSubscriber tstzSub = new CDCSubscriber("testtstz", getMasterAddresses());
       tstzSub.createStream("proto");
-      tstzSub.setCheckpoint(0, 0, true);
       CDCSubscriber int4rangeSub = new CDCSubscriber("testint4range", getMasterAddresses());
       int4rangeSub.createStream("proto");
-      int4rangeSub.setCheckpoint(0, 0, true);
       CDCSubscriber int8rangeSub = new CDCSubscriber("testint8range", getMasterAddresses());
       int8rangeSub.createStream("proto");
-      int8rangeSub.setCheckpoint(0, 0, true);
       CDCSubscriber tsrangeSub = new CDCSubscriber("testtsrange", getMasterAddresses());
       tsrangeSub.createStream("proto");
-      tsrangeSub.setCheckpoint(0, 0, true);
       CDCSubscriber tstzrangeSub = new CDCSubscriber("testtstzrange", getMasterAddresses());
       tstzrangeSub.createStream("proto");
-      tstzrangeSub.setCheckpoint(0, 0, true);
       CDCSubscriber daterangeSub = new CDCSubscriber("testdaterange", getMasterAddresses());
       daterangeSub.createStream("proto");
-      daterangeSub.setCheckpoint(0, 0, true);
+      CDCSubscriber udtSub = new CDCSubscriber("testdiscount", getMasterAddresses());
+      udtSub.createStream("proto");
 
       TestUtils.runSqlScript(connection, "sql_datatype_script/complete_datatype_test.sql");
 
@@ -552,6 +524,11 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
       };
       assertRecordsOnly(expectedRecordsDateRange, daterangeSub);
+
+      ExpectedRecordYSQL<?>[] expectedRecordsUDT = new ExpectedRecordYSQL[] {
+        new ExpectedRecordYSQL<>(1, "", Op.INSERT),
+      };
+      assertRecordsOnly(expectedRecordsUDT, udtSub);
     } catch (Exception e) {
       LOG.error("Failed to test all datatypes", e);
       fail();
@@ -566,7 +543,6 @@ public class TestAllDatatypes extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber("testdefault", getMasterAddresses());
       testSubscriber.createStream("proto");
-      testSubscriber.setCheckpoint(0, 0, true);
       assertEquals(1, statement.executeUpdate("insert into testdefault values (1);"));
 
       List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();

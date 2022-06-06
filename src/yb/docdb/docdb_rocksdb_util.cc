@@ -16,6 +16,8 @@
 #include <memory>
 #include <thread>
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
@@ -161,7 +163,7 @@ Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string&
     rocksdb::kLZ4Compression
   };
   for (const auto& compression_type : kValidRocksDBCompressionTypes) {
-    if (flag_value == rocksdb::CompressionTypeToString(compression_type)) {
+    if (boost::iequals(flag_value, rocksdb::CompressionTypeToString(compression_type))) {
       if (rocksdb::CompressionTypeSupported(compression_type)) {
         return compression_type;
       }
@@ -529,6 +531,10 @@ rocksdb::BlockBasedTableOptions TEST_AutoInitFromRocksDbTableFlags() {
   return blockBasedTableOptions;
 }
 
+Result<rocksdb::CompressionType> TEST_GetConfiguredCompressionType(const std::string& flag_value) {
+  return yb::GetConfiguredCompressionType(flag_value);
+}
+
 int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
   if (FLAGS_rocksdb_disable_compactions) {
     return 1;
@@ -719,7 +725,7 @@ class RocksDBPatcherHelper {
     return *add_edit_;
   }
 
-  CHECKED_STATUS Apply(
+  Status Apply(
       const rocksdb::Options& options, const rocksdb::ImmutableCFOptions& imm_cf_options) {
     if (!delete_edit_.modified() && !add_edit_.modified()) {
       return Status::OK();
@@ -750,7 +756,7 @@ class RocksDBPatcherHelper {
   }
 
   template <class F>
-  CHECKED_STATUS IterateFilesHelper(const F& f, Status*) {
+  Status IterateFilesHelper(const F& f, Status*) {
     for (int level = 0; level < Levels(); ++level) {
       for (const auto* file : LevelFiles(level)) {
         RETURN_NOT_OK(f(level, *file));
@@ -806,13 +812,13 @@ class RocksDBPatcher::Impl {
     cf_options_.comparator = comparator_.user_comparator();
   }
 
-  CHECKED_STATUS Load() {
+  Status Load() {
     std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
     column_families.emplace_back("default", cf_options_);
     return version_set_.Recover(column_families);
   }
 
-  CHECKED_STATUS SetHybridTimeFilter(HybridTime value) {
+  Status SetHybridTimeFilter(HybridTime value) {
     RocksDBPatcherHelper helper(&version_set_);
 
     helper.IterateFiles([&helper, value](int level, const rocksdb::FileMetaData& file) {
@@ -832,7 +838,7 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
-  CHECKED_STATUS ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
+  Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
     RocksDBPatcherHelper helper(&version_set_);
 
     docdb::ConsensusFrontier final_frontier = frontier;
@@ -875,7 +881,7 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
-  CHECKED_STATUS UpdateFileSizes() {
+  Status UpdateFileSizes() {
     RocksDBPatcherHelper helper(&version_set_);
 
     RETURN_NOT_OK(helper.IterateFiles(
@@ -934,9 +940,11 @@ Status RocksDBPatcher::UpdateFileSizes() {
   return impl_->UpdateFileSizes();
 }
 
-Status ForceRocksDBCompact(rocksdb::DB* db) {
+Status ForceRocksDBCompact(rocksdb::DB* db, SkipFlush skip_flush) {
+  rocksdb::CompactRangeOptions options;
+  options.skip_flush = skip_flush;
   RETURN_NOT_OK_PREPEND(
-      db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
+      db->CompactRange(options, /* begin = */ nullptr, /* end = */ nullptr),
       "Compact range failed");
   return Status::OK();
 }

@@ -20,6 +20,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.service.h"
 
 namespace yb {
@@ -54,9 +55,8 @@ namespace tserver {
     (TruncateTable) \
     (UpdateSequenceTuple) \
     (ValidatePlacement) \
+    (CheckIfPitrActive) \
     /**/
-
-using TransactionPoolProvider = std::function<client::TransactionPool*()>;
 
 class PgClientServiceImpl : public PgClientServiceIf {
  public:

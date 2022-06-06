@@ -339,6 +339,7 @@ DefineIndex(Oid relationId,
 			bool skip_build,
 			bool quiet)
 {
+	bool 		concurrent;
 	char	   *indexRelationName;
 	char	   *accessMethodName;
 	Oid		   *typeObjectId;
@@ -422,31 +423,51 @@ DefineIndex(Oid relationId,
 	 *   issues.
 	 * Concurrent index build is currently also disabled for
 	 * - indexes in nested DDL
-	 * - indexes whose indexed table is colocated (issue #6215)
-	 * - unique indexes
 	 * - system table indexes
-	 * TODO(jason): check whether it's even possible to come here with
-	 * concurrent true and
-	 * - bootstrap mode
-	 * - nested DDL
-	 * - primary index
+	 * The following behavior applies when CONCURRENTLY keyword is specified:
+	 * - For system tables, one throws an error when CONCURRENTLY is specified
+	 *   when creating index.
+	 * - For temporary tables, one can specify CONCURRENTLY when creating
+	 *   index, but it will be internally converted to nonconcurrent.
+	 *   This is consistent with Postgres' expected behavior.
+	 * - For other cases, it's grammatically impossible to specify
+	 *   CONCURRENTLY/NONCONCURRENTLY. In the implicit case, concurrency
+	 *   is safe to be disabled.
 	 */
-	if (stmt->primary ||
-		!IsYBRelation(rel) ||
-		IsBootstrapProcessingMode() ||
-		IsCatalogRelation(rel))
-		stmt->concurrent = false;
+	if (IsCatalogRelation(rel))
+	{
+		if (stmt->concurrent == YB_CONCURRENCY_EXPLICIT_ENABLED)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("CREATE INDEX CONCURRENTLY is currently not "
+							"supported for system catalog")));
+		else
+			stmt->concurrent = YB_CONCURRENCY_DISABLED;
+	}
+	if (!IsYBRelation(rel))
+		stmt->concurrent = YB_CONCURRENCY_DISABLED;
+
+	if (stmt->primary || IsBootstrapProcessingMode())
+	{
+		Assert(stmt->concurrent != YB_CONCURRENCY_EXPLICIT_ENABLED);
+		stmt->concurrent = YB_CONCURRENCY_DISABLED;
+	}
+
 	/*
-	 * Use fast path create index when in nested DDL.  This is desired
+	 * Use fast path create index when in nested DDL. This is desired
 	 * when there would be no concurrency issues (e.g. `CREATE TABLE
-	 * ... (... UNIQUE (...))`).  However, there may be cases where it
-	 * is unsafe to use the fast path.  For now, just use the fast path
-	 * in all cases.
-	 * TODO(jason): support backfill for nested DDL, and use the online
-	 * path for the appropriate statements (issue #4786).
+	 * ... (... UNIQUE (...))`).
+	 * TODO(jason): support concurrent build for nested DDL (issue #4786).
+	 * In a nested DDL, it's grammatically impossible to specify
+	 * CONCURRENTLY/NONCONCURRENTLY. In the implicit case, concurrency
+	 * is safe to be disabled.
 	 */
-	if (stmt->concurrent && YBGetDdlNestingLevel() > 1)
-		stmt->concurrent = false;
+	if (stmt->concurrent != YB_CONCURRENCY_DISABLED &&
+		YBGetDdlNestingLevel() > 1)
+	{
+		Assert(stmt->concurrent != YB_CONCURRENCY_EXPLICIT_ENABLED);
+		stmt->concurrent = YB_CONCURRENCY_DISABLED;
+	}
 
 	/*
 	 * Only SELECT ... FOR UPDATE/SHARE are allowed while doing a standard
@@ -463,7 +484,8 @@ DefineIndex(Oid relationId,
 	 * parallel workers under the control of certain particular ambuild
 	 * functions will need to be updated, too.
 	 */
-	lockmode = stmt->concurrent ? ShareUpdateExclusiveLock : ShareLock;
+	concurrent = stmt->concurrent != YB_CONCURRENCY_DISABLED;
+	lockmode = concurrent ? ShareUpdateExclusiveLock : ShareLock;
 	LockRelationOid(relationId, lockmode);
 
 	/*
@@ -472,7 +494,7 @@ DefineIndex(Oid relationId,
 	 * - initdb (bootstrap mode) is prevented from being concurrent
 	 * - users cannot create indexes on system tables
 	 */
-	Assert(!(stmt->concurrent && IsSystemRelation(rel)));
+	Assert(!(concurrent && IsSystemRelation(rel)));
 
 	relationId = RelationGetRelid(rel);
 	namespaceId = RelationGetNamespace(rel);
@@ -515,7 +537,7 @@ DefineIndex(Oid relationId,
 	partitioned = rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE;
 	if (partitioned)
 	{
-		if (stmt->concurrent)
+		if (concurrent)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot create index on partitioned table \"%s\" concurrently",
@@ -889,8 +911,8 @@ DefineIndex(Oid relationId,
 	indexInfo->ii_ExclusionStrats = NULL;
 	indexInfo->ii_Unique = stmt->unique;
 	/* In a concurrent build, mark it not-ready-for-inserts */
-	indexInfo->ii_ReadyForInserts = !stmt->concurrent;
-	indexInfo->ii_Concurrent = stmt->concurrent;
+	indexInfo->ii_ReadyForInserts = !concurrent;
+	indexInfo->ii_Concurrent = concurrent;
 	indexInfo->ii_BrokenHotChain = false;
 	indexInfo->ii_ParallelWorkers = 0;
 	indexInfo->ii_Am = accessMethodId;
@@ -1058,7 +1080,7 @@ DefineIndex(Oid relationId,
 	 * A valid stmt->oldNode implies that we already have a built form of the
 	 * index.  The caller should also decline any index build.
 	 */
-	Assert(!OidIsValid(stmt->oldNode) || (skip_build && !stmt->concurrent));
+	Assert(!OidIsValid(stmt->oldNode) || (skip_build && !concurrent));
 
 	/*
 	 * Make the catalog entries for the index, including constraints. This
@@ -1073,11 +1095,11 @@ DefineIndex(Oid relationId,
 	flags = constr_flags = 0;
 	if (stmt->isconstraint && !(IsYBRelation(rel) && IsYsqlUpgrade && IsCatalogRelation(rel)))
 		flags |= INDEX_CREATE_ADD_CONSTRAINT;
-	if (skip_build || stmt->concurrent || partitioned)
+	if (skip_build || concurrent || partitioned)
 		flags |= INDEX_CREATE_SKIP_BUILD;
 	if (stmt->if_not_exists)
 		flags |= INDEX_CREATE_IF_NOT_EXISTS;
-	if (stmt->concurrent)
+	if (concurrent)
 		flags |= INDEX_CREATE_CONCURRENT;
 	if (partitioned)
 		flags |= INDEX_CREATE_PARTITIONED;
@@ -1118,7 +1140,7 @@ DefineIndex(Oid relationId,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId, stmt->split_options,
-					 !stmt->concurrent, tablegroupId, colocation_id);
+					 !concurrent, tablegroupId, colocation_id);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 
@@ -1338,7 +1360,7 @@ DefineIndex(Oid relationId,
 		return address;
 	}
 
-	if (!stmt->concurrent)
+	if (!concurrent)
 	{
 		/* Close the heap and we're done, in the non-concurrent case */
 		heap_close(rel, NoLock);
@@ -1379,7 +1401,6 @@ DefineIndex(Oid relationId,
 	 * No need to break (abort) ongoing txns since this is an online schema
 	 * change.
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
-	 * level 1).
 	 */
 	YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
 	                           false /* is_breaking_catalog_change */);

@@ -46,6 +46,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (SetupUniverseReplication)
     (UpdateCDCStream)
     (GetCDCDBStreamInfo)
+    (IsBootstrapRequired)
   )
 };
 

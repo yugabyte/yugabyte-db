@@ -102,11 +102,13 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const Slice* iterate_upper_bound = nullptr);
 
 // Request RocksDB compaction and wait until it completes.
-CHECKED_STATUS ForceRocksDBCompact(rocksdb::DB* db);
+Status ForceRocksDBCompact(rocksdb::DB* db, SkipFlush skip_flush = SkipFlush::kFalse);
 
 rocksdb::Options TEST_AutoInitFromRocksDBFlags();
 
 rocksdb::BlockBasedTableOptions TEST_AutoInitFromRocksDbTableFlags();
+
+Result<rocksdb::CompressionType> TEST_GetConfiguredCompressionType(const std::string& flag_value);
 
 Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
     const std::string& flag_value);
@@ -146,18 +148,18 @@ class RocksDBPatcher {
   ~RocksDBPatcher();
 
   // Loads DB into patcher.
-  CHECKED_STATUS Load();
+  Status Load();
 
   // Set hybrid time filter for DB.
-  CHECKED_STATUS SetHybridTimeFilter(HybridTime value);
+  Status SetHybridTimeFilter(HybridTime value);
 
   // Modify flushed frontier and clean up smallest/largest op id in per-SST file metadata.
-  CHECKED_STATUS ModifyFlushedFrontier(const ConsensusFrontier& frontier);
+  Status ModifyFlushedFrontier(const ConsensusFrontier& frontier);
 
   // Update file sizes in manifest if actual file size was changed because of direct manipulation
   // with .sst files.
   // Like all other methods in this class it updates manifest file.
-  CHECKED_STATUS UpdateFileSizes();
+  Status UpdateFileSizes();
 
  private:
   class Impl;

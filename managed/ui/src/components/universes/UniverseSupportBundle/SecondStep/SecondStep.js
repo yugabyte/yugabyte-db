@@ -1,5 +1,5 @@
-import {YBCheckBox} from "../../../common/forms/fields";
 import React, {useRef, useState} from "react";
+import {YBCheckBox} from "../../../common/forms/fields";
 import {DropdownButton, MenuItem} from "react-bootstrap";
 import moment from 'moment';
 import {CustomDateRangePicker} from "../DateRangePicker/DateRangePicker";
@@ -11,7 +11,7 @@ const filterTypes = [
   { type: 'divider' },
   { label: 'Custom', type: 'custom', value: 'custom' }
 ];
-const selectionOptions = [
+export const selectionOptions = [
   { label: 'All', value: 'All' },
   { label: 'Application logs', value: 'ApplicationLogs' },
   { label: 'Universe logs', value: 'UniverseLogs' },
@@ -27,7 +27,7 @@ const getBackDateByDay = (day) => {
   return new Date(new Date().setDate(new Date().getDate() - day));
 }
 
-const updateOptions = (dateType, selectionOptionsValue, onOptionsChange, setIsDateTypeCustom, startDate = new moment(new Date()), endDate = new moment(new Date())) => {
+export const updateOptions = (dateType, selectionOptionsValue, setIsDateTypeCustom, startDate = new moment(new Date()), endDate = new moment(new Date())) => {
 
   if(dateType === 'custom') {
     setIsDateTypeCustom(true);
@@ -45,12 +45,11 @@ const updateOptions = (dateType, selectionOptionsValue, onOptionsChange, setIsDa
       components.push(selectionOptions[index].value);
     }
   })
-  const payload = {
+  return {
     startDate: startDate.format('yyyy-MM-DD'),
     endDate: endDate.format('yyyy-MM-DD'),
     components: components
   }
-  onOptionsChange(payload)
 }
 
 
@@ -59,7 +58,6 @@ export const SecondStep = ({ onOptionsChange }) => {
   const [selectionOptionsValue, setSelectionOptionsValue] = useState(selectionOptions.map(()=> true));
   const [isDateTypeCustom, setIsDateTypeCustom] = useState(false)
   const refs = useRef([]);
-
 
   return (
     <div className="universe-support-bundle-step-two">
@@ -71,7 +69,9 @@ export const SecondStep = ({ onOptionsChange }) => {
       <div className="filters">
 
         {isDateTypeCustom && (<CustomDateRangePicker onRangeChange={(startEnd) => {
-          updateOptions('customWithValue', selectionOptionsValue, onOptionsChange, setIsDateTypeCustom, new moment(startEnd.start), new moment(startEnd.end));
+          const changedOptions = updateOptions('customWithValue', selectionOptionsValue, setIsDateTypeCustom, new moment(startEnd.start), new moment(startEnd.end));
+          onOptionsChange(changedOptions)
+
         }} />)}
         <DropdownButton
           title={
@@ -88,7 +88,8 @@ export const SecondStep = ({ onOptionsChange }) => {
               key={filterType.label}
               onClick={() => {
                 setSelectedFilterType(filterType.value);
-                updateOptions(filterType.value, selectionOptionsValue, onOptionsChange, setIsDateTypeCustom)
+                const changedOptions = updateOptions(filterType.value, selectionOptionsValue, setIsDateTypeCustom);
+                onOptionsChange(changedOptions);
               }}
               value={filterType.value}
             >
@@ -127,7 +128,8 @@ export const SecondStep = ({ onOptionsChange }) => {
                     refs.current[0].checked = isAllSelected;
                   }
                   setSelectionOptionsValue([...selectionOptionsValue]);
-                  updateOptions(selectedFilterType, [...selectionOptionsValue], onOptionsChange, setIsDateTypeCustom);
+                  const changedOptions = updateOptions(selectedFilterType, [...selectionOptionsValue], setIsDateTypeCustom);
+                  onOptionsChange(changedOptions);
                 }}
                 checkState={selectionOptionsValue[index]}
                 input={{ref: (ref) => refs.current[index] = ref }}

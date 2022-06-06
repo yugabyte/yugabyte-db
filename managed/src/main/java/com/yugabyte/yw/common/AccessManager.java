@@ -3,15 +3,24 @@
 package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.forms.AccessKeyFormData;
+import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,13 +38,17 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
+import org.apache.commons.lang3.ObjectUtils;
 import org.slf4j.LoggerFactory;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
 public class AccessManager extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(AccessManager.class);
 
   @Inject play.Configuration appConfig;
+  @Inject Commissioner commissioner;
 
   private static final String YB_CLOUD_COMMAND_TYPE = "access";
   private static final String PEM_PERMISSIONS = "r--------";
@@ -110,7 +123,8 @@ public class AccessManager extends DevopsBase {
       boolean airGapInstall,
       boolean skipProvisioning,
       boolean setUpChrony,
-      List<String> ntpServers)
+      List<String> ntpServers,
+      boolean showSetUpChrony)
       throws IOException {
     return uploadKeyFile(
         regionUUID,
@@ -123,6 +137,7 @@ public class AccessManager extends DevopsBase {
         skipProvisioning,
         setUpChrony,
         ntpServers,
+        showSetUpChrony,
         true);
   }
 
@@ -138,12 +153,13 @@ public class AccessManager extends DevopsBase {
       boolean skipProvisioning,
       boolean setUpChrony,
       List<String> ntpServers,
+      boolean showSetUpChrony,
       boolean deleteRemote)
       throws IOException {
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
     // Removing paths from keyCode.
-    keyCode = Util.getFileName(keyCode);
+    keyCode = FileUtils.getFileName(keyCode);
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
     if (accessKey != null) {
       // This means the key must have been created before, so nothing to do.
@@ -187,7 +203,7 @@ public class AccessManager extends DevopsBase {
     keyInfo.skipProvisioning = skipProvisioning;
     keyInfo.ntpServers = ntpServers;
     keyInfo.setUpChrony = setUpChrony;
-    keyInfo.showSetUpChrony = true; // New Providers should have this set true
+    keyInfo.showSetUpChrony = showSetUpChrony;
     keyInfo.deleteRemote = deleteRemote;
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
@@ -203,6 +219,7 @@ public class AccessManager extends DevopsBase {
       boolean skipProvisioning,
       boolean setUpChrony,
       List<String> ntpServers,
+      boolean showSetUpChrony,
       boolean overrideKeyValidate) {
     AccessKey key = null;
     Path tempFile = null;
@@ -224,6 +241,7 @@ public class AccessManager extends DevopsBase {
               skipProvisioning,
               setUpChrony,
               ntpServers,
+              showSetUpChrony,
               false);
 
       File pemFile = new File(key.getKeyInfo().privateKey);
@@ -239,7 +257,8 @@ public class AccessManager extends DevopsBase {
                 airGapInstall,
                 skipProvisioning,
                 setUpChrony,
-                ntpServers);
+                ntpServers,
+                showSetUpChrony);
       }
     } catch (NoSuchFileException ioe) {
       LOG.error(ioe.getMessage(), ioe);
@@ -268,7 +287,8 @@ public class AccessManager extends DevopsBase {
       boolean airGapInstall,
       boolean skipProvisioning,
       boolean setUpChrony,
-      List<String> ntpServers) {
+      List<String> ntpServers,
+      boolean showSetupChrony) {
     return addKey(
         regionUUID,
         keyCode,
@@ -278,7 +298,8 @@ public class AccessManager extends DevopsBase {
         airGapInstall,
         skipProvisioning,
         setUpChrony,
-        ntpServers);
+        ntpServers,
+        showSetupChrony);
   }
 
   public AccessKey addKey(
@@ -289,7 +310,16 @@ public class AccessManager extends DevopsBase {
       Integer sshPort,
       boolean airGapInstall) {
     return addKey(
-        regionUUID, keyCode, privateKeyFile, sshUser, sshPort, airGapInstall, false, false, null);
+        regionUUID,
+        keyCode,
+        privateKeyFile,
+        sshUser,
+        sshPort,
+        airGapInstall,
+        false,
+        false,
+        null,
+        false);
   }
 
   public AccessKey addKey(
@@ -298,7 +328,8 @@ public class AccessManager extends DevopsBase {
       Integer sshPort,
       boolean setUpChrony,
       List<String> ntpServers) {
-    return addKey(regionUUID, keyCode, null, null, sshPort, false, false, setUpChrony, ntpServers);
+    return addKey(
+        regionUUID, keyCode, null, null, sshPort, false, false, setUpChrony, ntpServers, false);
   }
 
   public AccessKey addKey(
@@ -310,7 +341,8 @@ public class AccessManager extends DevopsBase {
       boolean airGapInstall,
       boolean skipProvisioning,
       boolean setUpChrony,
-      List<String> ntpServers) {
+      List<String> ntpServers,
+      boolean showSetupChrony) {
     List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
@@ -360,7 +392,7 @@ public class AccessManager extends DevopsBase {
       keyInfo.skipProvisioning = skipProvisioning;
       keyInfo.setUpChrony = setUpChrony;
       keyInfo.ntpServers = ntpServers;
-      keyInfo.showSetUpChrony = true; // New Providers should have this set true
+      keyInfo.showSetUpChrony = showSetupChrony;
       accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
     }
 
@@ -443,6 +475,7 @@ public class AccessManager extends DevopsBase {
     if (deleteRemote) {
       commandArgs.add("--delete_remote");
     }
+    commandArgs.add("--ignore_auth_failure");
     JsonNode response = execAndParseCommandRegion(regionUUID, "delete-key", commandArgs);
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
@@ -474,7 +507,7 @@ public class AccessManager extends DevopsBase {
       throw new RuntimeException("Missing KUBECONFIG_CONTENT data in the provider config.");
     }
     String configFilePath = getOrCreateKeyFilePath(path);
-    Path configFile = Paths.get(configFilePath, Util.getFileName(configFileName));
+    Path configFile = Paths.get(configFilePath, FileUtils.getFileName(configFileName));
     if (!edit && Files.exists(configFile)) {
       throw new RuntimeException("File " + configFile.getFileName() + " already exists.");
     }
@@ -496,12 +529,101 @@ public class AccessManager extends DevopsBase {
           "Missing KUBECONFIG_PULL_SECRET_CONTENT data in the provider config.");
     }
     String pullSecretFilePath = getOrCreateKeyFilePath(providerUUID);
-    Path pullSecretFile = Paths.get(pullSecretFilePath, Util.getFileName(pullSecretFileName));
+    Path pullSecretFile = Paths.get(pullSecretFilePath, FileUtils.getFileName(pullSecretFileName));
     if (!edit && Files.exists(pullSecretFile)) {
       throw new RuntimeException("File " + pullSecretFile.getFileName() + " already exists.");
     }
     Files.write(pullSecretFile, pullSecretFileContent.getBytes());
 
     return pullSecretFile.toAbsolutePath().toString();
+  }
+
+  public void rotateAccessKey(
+      UUID customerUUID, UUID providerUUID, List<UUID> universeUUIDs, String newKeyCode) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    AccessKey newAccessKey = AccessKey.getOrBadRequest(providerUUID, newKeyCode);
+    Set<Universe> universes =
+        universeUUIDs
+            .stream()
+            .map((universeUUID) -> Universe.getOrBadRequest(universeUUID))
+            .collect(Collectors.toSet());
+    Set<Universe> providerUniverses = customer.getUniversesForProvider(providerUUID);
+
+    // prechecks
+    if (universes.stream().anyMatch((universe) -> universe.getUniverseDetails().universePaused)) {
+      throw new RuntimeException("One of the universes in the list is paused");
+    } else if (universes.stream().anyMatch((universe) -> !universe.allNodesLive())) {
+      throw new RuntimeException("One of the universes has non-live nodes");
+    } else if (universes.stream().anyMatch((universe) -> !providerUniverses.contains(universe))) {
+      throw new RuntimeException("One of the universes does not belong to the provider mentioned");
+    }
+
+    for (Universe universe : universes) {
+      // create universe task params
+      UUID universeUUID = universe.universeUUID;
+      RotateAccessKeyParams taskParams =
+          new RotateAccessKeyParams(customerUUID, providerUUID, universeUUID, newAccessKey);
+      // trigger universe task
+      UUID taskUUID = commissioner.submit(TaskType.RotateAccessKey, taskParams);
+
+      CustomerTask.create(
+          customer,
+          universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.RotateAccessKey,
+          universe.name);
+    }
+  }
+
+  public AccessKeyFormData setOrValidateRequestDataWithExistingKey(
+      AccessKeyFormData formData, UUID providerUUID) {
+    List<AccessKey> accessKeys = AccessKey.getAll(providerUUID);
+    if (accessKeys.size() == 0) {
+      return formData;
+    }
+    AccessKey providerAccessKey = accessKeys.get(0);
+    AccessKey.KeyInfo keyInfo = providerAccessKey.getKeyInfo();
+    formData.sshUser = setOrValidate(formData.sshUser, keyInfo.sshUser, "sshUser");
+    formData.sshPort = setOrValidate(formData.sshPort, keyInfo.sshPort, "sshPort");
+    formData.nodeExporterUser =
+        setOrValidate(formData.nodeExporterUser, keyInfo.nodeExporterUser, "nodeExporterUser");
+    formData.nodeExporterPort =
+        setOrValidate(formData.nodeExporterPort, keyInfo.nodeExporterPort, "nodeExporterPort");
+    checkEqual(formData.airGapInstall, keyInfo.airGapInstall, "airGapInstall");
+    checkEqual(formData.skipProvisioning, keyInfo.skipProvisioning, "skipProvisioning");
+    checkEqual(formData.setUpChrony, keyInfo.setUpChrony, "setUpChrony");
+    checkEqual(formData.showSetUpChrony, keyInfo.showSetUpChrony, "showSetUpChrony");
+    checkEqual(
+        formData.passwordlessSudoAccess, keyInfo.passwordlessSudoAccess, "passwordlessSudoAccess");
+    checkEqual(formData.installNodeExporter, keyInfo.installNodeExporter, "installNodeExporter");
+    return formData;
+  }
+
+  private void failAccessKeyRequest(String unmatchedParam) {
+    throw new PlatformServiceException(
+        BAD_REQUEST,
+        "Request parameters do not match with existing keys of the provider. Alter param: "
+            + unmatchedParam);
+  }
+
+  // for objects - set or fail if not equal
+  private <T> T setOrValidate(T formParam, T providerKeyParam, String param) {
+    if (formParam == null) {
+      // set if null
+      return providerKeyParam;
+    } else if (ObjectUtils.notEqual(formParam, providerKeyParam)) {
+      // fail if not matching
+      failAccessKeyRequest(param);
+    }
+    // were equal
+    return formParam;
+  }
+
+  // for primitive types
+  private <T> void checkEqual(T formParam, T providerKeyParam, String param) {
+    if (formParam != providerKeyParam) {
+      failAccessKeyRequest(param);
+    }
   }
 }

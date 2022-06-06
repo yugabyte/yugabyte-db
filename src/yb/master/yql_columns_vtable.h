@@ -30,7 +30,7 @@ class YQLColumnsVTable : public YQLVirtualTable {
  protected:
   Schema CreateSchema() const;
  private:
-  CHECKED_STATUS PopulateColumnInformation(const Schema& schema,
+  Status PopulateColumnInformation(const Schema& schema,
                                            const std::string& keyspace_name,
                                            const std::string& table_name,
                                            const size_t col_idx,

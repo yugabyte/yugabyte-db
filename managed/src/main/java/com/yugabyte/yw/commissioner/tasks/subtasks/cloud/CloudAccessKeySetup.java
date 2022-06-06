@@ -63,6 +63,7 @@ public class CloudAccessKeySetup extends CloudTaskBase {
           false,
           taskParams().setUpChrony,
           taskParams().ntpServers,
+          taskParams().showSetUpChrony,
           taskParams().overrideKeyValidate);
     } else {
       // For add region, we should verify if the overrideKeyValidate is set, so that we don't
@@ -78,7 +79,8 @@ public class CloudAccessKeySetup extends CloudTaskBase {
             taskParams().airGapInstall,
             false,
             taskParams().setUpChrony,
-            taskParams().ntpServers);
+            taskParams().ntpServers,
+            taskParams().showSetUpChrony);
       }
     }
   }

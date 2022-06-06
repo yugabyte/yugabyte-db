@@ -190,7 +190,6 @@ readonly -a VALID_COMPILER_TYPES=(
   clang12
   clang13
   clang14
-  zapcc
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -336,6 +335,23 @@ normalize_build_type() {
   fi
 }
 
+decide_whether_to_use_linuxbrew() {
+  expect_vars_to_be_set YB_COMPILER_TYPE build_type
+  if [[ -z ${YB_USE_LINUXBREW:-} ]]; then
+    if [[ -n ${predefined_build_root:-} ]]; then
+      if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
+        YB_USE_LINUXBREW=1
+      fi
+    elif [[ -n ${YB_LINUXBREW_DIR:-} ||
+            ( ${YB_COMPILER_TYPE} == "clang12" &&
+              $build_type == "release" &&
+              "$( uname -m )" == "x86_64" ) ]]; then
+      YB_USE_LINUXBREW=1
+    fi
+    export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
+  fi
+}
+
 # Sets the build directory based on the given build type (the build_type variable) and the value of
 # the YB_COMPILER_TYPE environment variable.
 set_build_root() {
@@ -359,27 +375,7 @@ set_build_root() {
 
   BUILD_ROOT=$YB_BUILD_PARENT_DIR/$build_type-$YB_COMPILER_TYPE
 
-  if [[ -z ${YB_USE_LINUXBREW:-} ]]; then
-    if [[ -n ${predefined_build_root:-} ]]; then
-      if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
-        YB_USE_LINUXBREW=1
-      else
-        YB_USE_LINUXBREW=0
-      fi
-    elif [[ -n ${YB_LINUXBREW_DIR:-} || ${YB_COMPILER_TYPE} =~ ^gcc5?$ ]]; then
-      YB_USE_LINUXBREW=1
-    elif [[ ${YB_COMPILER_TYPE} == "clang12" ]]; then
-      # For Clang 12 in particular, we have prebuilt third-party archives with and without
-      # Linuxbrew. Use Linuxbrew by default for the release build.
-      if [[ $build_type == "release" && "$( uname -m )" == "x86_64" ]]; then
-        YB_USE_LINUXBREW=1
-      else
-        YB_USE_LINUXBREW=0
-      fi
-    fi
-    export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
-  fi
-  # Now we've finalized our decision about whether we are using Linuxbrew.
+  decide_whether_to_use_linuxbrew
 
   if using_linuxbrew; then
     BUILD_ROOT+="-linuxbrew"
@@ -499,15 +495,7 @@ set_default_compiler_type() {
     if is_mac; then
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
-      if [[ ${build_type:-} == "tsan" ]]; then
-        # TODO: upgrade Clang version used for TSAN as well.
-        YB_COMPILER_TYPE=clang7
-      elif [[ $( uname -m ) == "aarch64" ]] || ! is_redhat_family; then
-        # TODO: produce a third-party build for aarch64 with Clang 12, and on Ubuntu.
-        YB_COMPILER_TYPE=clang11
-      else
-        YB_COMPILER_TYPE=clang12
-      fi
+      YB_COMPILER_TYPE=clang12
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -920,7 +908,7 @@ put_path_entry_first() {
   export PATH=$path_entry:$PATH
 }
 
-add_path_entry() {
+add_path_entry_last() {
   expect_num_args 1 "$@"
   local path_entry=$1
   if [[ $PATH != *:$path_entry && $PATH != $path_entry:* && $PATH != *:$path_entry:* ]]; then
@@ -998,6 +986,8 @@ find_compiler_by_type() {
         fi
         cc_executable=$gcc_bin_dir/gcc
         cxx_executable=$gcc_bin_dir/g++
+        # This is needed for other tools, such as "as" (the assembler).
+        put_path_entry_first "$gcc_bin_dir"
       else
         # shellcheck disable=SC2230
         cc_executable=$(which "gcc-$gcc_major_version")
@@ -1069,15 +1059,6 @@ find_compiler_by_type() {
             break
           fi
         done
-      fi
-    ;;
-    zapcc)
-      if [[ -n ${YB_ZAPCC_INSTALL_PATH:-} ]]; then
-        cc_executable=$YB_ZAPCC_INSTALL_PATH/bin/zapcc
-        cxx_executable=$YB_ZAPCC_INSTALL_PATH/bin/zapcc++
-      else
-        cc_executable=zapcc
-        cxx_executable=zapcc++
       fi
     ;;
     *)
@@ -1817,6 +1798,9 @@ find_or_download_thirdparty() {
   if [[ -n ${YB_THIRDPARTY_DIR:-} ]]; then
     finalize_yb_thirdparty_dir
     if [[ -d $YB_THIRDPARTY_DIR ]]; then
+      if [[ ! -f "${BUILD_ROOT}/thirdparty_path.txt" ]]; then
+        save_thirdparty_info_to_build_dir
+      fi
       return
     fi
   fi
@@ -2594,10 +2578,6 @@ is_apple_silicon() {
   fi
 
   return 1
-}
-
-should_use_lto() {
-  using_linuxbrew && [[ "${YB_COMPILER_TYPE}" =~ clang1[234] && "${build_type}" == "release" ]]
 }
 
 # -------------------------------------------------------------------------------------------------

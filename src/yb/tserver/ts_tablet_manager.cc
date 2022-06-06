@@ -45,6 +45,7 @@
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
+#include "yb/client/transaction_manager.h"
 
 #include "yb/common/wire_protocol.h"
 
@@ -216,12 +217,6 @@ DEFINE_int32(post_split_trigger_compaction_pool_max_queue_size, 16,
 
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");
-
-constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
-
-DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
-             "Default timeout for the YBClient embedded into the tablet server that is used "
-             "for distributed transactions.");
 
 DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
@@ -410,19 +405,6 @@ TSTabletManager::~TSTabletManager() {
 Status TSTabletManager::Init() {
   CHECK_EQ(state(), MANAGER_INITIALIZING);
 
-  async_client_init_.emplace(
-      "tserver_client", 0 /* num_reactors */,
-      FLAGS_tserver_yb_client_default_timeout_ms / 1000, server_->permanent_uuid(),
-      &server_->options(), server_->metric_entity(), server_->mem_tracker(),
-      server_->messenger());
-
-  async_client_init_->AddPostCreateHook([this](client::YBClient* client) {
-    auto* tserver = server();
-    if (tserver != nullptr && tserver->proxy() != nullptr) {
-      client->SetLocalTabletServer(tserver->permanent_uuid(), tserver->proxy(), tserver);
-    }
-  });
-
   tablet_options_.env = server_->GetEnv();
   tablet_options_.rocksdb_env = server_->GetRocksDBEnv();
   tablet_options_.listeners = server_->options().listeners;
@@ -559,7 +541,6 @@ void TSTabletManager::CleanupCheckpoints() {
 }
 
 Status TSTabletManager::Start() {
-  async_client_init_->Start();
   if (FLAGS_cleanup_split_tablets_interval_sec > 0) {
     tablets_cleaner_->Start(
         &server_->messenger()->scheduler(), FLAGS_cleanup_split_tablets_interval_sec * 1s);
@@ -1197,7 +1178,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
       Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->raft_group_id()),
       metric_registry_,
       this,
-      async_client_init_->get_client_future()));
+      server_->client_future()));
   RETURN_NOT_OK(RegisterTablet(meta->raft_group_id(), tablet_peer, mode));
   return tablet_peer;
 }
@@ -1401,7 +1382,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 
     tablet::TabletInitData tablet_init_data = {
       .metadata = meta,
-      .client_future = async_client_init_->get_client_future(),
+      .client_future = server_->client_future(),
       .clock = scoped_refptr<server::Clock>(server_->clock()),
       .parent_mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
       .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
@@ -1419,6 +1400,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .tablet_splitter = this,
       .allowed_history_cutoff_provider = std::bind(
           &TSTabletManager::AllowedHistoryCutoff, this, _1),
+      .transaction_manager_provider = [server = server_]() -> client::TransactionManager& {
+        return server->TransactionManager();
+      }
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -1540,8 +1524,6 @@ void TSTabletManager::StartShutdown() {
 
   metrics_cleaner_->Shutdown();
 
-  async_client_init_->Shutdown();
-
   mem_manager_->Shutdown();
 
   // Wait for all RBS operations to finish.
@@ -1588,6 +1570,8 @@ void TSTabletManager::StartShutdown() {
       shutting_down_peers_.push_back(peer);
     }
   }
+
+  multi_raft_manager_->StartShutdown();
 }
 
 void TSTabletManager::CompleteShutdown() {
@@ -1625,6 +1609,8 @@ void TSTabletManager::CompleteShutdown() {
 
     state_ = MANAGER_SHUTDOWN;
   }
+
+  multi_raft_manager_->CompleteShutdown();
 }
 
 std::string TSTabletManager::LogPrefix() const {
@@ -2322,11 +2308,11 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
 }
 
 client::YBClient& TSTabletManager::client() {
-  return *async_client_init_->client();
+  return *client_future().get();
 }
 
 const std::shared_future<client::YBClient*>& TSTabletManager::client_future() {
-  return async_client_init_->get_client_future();
+  return server_->client_future();
 }
 
 void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {

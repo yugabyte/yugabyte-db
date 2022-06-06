@@ -10,7 +10,7 @@
 
 from jinja2 import Environment, FileSystemLoader
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
-from ybops.cloud.common.method import AbstractMethod
+from ybops.cloud.common.method import AbstractAccessMethod, AbstractMethod
 from ybops.cloud.common.method import AbstractInstancesMethod
 from ybops.cloud.common.method import CreateInstancesMethod
 from ybops.cloud.common.method import DestroyInstancesMethod
@@ -419,3 +419,12 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
             logging.error(e)
             print(json.dumps(
                 {"error": "Unable to create script: {}".format(get_exception_message(e))}))
+
+
+class OnPremAccessAddKeyMethod(AbstractAccessMethod):
+    def __init__(self, base_command):
+        super(OnPremAccessAddKeyMethod, self).__init__(base_command, "add-key")
+
+    def callback(self, args):
+        (private_key_file, public_key_file) = self.validate_key_files(args)
+        print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))

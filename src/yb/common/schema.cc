@@ -78,6 +78,10 @@ const TypeInfo* ColumnSchema::type_info() const {
   return type_->type_info();
 }
 
+bool ColumnSchema::is_collection() const {
+  return type_info()->is_collection();
+}
+
 bool ColumnSchema::CompTypeInfo(const ColumnSchema &a, const ColumnSchema &b) {
   return a.type_info()->type == b.type_info()->type;
 }
@@ -134,6 +138,8 @@ size_t ColumnSchema::memory_footprint_including_this() const {
 // TableProperties
 // ------------------------------------------------------------------------------------------------
 
+const TableId kNoCopartitionTableId = "";
+
 void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
   if (HasDefaultTimeToLive()) {
     pb->set_default_time_to_live(default_time_to_live_);
@@ -150,6 +156,7 @@ void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
   }
   pb->set_is_ysql_catalog_table(is_ysql_catalog_table_);
   pb->set_retain_delete_markers(retain_delete_markers_);
+  pb->set_partition_key_version(partition_key_version_);
 }
 
 TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& pb) {
@@ -181,6 +188,9 @@ TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& 
   if (pb.has_retain_delete_markers()) {
     table_properties.SetRetainDeleteMarkers(pb.retain_delete_markers());
   }
+  if (pb.has_partition_key_version()) {
+    table_properties.set_partition_key_version(pb.partition_key_version());
+  }
   return table_properties;
 }
 
@@ -209,6 +219,9 @@ void TableProperties::AlterFromTablePropertiesPB(const TablePropertiesPB& pb) {
   if (pb.has_retain_delete_markers()) {
     SetRetainDeleteMarkers(pb.retain_delete_markers());
   }
+  if (pb.has_partition_key_version()) {
+    set_partition_key_version(pb.partition_key_version());
+  }
 }
 
 void TableProperties::Reset() {
@@ -221,6 +234,7 @@ void TableProperties::Reset() {
   num_tablets_ = 0;
   is_ysql_catalog_table_ = false;
   retain_delete_markers_ = false;
+  partition_key_version_ = kCurrentPartitionKeyVersion;
 }
 
 string TableProperties::ToString() const {
@@ -234,9 +248,10 @@ string TableProperties::ToString() const {
     result += Format("copartition_table_id: $0 ", copartition_table_id_);
   }
   return result + Format(
-      "consistency_level: $0 is_ysql_catalog_table: $1 }",
+      "consistency_level: $0 is_ysql_catalog_table: $1 partition_key_version: $2 }",
       consistency_level_,
-      is_ysql_catalog_table_);
+      is_ysql_catalog_table_,
+      partition_key_version_);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -774,6 +789,16 @@ Status SchemaBuilder::RenameColumn(const string& old_name, const string& new_nam
 
   LOG(FATAL) << "Should not reach here";
   return STATUS(IllegalState, "Unable to rename existing column");
+}
+
+Status SchemaBuilder::SetColumnPGType(const string& name, const uint32_t pg_type_oid) {
+  for (ColumnSchema& col_schema : cols_) {
+    if (name == col_schema.name()) {
+      col_schema.set_pg_type_oid(pg_type_oid);
+      return Status::OK();
+    }
+  }
+  return STATUS(NotFound, "The specified column does not exist", name);
 }
 
 Status SchemaBuilder::AddColumn(const ColumnSchema& column, bool is_key) {

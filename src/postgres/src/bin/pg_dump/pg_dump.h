@@ -346,6 +346,7 @@ typedef struct _tablegroupInfo
 	 */
 	DumpableObject dobj;
 	char	   *grpowner;		/* name of owner, or empty string */
+	char	   *grptablespace;
 	char	   *grpacl;
 	char	   *grpracl;
 	char	   *grpinitacl;

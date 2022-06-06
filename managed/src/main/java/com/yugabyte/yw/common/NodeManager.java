@@ -10,6 +10,26 @@
 
 package com.yugabyte.yw.common;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.UUID;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -22,6 +42,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.INodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.params.NodeAccessTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -48,6 +69,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -57,32 +79,15 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.UUID;
-import lombok.extern.slf4j.Slf4j;
+
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @Singleton
@@ -131,7 +136,10 @@ public class NodeManager extends DevopsBase {
     Create_Root_Volumes,
     Replace_Root_Volume,
     Delete_Root_Volumes,
-    Transfer_XCluster_Certs
+    Transfer_XCluster_Certs,
+    Verify_Node_SSH_Access,
+    Add_Authorized_Key,
+    Remove_Authorized_Key
   }
 
   public enum CertRotateAction {
@@ -184,9 +192,11 @@ public class NodeManager extends DevopsBase {
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
-      NodeInstance node = NodeInstance.getByName(nodeTaskParam.nodeName);
+      // Instance may not be present if it is deleted from NodeInstance table after a release
+      // action. Node UUID is not available in 2.6.
+      Optional<NodeInstance> node = NodeInstance.maybeGetByName(nodeTaskParam.getNodeName());
       command.add("--node_metadata");
-      command.add(node.getDetailsJson());
+      command.add(node.isPresent() ? node.get().getDetailsJson() : "{}");
     }
     return command;
   }
@@ -269,7 +279,9 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Destroy
             || type == NodeCommandType.Create
             || type == NodeCommandType.Disk_Update
-            || type == NodeCommandType.Transfer_XCluster_Certs)
+            || type == NodeCommandType.Update_Mounted_Disks
+            || type == NodeCommandType.Transfer_XCluster_Certs
+            || type == NodeCommandType.Change_Instance_Type)
         && keyInfo.sshUser != null) {
       subCommand.add("--ssh_user");
       subCommand.add(keyInfo.sshUser);
@@ -322,7 +334,28 @@ public class NodeManager extends DevopsBase {
           }
         }
       }
+
+      // Legacy providers should not be allowed to have no NTP set up. See PLAT 4015
+      if (!keyInfo.showSetUpChrony
+          && !keyInfo.airGapInstall
+          && !((AnsibleSetupServer.Params) params).useTimeSync
+          && (providerType.equals(Common.CloudType.aws)
+              || providerType.equals(Common.CloudType.gcp)
+              || providerType.equals(Common.CloudType.azu))) {
+        subCommand.add("--use_chrony");
+        List<String> publicServerList =
+            Arrays.asList("0.pool.ntp.org", "1.pool.ntp.org", "2.pool.ntp.org", "3.pool.ntp.org");
+        for (String server : publicServerList) {
+          subCommand.add("--ntp_server");
+          subCommand.add(server);
+        }
+      }
+    } else if (params instanceof ChangeInstanceType.Params) {
+      if (keyInfo.airGapInstall) {
+        subCommand.add("--air_gap");
+      }
     }
+
     return subCommand;
   }
 
@@ -977,6 +1010,18 @@ public class NodeManager extends DevopsBase {
         }
         subcommand.add("--package");
         subcommand.add(ybServerPackage);
+        subcommand.add("--num_releases_to_keep");
+        if (config.getBoolean("yb.cloud.enabled")) {
+          subcommand.add(
+              runtimeConfigFactory
+                  .forUniverse(universe)
+                  .getString("yb.releases.num_releases_to_keep_cloud"));
+        } else {
+          subcommand.add(
+              runtimeConfigFactory
+                  .forUniverse(universe)
+                  .getString("yb.releases.num_releases_to_keep_default"));
+        }
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           subcommand.addAll(
               getCertificatePaths(
@@ -1012,6 +1057,18 @@ public class NodeManager extends DevopsBase {
           } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Install.toString())) {
             subcommand.add("--tags");
             subcommand.add("install-software");
+          }
+          subcommand.add("--num_releases_to_keep");
+          if (config.getBoolean("yb.cloud.enabled")) {
+            subcommand.add(
+                runtimeConfigFactory
+                    .forUniverse(universe)
+                    .getString("yb.releases.num_releases_to_keep_cloud"));
+          } else {
+            subcommand.add(
+                runtimeConfigFactory
+                    .forUniverse(universe)
+                    .getString("yb.releases.num_releases_to_keep_default"));
           }
         }
         break;
@@ -1421,6 +1478,7 @@ public class NodeManager extends DevopsBase {
 
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
+    populateNodeUuidFromUniverse(universe, nodeTaskParam);
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     Path bootScriptFile = null;
@@ -1641,15 +1699,6 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(localPackagePath);
           }
 
-          // right now we only need explicit python installation for CentOS 8 graviton instances
-          if (taskParam.instanceType != null
-              && configHelper
-                  .getGravitonInstancePrefixList()
-                  .stream()
-                  .anyMatch(taskParam.instanceType::startsWith)) {
-            commandArgs.add("--install_python");
-          }
-
           commandArgs.add("--pg_max_mem_mb");
           commandArgs.add(
               Integer.toString(
@@ -1663,7 +1712,6 @@ public class NodeManager extends DevopsBase {
           }
           AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params) nodeTaskParam;
           commandArgs.addAll(getConfigureSubCommand(taskParam));
-
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
             commandArgs.add("--tags");
@@ -1825,6 +1873,12 @@ public class NodeManager extends DevopsBase {
           ChangeInstanceType.Params taskParam = (ChangeInstanceType.Params) nodeTaskParam;
           commandArgs.add("--instance_type");
           commandArgs.add(taskParam.instanceType);
+
+          commandArgs.add("--pg_max_mem_mb");
+          commandArgs.add(
+              Integer.toString(
+                  runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB)));
+
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
@@ -1896,6 +1950,62 @@ public class NodeManager extends DevopsBase {
       case Delete_Root_Volumes:
         {
           addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
+          break;
+        }
+      case Verify_Node_SSH_Access:
+        {
+          if (!(nodeTaskParam instanceof NodeAccessTaskParams)) {
+            throw new RuntimeException("NodeTaskParams is not NodeAccessTaskParams");
+          }
+          log.info("Verifying access to node {}", nodeTaskParam.nodeName);
+          NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
+          commandArgs.addAll(getNodeSSHCommand(taskParams));
+          String newPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
+          sensitiveData.put("--new_private_key_file", newPrivateKeyFilePath);
+          break;
+        }
+      case Add_Authorized_Key:
+        {
+          if (!(nodeTaskParam instanceof NodeAccessTaskParams)) {
+            throw new RuntimeException("NodeTaskParams is not NodeAccessTaskParams");
+          }
+          log.info("Adding a new key to authorized keys of node {}", nodeTaskParam.nodeName);
+          NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
+          commandArgs.addAll(getNodeSSHCommand(taskParams));
+          // for uploaded private key case, public  key content is taken from private key file
+          if (taskParams.taskAccessKey.getKeyInfo().publicKey != null) {
+            String pubKeyContent = taskParams.taskAccessKey.getPublicKeyContent();
+            if (pubKeyContent.equals("")) {
+              throw new RuntimeException("Public key content is empty!");
+            }
+            sensitiveData.put("--public_key_content", pubKeyContent);
+          } else {
+            sensitiveData.put("--public_key_content", "");
+          }
+          String newPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
+          sensitiveData.put("--new_private_key_file", newPrivateKeyFilePath);
+          break;
+        }
+      case Remove_Authorized_Key:
+        {
+          if (!(nodeTaskParam instanceof NodeAccessTaskParams)) {
+            throw new RuntimeException("NodeTaskParams is not NodeAccessTaskParams");
+          }
+          log.info("Removing a key from authorized keys of node {}", nodeTaskParam.nodeName);
+          NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
+          commandArgs.addAll(getNodeSSHCommand(taskParams));
+          // for uploaded private key case, public  key content is taken from private key file
+          if (taskParams.taskAccessKey.getKeyInfo().publicKey != null) {
+            String pubKeyContent = taskParams.taskAccessKey.getPublicKeyContent();
+            if (pubKeyContent.equals("")) {
+              throw new RuntimeException("Public key content is empty!");
+            }
+            sensitiveData.put("--public_key_content", pubKeyContent);
+          } else {
+            sensitiveData.put("--public_key_content", "");
+          }
+          String oldPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
+          sensitiveData.put("--old_private_key_file", oldPrivateKeyFilePath);
           break;
         }
     }
@@ -2003,11 +2113,8 @@ public class NodeManager extends DevopsBase {
     return lowMemInstanceTypePrefixes.contains(instanceTypePrefix);
   }
 
-  private void addAdditionalInstanceTags(
-      Universe universe, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
-    Customer customer = Customer.get(universe.customerId);
-    tags.put("customer-uuid", customer.uuid.toString());
-    tags.put("universe-uuid", universe.universeUUID.toString());
+  // Set the nodeUuid in nodeTaskParam if it is not set.
+  private void populateNodeUuidFromUniverse(Universe universe, NodeTaskParams nodeTaskParam) {
     if (nodeTaskParam.nodeUuid == null) {
       NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
       if (nodeDetails != null) {
@@ -2015,9 +2122,20 @@ public class NodeManager extends DevopsBase {
       }
     }
     if (nodeTaskParam.nodeUuid == null) {
-      // This is for backward compatibility where node UUID is not set in the Universe.
-      nodeTaskParam.nodeUuid = Util.generateNodeUUID(universe.universeUUID, nodeTaskParam.nodeName);
+      UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
+      if (!Common.CloudType.onprem.equals(userIntent.providerType)) {
+        // This is for backward compatibility where node UUID is not set in the Universe.
+        nodeTaskParam.nodeUuid =
+            Util.generateNodeUUID(universe.universeUUID, nodeTaskParam.nodeName);
+      }
     }
+  }
+
+  private void addAdditionalInstanceTags(
+      Universe universe, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
+    Customer customer = Customer.get(universe.customerId);
+    tags.put("customer-uuid", customer.uuid.toString());
+    tags.put("universe-uuid", universe.universeUUID.toString());
     tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
   }
 
@@ -2036,5 +2154,31 @@ public class NodeManager extends DevopsBase {
       }
     }
     return data;
+  }
+
+  public List<String> getNodeSSHCommand(NodeAccessTaskParams params) {
+    KeyInfo keyInfo = params.accessKey.getKeyInfo();
+    Provider provider = Provider.getOrBadRequest(params.customerUUID, params.providerUUID);
+    Integer sshPort = keyInfo.sshPort == null ? provider.sshPort : keyInfo.sshPort;
+    String sshUser = params.sshUser;
+    String vaultPasswordFile = keyInfo.vaultPasswordFile;
+    String vaultFile = keyInfo.vaultFile;
+    List<String> commandArgs = new ArrayList<>();
+    commandArgs.add("--ssh_user");
+    commandArgs.add(sshUser);
+    commandArgs.add("--custom_ssh_port");
+    commandArgs.add(sshPort.toString());
+    commandArgs.add("--vault_password_file");
+    commandArgs.add(vaultPasswordFile);
+    commandArgs.add("--vars_file");
+    commandArgs.add(vaultFile);
+    String privateKeyFilePath = keyInfo.privateKey;
+    if (privateKeyFilePath != null) {
+      commandArgs.add("--private_key_file");
+      commandArgs.add(privateKeyFilePath);
+    } else {
+      throw new RuntimeException("No key found at the private key file path!");
+    }
+    return commandArgs;
   }
 }

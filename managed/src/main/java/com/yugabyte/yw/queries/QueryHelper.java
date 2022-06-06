@@ -4,16 +4,19 @@ package com.yugabyte.yw.queries;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -21,7 +24,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -30,17 +32,25 @@ import play.libs.Json;
 public class QueryHelper {
   public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
 
-  private static final String SLOW_QUERY_STATS_SQL =
+  private static final String SLOW_QUERY_STATS_UNLIMITED_SQL =
       "SELECT a.rolname, t.datname, t.queryid, "
           + "t.query, t.calls, t.total_time, t.rows, t.min_time, t.max_time, t.mean_time, t.stddev_time, "
           + "t.local_blks_hit, t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM "
           + "pg_stat_statements s JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid";
-  private static final Set<String> EXCLUDED_QUERY_STATEMENTS =
-      new HashSet<>(Arrays.asList("SET extra_float_digits = 3", SLOW_QUERY_STATS_SQL));
+  public static final String QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY =
+      "yb.query_stats.slow_queries.order_by";
+  public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY =
+      "yb.query_stats.slow_queries.limit";
+  private final RuntimeConfigFactory runtimeConfigFactory;
 
   public enum QueryApi {
     YSQL,
     YCQL
+  }
+
+  @Inject
+  public QueryHelper(RuntimeConfigFactory runtimeConfigFactory) {
+    this.runtimeConfigFactory = runtimeConfigFactory;
   }
 
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
@@ -64,6 +74,7 @@ public class QueryHelper {
   public JsonNode query(
       Universe universe, boolean fetchSlowQueries, String username, String password)
       throws IllegalArgumentException {
+    final Config config = runtimeConfigFactory.forUniverse(universe);
     ExecutorService threadPool = Executors.newFixedThreadPool(QUERY_EXECUTOR_THREAD_POOL);
     Set<Future<JsonNode>> futures = new HashSet<>();
     int ysqlErrorCount = 0;
@@ -95,7 +106,12 @@ public class QueryHelper {
         if (fetchSlowQueries) {
           callable =
               new SlowQueryExecutor(
-                  ip, node.ysqlServerRpcPort, universe, SLOW_QUERY_STATS_SQL, username, password);
+                  ip,
+                  node.ysqlServerRpcPort,
+                  universe,
+                  slowQuerySqlWithLimit(config),
+                  username,
+                  password);
           Future<JsonNode> future = threadPool.submit(callable);
           futures.add(future);
         } else {
@@ -141,10 +157,12 @@ public class QueryHelper {
           }
         } else {
           if (fetchSlowQueries) {
+            // TODO: PLAT-3977 group by queryid instead of query
+            // TODO: PLAT-3986 Sort and limit the merged data
             JsonNode ysqlResponse = response.get("result");
             for (JsonNode queryObject : ysqlResponse) {
               String queryStatement = queryObject.get("query").asText();
-              if (!EXCLUDED_QUERY_STATEMENTS.contains(queryStatement)) {
+              if (!isExcluded(queryStatement, config)) {
                 if (queryMap.containsKey(queryStatement)) {
                   // Calculate new query stats
                   ObjectNode previousQueryObj = (ObjectNode) queryMap.get(queryStatement);
@@ -175,18 +193,22 @@ public class QueryHelper {
                   /*
                    * Formula to calculate std dev of two samples: Let mean, std dev, and size of
                    * sample A be X_a, S_a, n_a respectively; and mean, std dev, and size of sample B
-                   * be X_b, S_b, n_b respectively. Then mean of combined sample X is given by n_a
-                   * X_a + n_b X_b X = ----------------- n_a + n_b
+                   * be X_b, S_b, n_b respectively. Then mean of combined sample X is given by
+                   *              n_a X_a + n_b X_b
+                   *          X = -----------------
+                   *                  n_a + n_b
                    *
-                   * <p>The std dev of combined sample S is n_a ( S_a^2 + (X_a - X)^2) + n_b(S_b^2 +
-                   * (X_b - X)^2) S = ----------------------------------------------------- n_a +
-                   * n_b
+                   * The std dev of combined sample S is
+                   *                    n_a ( S_a^2 + (X_a - X)^2) + n_b(S_b^2 + (X_b - X)^2)
+                   *          S = sqrt( -----------------------------------------------------  )
+                   *                                  n_a + n_b
                    */
                   double averageTime = (n_a * X_a + n_b * X_b) / totalCalls;
                   double stdDevTime =
-                      (n_a * (Math.pow(S_a, 2) + Math.pow(X_a - averageTime, 2))
-                              + n_b * (Math.pow(S_b, 2) + Math.pow(X_b - averageTime, 2)))
-                          / totalCalls;
+                      Math.sqrt(
+                          (n_a * (Math.pow(S_a, 2) + Math.pow(X_a - averageTime, 2))
+                                  + n_b * (Math.pow(S_b, 2) + Math.pow(X_b - averageTime, 2)))
+                              / totalCalls);
                   previousQueryObj.put("total_time", totalTime);
                   previousQueryObj.put("calls", totalCalls);
                   previousQueryObj.put("rows", rows);
@@ -225,6 +247,20 @@ public class QueryHelper {
     responseJson.set("ycql", ycqlJson);
 
     return responseJson;
+  }
+
+  @VisibleForTesting
+  public String slowQuerySqlWithLimit(Config config) {
+    String orderBy = config.getString(QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY);
+    int limit = config.getInt(QUERY_STATS_SLOW_QUERIES_LIMIT_KEY);
+    return String.format(
+        "%s ORDER BY t.%s DESC LIMIT %d", SLOW_QUERY_STATS_UNLIMITED_SQL, orderBy, limit);
+  }
+
+  private boolean isExcluded(String queryStatement, Config config) {
+    final List<String> excludedQueries = config.getStringList("yb.query_stats.excluded_queries");
+    return excludedQueries.contains(queryStatement)
+        || queryStatement.startsWith(SLOW_QUERY_STATS_UNLIMITED_SQL);
   }
 
   private void concatArrayNodes(ArrayNode destination, JsonNode source) {

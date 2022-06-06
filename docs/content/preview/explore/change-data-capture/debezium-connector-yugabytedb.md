@@ -274,7 +274,9 @@ If the `database.server.name` connector configuration property has the value `db
       ]
   },
   "payload": { --> 5
-      "id": "1"
+      "id": {
+        "value":"1"
+      }
   },
 }
 ```
@@ -480,9 +482,15 @@ The following example shows the value portion of a change event that the connect
   "payload": { --> 3
     "before": null, --> 4
     "after": { --> 5
-      "id": 1,
-      "name": "Vaibhav Kushwaha",
-      "email": "vaibhav@example.com"
+      "id": {
+        "value":1
+      },
+      "name": {
+        "value":"Vaibhav Kushwaha"
+      },
+      "email": {
+        "value":"vaibhav@example.com"
+      }
     },
     "source": { --> 6
       "version": "1.7.0-SNAPSHOT",
@@ -536,9 +544,15 @@ The update event is as follows:
   "payload": {
     "before": null, --> 1
     "after": { --> 2
-      "id": 1,
-      "name": 'Vaibhav Kushwaha',
-      "email": "service@example.com"
+      "id": {
+        "value": 1
+      },
+      "name": {
+        "value": "Vaibhav Kushwaha"
+      },
+      "email": {
+        "value": "service@example.com"
+      }
     },
     "source": { --> 3
       "version": "1.7.0-SNAPSHOT",
@@ -603,7 +617,9 @@ DELETE FROM customers WHERE id = 1;
   "schema": {...},
   "payload": {
     "before": { --> 1
-      "id": 1,
+      "id": {
+        "value": 1
+      },
       "name": null,
       "email": null
     },
@@ -912,7 +928,7 @@ The following properties are *required* unless a default value is available:
 | database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, since it's also used to form the Kafka topic. |
 | database.streamid | N/A | Stream ID created using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
-| table.max.num.tablets | 10 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
+| table.max.num.tablets | 100 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<br/><br/> `disable` uses an unencrypted connection <br/><br/> `require` uses an encrypted connection and fails if it can't be established <br/><br/> `verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found. |
 | database.sslrootcert | N/A | The path to the file which contains the root certificate against which the server is to be validated. |
 | database.sslcert | N/A | Path to the file containing the client's SSL certificate. |
@@ -938,7 +954,7 @@ Advanced connector configuration properties:
 | Property | Default | Description |
 | :------- | :------ | :---------- |
 | snapshot.mode | N/A | `never` - Don't take a snapshot <br/><br/> `initial` - Take a snapshot when the connector is first started |
-| cdc.poll.interval.ms | 200 | The interval at which the connector will poll the database for the changes. |
+| cdc.poll.interval.ms | 500 | The interval at which the connector will poll the database for the changes. |
 | admin.operation.timeout.ms | 60000 | The default timeout used for administrative operations (e.g. createTable, deleteTable, getTables, etc). |
 | operation.timeout.ms | 60000 | The default timeout used for user operations (using sessions and scanners). |
 | socket.read.timeout.ms | 60000 | The default timeout to use when waiting on data from a socket. |
@@ -951,6 +967,9 @@ Advanced connector configuration properties:
 | max.queue.size | 20240 | Positive integer value for the maximum size of the blocking queue. The connector places change events received from streaming replication in the blocking queue before writing them to Kafka. This queue can provide back pressure when, for example, writing records to Kafka is slower that it should be, or when Kafka is not available. |
 | max.batch.size | 10240 | Positive integer value that specifies the maximum size of each batch of events that the connector processes. |
 | max.queue.size.in.bytes | 0 | Long value for the maximum size in bytes of the blocking queue. The feature is disabled by default, it will be active if it's set with a positive long value. |
+| max.connector.retries | 5 | Positive integer value for the maximum number of times a retry can happen at the connector level itself. |
+| connector.retry.delay.ms | 60000 | Delay between subsequent retries at the connector level. |
+| ignore.exceptions | `false` | Determines whether the connector ignores exceptions, which should not cause any critical runtime issues. By default, if there is an exception, the connector throws the exception and stops further execution. Specify `true` to have the connector log a warning for any exception and proceed. |
 
 ## Troubleshooting
 

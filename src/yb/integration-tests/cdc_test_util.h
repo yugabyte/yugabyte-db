@@ -37,6 +37,8 @@ void VerifyWalRetentionTime(yb::MiniCluster* cluster,
                             const std::string& table_name_start,
                             uint32_t expected_wal_retention_secs);
 
+Status CorrectlyPollingAllTablets(
+    MiniCluster* cluster, size_t num_producer_tablets, MonoDelta timeout);
 } // namespace cdc
 } // namespace yb
 

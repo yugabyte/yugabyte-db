@@ -438,7 +438,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
                                     << StateToStringUnlocked();
   }
 
-  CHECKED_STATUS Submit(int task_priority, TaskPtr* task, const uint64_t group_no) {
+  Status Submit(int task_priority, TaskPtr* task, const uint64_t group_no) {
     if (!*task) {
       return STATUS(InvalidArgument, "Task is null");
     }

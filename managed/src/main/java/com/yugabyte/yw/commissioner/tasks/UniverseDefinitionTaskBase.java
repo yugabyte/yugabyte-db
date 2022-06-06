@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
@@ -152,6 +153,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (!isReadOnlyCreate) {
       universeDetails.nodeDetailsSet = taskParams.nodeDetailsSet;
       universeDetails.nodePrefix = taskParams.nodePrefix;
+      universeDetails.useNewHelmNamingStyle = taskParams.useNewHelmNamingStyle;
       universeDetails.universeUUID = taskParams.universeUUID;
       universeDetails.allowInsecure = taskParams.allowInsecure;
       universeDetails.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
@@ -359,7 +361,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       if (primaryCluster == null) {
         throw new IllegalStateException(
-            "Primary cluster not found in task nor universe {} " + universe.universeUUID);
+            String.format(
+                "Primary cluster not found in task for universe %s", universe.universeUUID));
       }
     }
 
@@ -734,21 +737,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Creates a task list to wait for a minimum number of tservers to heartbeat to the master leader.
-   */
-  public SubTaskGroup createWaitForTServerHeartBeatsTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("WaitForTServerHeartBeats", executor);
-    WaitForTServerHeartBeats task = createTask(WaitForTServerHeartBeats.class);
-    WaitForTServerHeartBeats.Params params = new WaitForTServerHeartBeats.Params();
-    params.universeUUID = taskParams().universeUUID;
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
    * Creates a task that will always fail. Utility task to display preflight error messages.
    *
    * @param failedNodes : map of nodeName to associated error message
@@ -837,10 +825,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createSetupServerTasks(
-      Collection<NodeDetails> nodes,
-      boolean isSystemdUpgrade,
-      VmUpgradeTaskType vmUpgradeTaskType,
-      boolean ignoreUseCustomImageConfig) {
+      Collection<NodeDetails> nodes, Consumer<AnsibleSetupServer.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
@@ -848,9 +833,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       fillSetupParamsForNode(params, userIntent, node);
       params.useSystemd = userIntent.useSystemd;
-      params.isSystemdUpgrade = isSystemdUpgrade;
-      params.vmUpgradeTaskType = vmUpgradeTaskType;
-      params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+      paramsCustomizer.accept(params);
 
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = createTask(AnsibleSetupServer.class);
@@ -863,11 +846,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
-    return createSetupServerTasks(
-        nodes,
-        false /* isSystemdUpgrade */,
-        VmUpgradeTaskType.None,
-        false /*ignoreUseCustomImageConfig*/);
+    return createSetupServerTasks(nodes, x -> {});
   }
 
   /**
@@ -899,46 +878,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * package.
    *
    * @param nodes : a collection of nodes that need to be created
-   * @param isMasterInShellMode : true if we are configuring a master node in shell mode
+   * @param paramsCustomizer : customizer for AnsibleConfigureServers.Params
    * @return subtask group
    */
   public SubTaskGroup createConfigureServerTasks(
-      Collection<NodeDetails> nodes, boolean isMasterInShellMode) {
-    return createConfigureServerTasks(nodes, isMasterInShellMode, false /* updateMasterAddrs */);
-  }
-
-  public SubTaskGroup createConfigureServerTasks(
-      Collection<NodeDetails> nodes, boolean isMasterInShellMode, boolean updateMasterAddrsOnly) {
-    return createConfigureServerTasks(
-        nodes,
-        isMasterInShellMode,
-        updateMasterAddrsOnly /* updateMasterAddrs */,
-        false /* isMaster */);
-  }
-
-  public SubTaskGroup createConfigureServerTasks(
-      Collection<NodeDetails> nodes,
-      boolean isMasterInShellMode,
-      boolean updateMasterAddrsOnly,
-      boolean isMaster) {
-    return createConfigureServerTasks(
-        nodes,
-        isMasterInShellMode,
-        updateMasterAddrsOnly,
-        isMaster,
-        false /* isSystemdUpgrade */,
-        VmUpgradeTaskType.None,
-        false /*ignoreUseCustomImageConfig*/);
-  }
-
-  public SubTaskGroup createConfigureServerTasks(
-      Collection<NodeDetails> nodes,
-      boolean isMasterInShellMode,
-      boolean updateMasterAddrsOnly,
-      boolean isMaster,
-      boolean isSystemdUpgrade,
-      VmUpgradeTaskType vmUpgradeTaskType,
-      boolean ignoreUseCustomImageConfig) {
+      Collection<NodeDetails> nodes, Consumer<AnsibleConfigureServers.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
@@ -954,14 +898,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.azUuid = node.azUuid;
       params.placementUuid = node.placementUuid;
       // Sets the isMaster field
-      params.isMaster = isMaster;
       params.enableYSQL = userIntent.enableYSQL;
       params.enableYCQL = userIntent.enableYCQL;
       params.enableYCQLAuth = userIntent.enableYCQLAuth;
       params.enableYSQLAuth = userIntent.enableYSQLAuth;
 
       // Set if this node is a master in shell mode.
-      params.isMasterInShellMode = isMasterInShellMode;
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       // Set the InstanceType
@@ -976,9 +918,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.clientRootCA = taskParams().clientRootCA;
       params.enableYEDIS = userIntent.enableYEDIS;
       params.useSystemd = userIntent.useSystemd;
-      params.isSystemdUpgrade = isSystemdUpgrade;
-      params.vmUpgradeTaskType = vmUpgradeTaskType;
-      params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+      paramsCustomizer.accept(params);
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
@@ -988,10 +928,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
       // Set if updating master addresses only.
-      params.updateMasterAddrsOnly = updateMasterAddrsOnly;
-      if (updateMasterAddrsOnly) {
+      if (params.updateMasterAddrsOnly) {
         params.type = UpgradeTaskParams.UpgradeTaskType.GFlags;
-        if (isMaster) {
+        if (params.isMaster) {
           params.setProperty("processType", ServerType.MASTER.toString());
           params.gflags = getPrimaryClusterGFlags(ServerType.MASTER, universe);
         } else {
@@ -1056,6 +995,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new IllegalStateException("Should not have any masters before create task is run.");
     }
 
+    // TODO(bhavin192): should we have check for useNewHelmNamingStyle
+    // being changed later at some point during edit?
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     for (Cluster cluster : taskParams().clusters) {
@@ -1091,7 +1032,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     tserverNodes.add(addedNode);
     masterNodes.add(addedNode);
     // Configure all tservers to update the masters list as well.
-    createConfigureServerTasks(tserverNodes, false /* isShell */, true /* updateMasterAddr */)
+    createConfigureServerTasks(tserverNodes, params -> params.updateMasterAddrsOnly = true)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     // Update the master addresses in memory.
     createSetFlagInMemoryTasks(
@@ -1104,7 +1045,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Change the master addresses in the conf file for the all masters to reflect
     // the changes.
     createConfigureServerTasks(
-            masterNodes, false /* isShell */, true /* updateMasterAddrs */, true /* isMaster */)
+            masterNodes,
+            params -> {
+              params.updateMasterAddrsOnly = true;
+              params.isMaster = true;
+            })
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     createSetFlagInMemoryTasks(
             masterNodes,
@@ -1338,6 +1283,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param universe universe to which the nodes belong.
    * @param nodesToBeCreated nodes to be created.
    * @param ignoreNodeStatus ignore checking node status before creating subtasks if it is set.
+   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createCreateNodeTasks(
@@ -1389,10 +1335,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
             filteredNodes -> {
               createSetupServerTasks(
-                      filteredNodes,
-                      false /*isSystemdUpgrade*/,
-                      VmUpgradeTaskType.None,
-                      ignoreUseCustomImageConfig)
+                      filteredNodes, p -> p.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             });
     return isNextFallThrough;
@@ -1407,6 +1350,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodesToBeConfigured nodes to be configured.
    * @param isShellMode configure nodes in shell mode if true.
    * @param ignoreNodeStatus ignore node status if it is set.
+   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createConfigureNodeTasks(
@@ -1427,12 +1371,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             filteredNodes -> {
               createConfigureServerTasks(
                       filteredNodes,
-                      isShellMode /* isShell */,
-                      false /*updateMasterAddr*/,
-                      false /*isMaster*/,
-                      false /*isSystemdUpgrade*/,
-                      VmUpgradeTaskType.None,
-                      ignoreUseCustomImageConfig)
+                      params -> {
+                        params.isMasterInShellMode = isShellMode;
+                        params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+                      })
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
             });
 
@@ -1481,6 +1423,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param universe universe to which the nodes belong.
    * @param nodesToBeProvisioned nodes to be provisioned.
    * @param ignoreNodeStatus ignore node status if it is set.
+   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createProvisionNodeTasks(
@@ -1536,6 +1479,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodesToBeConfigured nodes to be configured.
    * @param isShellMode configure nodes in shell mode if true.
    * @param ignoreNodeStatus ignore node status if it is set.
+   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createConfigureMasterTasks(
@@ -1552,14 +1496,36 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         nodeDetails -> {
           createConfigureServerTasks(
                   nodeDetails,
-                  isShellMode /* isShell */,
-                  true /* updateMasterAddrs */,
-                  true /* isMaster */,
-                  false /* isSystemdUpgrade */,
-                  VmUpgradeTaskType.None,
-                  ignoreUseCustomImageConfig)
+                  params -> {
+                    params.isMasterInShellMode = isShellMode;
+                    params.updateMasterAddrsOnly = true;
+                    params.isMaster = true;
+                    params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+                  })
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         });
+  }
+
+  /**
+   * Creates a task to delete a read only cluster info from the universe and adds the task to the
+   * task queue.
+   *
+   * @param clusterUUID uuid of the read-only cluster to be removed.
+   */
+  public SubTaskGroup createDeleteClusterFromUniverseTask(UUID clusterUUID) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("DeleteClusterFromUniverse", executor);
+    DeleteClusterFromUniverse.Params params = new DeleteClusterFromUniverse.Params();
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    params.clusterUUID = clusterUUID;
+    // Create the task to delete cluster ifo.
+    DeleteClusterFromUniverse task = createTask(DeleteClusterFromUniverse.class);
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**

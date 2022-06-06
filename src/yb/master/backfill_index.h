@@ -109,7 +109,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
                 std::vector<IndexInfoPB> indexes,
                 const scoped_refptr<NamespaceInfo> &ns_info);
 
-  void Launch();
+  Status Launch();
 
   Status UpdateSafeTime(const Status& s, HybridTime ht);
 
@@ -155,36 +155,40 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Status UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed);
 
  private:
-  void LaunchComputeSafeTimeForRead();
   void LaunchBackfill();
+  Status WaitForTabletSplitting();
+  Status DoLaunchBackfill();
+  Status LaunchComputeSafeTimeForRead();
+  Status DoBackfill();
 
-  CHECKED_STATUS MarkAllIndexesAsFailed();
-  CHECKED_STATUS MarkAllIndexesAsSuccess();
+  Status MarkAllIndexesAsFailed();
+  Status MarkAllIndexesAsSuccess();
 
-  CHECKED_STATUS MarkIndexesAsFailed(
+  Status MarkIndexesAsFailed(
       const std::unordered_set<TableId>& indexes, const std::string& message);
-  CHECKED_STATUS MarkIndexesAsDesired(
+  Status MarkIndexesAsDesired(
       const std::unordered_set<TableId>& index_ids, BackfillJobPB_State state,
       const string message);
 
-  CHECKED_STATUS AlterTableStateToAbort();
-  CHECKED_STATUS AlterTableStateToSuccess();
+  Status AlterTableStateToAbort();
+  Status AlterTableStateToSuccess();
 
+  Status Abort();
   void CheckIfDone();
-  CHECKED_STATUS UpdateIndexPermissionsForIndexes();
-  CHECKED_STATUS ClearCheckpointStateInTablets();
+  Status UpdateIndexPermissionsForIndexes();
+  Status ClearCheckpointStateInTablets();
 
   // We want to prevent major compactions from garbage collecting delete markers
   // on an index table, until the backfill process is complete.
   // This API is used at the end of a successful backfill to enable major compactions
   // to gc delete markers on an index table.
-  CHECKED_STATUS AllowCompactionsToGCDeleteMarkers(const TableId& index_table_id);
+  Status AllowCompactionsToGCDeleteMarkers(const TableId& index_table_id);
 
   // Send the "backfill done request" to all tablets of the specified table.
-  CHECKED_STATUS SendRpcToAllowCompactionsToGCDeleteMarkers(
+  Status SendRpcToAllowCompactionsToGCDeleteMarkers(
       const scoped_refptr<TableInfo> &index_table);
   // Send the "backfill done request" to the specified tablet.
-  CHECKED_STATUS SendRpcToAllowCompactionsToGCDeleteMarkers(
+  Status SendRpcToAllowCompactionsToGCDeleteMarkers(
       const scoped_refptr<TabletInfo> &index_table_tablet, const std::string &table_id);
 
   Master* master_;
@@ -292,7 +296,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   const std::string GetNamespaceName() const { return backfill_table_->GetNamespaceName(); }
 
  private:
-  CHECKED_STATUS UpdateBackfilledUntil(
+  Status UpdateBackfilledUntil(
       const string& backfilled_until, const uint64_t number_rows_processed);
 
   std::shared_ptr<BackfillTable> backfill_table_;
@@ -322,7 +326,7 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
     deadline_ = MonoTime::Max();  // Never time out.
   }
 
-  void Launch();
+  Status Launch();
 
   Type type() const override { return ASYNC_GET_SAFE_TIME; }
 

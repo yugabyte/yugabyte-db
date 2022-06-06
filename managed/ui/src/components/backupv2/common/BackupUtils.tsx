@@ -53,10 +53,6 @@ export const BACKUP_STATUS_OPTIONS: { value: Backup_States | null; label: string
     value: Backup_States.DELETE_IN_PROGRESS
   },
   {
-    label: 'Deleted',
-    value: Backup_States.DELETED
-  },
-  {
     label: 'Failed',
     value: Backup_States.FAILED
   },
@@ -130,3 +126,8 @@ export const CALDENDAR_ICON = () => ({
 
 export const convertArrayToMap = (arr: IUniverse[], keyStr: string, valueStr: string) =>
   mapValues(keyBy(arr, keyStr), valueStr);
+
+export const PARALLEL_THREADS_RANGE = {
+  MIN: 1,
+  MAX: 100
+};

@@ -23,6 +23,7 @@
     yb_prebuilt_ami_host: "default"
     ansible_user: "{{ user_name }}"
     ansible_port: "{{ custom_ssh_port }}"
+    num_releases_to_keep: 1 # this variable has default on the Platform code level
 
 - name: "Cleanup Yugabyte auth"
   hosts: "default"

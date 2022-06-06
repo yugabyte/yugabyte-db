@@ -78,11 +78,11 @@ bool HasHostPortPB(
     const google::protobuf::RepeatedPtrField<HostPortPB>& list, const HostPortPB& hp);
 
 // Returns an Endpoint from HostPortPB.
-CHECKED_STATUS EndpointFromHostPortPB(const HostPortPB& host_portpb, Endpoint* endpoint);
+Status EndpointFromHostPortPB(const HostPortPB& host_portpb, Endpoint* endpoint);
 
 // Adds addresses in 'addrs' to 'pbs'. If an address is a wildcard (e.g., "0.0.0.0"),
 // then the local machine's FQDN or its network interface address is used in its place.
-CHECKED_STATUS AddHostPortPBs(const std::vector<Endpoint>& addrs,
+Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
                               google::protobuf::RepeatedPtrField<HostPortPB>* pbs);
 
 // Simply convert the list of host ports into a repeated list of corresponding PB's.
@@ -124,7 +124,7 @@ Status ColumnPBsToSchema(
   Schema* schema);
 
 // Returns the required information from column pbs to build the column part of SchemaPB.
-CHECKED_STATUS ColumnPBsToColumnTuple(
+Status ColumnPBsToColumnTuple(
     const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& column_pbs,
     std::vector<ColumnSchema>* columns , std::vector<ColumnId>* column_ids, int* num_key_columns);
 
@@ -171,7 +171,7 @@ HAS_MEMBER_FUNCTION(error);
 HAS_MEMBER_FUNCTION(status);
 
 template<class Response>
-CHECKED_STATUS ResponseStatus(
+Status ResponseStatus(
     const Response& response,
     typename std::enable_if<HasMemberFunction_error<Response>::value, void*>::type = nullptr) {
   // Response has has_error method, use status from it.
@@ -182,7 +182,7 @@ CHECKED_STATUS ResponseStatus(
 }
 
 template<class Response>
-CHECKED_STATUS ResponseStatus(
+Status ResponseStatus(
     const Response& response,
     typename std::enable_if<HasMemberFunction_status<Response>::value &&
                             !HasMemberFunction_error<Response>::value, void*>::type = nullptr) {
@@ -196,7 +196,7 @@ struct SplitChildTabletIdsTag : yb::StringVectorBackedErrorTag {
   // It is part of the wire protocol and should not be changed once released.
   static constexpr uint8_t kCategory = 14;
 
-  static std::string ToMessage(Value value);
+  static std::string ToMessage(const Value& value);
 };
 
 typedef yb::StatusErrorCodeImpl<SplitChildTabletIdsTag> SplitChildTabletIdsData;

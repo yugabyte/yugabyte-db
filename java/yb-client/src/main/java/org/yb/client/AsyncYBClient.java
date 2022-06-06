@@ -60,7 +60,6 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
-import java.rmi.Remote;
 import java.security.KeyFactory;
 import java.security.KeyStore;
 import java.security.PrivateKey;
@@ -78,7 +77,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Executor;
@@ -113,12 +111,11 @@ import org.yb.CommonTypes.YQLDatabase;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
-import org.yb.cdc.CdcService;
-import org.yb.consensus.Metadata;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClientOuterClass;
 import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
 import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterReplicationOuterClass;
 import org.yb.util.AsyncUtil;
 import org.yb.util.NetUtil;
 import org.yb.util.Pair;
@@ -479,6 +476,22 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
       tabletId, term, index, initialCheckpoint);
+    Deferred d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
+  public Deferred<SetCheckpointResponse> setCheckpointWithBootstrap(YBTable table,
+                                                                    String streamId,
+                                                                    String tabletId,
+                                                                    long term,
+                                                                    long index,
+                                                                    boolean initialCheckpoint,
+                                                                    boolean bootstrap) {
+    checkIsClosed();
+    SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
+        tabletId, term, index, initialCheckpoint, bootstrap);
     Deferred d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
@@ -869,28 +882,32 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
-   * Create xCluster replication relationships between the source universe and the target universe,
-   * and replicate the given tables
+   * It creates an xCluster replication config between the source universe and the target universe,
+   * and replicates the given tables.
    *
-   * Prerequisites: tables to be replicated must exist on target universe with same name and schema.
-   * AsyncYBClient must be created with target universe as the context.
+   * <p>Prerequisites: tables to be replicated must exist on target universe with same name and
+   * schema. Bootstrapping will do it.</p>
+   * <p>AsyncYBClient must be created with target universe as the context.</p>
    *
-   * @param replicationGroupName The source universe's UUID
-   * @param sourceTableIDs The tables in the source universe that should be replicated
+   * <p>Note: If bootstrap is not done for a table, its corresponding bootstrap id must be null.</p>
+   *
+   * @param replicationGroupName The source universe's UUID and the config name
+   *                             (format: sourceUniverseUUID_configName)
+   * @param sourceTableIdsBootstrapIdMap A map of table ids to their bootstrap id if any; The tables
+   *                                     are in the source universe intended to be replicated
    * @param sourceMasterAddresses The master addresses of the source universe
-   *
-   * @return a deferred object that yields a create xCluster replication response.
-   * */
+   * @return A deferred object that yields a setup universe replication response
+   */
   public Deferred<SetupUniverseReplicationResponse> setupUniverseReplication(
     String replicationGroupName,
-    Set<String> sourceTableIDs,
+    Map<String, String> sourceTableIdsBootstrapIdMap,
     Set<CommonNet.HostPortPB> sourceMasterAddresses) {
     checkIsClosed();
     SetupUniverseReplicationRequest request =
       new SetupUniverseReplicationRequest(
         this.masterTable,
         replicationGroupName,
-        sourceTableIDs,
+        sourceTableIdsBootstrapIdMap,
         sourceMasterAddresses);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
@@ -907,24 +924,45 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
+  /**
+   * It adds a set of tables to an exising xCluster config.
+   *
+   * <p>Prerequisites: tables to be replicated must exist on target universe with same name and
+   * schema. AsyncYBClient must be created with target universe as the context.</p>
+   *
+   * </p>You must call isSetupUniverseReplicationDone(replicationGroupName + ".ALTER") to make sure
+   * add table operation is done.</p>
+   *
+   * @param replicationGroupName The source universe's UUID and the config name
+   *                             (format: sourceUniverseUUID_configName)
+   * @param sourceTableIdsToAddBootstrapIdMap A map of table ids to their bootstrap id if any;
+   *                                          The tables are in the source universe intended to be
+   *                                          replicated
+   * @return A deferred object that yields an alter universe replication response
+   * @see #isSetupUniverseReplicationDone
+   */
   public Deferred<AlterUniverseReplicationResponse> alterUniverseReplicationAddTables(
     String replicationGroupName,
-    Set<String> sourceTableIDsToAdd) {
+    Map<String, String> sourceTableIdsToAddBootstrapIdMap) {
     return alterUniverseReplication(
       replicationGroupName,
-      sourceTableIDsToAdd,
+      sourceTableIdsToAddBootstrapIdMap,
       new HashSet<>(),
       new HashSet<>(),
       null);
   }
 
+  /**
+   * It removes a set of tables from an existing xCluster config.
+   * @see #alterUniverseReplicationAddTables(String, Map)
+   */
   public Deferred<AlterUniverseReplicationResponse> alterUniverseReplicationRemoveTables(
     String replicationGroupName,
-    Set<String> sourceTableIDsToRemove) {
+    Set<String> sourceTableIdsToRemove) {
     return alterUniverseReplication(
       replicationGroupName,
-      new HashSet<>(),
-      sourceTableIDsToRemove,
+      new HashMap<>(),
+      sourceTableIdsToRemove,
       new HashSet<>(),
       null);
   }
@@ -935,7 +973,7 @@ public class AsyncYBClient implements AutoCloseable {
     Set<CommonNet.HostPortPB> sourceMasterAddresses) {
     return alterUniverseReplication(
       replicationGroupName,
-      new HashSet<>(),
+      new HashMap<>(),
       new HashSet<>(),
       sourceMasterAddresses,
       null);
@@ -946,7 +984,7 @@ public class AsyncYBClient implements AutoCloseable {
     String newReplicationGroupName) {
     return alterUniverseReplication(
       replicationGroupName,
-      new HashSet<>(),
+      new HashMap<>(),
       new HashSet<>(),
       new HashSet<>(),
       newReplicationGroupName);
@@ -956,28 +994,32 @@ public class AsyncYBClient implements AutoCloseable {
    * Alter existing xCluster replication relationships by modifying which tables to replicate from a
    * source universe, as well as the master addresses of the source universe
    *
-   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   * <p>Prerequisites: AsyncYBClient must be created with target universe as the context.</p>
    *
-   * @param replicationGroupName The source universe's UUID
-   * @param sourceTableIDsToAdd Table IDs in the source universe to start replicating from
-   * @param sourceTableIDsToRemove Table IDs in the source universe to stop replicating from
+   * <p>Note that exactly one of the params must be non empty, the rest must be empty lists.</p>
+   *
+   * @param replicationGroupName The source universe's UUID and the config name
+   *                             (format: sourceUniverseUUID_configName)
+   * @param sourceTableIdsToAddBootstrapIdMap A map of table ids to their bootstrap id if any;
+   *                                          The tables are in the source universe intended to be
+   *                                          added to an xCluster config
+   * @param sourceTableIdsToRemove Table IDs in the source universe to stop replicating from
    * @param sourceMasterAddresses New list of master addresses for the source universe
-   *
-   * Note that exactly one of the params must be non empty, the rest must be empty lists
-   *
+   * @param newReplicationGroupName The new source universe's UUID and the config name if desired to
+   *                                be changed (format: sourceUniverseUUID_configName)
    * @return a deferred object that yields an alter xCluster replication response.
-   * */
+   */
   private Deferred<AlterUniverseReplicationResponse> alterUniverseReplication(
     String replicationGroupName,
-    Set<String> sourceTableIDsToAdd,
-    Set<String> sourceTableIDsToRemove,
+    Map<String, String> sourceTableIdsToAddBootstrapIdMap,
+    Set<String> sourceTableIdsToRemove,
     Set<CommonNet.HostPortPB> sourceMasterAddresses,
     String newReplicationGroupName) {
-    int addedTables = sourceTableIDsToAdd.isEmpty() ? 0 : 1;
-    int removedTables = sourceTableIDsToRemove.isEmpty() ? 0 : 1;
+    int addedTables = sourceTableIdsToAddBootstrapIdMap.isEmpty() ? 0 : 1;
+    int removedTables = sourceTableIdsToRemove.isEmpty() ? 0 : 1;
     int changedMasterAddresses = sourceMasterAddresses.isEmpty() ? 0 : 1;
     int renamedReplicationGroup = newReplicationGroupName == null ? 0 : 1;
-    if(addedTables + removedTables + changedMasterAddresses + renamedReplicationGroup != 1) {
+    if (addedTables + removedTables + changedMasterAddresses + renamedReplicationGroup != 1) {
       throw new IllegalArgumentException(
         "Exactly one xCluster replication alteration per request is currently supported");
     }
@@ -987,8 +1029,8 @@ public class AsyncYBClient implements AutoCloseable {
       new AlterUniverseReplicationRequest(
         this.masterTable,
         replicationGroupName,
-        sourceTableIDsToAdd,
-        sourceTableIDsToRemove,
+        sourceTableIdsToAddBootstrapIdMap,
+        sourceTableIdsToRemove,
         sourceMasterAddresses,
         newReplicationGroupName);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -996,19 +1038,21 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
-   * Delete existing xCluster replications from a source universe to our target universe
+   * It deletes an existing xCluster replication.
    *
-   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   * <p>Prerequisites: AsyncYBClient must be created with target universe as the context.</p>
+   *
+   * <p>Note: if errors are ignored, warnings are available in warnings list of the response.</p>
    *
    * @param replicationGroupName The source universe's UUID
-   *
-   * @return a deferred object that yields a delete xCluster replication response.
+   * @param ignoreErrors Whether the errors should be ignored
+   * @return A deferred object that yields a delete xCluster replication response
    * */
   public Deferred<DeleteUniverseReplicationResponse> deleteUniverseReplication(
-    String replicationGroupName) {
+    String replicationGroupName, boolean ignoreErrors) {
     checkIsClosed();
     DeleteUniverseReplicationRequest request =
-      new DeleteUniverseReplicationRequest(this.masterTable, replicationGroupName);
+        new DeleteUniverseReplicationRequest(this.masterTable, replicationGroupName, ignoreErrors);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -1020,7 +1064,6 @@ public class AsyncYBClient implements AutoCloseable {
    * Prerequisites: AsyncYBClient must be created with target universe as the context.
    *
    * @param replicationGroupName The source universe's UUID
-   *
    * @return a deferred object that yields a get xCluster replication response.
    * */
   public Deferred<GetUniverseReplicationResponse> getUniverseReplication(
@@ -1040,7 +1083,6 @@ public class AsyncYBClient implements AutoCloseable {
    *
    * @param replicationGroupName The source universe's UUID
    * @param active Whether the replication should be enabled or not
-   *
    * @return a deferred object that yields a set xCluster replication active response.
    * */
   public Deferred<SetUniverseReplicationEnabledResponse> setUniverseReplicationEnabled(
@@ -1053,18 +1095,93 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
-   * Creates a checkpoint of most recent op ids for all tablets of the given tables (otherwise known
-   * as bootstrapping)
+   * It creates a checkpoint of most recent op ids for all tablets of the given tables (otherwise
+   * known as bootstrapping).
    *
-   * @param tableIDs List of table IDs to create checkpoints for
+   * @param hostAndPort TServer IP and port of the source universe to use to bootstrap universe
+   * @param tableIds List of table IDs to create checkpoints for
    *
-   * @return a deferred object that yields a bootstrap universe response which contains a list of
-   * bootstrap IDs corresponding to the same order of table IDs.
+   * @return A deferred object that yields a bootstrap universe response which contains a list of
+   * bootstrap ids corresponding to the same order of table ids
    * */
-  public Deferred<BootstrapUniverseResponse> bootstrapUniverse(List<String> tableIDs) {
+  public Deferred<BootstrapUniverseResponse> bootstrapUniverse(
+      final HostAndPort hostAndPort, List<String> tableIds) {
     checkIsClosed();
+    TabletClient client = newSimpleClient(hostAndPort);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hostAndPort);
+    }
+
     BootstrapUniverseRequest request =
-      new BootstrapUniverseRequest(this.masterTable, tableIDs);
+        new BootstrapUniverseRequest(this.masterTable, tableIds);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<BootstrapUniverseResponse> d = request.getDeferred();
+    request.attempt++;
+    client.sendRpc(request);
+    return d;
+  }
+
+  /**
+   * It checks whether a bootstrap flow is required to set up replication based on whether pulling
+   * data changes for the next operation from WALs is possible or not. If streamId is not null, it
+   * checks if the existing stream has fallen far behind that needs a bootstrap flow.
+   *
+   * @param tabletIds List of tablet IDs to check if the log for the next operation is available
+   * @param streamId  The optional stream id refers to an existing stream containing the passed
+   *                  tablet ids
+   *
+   * @return A deferred object that yields a {@link IsBootstrapRequiredResponse} which contains
+   * a boolean showing whether bootstrap is required
+   */
+  public Deferred<IsBootstrapRequiredResponse> isBootstrapRequired(
+      List<String> tabletIds, String streamId) {
+    checkIsClosed();
+    IsBootstrapRequiredRequest request =
+        new IsBootstrapRequiredRequest(this.masterTable, tabletIds, streamId);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * It returns a list of CDC streams for a tableId or namespacedId based on its arguments.
+   *
+   * <p>Note: For xCluster purposes, use tableId and set {@code idType} to {@code TABLE_ID}.</p>
+   *
+   * @param tableId The id the table to return the CDC streams for
+   * @param namespaceId  The id the namespace to return the CDC streams for
+   * @param idType Whether it should use tableId or namespaceId
+   * @return A deferred object that yields a {@link ListCDCStreamsResponse} which contains
+   * a list of {@link CDCStreamInfo}, each has information about one stream
+   */
+  public Deferred<ListCDCStreamsResponse> listCDCStreams(
+      String tableId,
+      String namespaceId,
+      MasterReplicationOuterClass.IdTypePB idType) {
+    checkIsClosed();
+    ListCDCStreamsRequest request =
+        new ListCDCStreamsRequest(this.masterTable, tableId, namespaceId, idType);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * It deletes a set of CDC streams on the source universe.
+   *
+   * <p>Note: it is useful to delete a stream after a failed bootstrap flow when setting up
+   * xCluster replication.</p>
+   *
+   * @param streamIds The set of streamIds to be deleted
+   * @param ignoreErrors  Whether it should ignore errors and delete the streams
+   * @param forceDelete Whether it should
+   * @return A deferred object that yields a {@link ListCDCStreamsResponse} which contains
+   * a list of {@link CDCStreamInfo}, each has information about one stream
+   */
+  public Deferred<DeleteCDCStreamResponse> deleteCDCStream(Set<String> streamIds,
+                                                           boolean ignoreErrors,
+                                                           boolean forceDelete) {
+    checkIsClosed();
+    DeleteCDCStreamRequest request =
+        new DeleteCDCStreamRequest(this.masterTable, streamIds, ignoreErrors, forceDelete);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -1406,10 +1523,12 @@ public class AsyncYBClient implements AutoCloseable {
       tablet = getFirstTablet(tableId);
     }
     if (request instanceof GetCheckpointRequest) {
-      tablet = getFirstTablet(tableId);
+      String tabletId = ((GetCheckpointRequest)request).getTabletId();
+      tablet = getTablet(tableId, tabletId);
     }
     if (request instanceof SetCheckpointRequest) {
-      tablet = getFirstTablet(tableId);
+      String tabletId = ((SetCheckpointRequest)request).getTabletId();
+      tablet = getTablet(tableId, tabletId);
     }
     // Set the propagated timestamp so that the next time we send a message to
     // the server the message includes the last propagated timestamp.

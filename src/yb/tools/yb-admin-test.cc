@@ -111,7 +111,7 @@ class BlacklistChecker {
       args_{yb_admin_exe, "-master_addresses", master_address, "get_universe_config"} {
   }
 
-  CHECKED_STATUS operator()(const vector<HostPort>& servers) const {
+  Status operator()(const vector<HostPort>& servers) const {
     string out;
     RETURN_NOT_OK(Subprocess::Call(args_, &out));
     boost::erase_all(out, "\n");

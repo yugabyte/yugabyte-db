@@ -199,15 +199,27 @@ if [[ ${YB_DOWNLOAD_THIRDPARTY:-auto} == "auto" ]]; then
 fi
 log "YB_DOWNLOAD_THIRDPARTY=$YB_DOWNLOAD_THIRDPARTY"
 
+# This is normally done in set_build_root, but we need to decide earlier because this is factored
+# into the decision of whether to use LTO.
+decide_whether_to_use_linuxbrew
+
 if [[ -z ${YB_LINKING_TYPE:-} ]]; then
-  if should_use_lto; then
-    YB_LINKING_TYPE=full-lto
+  if using_linuxbrew && [[ "${YB_COMPILER_TYPE}" =~ clang1[234] && "${BUILD_TYPE}" == "release" ]]
+  then
+    export YB_LINKING_TYPE=full-lto
   else
-    YB_LINKING_TYPE=dynamic
+    export YB_LINKING_TYPE=dynamic
   fi
-  export YB_LINKING_TYPE
+  log "Automatically decided to set YB_LINKING_TYPE to ${YB_LINKING_TYPE} based on:" \
+      "YB_COMPILER_TYPE=${YB_COMPILER_TYPE}," \
+      "BUILD_TYPE=${BUILD_TYPE}," \
+      "YB_USE_LINUXBREW=${YB_USE_LINUXBREW}," \
+      "YB_LINUXBREW_DIR=${YB_LINUXBREW_DIR:-undefined}."
+else
+  log "YB_LINKING_TYPE is already set to ${YB_LINKING_TYPE}"
 fi
 log "YB_LINKING_TYPE=${YB_LINKING_TYPE}"
+export YB_LINKING_TYPE
 
 # -------------------------------------------------------------------------------------------------
 # Build root setup and build directory cleanup
@@ -789,9 +801,14 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
       if is_mac; then
         unset YB_MVN_LOCAL_REPO
       fi
-      if [[ ${YB_NUM_REPETITIONS:-1} -gt 1 ]]; then
-        run_tests_extra_args+=( "--num_repetitions" "$YB_NUM_REPETITIONS" )
+
+      NUM_REPETITIONS="${YB_NUM_REPETITIONS:-1}"
+      log "NUM_REPETITIONS is set to $NUM_REPETITIONS"
+      if [[ $NUM_REPETITIONS -gt 1 ]]; then
+        log "Repeating each test $NUM_REPETITIONS times"
+        run_tests_extra_args+=( "--num_repetitions" "$NUM_REPETITIONS" )
       fi
+
       set +u  # because extra_args can be empty
       if ! run_tests_on_spark "${run_tests_extra_args[@]}"; then
         set -u

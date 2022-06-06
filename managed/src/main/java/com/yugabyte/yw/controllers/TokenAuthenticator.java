@@ -83,6 +83,14 @@ public class TokenAuthenticator extends Action.Simple {
         }
         user = Users.getByEmail(email.toLowerCase());
       }
+      if (user == null) {
+        // Defaulting to regular flow to support dual login.
+        token = fetchToken(ctx, false /* isApiToken */);
+        user = Users.authWithToken(token);
+        if (user != null && !user.getRole().equals(Role.SuperAdmin)) {
+          user = null; // We want to only allow SuperAdmins access.
+        }
+      }
     } else {
       token = fetchToken(ctx, false /* isApiToken */);
       user = Users.authWithToken(token);

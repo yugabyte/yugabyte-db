@@ -26,10 +26,13 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/tablet/restore_util.h"
 #include "yb/tablet/tablet_fwd.h"
 
 namespace yb {
 namespace master {
+
+struct PgCatalogTableData;
 
 // Utility class to restore sys catalog.
 // Initially we load tables and tablets into it, then match schedule filter.
@@ -38,25 +41,26 @@ class RestoreSysCatalogState {
   explicit RestoreSysCatalogState(SnapshotScheduleRestoration* restoration);
 
   // Load objects that should be restored from DB snapshot.
-  CHECKED_STATUS LoadRestoringObjects(
+  Status LoadRestoringObjects(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db);
 
   // Load existing objects from DB snapshot.
-  CHECKED_STATUS LoadExistingObjects(
+  Status LoadExistingObjects(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db);
 
   // Process loaded data and prepare entries to restore.
-  CHECKED_STATUS Process();
+  Status Process();
 
   // Prepare write batch with object changes.
-  CHECKED_STATUS PrepareWriteBatch(
+  Status PrepareWriteBatch(
       const Schema& schema, docdb::DocWriteBatch* write_batch, const HybridTime& now_ht);
 
   void WriteToRocksDB(
-      docdb::DocWriteBatch* pg_catalog_write_batch, const yb::HybridTime& write_time,
+      docdb::DocWriteBatch* write_batch,
+      const docdb::KeyValuePairPB& restore_kv, const yb::HybridTime& write_time,
       const yb::OpId& op_id, tablet::Tablet* tablet);
 
-  CHECKED_STATUS ProcessPgCatalogRestores(
+  Status ProcessPgCatalogRestores(
       yb::tablet::TableInfo* pg_yb_catalog_meta,
       const docdb::DocDB& restoring_db,
       const docdb::DocDB& existing_db,
@@ -69,60 +73,79 @@ class RestoreSysCatalogState {
     restoring_objects_.namespaces.emplace(id, value);
   }
 
+  bool IsYsqlRestoration();
+
+  Status PatchSequencesDataObjects();
+
  private:
   struct Objects;
   using RetainedExistingTables = std::unordered_map<TableId, std::vector<SnapshotScheduleId>>;
 
   // Determine entries that should be restored. I.e. apply filter and serialize.
   template <class ProcessEntry>
-  CHECKED_STATUS DetermineEntries(
+  Status DetermineEntries(
       Objects* objects, RetainedExistingTables* retained_existing_tables,
       const ProcessEntry& process_entry);
 
   template <class PB>
-  CHECKED_STATUS IterateSysCatalog(
+  Status IterateSysCatalog(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
-      HybridTime read_time, std::unordered_map<std::string, PB>* map);
+      HybridTime read_time, std::unordered_map<std::string, PB>* map,
+      std::unordered_map<std::string, PB>* seq_map);
+
+  bool AreSequencesDataObjectsValid(Objects* existing_objects, Objects* restoring_objects);
+
+  bool AreAllSequencesDataObjectsEmpty(Objects* existing_objects, Objects* restoring_objects);
+
+  Status AddSequencesDataEntries(
+      std::unordered_map<NamespaceId, SysNamespaceEntryPB>* seq_namespace,
+      std::unordered_map<TableId, SysTablesEntryPB>* seq_table,
+      std::unordered_map<TabletId, SysTabletsEntryPB>* seq_tablets);
 
   template <class PB>
-  CHECKED_STATUS AddRestoringEntry(
-      const std::string& id, PB* pb, faststring* buffer);
+  Status AddRestoringEntry(const std::string& id, PB* pb, faststring* buffer);
 
   Result<bool> PatchRestoringEntry(const std::string& id, SysNamespaceEntryPB* pb);
   Result<bool> PatchRestoringEntry(const std::string& id, SysTablesEntryPB* pb);
   Result<bool> PatchRestoringEntry(const std::string& id, SysTabletsEntryPB* pb);
 
-  CHECKED_STATUS CheckExistingEntry(
+  Status CheckExistingEntry(
       const std::string& id, const SysNamespaceEntryPB& pb);
 
-  CHECKED_STATUS CheckExistingEntry(
+  Status CheckExistingEntry(
       const std::string& id, const SysTablesEntryPB& pb);
 
-  CHECKED_STATUS CheckExistingEntry(
+  Status CheckExistingEntry(
       const std::string& id, const SysTabletsEntryPB& pb);
 
-  CHECKED_STATUS LoadObjects(
+  Status LoadObjects(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
       HybridTime read_time, Objects* objects);
 
   // Prepare write batch to delete obsolete tablet.
-  CHECKED_STATUS PrepareTabletCleanup(
+  Status PrepareTabletCleanup(
       const TabletId& id, SysTabletsEntryPB pb, const Schema& schema,
       docdb::DocWriteBatch* write_batch);
 
   // Prepare write batch to delete obsolete table.
-  CHECKED_STATUS PrepareTableCleanup(
+  Status PrepareTableCleanup(
       const TableId& id, SysTablesEntryPB pb, const Schema& schema,
       docdb::DocWriteBatch* write_batch, const HybridTime& now_ht);
 
-  CHECKED_STATUS IncrementLegacyCatalogVersion(
+  Status IncrementLegacyCatalogVersion(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
       docdb::DocWriteBatch* write_batch);
+
+  Status PatchSequencesDataObjects(Objects* existing_objects, Objects* restoring_objects);
 
   struct Objects {
     std::unordered_map<NamespaceId, SysNamespaceEntryPB> namespaces;
     std::unordered_map<TableId, SysTablesEntryPB> tables;
     std::unordered_map<TabletId, SysTabletsEntryPB> tablets;
+    // Entries corresponding to sequences_data table.
+    std::unordered_map<NamespaceId, SysNamespaceEntryPB> sequences_namespace;
+    std::unordered_map<TableId, SysTablesEntryPB> sequences_table;
+    std::unordered_map<TabletId, SysTabletsEntryPB> sequences_tablets;
 
     std::string SizesToString() const;
 
@@ -138,6 +161,26 @@ class RestoreSysCatalogState {
   Objects restoring_objects_;
   Objects existing_objects_;
   RetainedExistingTables retained_existing_tables_;
+};
+
+class PgCatalogRestorePatch : public RestorePatch {
+ public:
+  PgCatalogRestorePatch(
+      FetchState* existing_state, FetchState* restoring_state,
+      docdb::DocWriteBatch* doc_batch, const PgCatalogTableData& table,
+      tablet::TableInfo* pg_yb_catalog_meta)
+      : RestorePatch(existing_state, restoring_state, doc_batch),
+        table_(table), pg_yb_catalog_meta_(pg_yb_catalog_meta) {}
+
+ private:
+  Status ProcessEqualEntries(
+      const Slice& existing_key, const Slice& existing_value,
+      const Slice& restoring_key, const Slice& restoring_value) override;
+
+  Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override;
+
+  const PgCatalogTableData& table_;
+  tablet::TableInfo* pg_yb_catalog_meta_;
 };
 
 }  // namespace master
