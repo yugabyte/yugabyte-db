@@ -1867,7 +1867,7 @@ class ControlScript(object):
                         "Incorrect fault_tolerance value specified. " +
                         "Please specify one of the following - zone, region or cloud ".format(
                             args.fault_tolerance.lower()))
-                    
+
             if args.listen is not None:
                 if args.advertise_address is not None and args.listen != args.advertise_address:
                     Output.print_out(Output.make_red("ERROR") +
@@ -2133,7 +2133,7 @@ class ControlScript(object):
 
         # Initialize the binary path of ybadmin
         # TODO(Sanket): Clean up and refactor this file
-        YBAdminProxy.populate_binary_path()
+        YBAdminProxy.init(self.configs.saved_data.get("master_flags"))
 
         try:
             args.func()
@@ -2613,29 +2613,44 @@ class Diagnostics(object):
 
 # Proxy for parsing output from yb-admin commands.
 class YBAdminProxy(object):
-    path = None
+    cmd_args = []
 
     @staticmethod
-    def populate_binary_path():
-        YBAdminProxy.path = find_binary_location("yb-admin")
+    def init(master_flags):
+        YBAdminProxy.cmd_args.append(find_binary_location("yb-admin"))
+
+        # If the user is attempting to use TLS, let's point yb-admin to
+        # the same certs dir as the master
+        if not master_flags:
+            return
+        flags_list = master_flags.split(",")
+        if 'use_node_to_node_encryption=true' not in flags_list:
+            return
+        certs_dir_name = [y for y in
+            [re.match('certs_dir=(.*)', x) for x in flags_list]
+            if y is not None]
+        if not certs_dir_name[0]:
+            raise RuntimeError("use_node_to_node_encryption=true must "
+                               "be accompanied by a certs_dir setting")
+        YBAdminProxy.cmd_args.append('--certs_dir_name={}'.format(certs_dir_name[0].group(1)))
 
     @staticmethod
     def add_master(master_addrs, new_master_ip, timeout=10):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs,
+        cmd = YBAdminProxy.cmd_args + [ "--init_master_addrs", master_addrs,
               "change_master_config", "ADD_SERVER", new_master_ip, "7100"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 
     @staticmethod
     def remove_master(master_addrs, old_master, timeout=10):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs,
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
               "change_master_config", "REMOVE_SERVER", old_master, "7100"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 
     @staticmethod
     def set_rf(master_addrs, rf, timeout=10):
-        cmd = [ YBAdminProxy.path, "--init_master_addrs", master_addrs,
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
                 "modify_placement_info", "cloud1.datacenter1.rack1", str(rf) ]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
@@ -2643,7 +2658,7 @@ class YBAdminProxy(object):
     @staticmethod
     # Returns [ (uuid, ip:port, role) ] for each master
     def get_masters(master_addrs, timeout=10):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "list_all_masters"]
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs, "list_all_masters"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         if 0 != ret_code or len(out.splitlines()) <= 1:
             return []
@@ -2653,7 +2668,8 @@ class YBAdminProxy(object):
     # Returns list[tserver uuid] reported by yb-master.
     @staticmethod
     def get_tservers(master_addrs, timeout=10):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "list_all_tablet_servers"]
+        cmd = YBAdminProxy.cmd_args + \
+                ["--init_master_addrs", master_addrs, "list_all_tablet_servers"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         if 0 != ret_code or len(out.splitlines()) <= 1:
             return None
@@ -2683,7 +2699,7 @@ class YBAdminProxy(object):
     # Returns the cluster config for this universe
     @staticmethod
     def get_cluster_config(master_addrs):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "get_universe_config"]
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs, "get_universe_config"]
         out, err, ret_code = run_process(cmd)
         if ret_code:
             return None
@@ -2695,7 +2711,7 @@ class YBAdminProxy(object):
     # Returns node_uuid by finding the UUID corresponding to current master's IP
     @staticmethod
     def get_node_uuid(master_addrs, cur_master_addr):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "list_all_masters"]
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs, "list_all_masters"]
         out, err, ret_code = run_process(cmd)
         if ret_code:
             return None
@@ -2712,7 +2728,7 @@ class YBAdminProxy(object):
         if not replication_factor:
             replication_factor = "3"
 
-        cmd = [YBAdminProxy.path, "-master_addresses", master_addrs, "modify_placement_info",
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs, "modify_placement_info",
                 placement_locations, replication_factor]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (ret_code == 0)
