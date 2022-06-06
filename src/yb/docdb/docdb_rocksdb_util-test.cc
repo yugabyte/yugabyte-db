@@ -23,6 +23,7 @@ DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(priority_thread_pool_size);
 DECLARE_int32(block_restart_interval);
+DECLARE_int32(index_block_restart_interval);
 
 namespace yb {
 namespace docdb {
@@ -135,6 +136,29 @@ TEST_F(DocDBRocksDBUtilTest, ValidBlockRestartInterval) {
 TEST_F(DocDBRocksDBUtilTest, DefaultBlockRestartInterval) {
   auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
   CHECK_EQ(blockBasedOptions.block_restart_interval, 16);
+}
+
+TEST_F(DocDBRocksDBUtilTest, MinIndexBlockRestartInterval) {
+  FLAGS_index_block_restart_interval = 0;
+  auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
+  CHECK_EQ(blockBasedOptions.index_block_restart_interval, 1);
+}
+
+TEST_F(DocDBRocksDBUtilTest, MaxIndexBlockRestartInterval) {
+  FLAGS_index_block_restart_interval = 512;
+  auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
+  CHECK_EQ(blockBasedOptions.index_block_restart_interval, 256);
+}
+
+TEST_F(DocDBRocksDBUtilTest, ValidIndexBlockRestartInterval) {
+  FLAGS_index_block_restart_interval = 8;
+  auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
+  CHECK_EQ(blockBasedOptions.index_block_restart_interval, 8);
+}
+
+TEST_F(DocDBRocksDBUtilTest, DefaultIndexBlockRestartInterval) {
+  auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
+  CHECK_EQ(blockBasedOptions.index_block_restart_interval, 1);
 }
 
 }  // namespace docdb

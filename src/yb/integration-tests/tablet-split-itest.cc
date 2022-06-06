@@ -55,6 +55,8 @@
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/table/block_based_table_reader.h"
+#include "yb/rocksdb/table/index_reader.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -131,6 +133,7 @@ DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_uint64(prevent_split_for_ttl_tables_for_seconds);
 DECLARE_bool(sort_automatic_tablet_splitting_candidates);
+DECLARE_int32(index_block_restart_interval);
 
 namespace yb {
 class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
@@ -2462,6 +2465,136 @@ TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
   ASSERT_OK(VerifySplitKeyError(tablet));
 }
 
+class TabletSplitSingleBlockITest :
+    public TabletSplitSingleServerITest,
+    public testing::WithParamInterface<Partitioning> {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 2_KB;
+    TabletSplitSingleServerITest::SetUp();
+    SetNumTablets(1);
+  }
+
+  Status DoSplitSingleBlock(const Partitioning partitioning, const uint32_t num_rows,
+      std::function<Status(yb::tablet::Tablet *tablet)> rows_written_callback) {
+    // Setup table with rows.
+    Schema schema;
+    BuildSchema(partitioning, &schema);
+    RETURN_NOT_OK(CreateTable(schema));
+
+    const auto source_tablet_id =
+        VERIFY_RESULT(GetSingleTestTabletInfo(VERIFY_RESULT(catalog_manager())))->id();
+
+    // Check empty case.
+    LOG(INFO) << "Sending GetSplitKey Rpc";
+    auto key_resp = VERIFY_RESULT(GetSplitKey(source_tablet_id));
+    SCHECK(key_resp.has_error(), IllegalState, "Error is expected");
+
+    // Write a few records.
+    RETURN_NOT_OK(WriteRows(num_rows));
+    auto tablet_peer = VERIFY_RESULT(GetSingleTabletLeaderPeer());
+    RETURN_NOT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
+
+    // Wait for SST files appear on disc
+    RETURN_NOT_OK(WaitFor([&] {
+      return tablet_peer->tablet()->TEST_db()->GetCurrentVersionNumSSTFiles() > 0;
+    }, 5s * kTimeMultiplier, "Waiting for successful write", MonoDelta::FromSeconds(1)));
+    RETURN_NOT_OK(rows_written_callback(tablet_peer->tablet()));
+
+    // Send RPC for tablet splitting and validate resposnse.
+    LOG(INFO) << "Sending sync SPLIT Rpc";
+    auto resp = VERIFY_RESULT(SendMasterSplitTabletRpcSync(source_tablet_id));
+    SCHECK(!resp.has_error(), IllegalState, resp.error().DebugString());
+
+    RETURN_NOT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets = */ 2));
+    return CheckPostSplitTabletReplicasData(num_rows);
+  }
+
+  static Result<uint32_t> GetFirstDataBlockRestartPointsNumber(rocksdb::DB* regular_db) {
+    SCHECK_NOTNULL(regular_db);
+
+    auto table_reader = dynamic_cast<rocksdb::BlockBasedTable*>(
+        VERIFY_RESULT(regular_db->TEST_GetLargestSstTableReader()));
+    SCHECK_NOTNULL(table_reader);
+
+    auto index_reader_base = VERIFY_RESULT(table_reader->TEST_GetIndexReader());
+    auto index_reader = dynamic_cast<rocksdb::MultiLevelIndexReader*>(index_reader_base.get());
+    SCHECK_NOTNULL(index_reader);
+
+    // Due to test intention this method is supported only for multi-index with 1 level.
+    if (index_reader->TEST_GetNumLevels() > 1) {
+      return STATUS(NotSupported, "It is expected to have only one level for the index.");
+    }
+
+    std::unique_ptr<rocksdb::InternalIterator> index_iter(
+        table_reader->NewIndexIterator(rocksdb::ReadOptions::kDefault));
+    index_iter->SeekToFirst();
+    RETURN_NOT_OK(index_iter->status());
+    if (!index_iter->Valid()) {
+      return STATUS(Incomplete, "Empty or too small SST.");
+    }
+
+    auto data_block = VERIFY_RESULT(table_reader->RetrieveBlockFromFile(
+        rocksdb::ReadOptions::kDefault, index_iter->value(), rocksdb::BlockType::kData));
+    return data_block->NumRestarts();
+  }
+};
+
+TEST_P(TabletSplitSingleBlockITest, SplitSingleDataBlockTablet) {
+  ASSERT_OK(DoSplitSingleBlock(GetParam(), /* num_rows = */ 18,
+      [](yb::tablet::Tablet *tablet) -> Status {
+    const auto num_restarts =
+        VERIFY_RESULT(GetFirstDataBlockRestartPointsNumber(tablet->doc_db().regular));
+    if (num_restarts <= 1) {
+      return STATUS(IllegalState,
+          "RocksDB records structure might be changed, "
+          "try to adjust rows number to have more than one restart point.");
+    }
+    return Status::OK();
+  }));
+}
+
+TEST_P(TabletSplitSingleBlockITest, SplitSingleDataBlockOneRestartTablet) {
+  ASSERT_OK(DoSplitSingleBlock(GetParam(), /* num_rows = */ 6,
+      [](yb::tablet::Tablet *tablet) -> Status {
+    const auto num_restarts =
+        VERIFY_RESULT(GetFirstDataBlockRestartPointsNumber(tablet->doc_db().regular));
+    if (num_restarts > 1) {
+      return STATUS(IllegalState,
+          "RocksDB records structure might be changed, "
+          "try to adjust rows number to have exactly one restart point.");
+    }
+    return Status::OK();
+  }));
+}
+
+TEST_P(TabletSplitSingleBlockITest, SplitSingleDataBlockMultiLevelTablet) {
+  // Required to simulate a case with num levels > 1 and top block restarts num == 1.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_block_restart_interval) = 4;
+
+  ASSERT_OK(DoSplitSingleBlock(GetParam(), /* num_rows = */ 4000,
+      [](yb::tablet::Tablet *tablet) -> Status {
+    auto table_reader = dynamic_cast<rocksdb::BlockBasedTable*>(
+        VERIFY_RESULT(tablet->doc_db().regular->TEST_GetLargestSstTableReader()));
+    SCHECK_NOTNULL(table_reader);
+
+    auto index_reader_base = VERIFY_RESULT(table_reader->TEST_GetIndexReader());
+    auto index_reader = dynamic_cast<rocksdb::MultiLevelIndexReader*>(index_reader_base.get());
+    SCHECK_NOTNULL(index_reader);
+
+    if ((index_reader->TEST_GetNumLevels() == 1) ||
+        (index_reader->TEST_GetTopLevelBlockNumRestarts() > 1)) {
+      return STATUS(IllegalState,
+          Format(
+              "Num level = $0, num top level restarts = $1. RocksDB records structure "
+              "might be changed, try to adjust rows number to have num levels > 1 "
+              "and num top level restarts == 1 for a top level index block.",
+              index_reader->TEST_GetNumLevels(), index_reader->TEST_GetTopLevelBlockNumRestarts()));
+    }
+    return Status::OK();
+  }));
+}
+
 namespace {
 
 PB_ENUM_FORMATTERS(IsolationLevel);
@@ -2482,6 +2615,12 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     TabletSplitSingleServerITest,
     TabletSplitSystemRecordsITest,
+    ::testing::ValuesIn(List(static_cast<Partitioning*>(nullptr))),
+    TestParamToString<Partitioning>);
+
+INSTANTIATE_TEST_CASE_P(
+    TabletSplitSingleServerITest,
+    TabletSplitSingleBlockITest,
     ::testing::ValuesIn(List(static_cast<Partitioning*>(nullptr))),
     TestParamToString<Partitioning>);
 

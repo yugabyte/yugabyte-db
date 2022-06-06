@@ -383,7 +383,7 @@ std::string GetPaddedNum(int i) {
 
 yb::Result<std::string> GetMiddleKey(
     const KeyValueEncodingFormat key_value_encoding_format, const int num_keys,
-    const int block_restart_interval) {
+    const int block_restart_interval, const MiddlePointPolicy middle_policy) {
   BlockBuilder builder(block_restart_interval, key_value_encoding_format);
 
   for (int i = 1; i <= num_keys; ++i) {
@@ -396,43 +396,134 @@ yb::Result<std::string> GetMiddleKey(
   contents.cachable = false;
   Block reader(std::move(contents));
 
-  return VERIFY_RESULT(reader.GetMiddleKey(key_value_encoding_format)).ToString();
+  return VERIFY_RESULT(
+      reader.GetMiddleKey(key_value_encoding_format, BytewiseComparator(), middle_policy));
 }
 
 void CheckMiddleKey(
     const KeyValueEncodingFormat key_value_encoding_format, const int num_keys,
-    const int block_restart_interval, const int expected_middle_key) {
-  const auto middle_key =
-      ASSERT_RESULT(GetMiddleKey(key_value_encoding_format, num_keys, block_restart_interval));
+    const int block_restart_interval, const int expected_middle_key,
+    const MiddlePointPolicy middle_policy) {
+  const auto middle_key = ASSERT_RESULT(
+      GetMiddleKey(key_value_encoding_format, num_keys, block_restart_interval, middle_policy));
   ASSERT_EQ(middle_key, "k" + GetPaddedNum(expected_middle_key)) << "For num_keys = " << num_keys;
 }
 
 } // namespace
 
 TEST_F(BlockTest, GetMiddleKey) {
-  const auto block_restart_interval = 1;
+  // Checking of explicit values
+  for (const auto key_value_encoding_format : kKeyValueEncodingFormatList) {
+    auto block_restart_interval = 1;
 
-  for (auto key_value_encoding_format : kKeyValueEncodingFormatList) {
-    const auto empty_block_middle_key =
-        GetMiddleKey(key_value_encoding_format, /* num_keys =*/0, block_restart_interval);
-    ASSERT_NOK(empty_block_middle_key) << empty_block_middle_key;
-    ASSERT_TRUE(empty_block_middle_key.status().IsIncomplete()) << empty_block_middle_key;
+    for (const auto middle_policy : kMiddlePointPolicyList) {
+      for (const auto num_keys : { 0, 1 }) {
+        const auto empty_block_middle_key = GetMiddleKey(
+            key_value_encoding_format, /* num_keys = */ 0, block_restart_interval, middle_policy);
+        ASSERT_NOK(empty_block_middle_key) << empty_block_middle_key;
+        ASSERT_TRUE(empty_block_middle_key.status().IsIncomplete()) << empty_block_middle_key;
+      }
+    }
 
-    CheckMiddleKey(
-        key_value_encoding_format, /* num_keys = */ 1, block_restart_interval,
-        /* expected_middle_key = */ 1);
+    /* block_restart_interval == 1 */
     CheckMiddleKey(
         key_value_encoding_format, /* num_keys = */ 2, block_restart_interval,
-        /* expected_middle_key = */ 1);
+        /* expected_middle_key = */ 1, MiddlePointPolicy::kMiddleLow);
     CheckMiddleKey(
         key_value_encoding_format, /* num_keys = */ 3, block_restart_interval,
-        /* expected_middle_key = */ 2);
+        /* expected_middle_key = */ 2, MiddlePointPolicy::kMiddleLow);
     CheckMiddleKey(
         key_value_encoding_format, /* num_keys = */ 15, block_restart_interval,
-        /* expected_middle_key = */ 8);
+        /* expected_middle_key = */ 8, MiddlePointPolicy::kMiddleLow);
     CheckMiddleKey(
         key_value_encoding_format, /* num_keys = */ 16, block_restart_interval,
-        /* expected_middle_key = */ 8);
+        /* expected_middle_key = */ 8, MiddlePointPolicy::kMiddleLow);
+
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 2, block_restart_interval,
+        /* expected_middle_key = */ 2, MiddlePointPolicy::kMiddleHigh);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 3, block_restart_interval,
+        /* expected_middle_key = */ 2, MiddlePointPolicy::kMiddleHigh);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 15, block_restart_interval,
+        /* expected_middle_key = */ 8, MiddlePointPolicy::kMiddleHigh);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 16, block_restart_interval,
+        /* expected_middle_key = */ 9, MiddlePointPolicy::kMiddleHigh);
+
+    block_restart_interval = 16;
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 2, block_restart_interval,
+        /* expected_middle_key = */ 1, MiddlePointPolicy::kMiddleLow);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 3, block_restart_interval,
+        /* expected_middle_key = */ 2, MiddlePointPolicy::kMiddleLow);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 15, block_restart_interval,
+        /* expected_middle_key = */ 8, MiddlePointPolicy::kMiddleLow);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 16, block_restart_interval,
+        /* expected_middle_key = */ 8, MiddlePointPolicy::kMiddleLow);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 17, block_restart_interval,
+        /* expected_middle_key = */ 1, MiddlePointPolicy::kMiddleLow);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 18, block_restart_interval,
+        /* expected_middle_key = */ 1, MiddlePointPolicy::kMiddleLow);
+
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 2, block_restart_interval,
+        /* expected_middle_key = */ 2, MiddlePointPolicy::kMiddleHigh);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 3, block_restart_interval,
+        /* expected_middle_key = */ 2, MiddlePointPolicy::kMiddleHigh);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 15, block_restart_interval,
+        /* expected_middle_key = */ 8, MiddlePointPolicy::kMiddleHigh);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 16, block_restart_interval,
+        /* expected_middle_key = */ 9, MiddlePointPolicy::kMiddleHigh);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 17, block_restart_interval,
+        /* expected_middle_key = */ 17, MiddlePointPolicy::kMiddleHigh);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 18, block_restart_interval,
+        /* expected_middle_key = */ 17, MiddlePointPolicy::kMiddleHigh);
+  }
+
+  // Checking of ranges
+  for (const auto middle_policy : kMiddlePointPolicyList) {
+    for (auto block_restart_interval = 1; block_restart_interval < 17; ++block_restart_interval) {
+      const auto get_num_restarts = [&](const int num_keys) {
+        return num_keys <= 0 ? 0 : (num_keys + block_restart_interval - 1) / block_restart_interval;
+      };
+      const auto get_expected_middle_key = [&](const int num_keys) {
+        const auto num_restarts = get_num_restarts(num_keys);
+        if (num_restarts > 1) {
+          const auto restart_idx = (num_restarts - yb::to_underlying(middle_policy)) / 2;
+          return 1 + (restart_idx * block_restart_interval);
+        } else {
+          const auto key_idx = (num_keys - yb::to_underlying(middle_policy)) / 2;
+          return 1 + key_idx;
+        }
+      };
+
+      for (const auto key_value_encoding_format : kKeyValueEncodingFormatList) {
+        for (auto num_keys = 0; num_keys < 501; ++num_keys) {
+          if (num_keys > 1) {
+            CheckMiddleKey(key_value_encoding_format, num_keys, block_restart_interval,
+                          get_expected_middle_key(num_keys), middle_policy);
+          } else {
+            const auto empty_block_middle_key = GetMiddleKey(
+                key_value_encoding_format, /* num_keys = */ 0,
+                block_restart_interval, middle_policy);
+            ASSERT_NOK(empty_block_middle_key) << empty_block_middle_key;
+            ASSERT_TRUE(empty_block_middle_key.status().IsIncomplete()) << empty_block_middle_key;
+          }
+        }
+      }
+    }
   }
 }
 

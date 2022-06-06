@@ -356,6 +356,10 @@ class StackableDB : public DB {
     return db_->DefaultColumnFamily();
   }
 
+  yb::Result<TableReader*> TEST_GetLargestSstTableReader() override {
+    return db_->TEST_GetLargestSstTableReader();
+  }
+
  protected:
   DB* db_;
 };

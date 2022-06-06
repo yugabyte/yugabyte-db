@@ -4776,6 +4776,10 @@ class ModelDB: public DB {
     return NotSupported();
   }
 
+  yb::Result<TableReader*> TEST_GetLargestSstTableReader() override {
+    return NotSupported();
+  }
+
  private:
   CHECKED_STATUS NotSupported() const {
     return STATUS(NotSupported, "Not supported in Model DB");

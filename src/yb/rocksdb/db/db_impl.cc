@@ -5723,6 +5723,11 @@ Result<std::string> DBImpl::GetMiddleKey() {
   return default_cf_handle_->cfd()->current()->GetMiddleKey();
 }
 
+yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
+  InstrumentedMutexLock lock(&mutex_);
+  return default_cf_handle_->cfd()->current()->TEST_GetLargestSstTableReader();
+}
+
 void DBImpl::TEST_SwitchMemtable() {
   std::lock_guard<InstrumentedMutex> lock(mutex_);
   WriteContext context;

@@ -2066,7 +2066,7 @@ std::string Version::DebugString(bool hex) const {
   return r;
 }
 
-Result<std::string> Version::GetMiddleKey() {
+Result<TableCache::TableReaderWithHandle> Version::GetLargestSstTableReader() {
   // Largest files are at lowest level.
   const auto level = storage_info_.num_levels_ - 1;
   const FileMetaData* largest_sst_meta = nullptr;
@@ -2080,11 +2080,20 @@ Result<std::string> Version::GetMiddleKey() {
     return STATUS(Incomplete, "No SST files.");
   }
 
-  const auto trwh = VERIFY_RESULT(table_cache_->GetTableReader(
+  return table_cache_->GetTableReader(
       vset_->env_options_, cfd_->internal_comparator(), largest_sst_meta->fd, kDefaultQueryId,
-      /* no_io =*/ false, cfd_->internal_stats()->GetFileReadHist(level),
-      IsFilterSkipped(level, /* is_file_last_in_level =*/ true)));
+      /* no_io = */ false, cfd_->internal_stats()->GetFileReadHist(level),
+      IsFilterSkipped(level, /* is_file_last_in_level = */ true));
+}
+
+Result<std::string> Version::GetMiddleKey() {
+  const auto trwh = VERIFY_RESULT(GetLargestSstTableReader());
   return trwh.table_reader->GetMiddleKey();
+}
+
+Result<TableReader*> Version::TEST_GetLargestSstTableReader() {
+  const auto trwh = VERIFY_RESULT(GetLargestSstTableReader());
+  return trwh.table_reader;
 }
 
 // this is used to batch writes to the manifest file

@@ -60,6 +60,7 @@ struct ExternalSstFileInfo;
 class WriteBatch;
 class Env;
 class EventListener;
+class TableReader;
 
 using std::unique_ptr;
 
@@ -913,6 +914,9 @@ class DB {
 
   // Returns approximate middle key (see Version::GetMiddleKey).
   virtual yb::Result<std::string> GetMiddleKey() = 0;
+
+  // Returns a table reader for the largest SST file.
+  virtual yb::Result<TableReader*> TEST_GetLargestSstTableReader() = 0;
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   virtual void TEST_SwitchMemtable() {}
