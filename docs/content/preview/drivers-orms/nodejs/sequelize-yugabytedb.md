@@ -180,6 +180,31 @@ Employees Details:
 ]
 ```
 
+## Using Cloud Cluster to connect with Seqeulize:
+
+- Install `fs` package to read the ssl certificate using:
+```
+npm install fs
+```
+- Add the following line to use the `fs` module:
+```
+const fs = require('fs');
+```
+- Use the following configuration in `models/index.js` file in the following way while creating sequelize object:
+```
+const sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
+    dialect: 'postgres',
+    port: 5433,
+    host: "<host_name>",
+    dialectOptions: {
+        ssl: {
+            rejectUnauthorised: true,
+            ca: fs.readFileSync('<path_to_root_crt>').toString(),
+        }
+    }
+  });
+```
+
 ## Next steps
 
 - Explore [Scaling Node Applications](/preview/explore/linear-scalability) with YugabyteDB.

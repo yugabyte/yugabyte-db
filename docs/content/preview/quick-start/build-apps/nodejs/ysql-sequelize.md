@@ -36,7 +36,7 @@ showAsideToc: true
 
 ## Prerequisites
 
-This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
+This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/). Also, you have installed latest stable version of [node](https://nodejs.org/en/).
 
 ## Clone the orm-examples repository
 
@@ -246,6 +246,22 @@ $ curl http://localhost:8080/orders
   ],
   ...
 }
+```
+## Using Cloud Cluster to connect the app:
+
+- Use the configuration in the following way in `models/index.js` file while creating sequelize object:
+```
+sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
+    dialect: 'postgres',
+    port: 5433,
+    host: "<host_name>",
+    dialectOptions: {
+        ssl: {
+            rejectUnauthorised: true,
+            ca: fs.readFileSync('<path_to_root_crt>').toString(),
+        }
+    }
+  });
 ```
 
 ## Explore the source
