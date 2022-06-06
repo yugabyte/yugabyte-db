@@ -38,6 +38,7 @@ The following libraries are officially supported by YugabyteDB.
 | [Hibernate](java/hibernate/) | Full | [CRUD Example](java/hibernate/#step-1-add-the-hibernate-orm-dependency) |
 | [Spring Data YugabyteDB](/preview/integrations/spring-framework/sdyb/) | Full | [CRUD Example](/preview/integrations/spring-framework/sdyb/#examples) |
 | Spring Data JPA | Full | [CRUD Example](/preview/quick-start/build-apps/java/ysql-spring-data/) |
+| [Ebean](java/ebean)| Full | [CRUD](java/ebean)|
 <!-- | Micronaut | Beta |  | -->
 <!-- | Quarkus | Beta |  | -->
 <!-- | MyBatis | Full |  | -->

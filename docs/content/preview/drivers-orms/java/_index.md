@@ -21,6 +21,7 @@ The following projects can be used to implement Java applications using the Yuga
 | [PostgreSQL JDBC Driver](/preview/reference/drivers/java/postgres-jdbc-reference/) | JDBC Driver | Full | [Hello World](/preview/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD](postgres-jdbc)|
 | [Hibernate*](hibernate) | ORM |  Full | [Hello World](/preview/quick-start/build-apps/java/ysql-hibernate) <br />[CRUD](hibernate/#working-with-domain-objects) |
 | [Spring Data YugabyteDB*](/preview/integrations/spring-framework/sdyb/) | Framework |  Full | [Hello World](/preview/quick-start/build-apps/java/ysql-sdyb) |
+| [Ebean](ebean) | ORM | Full | [Hello World](/preview/quick-start/build-apps/java/ysql-ebeans) <br /> [CRUD](ebean) |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
