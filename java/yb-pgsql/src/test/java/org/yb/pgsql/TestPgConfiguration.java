@@ -40,6 +40,13 @@ import com.google.common.collect.ImmutableMap;
 public class TestPgConfiguration extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgConfiguration.class);
 
+  // default max_connections
+  private static final int CLUSTER_DEFAULT_MAX_CON = 300;
+  // default superuser_reserved_connections
+  private static final int CLUSTER_DEFAULT_SUPERUSER_RES_CON = 3;
+  // default max_wal_senders
+  private static final int CLUSTER_DEFAULT_MAX_WAL_SENDERS = 10;
+
   @Test
   public void testPostgresConfigDefault() throws Exception {
     int tserver = spawnTServer();
@@ -342,6 +349,44 @@ public class TestPgConfiguration extends BasePgSQLTest {
       assertQuery(statement, "SHOW max_connections", new Row("64"));
     }
   }
+
+  @Test
+  public void testAdjustedMaxConnectionsByRoles() throws Exception {
+    final int max_con_nonsuperuser = CLUSTER_DEFAULT_MAX_CON -
+        CLUSTER_DEFAULT_SUPERUSER_RES_CON -
+        CLUSTER_DEFAULT_MAX_WAL_SENDERS;
+    final String test_user = "test_user";
+
+    int tserver = spawnTServer();
+
+    try (Connection connection =
+           getConnectionBuilder().withTServer(tserver).withUser(DEFAULT_PG_USER).connect();
+         Statement statement = connection.createStatement()) {
+
+      // Verify the current user is yugabyte (superuser)
+      assertQuery(statement, "SELECT user", new Row(DEFAULT_PG_USER));
+      assertQuery(statement, "SELECT usesuper FROM pg_user WHERE usename = CURRENT_USER;",
+        new Row(true));
+
+      assertQuery(
+          statement, "SHOW max_connections", new Row(String.valueOf(CLUSTER_DEFAULT_MAX_CON)));
+
+      // Switch to non-superuser
+      statement.execute("CREATE USER " + test_user);
+      statement.execute("SET ROLE " + test_user);
+      assertQuery(statement, "SELECT user", new Row(test_user));
+      assertQuery(statement, "SELECT usesuper FROM pg_user WHERE usename = CURRENT_USER;",
+        new Row(false));
+
+      assertQuery(statement, "SHOW max_connections", new Row(String.valueOf(max_con_nonsuperuser)));
+      assertQuery(
+          statement,
+          "SELECT setting FROM pg_settings WHERE name = 'max_connections'",
+          new Row(String.valueOf(max_con_nonsuperuser))
+      );
+    }
+  }
+
 
   @Test
   public void testDefaultTransactionIsolationFlag() throws Exception {
