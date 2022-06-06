@@ -962,6 +962,14 @@ YBCStatus YBCPgResetTransactionReadPoint() {
   return ToYBCStatus(pgapi->ResetTransactionReadPoint());
 }
 
+double YBCGetTransactionPriority() {
+  return pgapi->GetTransactionPriority();
+}
+
+TxnPriorityRequirement YBCGetTransactionPriorityType() {
+  return pgapi->GetTransactionPriorityType();
+}
+
 YBCStatus YBCPgRestartReadPoint() {
   return ToYBCStatus(pgapi->RestartReadPoint());
 }

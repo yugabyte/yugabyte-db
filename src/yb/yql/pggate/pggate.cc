@@ -1677,6 +1677,14 @@ Status PgApiImpl::RollbackSubTransaction(SubTransactionId id) {
   return pg_session_->RollbackSubTransaction(id);
 }
 
+double PgApiImpl::GetTransactionPriority() const {
+  return pg_txn_manager_->GetTransactionPriority();
+}
+
+TxnPriorityRequirement PgApiImpl::GetTransactionPriorityType() const {
+  return pg_txn_manager_->GetTransactionPriorityType();
+}
+
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
 }
