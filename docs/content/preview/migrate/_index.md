@@ -15,7 +15,7 @@ menu:
 
 <div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <!-- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="migration-process-overview/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
@@ -37,7 +37,30 @@ menu:
         Migrate your PostgreSQL data and applications to YugabyteDB.
       </div>
     </a>
+  </div> -->
+
+<div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="yb-voyager/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <div class="title">YB Voyager</div>
+      </div>
+      <div class="body">
+        Migrate to YugabyteDB using YB Voyager.
+      </div>
+    </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="manual-import/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <div class="title">Manual import</div>
+      </div>
+      <div class="body">
+        Migrate your PostgreSQL data and applications to YugabyteDB.
+      </div>
+    </a>
+  </div>
 
 </div>
