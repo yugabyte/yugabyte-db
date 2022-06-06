@@ -81,6 +81,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   void SetupPerformOptions(tserver::PgPerformOptionsPB* options);
 
+  double GetTransactionPriority() const;
+  TxnPriorityRequirement GetTransactionPriorityType() const;
+
  private:
   YB_STRONGLY_TYPED_BOOL(NeedsHigherPriorityTxn);
   YB_STRONGLY_TYPED_BOOL(SavePriority);
