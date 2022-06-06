@@ -5141,6 +5141,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
 
       // 2. Remove from Master Configs on Producer and Consumer.
 
+      Status producer_status = Status::OK();
       if (!l->pb.table_streams().empty()) {
         // Delete Relevant Table->StreamID mappings on Consumer.
         auto table_streams = l.mutable_data()->pb.mutable_table_streams();
@@ -5158,28 +5159,48 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         // Delete CDC stream config on the Producer.
         auto result = original_ri->GetOrCreateCDCRpcTasks(l->pb.producer_master_addresses());
         if (!result.ok()) {
-          LOG(WARNING) << "Unable to create cdc rpc task. CDC streams won't be deleted: " << result;
+          LOG(ERROR) << "Unable to create cdc rpc task. CDC streams won't be deleted: "
+                     << result;
+          producer_status = STATUS(InternalError, "Cannot create cdc rpc task.",
+                                   req->ShortDebugString(),
+                                   MasterError(MasterErrorPB::INTERNAL_ERROR));
         } else {
-          auto s = (*result)->client()->DeleteCDCStream(streams_to_remove,
-                                                        true /* force_delete */);
-          if (!s.ok()) {
+          producer_status = (*result)->client()->DeleteCDCStream(streams_to_remove,
+                                                                 true /* force_delete */,
+                                                                 req->remove_table_ignore_errors());
+          if (!producer_status.ok()) {
             std::stringstream os;
             std::copy(streams_to_remove.begin(), streams_to_remove.end(),
                       std::ostream_iterator<CDCStreamId>(os, ", "));
-            LOG(WARNING) << "Unable to delete CDC streams: " << os.str() << s;
+            LOG(ERROR) << "Unable to delete CDC streams: " << os.str()
+                        << " on producer due to error: " << producer_status
+                        << ". Try setting the ignore-errors option.";
           }
         }
+      }
+
+      // Currently, due to the sys_catalog write below, atomicity cannot be guaranteed for
+      // both producer and consumer deletion, and the atomicity of producer is compromised.
+      if (!producer_status.ok()) {
+        return SetupError(resp->mutable_error(), producer_status);
       }
 
       {
         // Need both these updates to be atomic.
         auto w = sys_catalog_->NewWriter(leader_ready_term());
-        RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
-                                original_ri.get(),
-                                cluster_config.get()));
-        RETURN_NOT_OK(CheckStatus(
-            sys_catalog_->SyncWrite(w.get()),
-            "Updating universe replication info and cluster config in sys-catalog"));
+        auto s = w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
+                           original_ri.get(),
+                           cluster_config.get());
+        if (s.ok()) {
+          s = sys_catalog_->SyncWrite(w.get());
+        }
+        if (!s.ok()) {
+          LOG(DFATAL) << "Updating universe replication info and cluster config in sys-catalog "
+                         "failed. However, the deletion of streams on the producer has been issued."
+                         " Please retry the command with the ignore-errors option to make sure that"
+                         " streams are deleted properly on the consumer.";
+          return SetupError(resp->mutable_error(), s);
+        }
       }
 
       l.Commit();

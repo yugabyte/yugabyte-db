@@ -115,7 +115,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
       const std::vector<TableId>& add_tables,
       const std::vector<TableId>& remove_tables,
       const std::vector<std::string>& producer_bootstrap_ids_to_add,
-      const std::string& new_producer_universe_id);
+      const std::string& new_producer_universe_id,
+      bool remove_table_ignore_errors = false);
 
   Status RenameUniverseReplication(const std::string& old_universe_name,
                                            const std::string& new_universe_name);
