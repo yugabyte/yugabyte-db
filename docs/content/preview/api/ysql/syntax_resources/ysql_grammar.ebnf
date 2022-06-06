@@ -314,7 +314,10 @@ copy_option =
     | 'FORCE_NOT_NULL' '(' column_names ')'
     | 'FORCE_NULL' '(' column_names ')'
     | 'ENCODING' 'encoding_name'
-    | 'ROWS_PER_TRANSACTION' integer ) ;
+    | 'ROWS_PER_TRANSACTION' integer
+    | 'DISABLE_FK_CHECK'
+    | 'REPLACE'
+    | 'SKIP' integer ) ;
 
 (* 'CREATE' 'AGGREGATE' *)
 

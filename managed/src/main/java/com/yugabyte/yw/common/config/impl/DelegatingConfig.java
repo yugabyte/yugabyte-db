@@ -11,7 +11,6 @@
 package com.yugabyte.yw.common.config.impl;
 
 import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigList;
 import com.typesafe.config.ConfigMemorySize;
 import com.typesafe.config.ConfigMergeable;
@@ -64,11 +63,6 @@ public class DelegatingConfig implements Config {
 
   protected void setValueInternal(String path, ConfigValue newValue) {
     delegate.set(delegate().withValue(path, newValue));
-  }
-
-  protected void setObjInternal(String path, String strObj) {
-    ConfigValue configValue = ConfigFactory.parseString(path + "=" + strObj).getValue(path);
-    delegate.set(delegate().withValue(path, configValue));
   }
 
   protected void deleteValueInternal(String path) {

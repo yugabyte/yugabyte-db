@@ -78,6 +78,10 @@ const TypeInfo* ColumnSchema::type_info() const {
   return type_->type_info();
 }
 
+bool ColumnSchema::is_collection() const {
+  return type_info()->is_collection();
+}
+
 bool ColumnSchema::CompTypeInfo(const ColumnSchema &a, const ColumnSchema &b) {
   return a.type_info()->type == b.type_info()->type;
 }
