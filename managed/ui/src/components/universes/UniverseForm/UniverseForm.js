@@ -105,7 +105,7 @@ class UniverseForm extends Component {
    * By default, we should redirect the user to the details page of the
    * universe they performed the operation against.
    * Fallback is to redirect to the `/universes` page.
-   * 
+   *
    * @param {String} uid Universe UUID that can be passed into function
    */
   transitionToDefaultRoute = (uid) => {
@@ -137,7 +137,7 @@ class UniverseForm extends Component {
 
   handleSubmitButtonClick = () => {
     const { type } = this.props;
-    this.setState({ isSubmitting: true });    
+    this.setState({ isSubmitting: true });
     if (type === 'Create') {
       this.createUniverse().then((response) => {
         const { universeUUID, name } = response.payload.data;
@@ -1041,7 +1041,9 @@ class UniverseForm extends Component {
               }
             >
               This operation will migrate this universe and all its data to a completely new set of
-              nodes. Or alternatively you could try smart resize.
+              nodes. Or alternatively you could try smart resize (This will change VM image{' '}
+              {oldConfig.volumeSize !== newConfig.volumeSize ? 'and volume size' : ''} for existing
+              nodes).
               <div className={'full-move-config'}>
                 <div className={'text-lightgray full-move-config--general'}>
                   <h5>Current:</h5>

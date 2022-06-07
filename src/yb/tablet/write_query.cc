@@ -709,7 +709,7 @@ void WriteQuery::UpdateQLIndexes() {
   const ChildTransactionDataPB* child_transaction_data = nullptr;
   for (auto& doc_op : doc_ops_) {
     auto* write_op = down_cast<docdb::QLWriteOperation*>(doc_op.get());
-    if (write_op->index_requests()->empty()) {
+    if (write_op->index_requests().empty()) {
       continue;
     }
     if (!client) {
@@ -739,7 +739,7 @@ void WriteQuery::UpdateQLIndexes() {
     }
 
     // Apply the write ops to update the index
-    for (auto& pair : *write_op->index_requests()) {
+    for (auto& [index_info, index_request] : write_op->index_requests()) {
       client::YBTablePtr index_table;
       bool cache_used_ignored = false;
       auto metadata_cache = tablet().YBMetaDataCache();
@@ -751,15 +751,15 @@ void WriteQuery::UpdateQLIndexes() {
       }
       // TODO create async version of GetTable.
       // It is ok to have sync call here, because we use cache and it should not take too long.
-      auto status = metadata_cache->GetTable(pair.first->table_id(), &index_table,
-                                             &cache_used_ignored);
+      auto status = metadata_cache->GetTable(
+          index_info->table_id(), &index_table, &cache_used_ignored);
       if (!status.ok()) {
         StartSynchronization(std::move(self_), status);
         return;
       }
       std::shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
-      index_op->mutable_request()->Swap(&pair.second);
-      index_op->mutable_request()->MergeFrom(pair.second);
+      index_op->mutable_request()->Swap(&index_request);
+      index_op->mutable_request()->MergeFrom(index_request);
       session->Apply(index_op);
       index_ops.emplace_back(std::move(index_op), write_op);
     }

@@ -565,7 +565,9 @@ public enum AlertTemplate {
       "DB write/read test error",
       "Failed to perform test write/read YSQL operation",
       "count by (node_prefix) "
-          + "(yb_node_ysql_write_read{node_prefix=\"__nodePrefix__\"}"
+          + "((yb_node_ysql_write_read{node_prefix=\"__nodePrefix__\"} and on (node_prefix) "
+          + "(max_over_time(ybp_universe_update_in_progress"
+          + "{node_prefix=\"__nodePrefix__\"}[5m]) == 0))"
           + " {{ query_condition }} {{ query_threshold }})",
       "Test YSQL write/read operation failed on "
           + "{{ $value | printf \\\"%.0f\\\" }} nodes(s) for universe '{{ $labels.source_name }}'.",
@@ -873,7 +875,7 @@ public enum AlertTemplate {
 
   UNDER_REPLICATED_TABLETS(
       "Under-replicated tablets",
-      "Some tablet(s) remain under-replicated for longer that configured threshold",
+      "Some tablet(s) remain under-replicated for longer than configured threshold",
       "max by (node_prefix)"
           + " (min_over_time(yb_node_underreplicated_tablet_count{node_prefix=\"__nodePrefix__\"}"
           + "[{{ query_threshold }}s]) > 0)",
