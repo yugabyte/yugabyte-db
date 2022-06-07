@@ -139,6 +139,13 @@ The snapshot feature uses the `cdc_snapshot_batch_size` GFlag. This flag's defau
 
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
 * User Defined Types (UDT) are not supported. Issue [12744](https://github.com/yugabyte/yugabyte-db/issues/12744).
+
+{{< note title="Note" >}}
+
+In the current implementation, information related to the columns for the UDTs will not be there in the messages published on Kafka topic.
+
+{{< /note >}}
+
 * DROP and TRUNCATE commands aren't supported. If a user tries to issue these commands on a table while a stream ID is there for the table, the server might crash, the behaviour is unstable. Issues for TRUNCATE [10010](https://github.com/yugabyte/yugabyte-db/issues/10010) and DROP [10069](https://github.com/yugabyte/yugabyte-db/issues/10069).
 * If a stream ID is created, and after that a new table is created, the existing stream ID is not able to stream data from the newly created table. The user needs to create a new stream ID. Issue [10921](https://github.com/yugabyte/yugabyte-db/issues/10921).
 * CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
