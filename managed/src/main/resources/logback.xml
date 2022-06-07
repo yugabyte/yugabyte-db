@@ -26,7 +26,7 @@
 
         <encoder>
           <!-- Limit log message to 20MB. Truncate from front if longer -->
-          <pattern>YW %d{"yyyy-MM-dd'T'HH:mm:ss.SSSXXX", UTC} [%level] from %logger{0} in %thread - %.2000000message%n%xException</pattern>
+          <pattern>YW %d{"yyyy-MM-dd'T'HH:mm:ss.SSSXXX", UTC} [%level] %X{correlation-id} from %logger{0} in %thread - %.2000000message%n%xException</pattern>
         </encoder>
 
         <!--
@@ -99,7 +99,7 @@
       </then>
       <else>
         <encoder>
-          <pattern>%d{"yyyy-MM-dd'T'HH:mm:ss.SSSXXX", UTC} %X{logType} %-5coloredLevel %F:%L [%thread] %logger %msg%n</pattern>
+          <pattern>%d{"yyyy-MM-dd'T'HH:mm:ss.SSSXXX", UTC} %X{logType} %-5coloredLevel %X{correlation-id} %F:%L [%thread] %logger %msg%n</pattern>
         </encoder>
       </else>
     </if>
