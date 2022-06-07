@@ -440,6 +440,7 @@ message SysCDCStreamEntryPB {
     DELETING = 1;
     // Currently DELETED is not being used because we delete streams entries from sys catalog.
     DELETED = 2;
+    DELETING_METADATA = 4;
   }
   repeated string table_id = 1;
   repeated CDCStreamOptionsPB options = 2;
