@@ -188,7 +188,7 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   }
   {
     auto l = table.LockForRead();
-    if (l->started_deleting() || l->started_hiding()) {
+    if (l->started_deleting()) {
       VLOG(1) << Format("Table is deleted; ignoring for splitting. table_id: $0", table.id());
       return STATUS_FORMAT(
           NotSupported, "Table is deleted; ignoring for splitting. table_id: $0", table.id());
@@ -630,25 +630,6 @@ void TabletSplitManager::DoSplitting(
   ScheduleSplits(state.GetSplitsToSchedule());
 }
 
-bool TabletSplitManager::HasOutstandingTabletSplits(const TableInfo& table) {
-  for (const auto& task : table.GetTasks()) {
-    if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
-        task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
-      YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Table " << table.id()
-                                    << " has outstanding splitting tasks";
-      return true;
-    }
-  }
-
-  for (const auto& tablet : table.GetTablets()) {
-    auto tablet_lock = tablet->LockForRead();
-    if (tablet_lock->pb.has_split_parent_tablet_id() && !tablet_lock->is_running()) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool TabletSplitManager::IsRunning() {
   return is_running_;
 }
@@ -665,10 +646,24 @@ bool TabletSplitManager::IsTabletSplittingComplete(const TableInfo& table) {
   if (is_running_) {
     return false;
   }
+  // Deleted tables should not have any splits.
   if (table.is_deleted()) {
     return true;
   }
-  return !HasOutstandingTabletSplits(table);
+  // Colocated tables should not have any splits.
+  if (table.colocated()) {
+    return true;
+  }
+  for (const auto& task : table.GetTasks()) {
+    if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
+        task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
+      YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Table " << table.id()
+                                    << " has outstanding splitting tasks";
+      return false;
+    }
+  }
+
+  return !table.HasOutstandingSplits();
 }
 
 void TabletSplitManager::DisableSplittingFor(
