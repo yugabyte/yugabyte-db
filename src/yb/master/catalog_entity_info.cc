@@ -785,6 +785,7 @@ TabletInfos TableInfo::GetTablets(IncludeInactive include_inactive) const {
 
 bool TableInfo::HasOutstandingSplits() const {
   SharedLock<decltype(lock_)> l(lock_);
+  DCHECK(!colocated());
   std::unordered_set<TabletId> partitions_tablets;
   for (const auto& p : partitions_) {
     auto tablet_lock = p.second->LockForRead();
