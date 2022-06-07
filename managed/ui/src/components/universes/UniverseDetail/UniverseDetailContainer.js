@@ -9,7 +9,9 @@ import {
   getHealthCheck,
   getHealthCheckResponse,
   updateBackupState,
-  updateBackupStateResponse
+  updateBackupStateResponse,
+  fetchReleasesByProvider,
+  fetchReleasesResponse
 } from '../../../actions/universe';
 import {
   abortTask,
@@ -42,8 +44,8 @@ import { toast } from 'react-toastify';
 const mapDispatchToProps = (dispatch) => {
   return {
     getUniverseInfo: (uuid) => {
-      dispatch(fetchUniverseInfo(uuid)).then((response) => {
-        dispatch(fetchUniverseInfoResponse(response.payload));
+      return dispatch(fetchUniverseInfo(uuid)).then((response) => {
+        return dispatch(fetchUniverseInfoResponse(response.payload));
       });
     },
 
@@ -57,6 +59,11 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
+    fetchSupportedReleases: (pUUID) => {
+      dispatch(fetchReleasesByProvider(pUUID)).then((response) => {
+        dispatch(fetchReleasesResponse(response.payload));
+      });
+    },
     resetTablesList: () => {
       dispatch(resetTablesList());
     },

@@ -1024,7 +1024,9 @@ class UniverseForm extends Component {
               }
             >
               This operation will migrate this universe and all its data to a completely new set of
-              nodes. Or alternatively you could try smart resize.
+              nodes. Or alternatively you could try smart resize (This will change VM image{' '}
+              {oldConfig.volumeSize !== newConfig.volumeSize ? 'and volume size' : ''} for existing
+              nodes).
               <div className={'full-move-config'}>
                 <div className={'text-lightgray full-move-config--general'}>
                   <h5>Current:</h5>
