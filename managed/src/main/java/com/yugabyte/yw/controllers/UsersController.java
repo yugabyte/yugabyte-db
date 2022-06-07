@@ -111,9 +111,14 @@ public class UsersController extends AuthenticatedController {
     UserRegisterFormData formData = form.get();
 
     if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth")) {
-      byte[] passwordLdap = new byte[16];
-      new Random().nextBytes(passwordLdap);
-      String generatedPassword = new String(passwordLdap, Charset.forName("UTF-8"));
+      byte[] passwordOidc = new byte[16];
+      new Random().nextBytes(passwordOidc);
+      String generatedPassword = new String(passwordOidc, Charset.forName("UTF-8"));
+      // To be consistent with password policy
+      Integer randomInt = new Random().nextInt(26);
+      String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
+      String uppercaseLetter = lowercaseLetter.toUpperCase();
+      generatedPassword += lowercaseLetter + uppercaseLetter + String.valueOf(randomInt);
       formData.setPassword(generatedPassword); // Password is not used.
     }
 
