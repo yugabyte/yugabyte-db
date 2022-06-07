@@ -214,6 +214,11 @@ extern bool IsYBReadCommitted();
 extern bool YBSavepointsEnabled();
 
 /*
+ * Whether the per database catalog version mode is enabled.
+ */
+extern bool YBIsDBCatalogVersionMode();
+
+/*
  * Given a status returned by YB C++ code, reports that status as a PG/YSQL
  * ERROR using ereport if it is not OK.
  */
