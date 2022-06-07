@@ -196,11 +196,13 @@ For detailed information on the relative time formatting, refer to the [`restore
 
 ## Limitations
 
+PITR functionality comes with several limitations, mainly when used together with other features of YugabyteDB. Most of the limitations will be addressed in the future, please refer to corresponding tracking issues for more details.
+
 ###  CDC
 
 Combination of PITR and [CDC](../../../explore/change-data-capture/) is currently not supported.
 
-Tracking issue: TBD
+Tracking issue: [12773](https://github.com/yugabyte/yugabyte-db/issues/12773)
 
 ### xCluster replication
 
@@ -218,52 +220,25 @@ Tracking issue: [#10820](https://github.com/yugabyte/yugabyte-db/issues/10820)
 
 Combination of PITR and [tablegroups](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-tablegroups.md) is currently not supported. If you attempt to create a PITR schedule within a cluster with tablegroups, you will get an error. An attempt to create a tablegroup if a schedule exists on **any** of the databases will also end up in an error.
 
-Tracking issue: TBD
+Tracking issue: [11924](https://github.com/yugabyte/yugabyte-db/issues/11924)
 
-### Tablespaces
+### Global objects
 
-PITR does not support restoration of [tablespaces](explore/ysql-language-features/going-beyond-sql/tablespaces/). For that reason, `DROP TABLESPACE` command is disallowed if a schedule exists on **any** of the databases within the cluster.
+Global objects, such as [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/), roles and permissions are not currently backed up by the distributed snapshots, and therefore are not supported by PITR. If you alter or drop a global object, and then try to restore to a point in time before the change, the object will **not** be restored.
 
-Tracking issue: TBD
+Tracking issue for YSQL tablespaces: [10257](https://github.com/yugabyte/yugabyte-db/issues/10257)
+Tracking issue for YSQL roles and permissions: [10349](https://github.com/yugabyte/yugabyte-db/issues/10349)
+Tracking issue for YCQL: [8453](https://github.com/yugabyte/yugabyte-db/issues/8453)
 
+{{< note title="Tablespaces" >}}
 
+Tablespaces are crucial for geo-partitioned deployments. Trying to restore a database that relies on a tablespace that had been removed can lead to unexpected behavior, so `DROP TABLESPACE` command is currently disallowed if a schedule exists on **any** of the databases within the cluster.
 
-----
+{{< /note >}}
 
-### Common limitations
+### Other restrictions
 
-
-
-* Combination of PITR and xCluster replication is not yet fully tested and is not guaranteed to work - [issue 10820](https://github.com/yugabyte/yugabyte-db/issues/10820).
-* Combination of PITR and CDC is not yet fully tested and is not guaranteed to work - [issue TBD](TBD).
-
-
-
-
-This feature is in active development. YSQL and YCQL support different features, as detailed in the sections that follow.
-
-### YSQL limitations
-
-* For sequences, restoring to a state before the sequence table was created/dropped doesn't work. This is being tracked in [issue 10249](https://github.com/yugabyte/yugabyte-db/issues/10249).
-
-* Colocated tables aren't supported and databases with colocated tables cannot be restored to a previous point in time. Tracked in [issue 8259](https://github.com/yugabyte/yugabyte-db/issues/8259).
-
-* Cluster-wide changes such as roles and permissions, tablespaces, and so on aren't supported. Please note, however, that database-level operations such as changing ownership of a table of a database, row-level security, and so on can be restored as their scope is not cluster-wide. Tablespaces are tracked in [issue 10257](https://github.com/yugabyte/yugabyte-db/issues/10257), and roles and privileges are tracked in [issue 10349](https://github.com/yugabyte/yugabyte-db/issues/10349).
-
-* Support for triggers and stored procedures is to be investigated. Tracked in [issue 10350](https://github.com/yugabyte/yugabyte-db/issues/10350).
-
-* In case of software upgrades/downgrades, we don't support restoring back in time to the previous version.
-
-### YCQL limitations
-
-* Support for YCQL roles and permissions is yet to be added. Tracked in [issue 8453](https://github.com/yugabyte/yugabyte-db/issues/8453).
-
-### Common limitations
-
-* Currently, we don't support some aspects of PITR in conjunction with xCluster replication. Tracked in [issue 10820](https://github.com/yugabyte/yugabyte-db/issues/10820).
-
-* TRUNCATE TABLE is a limitation tracked in [issue 7130](https://github.com/yugabyte/yugabyte-db/issues/7130).
-
-* We don't support DDL restores to a previous point in time using external backups. This is being tracked in [issue 8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
-
-Overall development for the PITR feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120).
+* `TRUNCATE` command is disallowed for a database with a snapshot schedule.
+* A database can't be dropped if there is at least one schedule assigned to it. If you need to drop a database, you need to delete all its schedules first.
+* PITR works **only** with in-cluster distributed snapshot. PITR support for off-cluster backups is considered for the future. Tracking issue: [8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
+* Snapshot schedules can't be modified once created. If you need to change the interval or the retention period, you should delete the snapshot and recreate it with new parameters. Tracking issue: [8417](https://github.com/yugabyte/yugabyte-db/issues/8417).
