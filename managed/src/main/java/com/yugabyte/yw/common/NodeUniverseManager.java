@@ -155,7 +155,10 @@ public class NodeUniverseManager extends DevopsBase {
     bashCommand.add("-d");
     bashCommand.add(dbName);
     bashCommand.add("-c");
+    // Escaping double quotes at first.
     String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
+    // Escaping single quotes after.
+    escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
     bashCommand.add("\"" + escapedYsqlCommand + "\"");
     command.add(String.join(" ", bashCommand));
     ShellProcessContext context =
