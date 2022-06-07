@@ -127,7 +127,12 @@ IndexOnlyNext(IndexOnlyScanState *node)
 	 * OK, now that we have what we need, fetch the next tuple.
 	 */
 	MemoryContext oldcontext;
-	oldcontext = MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
+	/*
+	 * To handle dead tuple for temp table, we shouldn't store its index
+	 * in per-tuple memory context.
+	 */
+	if (IsYBRelation(node->ss.ss_currentRelation))
+		oldcontext = MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
 	while ((tid = index_getnext_tid(scandesc, direction)) != NULL)
 	{
 		HeapTuple	tuple = NULL;
@@ -265,10 +270,12 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			PredicateLockPage(scandesc->heapRelation,
 							  ItemPointerGetBlockNumber(tid),
 							  estate->es_snapshot);
-		MemoryContextSwitchTo(oldcontext);
+		if (IsYBRelation(node->ss.ss_currentRelation))
+			MemoryContextSwitchTo(oldcontext);
 		return slot;
 	}
-	MemoryContextSwitchTo(oldcontext);
+	if (IsYBRelation(node->ss.ss_currentRelation))
+		MemoryContextSwitchTo(oldcontext);
 
 	/*
 	 * if we get here it means the index scan failed so we are at the end of
