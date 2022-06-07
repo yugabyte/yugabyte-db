@@ -378,7 +378,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.19-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.20-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:
