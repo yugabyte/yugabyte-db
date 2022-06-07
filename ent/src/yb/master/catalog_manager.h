@@ -141,6 +141,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id) override;
   CHECKED_STATUS DeleteCDCStreamsForTables(const vector<TableId>& table_ids) override;
 
+  // Clean CDC streams for a table.
+  Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) override;
+  Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) override;
+
   // Setup Universe Replication to consume data from another YB universe.
   CHECKED_STATUS SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
                                           SetupUniverseReplicationResponsePB* resp,
@@ -180,8 +184,25 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Find all the CDC streams that have been marked as DELETED.
   CHECKED_STATUS FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
+  // Find all the CDC streams that have been marked as provided state.
+  Status FindCDCStreamsMarkedForMetadataDeletion(
+      std::vector<scoped_refptr<CDCStreamInfo>>* streams, SysCDCStreamEntryPB::State state);
+
   // Delete specified CDC streams.
   CHECKED_STATUS CleanUpDeletedCDCStreams(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
+
+  void GetTabletsWithStreams(
+      const scoped_refptr<CDCStreamInfo> stream, std::set<TabletId>* tablets_with_streams);
+
+  Result<std::shared_ptr<client::TableHandle>> GetCDCStateTable();
+
+  void DeleteFromCDCStateTable(
+      std::shared_ptr<yb::client::TableHandle> cdc_state_table_result,
+      std::shared_ptr<client::YBSession> session, const TabletId& tablet_id,
+      const CDCStreamId& stream_id);
+
+  // Delete specified CDC streams metadata.
+  Status CleanUpCDCStreamsMetadata(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
 
   bool IsCdcEnabled(const TableInfo& table_info) const override;
 
@@ -329,11 +350,16 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Return all CDC streams.
   void GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
-  // Mark specified CDC streams as DELETING so they can be removed later.
-  CHECKED_STATUS MarkCDCStreamsAsDeleting(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
+  // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
+  Status MarkCDCStreamsForMetadataCleanup(
+      const std::vector<scoped_refptr<CDCStreamInfo>>& streams, SysCDCStreamEntryPB::State state);
 
   // Find CDC streams for a table.
   std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTable(const TableId& table_id) const;
+
+  // Find CDC streams for a table to clean its metadata.
+  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableToDeleteMetadata(
+      const TableId& table_id) const;
 
   bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override REQUIRES_SHARED(mutex_);
 

@@ -474,6 +474,11 @@ class CatalogManager :
   virtual CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
 
+  // Delete CDC streams metadata for a table.
+  virtual Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) EXCLUDES(mutex_);
+  virtual Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids)
+      EXCLUDES(mutex_);
+
   CHECKED_STATUS UpdateCDCConsumerOnTabletSplit(const TableId& consumer_table_id,
                                                 const SplitTabletIds& split_tablet_ids) override {
     // Default value.
