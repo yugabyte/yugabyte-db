@@ -146,6 +146,7 @@ In the current implementation, information related to the columns for the UDTs w
 
 {{< /note >}}
 
+* CDC behaviour is undefined on downgrading from a CDC supported version (2.13 and newer) to an unsupported version (2.12 and older) and upgrading it back. Issue [12800](https://github.com/yugabyte/yugabyte-db/issues/12800)
 * DROP and TRUNCATE commands aren't supported. If a user tries to issue these commands on a table while a stream ID is there for the table, the server might crash, the behaviour is unstable. Issues for TRUNCATE [10010](https://github.com/yugabyte/yugabyte-db/issues/10010) and DROP [10069](https://github.com/yugabyte/yugabyte-db/issues/10069).
 * If a stream ID is created, and after that a new table is created, the existing stream ID is not able to stream data from the newly created table. The user needs to create a new stream ID. Issue [10921](https://github.com/yugabyte/yugabyte-db/issues/10921).
 * CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
