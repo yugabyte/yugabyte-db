@@ -196,7 +196,7 @@ For detailed information on the relative time formatting, refer to the [`restore
 
 ## Limitations
 
-PITR functionality comes with several limitations, mainly when used together with other features of YugabyteDB. Most of the limitations will be addressed in the future, please refer to corresponding tracking issues for more details.
+PITR functionality comes with several limitations, mainly related to it being used together with other features of YugabyteDB. Most of the limitations will be addressed in the future, please refer to corresponding tracking issues for more details.
 
 ###  CDC
 
@@ -230,7 +230,7 @@ Tracking issue for YSQL tablespaces: [10257](https://github.com/yugabyte/yugabyt
 Tracking issue for YSQL roles and permissions: [10349](https://github.com/yugabyte/yugabyte-db/issues/10349)
 Tracking issue for YCQL: [8453](https://github.com/yugabyte/yugabyte-db/issues/8453)
 
-{{< note title="Tablespaces" >}}
+{{< note title="Special case for tablespaces" >}}
 
 Tablespaces are crucial for geo-partitioned deployments. Trying to restore a database that relies on a tablespace that had been removed can lead to unexpected behavior, so `DROP TABLESPACE` command is currently disallowed if a schedule exists on **any** of the databases within the cluster.
 
