@@ -127,7 +127,7 @@ Here's how it works:
 
 1. You deploy two YugabyteDB clusters (typically) in different regions. Each cluster automatically replicates data in the cluster synchronously for strong consistency.
 
-2. You then set up xCluster asynchronous replication from one cluster to another. This can be either bi-directional in active-active configurations, or uni-directional in active-passive configurations.
+2. You then set up cross cluster asynchronous replication from one cluster to another. This can be either bi-directional in active-active configurations, or uni-directional in active-passive configurations.
 
 To deploy a cross-cluster replication cluster, contact {{<support-cloud>}}.
 
@@ -137,7 +137,7 @@ In an active-passive configuration, one cluster handles writes, and asynchronous
 
 The sink cluster can be used to serve low-latency reads that are timeline consistent to clients nearby. They can also be used for disaster recovery. In the event of a source cluster failure, clients can connect to the replicated sink cluster.
 
-xCluster replication is ideal for use cases such as data recovery, auditing, and compliance. You can also use xCluster replication to migrate data from a data center to the cloud or from one cloud to another. In situations that tolerate eventual consistency, clients in the same region as the sink clusters can get low latency reads.
+This configuration is used for use cases such as data recovery, auditing, and compliance. You can also use cross cluster replication to migrate data from a data center to the cloud or from one cloud to another. In situations that tolerate eventual consistency, clients in the same region as the sink clusters can get low latency reads.
 
 ![Multi-region deployment with single-direction asynchronous replication between clusters](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-3.png)
 
@@ -145,7 +145,7 @@ xCluster replication is ideal for use cases such as data recovery, auditing, and
 
 **Consistency**: Reads and writes in the source cluster are strongly consistent. Because replication across clusters is asynchronous, I/O will be timeline consistent.
 
-**Latency**: With xCluster, replication to the remote cluster happens outside the critical path of a write operation. So replication does not materially impact latency of reads and writes. In essence you are trading off consistency for latency. Reads in the regions with a cluster have low latency.
+**Latency**: With xCluster, replication to the remote cluster happens outside the critical path of a write operation. So replication doesn't materially impact latency of reads and writes. In essence you are trading off consistency for latency. Reads in the regions with a cluster have low latency.
 
 **Strengths**
 
@@ -155,12 +155,12 @@ xCluster replication is ideal for use cases such as data recovery, auditing, and
 
 **Tradeoffs**
 
-- The sink cluster does not handle writes. Writes from clients outside the source cluster region can incur high latency
+- The sink cluster doesn't handle writes. Writes from clients outside the source cluster region can incur high latency
 - Because xCluster replication bypasses the query layer for replicated records, database triggers won't get fired and can lead to unexpected behavior
 
 ### Active-active
 
-In an active-active configuration, both clusters can handle writes to potentially the same data. Writes to either cluster are asynchronously replicated to the other cluster with a timestamp for the update. xCluster with bi-directional replication is used for disaster recovery.
+In an active-active configuration, both clusters can handle writes to potentially the same data. Writes to either cluster are asynchronously replicated to the other cluster with a timestamp for the update. Cross cluster with bi-directional replication is used for disaster recovery.
 
 ![Multi-region deployment with bi-directional asynchronous replication between clusters](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-4.png)
 
@@ -168,7 +168,7 @@ In an active-active configuration, both clusters can handle writes to potentiall
 
 **Consistency**: Reads and writes in the cluster that handles a write request are strongly consistent. Because replication across clusters is asynchronous, data replication to the remote cluster will be timeline consistent. If the same key is updated in both clusters at a similar time window, this will result in the write with the higher timestamp becoming the latest write (last writer wins semantics).
 
-**Latency**: With xCluster, replication to the remote cluster happens outside the critical path of a write operation. So replication does not materially impact latency of reads and writes. In essence you are trading off consistency for latency.
+**Latency**: With xCluster, replication to the remote cluster happens outside the critical path of a write operation. So replication doesn't materially impact latency of reads and writes. In essence you are trading off consistency for latency.
 
 **Strengths**
 
@@ -188,21 +188,21 @@ For applications that have writes happening from a single zone or region but wan
 
 ![Read replicas](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-6.png)
 
-**Resilience**: If you deploy the nodes of the primary cluster across zones, you get zone-level resilience. The read replicas do not participate in the Raft consistency protocol and therefore don't affect resilience.
+**Resilience**: If you deploy the nodes of the primary cluster across zones, you get zone-level resilience. Read replicas don't participate in the Raft consistency protocol and therefore don't affect resilience.
 
 **Consistency**: The data in the replica clusters is timeline consistent, which is better than eventual consistency.
 
-**Latency**: Reads from both the primary cluster and read replicas can be fast (single digit millisecond latency) because read replicas can serve timeline consistent reads without having to go to the shard leader in the primary cluster. The read replica clusters do not handle write requests; instead they are redirected to the primary cluster. So the write latency will depend on the distance between the client and the primary cluster.
+**Latency**: Reads from both the primary cluster and read replicas can be fast (single digit millisecond latency) because read replicas can serve timeline consistent reads without having to go to the shard leader in the primary cluster. Read replicas don't handle write requests; these are redirected to the primary cluster. So the write latency will depend on the distance between the client and the primary cluster.
 
 **Strengths**
 
 - Fast, timeline-consistent reads from replicas
 - Strongly consistent reads and writes to the primary cluster
-- Low latency writes in the region
+- Low latency writes in the primary region
 
 **Tradeoffs**
 
-- The primary cluster and the read replicas are correlated clusters, not two independent clusters. In other words, adding read replicas does not improve resilience.
+- The primary cluster and the read replicas are correlated clusters, not two independent clusters. In other words, adding read replicas doesn't improve resilience.
 - Read replicas can't take writes, so write latency from remote regions can be high even if there is a read replica near the client.
 
 To deploy a read replica cluster, contact {{<support-cloud>}}.

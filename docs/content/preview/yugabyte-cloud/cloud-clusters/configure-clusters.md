@@ -49,9 +49,13 @@ The **Infrastructure** section on the cluster **Settings** tab summarizes the cl
 
 - You can't scale Sandbox clusters.
 
-## Scale a cluster
+## Scale and configure clusters
 
-To scale a cluster:
+### Single-region clusters
+
+You can scale multi-node single-region clusters horizontally and vertically.
+
+To scale a single-region cluster:
 
 1. On the **Clusters** page, select your cluster.
 1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
@@ -62,6 +66,48 @@ To scale a cluster:
     \
     **Cost** displays the estimated new cost for the cluster; **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
-1. Click **Save** when you are done.
+1. Click **Confirm and Save Changes** when you are done.
+
+Depending on the number of nodes, the scaling operation can take several minutes or more, during which time some cluster operations will not be available.
+
+### Multi-region synchronous clusters
+
+You can scale multi-region synchronous clusters horizontally and vertically. In addition, you can migrate node to different regions; migrated nodes can be deployed to different VPCs.
+
+To scale and migrate nodes in a multi-region synchronous cluster:
+
+1. On the **Clusters** page, select your cluster.
+1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+
+    ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit-sync.png)
+
+1. To migrate nodes to a different region, select the region. When migrating a node, you can also deploy it in a different VPN.
+
+1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the cluster. The same number of nodes and node sizes apply across all regions.
+    \
+    **Cost** displays the estimated new cost for the cluster; **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+
+1. Click **Confirm and Save Changes** when you are done.
+
+Depending on the number of nodes, the scaling operation can take several minutes or more, during which time some cluster operations will not be available.
+
+### Multi-region geo-partioned cluster
+
+You can scale multi-region synchronous clusters horizontally and vertically. In addition, you can add new regions; these must be deployed in a VPC. New regions have the same fault tolerance as the primary cluster.
+
+To scale a multi-region geo-partioned cluster:
+
+1. On the **Clusters** page, select your cluster.
+1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+
+    ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit-geo.png)
+
+1. To add a region, click **Add Region**, choose the region, select the VPC where you want to deploy the cluster, and enter the number of nodes. The new region has the same fault tolerance as the primary cluster.
+
+1. To scale the cluster, enter the number of nodes, vCPUs per node, and disk size in GB per node. The same number of nodes and node sizes apply across all regions.
+    \
+    **Cost** displays the estimated new cost for the cluster; **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+
+1. Click **Confirm and Save Changes** when you are done.
 
 Depending on the number of nodes, the scaling operation can take several minutes or more, during which time some cluster operations will not be available.
