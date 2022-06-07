@@ -18,8 +18,8 @@ showAsideToc: true
 
 Multi-region synchronous clusters include the following features:
 
+- Replicated synchronously across 3 regions with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3.
 - No limit on cluster size - choose any cluster size based on your use case.
-- Single multi-region [replication factor](../../../architecture/docdb-replication/replication/) (RF) 3 cluster.
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking required.
 - Automated and on-demand backups.
@@ -63,7 +63,7 @@ Set the following options:
 
   ![Add Cluster Wizard - Multi-region and size](/images/yb-cloud/cloud-addcluster-multisync.png)
 
-  - **Regions**: For each of the 3 regions, choose the [region](../../release-notes#cloud-provider-regions) where the nodes will be located, and the VPC in which to deploy the nodes. Choose the number of nodes to deploy in the regions; each region has the same number of nodes. Only VPCs using the selected cloud provider are listed. The VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
+  - **Regions** - For each of the 3 regions, choose the [region](../../release-notes#cloud-provider-regions) where the nodes will be located, and the VPC in which to deploy the nodes. Choose the number of nodes to deploy in the regions; each region has the same number of nodes. Only VPCs using the selected cloud provider are listed. The VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
   - **Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
 

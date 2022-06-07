@@ -52,7 +52,11 @@ In a single-region multi-zone cluster, the nodes of the YugabyteDB cluster are p
 - Applications accessing data from remote regions may experience higher read/write latencies
 - Not resilient to region-level outages, such as those caused by natural disasters like floods or ice storms
 
-To deploy a multi-zone cluster, refer to [Create a single-region cluster](../create-clusters/).
+**Deployment**
+
+To deploy a multi-zone cluster, create a single-region cluster with Availability Zone Level fault tolerance. Refer to [Create a single-region cluster](../create-clusters/).
+
+If you deploy your cluster in a VPC, you can geo partition the cluster after it is created.
 
 ## Sync across all regions
 
