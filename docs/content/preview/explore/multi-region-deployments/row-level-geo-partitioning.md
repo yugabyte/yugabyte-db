@@ -31,11 +31,10 @@ Geo-partitioning makes it easy for developers to move data closer to users for:
 * Meeting data residency requirements to comply with regulations such as GDPR
 {{< /tip >}}
 
-Geo-partitioning of data enables fine-grained, row-level control over the placement of table data across different geographical locations. This is accomplished in three simple steps – first, creating local transaction status tables within each region; second, partitioning a table into user-defined table partitions; and finally, pinning these partitions to the desired geographic locations by configuring metadata for each partition.
+Geo-partitioning of data enables fine-grained, row-level control over the placement of table data across different geographical locations. This is accomplished in two simple steps – first, partitioning a table into user-defined table partitions; then, pinning these partitions to the desired geographic locations by configuring metadata for each partition.
 
-* The first step of creating local transaction tables within each region is done by creating a new transaction table and setting its placement.
-* The second step of creating user-defined table partitions is done by designating a column of the table as the partition column that will be used to geo-partition the data. The value of this column for a given row is used to determine the table partition that the row belongs to.
-* The third step involves creating partitions in the respective geographic locations using tablespaces. Note that the data in each partition can be configured to get replicated across multiple zones in a cloud provider region, or across multiple nearby regions / datacenters.
+* The first step of creating user-defined table partitions is done by designating a column of the table as the partition column that will be used to geo-partition the data. The value of this column for a given row is used to determine the table partition that the row belongs to.
+* The second step involves creating partitions in the respective geographic locations using tablespaces. Note that the data in each partition can be configured to get replicated across multiple zones in a cloud provider region, or across multiple nearby regions / datacenters.
 
 An entirely new geographic partition can be introduced dynamically by adding a new table partition and configuring it to keep the data resident in the desired geographic location. Data in one or more of the existing geographic locations can be purged efficiently simply by dropping the necessary partitions. Users of traditional RDBMS would recognize this scheme as being close to user-defined list-based table partitions, with the ability to control the geographic location of each partition.
 
@@ -363,124 +362,7 @@ txn_type      | debit
 created_at    | 2020-11-07 21:28:11.056236
 ```
 
-## Step 5. Running distributed transactions
-
-So far, we have only been running `SELECT` and [single-row transactions](../../../architecture/transactions/transactions-overview/#single-row-transactions). Geo-partitioning introduces a new complication for general distributed transactions.
-
-Let's say we want to run the following transaction:
-
-```sql
-BEGIN;
-INSERT INTO bank_transactions VALUES (100, 10002, 'EU', 'checking', 400.00, 'debit');
-INSERT INTO bank_transactions VALUES (100, 10003, 'EU', 'checking', 400.00, 'credit');
-COMMIT;
-```
-
-If we attempt to run this while connected to a node in us-west-2, we get an error:
-
-```sql
-BEGIN;
-INSERT INTO bank_transactions VALUES (100, 10002, 'EU', 'checking', 400.00, 'debit');
-```
-
-```output
-ERROR:  Illegal state: Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64: . Errors from tablet servers: [Illegal state (yb/client/transaction.cc:284): Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64]
-```
-
-Because we have a tablespace with placement set to the us-west-2 region, YugabyteDB assumes by default that we want to run a transaction local to that region (using the automatically-generated transaction status table for the `us_west_2_tablespace` created in Step 1), but such a transaction cannot modify data outside of us-west-2.
-
-However, if we instead connect to a node in eu-central-1 and run the exact same transaction, we are now able to finish and commit the transaction without error:
-
-```sql
-BEGIN;
-INSERT INTO bank_transactions VALUES (100, 10002, 'EU', 'checking', 400.0, 'debit');
-```
-
-```output
-INSERT 1 0
-```
-
-```sql
-INSERT INTO bank_transactions VALUES (100, 10003, 'EU', 'checking', 400.0, 'credit');
-```
-
-```output
-INSERT 1 0
-```
-
-```sql
-COMMIT;
-```
-
-```output
-COMMIT
-```
-
-Sometimes though, we might want to run a transaction that writes data to multiple regions, for example:
-
-```sql
-BEGIN;
-INSERT INTO bank_transactions VALUES (100, 10004, 'US', 'checking', 400.00, 'debit');
-INSERT INTO bank_transactions VALUES (200, 10005, 'EU', 'checking', 400.00, 'credit');
-COMMIT;
-```
-
-Running this transaction will fail whether we run it from us-west-2 or eu-central-1. The solution is to mark the transaction as a global transaction:
-
-```sql
-SET force_global_transaction = TRUE;
-BEGIN;
-INSERT INTO bank_transactions VALUES (100, 10004, 'US', 'checking', 400.00, 'debit');
-```
-
-```output
-INSERT 1 0
-```
-
-```sql
-INSERT INTO bank_transactions VALUES (200, 10005, 'EU', 'checking', 400.00, 'credit');
-```
-
-```output
-INSERT 1 0
-```
-
-```sql
-COMMIT;
-```
-
-```output
-COMMIT
-```
-
-Setting `force_global_transaction = TRUE` tells YugabyteDB to use the `system.transactions` transaction table instead, which is presumed to be globally replicated, and lets us run distributed transactions that span multiple regions.
-
-{{< note title="Global transaction latency" >}}
-Only force global transactions when necessary. All distributed transactions _can_ run without problems under `force_global_transaction = TRUE`, but you may have significantly higher latency when committing the transaction, because YugabyteDB must achieve consensus across multiple regions to write to `system.transactions`. Whenever possible, use the default setting of `force_global_transaction = FALSE`.
-{{< /note >}}
-
-Finally, let's say we want to delete the row we just inserted. If we run the following query connected to eu-central-1 as a local transaction, the query once again errors out:
-
-```sql
-SET force_global_transaction = FALSE;
-DELETE FROM bank_transactions WHERE user_id = 200 AND account_id = 10005;
-```
-
-```output
-ERROR:  Illegal state: Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64: . Errors from tablet servers: [Illegal state (yb/client/transaction.cc:284): Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64]
-```
-
-We are attempting to delete from the main table (`bank_transactions` rather than `bank_transactions_eu_west_1`) and not specifying the partition column (there's no `geo_partition = 'EU'` clause). This means that YugabyteDB is unable to tell that the row being deleted is in fact located in eu-central-1. To fix this, we could instead run:
-
-```sql
-DELETE FROM bank_transactions_eu_west_1 WHERE user_id = 200 AND account_id = 10005;
-```
-
-```output
-DELETE 1
-```
-
-## Step 6. Adding a new geographic location
+## Step 5. Adding a new geographic location
 
 Assume that after a while, our fictitious Yuga Bank gets a lot of customers across the globe, and wants to offer the service to residents of Brazil, which also has data residency laws. Thanks to row-level geo-partitioning, this can be accomplished easily. We can simply add a new partition and pin it to the AWS South America (São Paulo) region `sa-east-1` as shown below.
 
