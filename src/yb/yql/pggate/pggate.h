@@ -592,6 +592,8 @@ class PgApiImpl {
 
   Result<bool> CheckIfPitrActive();
 
+  const MemTracker &GetMemTracker() { return *mem_tracker_; }
+
  private:
   // Metrics.
   std::unique_ptr<MetricRegistry> metric_registry_;
