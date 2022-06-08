@@ -7,6 +7,7 @@ import { toast } from 'react-toastify';
 import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
 import { YBFormInput, YBButton, YBModal, YBToggle } from '../../common/forms/fields';
+import { setSSO } from '../../../config';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { YBBanner } from '../../common/descriptors/YBBanner';
 import ResetIcon from '../icons/reset_icon';
@@ -104,6 +105,7 @@ export const OIDCAuth = (props) => {
         key: `${OIDC_PATH}.use_oauth `,
         value: true
       });
+      setSSO(true);
       response && fetchRunTimeConfigs();
       toast.success('OIDC configuration is saved successfully', TOAST_OPTIONS);
     } catch {
@@ -121,6 +123,7 @@ export const OIDCAuth = (props) => {
         key: `${OIDC_PATH}.use_oauth`,
         value: true
       });
+      setSSO(true);
       toast.success(`OIDC authentication is enabled`, TOAST_OPTIONS);
     }
   };
@@ -136,6 +139,7 @@ export const OIDCAuth = (props) => {
       key: `${OIDC_PATH}.use_oauth`,
       value: 'false'
     });
+    setSSO(false);
     toast.warn(`OIDC authentication is disabled`, TOAST_OPTIONS);
   };
 
