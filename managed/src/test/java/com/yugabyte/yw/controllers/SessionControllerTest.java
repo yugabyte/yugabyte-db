@@ -185,9 +185,7 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.security.ldap.use_ldap", "true", false);
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
     when(ldapUtil.loginWithLdap(any())).thenReturn(user);
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
@@ -196,9 +194,7 @@ public class SessionControllerTest {
     assertNotNull(json.get("authToken"));
     assertAuditEntry(1, customer.uuid);
 
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.security.ldap.use_ldap", "false", false);
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
   }
 
   @Test
@@ -211,9 +207,7 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password1");
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.security.ldap.use_ldap", "true", false);
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
     when(ldapUtil.loginWithLdap(any())).thenReturn(null);
     Result result =
         assertPlatformException(() -> route(fakeRequest("POST", "/api/login").bodyJson(loginJson)));
@@ -225,9 +219,7 @@ public class SessionControllerTest {
         allOf(notNullValue(), containsString("Invalid User Credentials")));
     assertAuditEntry(0, customer.uuid);
 
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.security.ldap.use_ldap", "false", false);
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
   }
 
   @Test
@@ -259,9 +251,7 @@ public class SessionControllerTest {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.security.ldap.use_ldap", "true", false);
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
     when(ldapUtil.loginWithLdap(any())).thenReturn(null);
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
     JsonNode json = Json.parse(contentAsString(result));
@@ -270,9 +260,7 @@ public class SessionControllerTest {
     assertNotNull(json.get("authToken"));
     assertAuditEntry(1, customer.uuid);
 
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.security.ldap.use_ldap", "false", false);
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
   }
 
   @Test

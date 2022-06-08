@@ -311,7 +311,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     if (isHAConfig) {
       SettableRuntimeConfigFactory factory =
           app.injector().instanceOf(SettableRuntimeConfigFactory.class);
-      factory.globalRuntimeConf().setValue("yb.universe_version_check_mode", HA_ONLY.name(), false);
+      factory.globalRuntimeConf().setValue("yb.universe_version_check_mode", HA_ONLY.name());
       HighAvailabilityConfig.create("clusterKey");
     }
     mockWaits(mockClient, 3);

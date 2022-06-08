@@ -384,7 +384,7 @@ Default: `""`
 
 ##### --force_global_transactions
 
-If true, forces all transactions through this instance to always be global transactions that use the `system.transactions` transaction status table. This is equivalent to always setting the session variable `force_global_transaction = TRUE` (see [Row-Level Geo-Partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/#step-5-running-transactions)).
+If true, forces all transactions through this instance to always be global transactions that use the `system.transactions` transaction status table. This is equivalent to always setting the session variable `force_global_transaction = TRUE`.
 
 {{< note title="Global transaction latency" >}}
 
@@ -393,6 +393,18 @@ Avoid setting this flag when possible. All distributed transactions _can_ run wi
 {{< /note >}}
 
 Default: `false`
+
+#### --auto-create-local-transaction-tables
+
+If true, transaction status tables will be created under each YSQL tablespace that has a placement set and contains at least one other table.
+
+Default: `true`
+
+#### --auto-promote-nonlocal-transactions-to-global
+
+If true, local transactions using transaction status tables other than `system.transactions` will be automatically promoted to global transactions using the `system.transactions` transaction status table upon accessing data outside of the local region.
+
+Default: `true`
 
 ---
 
@@ -624,11 +636,29 @@ Default: `11000`
 
 ### Performance flags
 
+Use the following two flags to select the SSTable compression type.
+
 ##### --enable_ondisk_compression
 
-Enable Snappy compression at the cluster level.
+Enable SSTable compression at the cluster level.
 
 Default: `true`
+
+##### --compression_type
+
+Change the SSTable compression type. The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
+
+Default: `Snappy`
+
+{{< note title="Note" >}}
+
+If you select an invalid option, the cluster will not come up.
+
+If you change this flag, the change takes effect after you restart the cluster nodes.
+
+{{< /note >}}
+
+Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
 
 ##### --regular_tablets_data_block_key_value_encoding
 
@@ -676,32 +706,17 @@ Default: `256MB`
 
 ### Network compression
 
-Use the following flag to select the compression type.
-
-##### --compression_type
-
-The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
-
-Default: `Snappy`
-
-{{< note title="Notes" >}}
-
-- If you select an invalid option, the cluster will not come up.
-- If you change this flag, the change takes effect after you restart the cluster nodes.
-
-{{< /note >}}
-
-Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
-
-Use the following two gflags to configure RPC compression:
+Use the following two gflags to configure RPC compression.
 
 ##### --enable_stream_compression
 
-Controls whether YugabyteDB uses RPC compression. Valid values are `true` or `false`.
+Controls whether YugabyteDB uses RPC compression.
+
+Default: `true`
 
 ##### --stream_compression_algo
 
-Specifies which compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
+Specifies which RPC compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
 
 - 0: No compression (default value)
 - 1: Gzip

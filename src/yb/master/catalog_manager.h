@@ -493,6 +493,11 @@ class CatalogManager :
   virtual Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
       EXCLUDES(mutex_);
 
+  // Delete CDC streams metadata for a table.
+  virtual Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) EXCLUDES(mutex_);
+  virtual Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids)
+      EXCLUDES(mutex_);
+
   virtual Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
 
@@ -787,6 +792,9 @@ class CatalogManager :
       const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
 
   Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
+
+  Result<std::unordered_map<std::string, uint32_t>> GetPgTypeOid(const TableInfoPtr& table_info)
+      REQUIRES_SHARED(mutex_);
 
   void AssertLeaderLockAcquiredForReading() const override {
     leader_lock_.AssertAcquiredForReading();

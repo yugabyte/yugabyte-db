@@ -1874,6 +1874,20 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
   return sync.Wait();
 }
 
+Status YBClient::Data::GetTableSchema(YBClient* client,
+                                      const YBTableName& table_name,
+                                      CoarseTimePoint deadline,
+                                      std::shared_ptr<YBTableInfo> info,
+                                      StatusCallback callback) {
+  auto rpc = StartRpc<GetTableSchemaRpc>(
+      client,
+      callback,
+      table_name,
+      info.get(),
+      deadline);
+  return Status::OK();
+}
+
 Status YBClient::Data::GetTableSchemaById(YBClient* client,
                                           const TableId& table_id,
                                           CoarseTimePoint deadline,

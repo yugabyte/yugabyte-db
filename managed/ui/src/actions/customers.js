@@ -992,12 +992,14 @@ export function setLogsLoading() {
   };
 }
 
-export function getLogs(maxLines, regex, universe) {
+export function getLogs(maxLines, regex, universe, startDate, endDate) {
   const request = axios.get(`${ROOT_URL}/logs`, {
     params: {
       maxLines,
       queryRegex: regex,
-      universeName: universe
+      universeName: universe,
+      startDate,
+      endDate
     }
   });
   return {

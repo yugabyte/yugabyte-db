@@ -14,10 +14,10 @@
 #ifndef YB_DOCDB_PACKED_ROW_H
 #define YB_DOCDB_PACKED_ROW_H
 
+#include <optional>
 #include <unordered_map>
 
 #include <boost/functional/hash.hpp>
-#include <boost/optional.hpp>
 
 #include <google/protobuf/repeated_field.h>
 
@@ -114,15 +114,16 @@ class SchemaPacking {
     return varlen_columns_count_;
   }
 
+  bool SkippedColumn(ColumnId column_id) const;
   Slice GetValue(size_t idx, const Slice& packed) const;
-  boost::optional<Slice> GetValue(ColumnId column, const Slice& packed) const;
+  std::optional<Slice> GetValue(ColumnId column_id, const Slice& packed) const;
   void ToPB(SchemaPackingPB* out) const;
 
   std::string ToString() const;
 
  private:
   std::vector<ColumnPackingData> columns_;
-  std::unordered_map<ColumnId, size_t, boost::hash<ColumnId>> column_to_idx_;
+  std::unordered_map<ColumnId, int64_t, boost::hash<ColumnId>> column_to_idx_;
   size_t varlen_columns_count_;
 };
 
@@ -173,14 +174,14 @@ class RowPacker {
   ColumnId NextColumnId() const;
   Result<const ColumnPackingData&> NextColumnData() const;
 
-  Status AddValue(ColumnId column, const QLValuePB& value);
-  Status AddValue(ColumnId column, const Slice& value);
+  Status AddValue(ColumnId column_id, const QLValuePB& value);
+  Status AddValue(ColumnId column_id, const Slice& value);
 
   Result<Slice> Complete();
 
  private:
   template <class Value>
-  Status DoAddValue(ColumnId column, const Value& value);
+  Status DoAddValue(ColumnId column_id, const Value& value);
 
   const SchemaPacking& packing_;
   size_t idx_ = 0;

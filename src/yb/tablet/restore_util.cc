@@ -161,8 +161,8 @@ Status RestorePatch::PatchCurrentStateFromRestoringState() {
 
 void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* write_batch) {
   auto& pair = write_batch->AddRaw();
-  pair.first.assign(key.cdata(), key.size());
-  pair.second.assign(value.cdata(), value.size());
+  pair.key.assign(key.cdata(), key.size());
+  pair.value.assign(value.cdata(), value.size());
 }
 
 void WriteToRocksDB(

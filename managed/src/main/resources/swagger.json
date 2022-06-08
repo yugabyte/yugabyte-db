@@ -10441,6 +10441,38 @@
         "tags" : [ "Cloud providers" ]
       }
     },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/access_key_rotation" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "rotate_access_key",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Rotate access key for a provider - Not scheduled",
+        "tags" : [ "Cloud providers" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/access_keys" : {
       "get" : {
         "description" : "",
@@ -11206,38 +11238,6 @@
         } ],
         "summary" : "List all releases valid in region",
         "tags" : [ "Release management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/rotate_access_key" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "rotate_access_key",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Rotate access key for a provider - Not scheduled",
-        "tags" : [ "Cloud providers" ]
       }
     },
     "/api/v1/customers/{cUUID}/regions" : {
@@ -15082,6 +15082,18 @@
           "default" : "null",
           "in" : "query",
           "name" : "queryRegex",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "startDate",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "endDate",
           "required" : false,
           "type" : "string"
         } ],

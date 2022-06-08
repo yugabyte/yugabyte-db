@@ -1564,7 +1564,7 @@ CreateCast(CreateCastStmt *stmt)
 		 * Must be superuser to create binary-compatible casts, since
 		 * erroneous casts can easily crash the backend.
 		 */
-		if (!superuser())
+		if (!superuser() && !(IsYbExtensionUser(GetUserId()) && creating_extension))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("must be superuser to create a cast WITHOUT FUNCTION")));

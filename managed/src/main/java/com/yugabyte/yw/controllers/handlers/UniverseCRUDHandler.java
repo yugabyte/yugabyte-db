@@ -765,6 +765,8 @@ public class UniverseCRUDHandler {
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    validateConsistency(primaryCluster, cluster);
 
     // Set the provider code.
     Cluster c = taskParams.clusters.get(0);
@@ -806,6 +808,43 @@ public class UniverseCRUDHandler {
         universe.universeUUID,
         universe.name);
     return taskUUID;
+  }
+
+  static void validateConsistency(Cluster primaryCluster, Cluster cluster) {
+    checkEquals(c -> c.userIntent.enableYSQL, primaryCluster, cluster, "Ysql setting");
+    checkEquals(c -> c.userIntent.enableYSQLAuth, primaryCluster, cluster, "Ysql auth setting");
+    checkEquals(c -> c.userIntent.enableYCQL, primaryCluster, cluster, "Ycql setting");
+    checkEquals(c -> c.userIntent.enableYCQLAuth, primaryCluster, cluster, "Ycql auth setting");
+    checkEquals(c -> c.userIntent.enableYEDIS, primaryCluster, cluster, "Yedis setting");
+    checkEquals(
+        c -> c.userIntent.enableClientToNodeEncrypt,
+        primaryCluster,
+        cluster,
+        "Client to node encrypt setting");
+    checkEquals(
+        c -> c.userIntent.enableNodeToNodeEncrypt,
+        primaryCluster,
+        cluster,
+        "Node to node encrypt setting");
+    checkEquals(
+        c -> c.userIntent.assignPublicIP, primaryCluster, cluster, "Assign public IP setting");
+  }
+
+  private static void checkEquals(
+      Function<Cluster, Object> extractor,
+      Cluster primaryCluster,
+      Cluster readonlyCluster,
+      String errorPrefix) {
+    if (!Objects.equals(extractor.apply(primaryCluster), extractor.apply(readonlyCluster))) {
+      String error =
+          errorPrefix
+              + " should be the same for primary and readonly replica "
+              + extractor.apply(primaryCluster)
+              + " vs "
+              + extractor.apply(readonlyCluster);
+      LOG.error(error);
+      throw new PlatformServiceException(BAD_REQUEST, error);
+    }
   }
 
   public UUID clusterDelete(

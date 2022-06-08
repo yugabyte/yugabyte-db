@@ -4820,6 +4820,21 @@ Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
   return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
 }
 
+Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgTypeOid(
+    const TableInfoPtr& table_info) {
+  RSTATUS_DCHECK_EQ(
+      table_info->GetTableType(), PGSQL_TABLE_TYPE, InternalError,
+      Format("Expected YSQL table, got: $0", table_info->GetTableType()));
+  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info->namespace_id()));
+  uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->id()));
+  {
+    if (matview_pg_table_ids_map_.find(table_info->id()) != matview_pg_table_ids_map_.end()) {
+      table_oid = VERIFY_RESULT(GetPgsqlTableOid(matview_pg_table_ids_map_[table_info->id()]));
+    }
+  }
+  return sys_catalog_->ReadPgTypeOid(database_oid, table_oid);
+}
+
 // Truncate a Table.
 Status CatalogManager::TruncateTable(const TruncateTableRequestPB* req,
                                      TruncateTableResponsePB* resp,
@@ -5287,6 +5302,9 @@ Status CatalogManager::DeleteTableInternal(
     }
   }
 
+  RETURN_NOT_OK(DeleteCDCStreamsMetadataForTable(
+      resp->deleted_table_ids(resp->deleted_table_ids_size() - 1)));
+
   // If there are any permissions granted on this table find them and delete them. This is necessary
   // because we keep track of the permissions based on the canonical resource name which is a
   // combination of the keyspace and table names, so if another table with the same name is created
@@ -5694,6 +5712,21 @@ Status ApplyAlterSteps(server::Clock* clock,
         break;
       }
 
+      case AlterTableRequestPB::SET_COLUMN_PG_TYPE: {
+        if (!step.has_set_column_pg_type()) {
+          return STATUS(InvalidArgument, "SET_COLUMN_PG_TYPE missing column info");
+        }
+
+        RETURN_NOT_OK(builder.SetColumnPGType(
+            step.set_column_pg_type().name(), step.set_column_pg_type().pg_type_oid()));
+        ddl_log_entries->emplace_back(
+            time, table_id, current_pb,
+            Format(
+                "Set pg_type_oid for column $0 => $1", step.set_column_pg_type().name(),
+                step.set_column_pg_type().pg_type_oid()));
+        break;
+      }
+
         // TODO: EDIT_COLUMN.
 
       default: {
@@ -5778,6 +5811,11 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     DCHECK_NE(next_col_id, 0);
     DCHECK_EQ(new_schema.find_column_by_id(next_col_id),
               static_cast<int>(Schema::kColumnNotFound));
+    has_changes = true;
+  }
+
+  if (req->has_pgschema_name()) {
+    new_schema.SetSchemaName(req->pgschema_name());
     has_changes = true;
   }
 
@@ -8100,6 +8138,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
     id_list.push_back(table_and_lock.first->id());
   }
   RETURN_NOT_OK(DeleteCDCStreamsForTables(id_list));
+  RETURN_NOT_OK(DeleteCDCStreamsMetadataForTables(id_list));
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto &table_and_lock : tables) {
@@ -8624,6 +8663,13 @@ Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_id
   return Status::OK();
 }
 
+Status CatalogManager::DeleteCDCStreamsMetadataForTable(const TableId& table) {
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) {
+  return Status::OK();
+}
 
 bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
   return false;
