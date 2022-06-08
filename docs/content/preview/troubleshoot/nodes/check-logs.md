@@ -56,3 +56,22 @@ For YB-Master and YB-TServer, the log rotation size is controlled by the `--max_
 For YSQL, you also have the additional `postgres*log` files. These logs have daily and size-based log rotation, that is a new log file will be created each day or a log reaches 10 MB size.
 
 For available configuration flags, see [YB-Master logging flags](../../../reference/configuration/yb-master/#logging-flags) and [YB-TServer logging flags](../../../reference/configuration/yb-tserver/#logging-flags).
+
+## Log format
+
+YB-Master and YB-TServer log messages follow this pattern:
+
+```output
+Lmmdd hh:mm:ss.uuuuuu threadid file:line] msg
+```
+
+The fields are as follows:
+
+- `L`: A single character, representing the log level (`I` for INFO, `W` for WARNING, `E` for ERROR, and `F` for FATAL)
+- `mm`: Month (zero-padded; for example, May is `05`)
+- `dd`: Day (zero-padded)
+- `hh:mm:ss.uuuuuu`: Time in hours, minutes, and fractional seconds
+- `threadid`: Thread ID
+- `file`: File name
+- `line`: Line number
+- `msg`: The logged message
