@@ -572,6 +572,8 @@ class PgApiImpl {
 
   Result<bool> CheckIfPitrActive();
 
+  const MemTracker &GetMemTracker() { return *mem_tracker_; }
+
  private:
   // Control variables.
   PggateOptions pggate_options_;

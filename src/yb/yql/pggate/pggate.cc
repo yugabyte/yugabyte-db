@@ -393,6 +393,10 @@ PgApiImpl::PgApiImpl(
       pg_txn_manager_(
           new PgTxnManager(
               &pg_client_, clock_, tserver_shared_object_.get(), pg_callbacks_)) {
+  if (pg_callbacks_.YbPgMemUpdateMax) {
+    mem_tracker_->AssignUpdateMaxMemFunctor(pg_callbacks_.YbPgMemUpdateMax);
+  }
+
   CHECK_OK(clock_->Init());
 
   // Setup type mapping.

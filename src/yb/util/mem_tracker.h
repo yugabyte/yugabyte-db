@@ -77,6 +77,7 @@ YB_STRONGLY_TYPED_BOOL(CreateMetrics);
 YB_STRONGLY_TYPED_BOOL(OnlyChildren);
 
 typedef std::function<int64_t()> ConsumptionFunctor;
+typedef std::function<void()> UpdateMaxMemoryFunctor;
 typedef std::function<void()> PollChildrenConsumptionFunctors;
 
 struct SoftLimitExceededResult {
@@ -383,6 +384,11 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
     poll_children_consumption_functors_ = std::move(poll_children_consumption_functors);
   }
 
+  // Assign the functor to update PG's global memory consumption.
+  void AssignUpdateMaxMemFunctor(void (*func)()) {
+      update_max_mem_functor_ = func;
+  }
+
  private:
   bool CheckLimitExceeded() const {
     return limit_ >= 0 && limit_ < consumption();
@@ -425,6 +431,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   const int64_t soft_limit_;
   const std::string id_;
   const ConsumptionFunctor consumption_functor_;
+  UpdateMaxMemoryFunctor update_max_mem_functor_;
+
   PollChildrenConsumptionFunctors poll_children_consumption_functors_;
   const std::string descr_;
   std::shared_ptr<MemTracker> parent_;
