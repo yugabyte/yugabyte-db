@@ -28,6 +28,7 @@
   .dark-form-heading {
     .logo {
       height: 52px !important;
+      width: 276px !important;
       margin-bottom: 8px !important;
     }
     span {
@@ -35,7 +36,26 @@
       font-size: 18px;
       font-weight: 700;
       font-family: 'Inter';
+      letter-spacing: normal;
     }
+  }
+
+  .align-center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .link-text {
+    text-decoration: underline;
+    cursor: pointer;
+    margin: 24px 0px;
+    color: #d5d5d9 !important;
+  }
+
+  .form-title {
+    margin: 40px 0px 20px 0px;
+    color: #d5d5d9 !important;
   }
 
   .login-btns {
@@ -44,10 +64,6 @@
     font-size: 15px;
     font-weight: 500;
     margin-top: 0px !important;
-  }
-
-  .sso-btn {
-    margin-top: 12px !important;
   }
 
   .login-input-box {
@@ -83,20 +99,18 @@
   .divider-c {
     display: flex;
     width: 100%;
-    margin: 32px 0px;
+    margin: 24px 0px 40px 0px;
     justify-content: center;
   }
 
   .divider-ic {
     display: flex;
     width: 450px;
-
     align-items: center;
   }
 
   .divider {
     height: 1px;
-    flex: 1;
     background-color: #67666c;
   }
 }
@@ -107,6 +121,19 @@
 
 .ml-2 {
   margin-left: 16px !important;
+}
+
+.fade-in {
+  animation: fadeIn 3s;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 .dark-form {
@@ -305,9 +332,9 @@
     font-size: 1.2em;
   }
 }
-.form-right-aligned-labels.center-align-row  {
+.form-right-aligned-labels.center-align-row {
   display: block;
-  &>.form-group{
+  & > .form-group {
     display: flex;
     align-items: center;
   }
