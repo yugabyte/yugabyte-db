@@ -72,6 +72,9 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+#include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
+
 DECLARE_int64(cdc_intent_retention_ms);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
@@ -130,6 +133,97 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       return STATUS(IllegalState, "Error getting cluster config");
     }
     return resp.cluster_config().cluster_uuid();
+  }
+
+  void VerifyCdcStateMatches(
+      client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id,
+      uint64_t term, uint64_t index) {
+    client::TableHandle table;
+    client::YBTableName cdc_state_table(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+    ASSERT_OK(table.Open(cdc_state_table, client));
+
+    const auto op = table.NewReadOp();
+    auto* const req = op->mutable_request();
+    QLAddStringHashValue(req, tablet_id);
+    auto cond = req->mutable_where_expr()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddStringCondition(
+        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
+    table.AddColumns({master::kCdcCheckpoint}, req);
+
+    auto session = client->NewSession();
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
+
+    LOG(INFO) << strings::Substitute(
+        "Verifying tablet: $0, stream: $1, op_id: $2", tablet_id, stream_id,
+        OpId(term, index).ToString());
+
+    auto row_block = ql::RowsResult(op.get()).GetRowBlock();
+    ASSERT_EQ(row_block->row_count(), 1);
+
+    string checkpoint = row_block->row(0).column(0).string_value();
+    auto result = OpId::FromString(checkpoint);
+    ASSERT_OK(result);
+    OpId op_id = *result;
+
+    ASSERT_EQ(op_id.term, term);
+    ASSERT_EQ(op_id.index, index);
+  }
+
+  void VerifyStreamDeletedFromCdcState(
+      client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id,
+      int timeout_secs = 120) {
+    client::TableHandle table;
+    const client::YBTableName cdc_state_table(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+    ASSERT_OK(table.Open(cdc_state_table, client));
+
+    const auto op = table.NewReadOp();
+    auto* const req = op->mutable_request();
+    QLAddStringHashValue(req, tablet_id);
+
+    auto cond = req->mutable_where_expr()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddStringCondition(
+        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
+
+    table.AddColumns({master::kCdcCheckpoint}, req);
+    auto session = client->NewSession();
+
+    // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
+    // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
+    ASSERT_OK(WaitFor(
+        [&]() {
+          EXPECT_OK(session->TEST_ApplyAndFlush(op));
+          auto row_block = ql::RowsResult(op.get()).GetRowBlock();
+          if (row_block->row_count() == 0) {
+            return true;
+          }
+          return false;
+        },
+        MonoDelta::FromSeconds(timeout_secs),
+        "Stream rows in cdc_state have been deleted."));
+  }
+
+  void VerifyTransactionParticipant(const TabletId& tablet_id, const OpId& opid) {
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+            for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+              if (peer->tablet_id() == tablet_id) {
+                LOG(INFO) << "Tablet peer cdc_sdk_min_checkpoint_op_id: "
+                          << peer->cdc_sdk_min_checkpoint_op_id();
+                if (peer->cdc_sdk_min_checkpoint_op_id() == opid) {
+                  return true;
+                }
+              }
+            }
+          }
+          return false;
+        },
+        MonoDelta::FromSeconds(60),
+        "Finished."));
   }
 
   Status DropDB(Cluster* cluster) {
@@ -1347,6 +1441,193 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRest
       }
     }
   }
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamSingleTserver)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  // insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  ASSERT_EQ(DeleteCDCStream(stream_id), true);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id, tablets.Get(0).tablet_id());
+  VerifyTransactionParticipant(tablets.Get(0).tablet_id(), OpId::Max());
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamMultiTserver)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  // insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  ASSERT_EQ(DeleteCDCStream(stream_id), true);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id, tablets.Get(0).tablet_id());
+  VerifyTransactionParticipant(tablets.Get(0).tablet_id(), OpId::Max());
+}
+
+TEST_F(
+    CDCSDKYsqlTest,
+    YB_DISABLE_TEST_IN_TSAN(TestCleanupMultiStreamDeleteSingleStreamSingleTserver)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id_1 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  CDCStreamId stream_id_2 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp_1 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
+  ASSERT_FALSE(resp_1.has_error());
+  auto resp_2 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
+  ASSERT_FALSE(resp_2.has_error());
+
+  // insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  ASSERT_EQ(DeleteCDCStream(stream_id_1), true);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id_1, tablets.Get(0).tablet_id());
+  VerifyCdcStateMatches(test_client(), stream_id_2, tablets.Get(0).tablet_id(), 0, 0);
+  VerifyTransactionParticipant(tablets.Get(0).tablet_id(), OpId(0, 0));
+}
+
+TEST_F(
+    CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupMultiStreamDeleteSingleStreamMultiTserver)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id_1 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  CDCStreamId stream_id_2 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp_1 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
+  ASSERT_FALSE(resp_1.has_error());
+  auto resp_2 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
+  ASSERT_FALSE(resp_2.has_error());
+
+  // insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  ASSERT_EQ(DeleteCDCStream(stream_id_1), true);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id_1, tablets.Get(0).tablet_id());
+  VerifyCdcStateMatches(test_client(), stream_id_2, tablets.Get(0).tablet_id(), 0, 0);
+  VerifyTransactionParticipant(tablets.Get(0).tablet_id(), OpId(0, 0));
+}
+
+TEST_F(
+    CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupMultiStreamDeleteAllStreamsSingleTserver)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id_1 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  CDCStreamId stream_id_2 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp_1 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
+  ASSERT_FALSE(resp_1.has_error());
+  auto resp_2 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
+  ASSERT_FALSE(resp_2.has_error());
+
+  // insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  ASSERT_EQ(DeleteCDCStream(stream_id_1), true);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id_1, tablets.Get(0).tablet_id());
+  VerifyTransactionParticipant(tablets.Get(0).tablet_id(), OpId(0, 0));
+  ASSERT_EQ(DeleteCDCStream(stream_id_2), true);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id_2, tablets.Get(0).tablet_id());
+  VerifyTransactionParticipant(tablets.Get(0).tablet_id(), OpId::Max());
+}
+
+TEST_F(
+    CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupMultiStreamDeleteAllStreamsMultiTserver)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id_1 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  CDCStreamId stream_id_2 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp_1 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
+  ASSERT_FALSE(resp_1.has_error());
+  auto resp_2 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
+  ASSERT_FALSE(resp_2.has_error());
+
+  // insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  ASSERT_EQ(DeleteCDCStream(stream_id_1), true);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id_1, tablets.Get(0).tablet_id());
+  VerifyTransactionParticipant(tablets.Get(0).tablet_id(), OpId(0, 0));
+  ASSERT_EQ(DeleteCDCStream(stream_id_2), true);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id_2, tablets.Get(0).tablet_id());
+  VerifyTransactionParticipant(tablets.Get(0).tablet_id(), OpId::Max());
 }
 
 }  // namespace enterprise

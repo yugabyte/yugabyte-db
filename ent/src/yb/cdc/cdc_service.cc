@@ -1493,7 +1493,7 @@ Status CDCServiceImpl::SetInitialCheckPoint(
 }
 
 Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
-    const TabletId& input_tablet_id) {
+    const TabletId& input_tablet_id, TabletIdStreamIdSet* tablet_stream_to_be_deleted) {
   TabletOpIdMap tablet_min_checkpoint_map;
 
   auto cdc_state_table_result = GetCdcStateTable();
@@ -1545,6 +1545,12 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
                    << " for tablet " << tablet_id << ": " << result.status();
       continue;
     }
+
+    // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
+    if (checkpoint == OpId::Max().ToString()) {
+      tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
+    }
+
     // Find the minimum checkpoint op_id per tablet. This minimum op_id
     // will be passed to LEADER and it's peers for log cache eviction and clean the consumed intents
     // in a regular interval.
@@ -1658,7 +1664,8 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     }
     // Don't exit from this thread even if below method throw error, because
     // if we fail to read cdc_state table, lets wait for the next retry after 60 secs.
-    auto result = PopulateTabletCheckPointInfo();
+    TabletIdStreamIdSet cdc_state_entries_to_delete;
+    auto result = PopulateTabletCheckPointInfo("", &cdc_state_entries_to_delete);
     if (!result.ok()) {
       LOG(WARNING) << "Failed to populate tablets checkpoint info: " << result.status();
       continue;
@@ -1671,7 +1678,47 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       YB_LOG_EVERY_N_SECS(INFO, 300)
           << "Done reading all the indices for all tablets and updating peers";
     }
+    Status s = DeleteCDCStateTableMetadata(cdc_state_entries_to_delete);
+    if (!s.ok()) {
+      LOG(WARNING) << "Unable to cleanup CDC State table metadata " << s;
+    }
   } while (sleep_while_not_stopped());
+}
+
+Status CDCServiceImpl::DeleteCDCStateTableMetadata(
+    const TabletIdStreamIdSet& cdc_state_entries_to_delete) {
+  std::shared_ptr<yb::client::TableHandle> cdc_state_table_result =
+      VERIFY_RESULT(GetCdcStateTable());
+  auto session = client()->NewSession();
+  if (!cdc_state_table_result) {
+    return STATUS_FORMAT(
+        IllegalState, "Unable to open table $0. CDC min replicated indices won't be updated",
+        kCdcStateTableName.table_name());
+  }
+
+  // Iterating over set and deleting entries from the cdc_state table.
+  for (const auto& [tablet_id, stream_id] : cdc_state_entries_to_delete) {
+    std::shared_ptr<tablet::TabletPeer> tablet_peer;
+    Status s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);
+    if (!s.ok()) {
+      LOG(WARNING) << " Could not delete the entry for stream" << stream_id << " and the tablet "
+                   << tablet_id;
+    }
+    if (IsTabletPeerLeader(tablet_peer)) {
+      const auto delete_op = cdc_state_table_result->NewDeleteOp();
+      auto* const delete_req = delete_op->mutable_request();
+      QLAddStringHashValue(delete_req, tablet_id);
+      QLAddStringRangeValue(delete_req, stream_id);
+      Status s = session->TEST_ApplyAndFlush(delete_op);
+      if (!s.ok()) {
+        LOG(WARNING) << "Unable to flush operations to delete cdc streams: " << s;
+        return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
+      }
+      LOG(INFO) << "CDC state table entry for tablet " << tablet_id << " and streamid " << stream_id
+                << " is deleted";
+    }
+  }
+  return Status::OK();
 }
 
 Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(

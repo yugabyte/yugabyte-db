@@ -85,6 +85,7 @@ struct TabletCDCCheckpointInfo {
 };
 
 using TabletOpIdMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
+using TabletIdStreamIdSet = std::set<pair<TabletId, CDCStreamId>>;
 
 class CDCServiceImpl : public CDCServiceIf {
  public:
@@ -280,6 +281,9 @@ class CDCServiceImpl : public CDCServiceIf {
   // tablet and then update the peers' log objects. Also used to update lag metrics.
   void UpdatePeersAndMetrics();
 
+  // This method deletes entries from the cdc_state table that are contained in the set.
+  Status DeleteCDCStateTableMetadata(const TabletIdStreamIdSet& cdc_state_entries_to_delete);
+
   MicrosTime GetLastReplicatedTime(const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
   bool ShouldUpdateLagMetrics(MonoTime time_since_update_metrics);
@@ -305,7 +309,9 @@ class CDCServiceImpl : public CDCServiceIf {
       CreateCDCStreamResponsePB* resp,
       CoarseTimePoint deadline);
 
-  Result<TabletOpIdMap> PopulateTabletCheckPointInfo(const TabletId& input_tablet_id = "");
+  Result<TabletOpIdMap> PopulateTabletCheckPointInfo(
+      const TabletId& input_tablet_id = "",
+      TabletIdStreamIdSet* tablet_stream_to_be_deleted = nullptr);
 
   Status SetInitialCheckPoint(
       const OpId& checkpoint, const string& tablet_id,
