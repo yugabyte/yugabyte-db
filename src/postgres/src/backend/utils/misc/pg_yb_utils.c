@@ -2136,3 +2136,7 @@ Oid YbGetStorageRelid(Relation relation) {
 bool IsYbDbAdminUser(Oid member) {
 	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_DB_ADMIN);
 }
+
+bool IsYbDbAdminUserNosuper(Oid member) {
+	return IsYugaByteEnabled() && is_member_of_role_nosuper(member, DEFAULT_ROLE_YB_DB_ADMIN);
+}

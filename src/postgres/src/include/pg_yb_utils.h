@@ -579,4 +579,10 @@ Oid YbGetStorageRelid(Relation relation);
  */
 bool IsYbDbAdminUser(Oid member);
 
+/*
+ * Check whether the user ID is of a user who has the yb_db_admin role
+ * (excluding superusers).
+ */
+bool IsYbDbAdminUserNosuper(Oid member);
+
 #endif /* PG_YB_UTILS_H */
