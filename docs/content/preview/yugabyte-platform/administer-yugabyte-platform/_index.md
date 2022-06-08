@@ -34,7 +34,7 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="ldap-authentication/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
         <div class="title">Authenticate with LDAP</div>
       </div>
       <div class="body">
@@ -42,4 +42,17 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
       </div>
     </a>
   </div>
+  
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="oidc-authentication/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
+        <div class="title">Authenticate with OIDC</div>
+      </div>
+      <div class="body">
+        Use YugabyteDB Anywhere to enable IODC authentication for YugabyteDB Anywhere login.
+      </div>
+    </a>
+  </div>  
+  
 </div>
