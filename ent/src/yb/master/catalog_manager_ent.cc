@@ -2508,7 +2508,7 @@ Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleReques
     RETURN_NOT_OK(ListTablegroups(&tablegroup_req, &tablegroup_resp, rpc));
     if (tablegroup_resp.has_error() || tablegroup_resp.tablegroups_size() > 0) {
       return STATUS(NotSupported, "Not allowed to create snapshot schedule "
-                                  "when one or more tablegroups exist on the database");
+                                  "when one or more tablegroups exist on the cluster");
     }
   }
   auto id = VERIFY_RESULT(snapshot_coordinator_.CreateSchedule(
