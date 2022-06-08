@@ -29,7 +29,7 @@ void AddKVToPB(int32_t key_val,
         KeyValuePairPB *const kv = write_batch->add_write_pairs();
         kv->set_key(subdoc_key.Encode().ToStringBuffer());
         ValueBuffer buffer;
-        docdb::AppendEncodedValue(value, docdb::CheckIsCollate::kFalse, &buffer);
+        docdb::AppendEncodedValue(value, &buffer);
         kv->set_value(buffer.ToStringBuffer());
     };
 

@@ -207,6 +207,7 @@ Result<RedisDataType> GetRedisValueType(
     case ValueEntryType::kRedisList:
       return REDIS_TYPE_LIST;
     case ValueEntryType::kNullLow: FALLTHROUGH_INTENDED; // This value is a set member.
+    case ValueEntryType::kCollString:
     case ValueEntryType::kString:
       return REDIS_TYPE_STRING;
     default:
@@ -322,6 +323,7 @@ bool VerifyTypeAndSetCode(
 Status AddPrimitiveValueToResponseArray(const PrimitiveValue& value,
                                                 RedisArrayPB* redis_array) {
   switch (value.value_type()) {
+    case ValueEntryType::kCollString:
     case ValueEntryType::kString:
       redis_array->add_elements(value.GetString());
       return Status::OK();

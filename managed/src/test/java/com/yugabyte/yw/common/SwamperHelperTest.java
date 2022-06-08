@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -90,7 +91,8 @@ public class SwamperHelperTest extends FakeDBApplication {
       }
 
       JsonNode targetsJson = Json.parse(sb.toString());
-      assertThat(targetsJson.size(), is(equalTo(15)));
+      // no masters in this node details
+      assertThat(targetsJson.size(), is(equalTo(12)));
       List<String> targetTypes = new ArrayList<>();
       for (SwamperHelper.TargetType t : Arrays.asList(SwamperHelper.TargetType.values())) {
         targetTypes.add(t.toString());

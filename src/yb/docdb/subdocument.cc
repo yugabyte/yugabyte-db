@@ -438,8 +438,7 @@ SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
     }
 
     default:
-      return SubDocument(PrimitiveValue::FromQLValuePB(
-          value, CheckIsCollate(sorting_type != SortingType::kNotSpecified)));
+      return SubDocument(PrimitiveValue::FromQLValuePB(value));
   }
 }
 
