@@ -78,6 +78,8 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 				QueryEnvironment *queryEnv,
 				int instrument_options)
 {
+	YbPgMemResetStmtConsumption();
+
 	QueryDesc  *qd = (QueryDesc *) palloc(sizeof(QueryDesc));
 
 	qd->operation = plannedstmt->commandType;	/* operation */

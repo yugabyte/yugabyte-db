@@ -70,6 +70,8 @@ YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key);
 // Get access to callbacks.
 const YBCPgCallbacks* YBCGetPgCallbacks();
 
+YBCStatus YBCGetPgggateHeapConsumption(int64_t *consumption);
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
 //--------------------------------------------------------------------------------------------------
