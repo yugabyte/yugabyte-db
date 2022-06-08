@@ -39,7 +39,11 @@ using std::unique_ptr;
 using std::unordered_set;
 using rocksdb::VectorToString;
 
-DECLARE_int32(max_packed_row_columns);
+DECLARE_bool(ycql_enable_packed_row);
+DECLARE_bool(ysql_enable_packed_row);
+
+DECLARE_uint64(ycql_packed_row_size_limit);
+DECLARE_uint64(ysql_packed_row_size_limit);
 
 namespace yb {
 namespace docdb {
@@ -182,10 +186,19 @@ class PackedRowData {
       // Column was deleted.
       return true;
     }
+
+    size_t tail_size = 0; // As usual, when not specified size is in bytes.
+    if (!old_value_slice_.empty()) {
+      auto old_value = old_packing_.schema_packing->GetValue(column_id, old_value_slice_);
+      if (old_value) {
+        tail_size = old_value_slice_.end() - old_value->end();
+      }
+    }
+
     // TODO(packed_row) update control fields
-    VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString();
-    RETURN_NOT_OK(packer_->AddValue(column_id, value));
-    return true;
+    VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString() << ", tail size: "
+            << tail_size;
+    return packer_->AddValue(column_id, value, tail_size);
   }
 
   Status StartRepacking() {
@@ -200,7 +213,8 @@ class PackedRowData {
   void InitPacker() {
     packing_started_ = true;
     if (!packer_) {
-      packer_.emplace(new_packing_.schema_version, *new_packing_.schema_packing);
+      packer_.emplace(
+          new_packing_.schema_version, *new_packing_.schema_packing, new_packing_.pack_limit());
     } else {
       packer_->Restart();
     }
@@ -247,7 +261,9 @@ class PackedRowData {
       column_value = Slice();
     }
     VLOG(4) << "Keep value for column " << column_id << ": " << column_value->ToDebugHexString();
-    return packer_->AddValue(column_id, *column_value);
+    auto result = VERIFY_RESULT(packer_->AddValue(column_id, *column_value, /* tail_size= */ 0));
+    RSTATUS_DCHECK(result, Corruption, "Unable to pack old value for $0", column_id);
+    return Status::OK();
   }
 
   void UsedSchemaVersion(SchemaVersion version) {
@@ -287,8 +303,7 @@ class PackedRowData {
     active_coprefix_ = coprefix;
     active_coprefix_dropped_ = false;
     new_packing_ = *packing;
-    can_start_packing_ =
-        make_signed(new_packing_.schema_packing->columns()) <= FLAGS_max_packed_row_columns;
+    can_start_packing_ = packing->enabled();
     used_schema_versions_it_ = used_schema_versions_.find(new_packing_.cotable_id);
     return Status::OK();
   }
@@ -970,6 +985,32 @@ HybridTime MinHybridTime(const std::vector<rocksdb::FileMetaData*>& inputs) {
 }
 
 } // namespace
+
+bool CompactionSchemaInfo::enabled() const {
+  switch (table_type) {
+    case TableType::YQL_TABLE_TYPE:
+      return FLAGS_ycql_enable_packed_row;
+    case TableType::PGSQL_TABLE_TYPE:
+      return FLAGS_ysql_enable_packed_row;
+    case TableType::REDIS_TABLE_TYPE: [[fallthrough]];
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
+      return false;
+  }
+  FATAL_INVALID_ENUM_VALUE(TableType, table_type);
+}
+
+size_t CompactionSchemaInfo::pack_limit() const {
+  switch (table_type) {
+    case TableType::YQL_TABLE_TYPE:
+      return FLAGS_ycql_packed_row_size_limit;
+    case TableType::PGSQL_TABLE_TYPE:
+      return FLAGS_ysql_packed_row_size_limit;
+    case TableType::REDIS_TABLE_TYPE: [[fallthrough]];
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
+      return false;
+  }
+  FATAL_INVALID_ENUM_VALUE(TableType, table_type);
+}
 
 // ------------------------------------------------------------------------------------------------
 

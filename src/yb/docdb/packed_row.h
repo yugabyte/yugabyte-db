@@ -156,9 +156,11 @@ class SchemaPackingStorage {
 
 class RowPacker {
  public:
-  RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing);
-  explicit RowPacker(const std::pair<SchemaVersion, const SchemaPacking&>& pair)
-      : RowPacker(pair.first, pair.second) {
+  RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
+            size_t packed_size_limit);
+
+  RowPacker(const std::pair<SchemaVersion, const SchemaPacking&>& pair, size_t packed_size_limit)
+      : RowPacker(pair.first, pair.second, packed_size_limit) {
   }
 
   bool Empty() const {
@@ -174,16 +176,18 @@ class RowPacker {
   ColumnId NextColumnId() const;
   Result<const ColumnPackingData&> NextColumnData() const;
 
-  Status AddValue(ColumnId column_id, const QLValuePB& value);
-  Status AddValue(ColumnId column_id, const Slice& value);
+  // Returns false when unable to add value due to packed size limit.
+  Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
+  Result<bool> AddValue(ColumnId column_id, const Slice& value, size_t tail_size);
 
   Result<Slice> Complete();
 
  private:
   template <class Value>
-  Status DoAddValue(ColumnId column_id, const Value& value);
+  Result<bool> DoAddValue(ColumnId column_id, const Value& value, size_t tail_size);
 
   const SchemaPacking& packing_;
+  const size_t packed_size_limit_;
   size_t idx_ = 0;
   size_t prefix_end_;
   ValueBuffer result_;
