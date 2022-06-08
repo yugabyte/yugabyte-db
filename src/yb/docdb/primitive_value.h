@@ -310,6 +310,7 @@ SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
 
 void AppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, ValueBuffer* out);
 void AppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, std::string* out);
+size_t EncodedValueSize(const QLValuePB& value, CheckIsCollate check_is_collate);
 
 class KeyEntryValue {
  public:

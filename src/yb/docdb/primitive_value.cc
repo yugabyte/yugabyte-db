@@ -509,6 +509,28 @@ void AddValueType(
 // Indicates that the stored jsonb is the complete jsonb value and not a partial update to jsonb.
 static constexpr int64_t kCompleteJsonb = 1;
 
+class SizeCounter {
+ public:
+  size_t value() const {
+    return value_;
+  }
+
+  void push_back(char ch) {
+    ++value_;
+  }
+
+  void append(const std::string& str) {
+    value_ += str.size();
+  }
+
+  void append(const char* str, size_t size) {
+    value_ += size;
+  }
+
+ private:
+  size_t value_ = 0;
+};
+
 template <class Buffer>
 void DoAppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, Buffer* out) {
   switch (value.value_case()) {
@@ -658,6 +680,12 @@ void AppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate,
 
 void AppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, std::string* out) {
   DoAppendEncodedValue(value, check_is_collate, out);
+}
+
+size_t EncodedValueSize(const QLValuePB& value, CheckIsCollate check_is_collate) {
+  SizeCounter counter;
+  DoAppendEncodedValue(value, check_is_collate, &counter);
+  return counter.value();
 }
 
 Status KeyEntryValue::DecodeFromKey(Slice* slice) {

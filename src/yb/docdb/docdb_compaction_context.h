@@ -22,6 +22,7 @@
 #include <boost/functional/hash.hpp>
 
 #include "yb/common/column_id.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/docdb/expiration.h"
@@ -61,10 +62,14 @@ struct HistoryRetentionDirective {
 };
 
 struct CompactionSchemaInfo {
+  TableType table_type;
   uint32_t schema_version = std::numeric_limits<uint32_t>::max();
   std::shared_ptr<const docdb::SchemaPacking> schema_packing;
   Uuid cotable_id;
   ColumnIds deleted_cols;
+
+  bool enabled() const;
+  size_t pack_limit() const; // As usual, when not specified size is in bytes.
 };
 
 // Used to query latest possible schema version.

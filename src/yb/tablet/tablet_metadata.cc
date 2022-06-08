@@ -242,6 +242,7 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
     }
   }
   return docdb::CompactionSchemaInfo {
+    .table_type = self->table_type,
     .schema_version = schema_version,
     .schema_packing = rpc::SharedField(self, packing.get_ptr()),
     .cotable_id = self->cotable_id,
