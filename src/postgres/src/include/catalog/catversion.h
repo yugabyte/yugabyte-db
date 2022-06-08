@@ -53,6 +53,8 @@
  */
 
 /*							yyyymmddN */
+/* YB note:
+ * There is no need to bump this number when backporting from upstream */
 #define CATALOG_VERSION_NO	201809051
 
 #endif
