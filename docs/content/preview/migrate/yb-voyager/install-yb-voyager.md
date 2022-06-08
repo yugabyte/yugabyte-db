@@ -81,13 +81,13 @@ yb-voyager --help
 
 <div class="tab-content">
   <div id="postgresql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="postgresql-tab">
-    {{% includeMarkdown "/postgresql.md" /%}}
+    {{% includeMarkdown "/postgresql.md" %}}
   </div>
   <div id="mysql" class="tab-pane fade" role="tabpanel" aria-labelledby="mysql-tab">
-    {{% includeMarkdown "/mysql.md" /%}}
+    {{% includeMarkdown "/mysql.md" %}}
   </div>
   <div id="oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="oracle-tab">
-    {{% includeMarkdown "/oracle.md" /%}}
+    {{% includeMarkdown "/oracle.md" %}}
   </div>
 </div>
 

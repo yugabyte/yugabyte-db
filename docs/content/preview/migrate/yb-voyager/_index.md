@@ -30,7 +30,7 @@ yb-voyager supports only `offline` migration mode. The `online` migration mode i
 
 ## Source databases
 
-YugabyteDB currently supports migrating schema and data from your existing RDBMS to a YugabyteDB cluster using  **YB Voyager**, which facilitates migration from your existing RDBMS to a YugabyteDB database. Using YB Voyager, you can:
+YugabyteDB currently supports migrating schema and data from your existing RDBMS to a YugabyteDB cluster using  **YB Voyager**. Using YB Voyager, you can:
 
 - [Migrate from PostgreSQL](../yb-voyager/install-yb-voyager/#postgresql)
 - [Migrate from MySQL](../yb-voyager/install-yb-voyager/#mysql)
@@ -57,7 +57,7 @@ You can migrate data to any one of the three YugabyteDB [products](https://www.y
     </a>
   </div>
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="prerequisites-1/">
+    <a class="section-link icon-offset" href="prerequisites/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
         <div class="title">Prerequisites</div>
@@ -79,7 +79,7 @@ You can migrate data to any one of the three YugabyteDB [products](https://www.y
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="perform-migration-1/">
+    <a class="section-link icon-offset" href="perform-migration/">
       <div class="head">
        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
         <div class="title">Perform migration</div>
@@ -101,7 +101,7 @@ You can migrate data to any one of the three YugabyteDB [products](https://www.y
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-voyager-reference/">
+    <a class="section-link icon-offset" href="reference/">
       <div class="head">
        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
         <div class="title">Reference</div>

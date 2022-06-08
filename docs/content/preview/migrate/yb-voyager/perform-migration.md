@@ -5,7 +5,7 @@ description: Run the steps to ensure a successful migration.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
-    identifier: perform-migration-1
+    identifier: perform-migration
     parent: yb-voyager
     weight: 104
 isTocNested: true

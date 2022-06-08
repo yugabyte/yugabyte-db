@@ -5,7 +5,7 @@ description: YB Voyager reference information.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
-    identifier: yb-voyager-reference
+    identifier: reference
     parent: yb-voyager
     weight: 106
 isTocNested: true
