@@ -63,7 +63,7 @@ public class DevopsReleaseManifestTest {
       ImmutableSet.of("build", "python_virtual_env", "tests", "third-party", "venv");
 
   private static final Set<String> FILE_EXTENSIONS_TO_SKIP =
-      ImmutableSet.of("gitignore", "retry", "pyc");
+      ImmutableSet.of("gitignore", "retry", "pyc", "orig");
 
   @Test
   public void testReleaseManifestFiles() throws IOException {
