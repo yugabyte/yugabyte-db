@@ -334,6 +334,7 @@ components:
             contents: |
               include classpath("application.common.conf")
               play.crypto.secret="{{repl ConfigOption "app_secret"}}"
+              play.http.forwarded.trustedProxies = ["172.17.0.1"]
               play.i18n.langs = [ "en" ]
               pidfile.path = "/dev/null"
 
