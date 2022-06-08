@@ -22,6 +22,7 @@ import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.PersistenceContextScope;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -45,6 +46,10 @@ import lombok.experimental.Accessors;
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = false)
 public class AlertDefinition extends Model {
+
+  private static final String QUERY_THRESHOLD_PLACEHOLDER = "{{ query_threshold }}";
+  private static final String QUERY_CONDITION_PLACEHOLDER = "{{ query_condition }}";
+  private static final DecimalFormat THRESHOLD_FORMAT = new DecimalFormat("0.#");
 
   @Id
   @Column(nullable = false, unique = true)
@@ -137,6 +142,11 @@ public class AlertDefinition extends Model {
             this,
             KnownAlertLabels.THRESHOLD,
             doubleToString(configuration.getThresholds().get(severity).getThreshold())));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(
+            this,
+            KnownAlertLabels.ALERT_EXPRESSION,
+            getQueryWithThreshold(configuration.getThresholds().get(severity))));
     effectiveLabels.addAll(labels);
     return effectiveLabels;
   }
@@ -197,5 +207,11 @@ public class AlertDefinition extends Model {
         .stream()
         .sorted(Comparator.comparing(AlertDefinitionLabel::getName))
         .collect(Collectors.toList());
+  }
+
+  public String getQueryWithThreshold(AlertConfigurationThreshold threshold) {
+    return query
+        .replace(QUERY_THRESHOLD_PLACEHOLDER, THRESHOLD_FORMAT.format(threshold.getThreshold()))
+        .replace(QUERY_CONDITION_PLACEHOLDER, threshold.getCondition().getValue());
   }
 }
