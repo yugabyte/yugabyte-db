@@ -66,20 +66,31 @@ $ cd ./node/prisma/
 ```
 
 ```sh
-npm install
+$ npm install
 ```
 ## Specify the Configuration for the YugabyteDB Cluster 
 
-Add the `DATABASE_URL` in the `.env` file to be used the example using:
+Add the `DATABASE_URL` in the `.env` file to be able to use the example using:
+```sh
+$ echo 'DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"' > .env 
 ```
-echo 'DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"' > .env 
-```
+- Using the YugabyteDB Managed Cluster to connect:
 
+1. Download the root certificate.
+2. Install OpenSSL, if not present.
+3. Convert the certificate from `.crt` to `.pem` format using:
+  ```sh
+  $ openssl x509 -in <root_crt_path> -out cert.pem
+  ```
+4. Add the `DATABASE_URL` in this format where <b>cert_path</b> should be the relative path of `cert.pem` with respect to `/prisma` folder:
+```sh
+$ echo 'DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?sslmode=require&sslcert=<cert_path>"' > .env 
+  ```
 ## Apply the Migrations 
 
 Create the tables in the YugabyteDB by applying the migration for the data models in the file `prisma/schema.prisma` using the following command and generate the <b>PrismaClient</b>: 
 ```
-prisma migrate dev --name first_migration
+$ prisma migrate dev --name first_migration
 ```
  
 ## Run the application
@@ -89,7 +100,10 @@ Start the Node.js API server at <http://localhost:8080> :
 ```sh
 $ npm start
 ```
-Note: If your `PORT` 8080 is already in use, change the port using `export PORT=<new_port>`
+<b>Note:</b> If your `PORT` 8080 is already in use, change the port using 
+```
+$ export PORT=<new_port>
+```
 
 ## Send requests to the application
 
@@ -265,6 +279,15 @@ $ curl http://localhost:8080/orders
   ]
 }
 ```
+### Using Primsa Studio 
+
+You can use this command to start <b>Prisma Studio </b>:
+```sh
+$ prisma studio
+```
+Now, go to this page [http://localhost:5555](http://localhost:5555) and you can see the tables and data created as-
+
+![Prisma studio](/images/develop/ecosystem-integrations/prisma-orm-nodejs.png)
 
 ## Explore the source
 
