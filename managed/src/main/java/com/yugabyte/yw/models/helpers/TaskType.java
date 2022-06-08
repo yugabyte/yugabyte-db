@@ -56,6 +56,8 @@ public enum TaskType {
 
   ImportIntoTable("ImportIntoTable"),
 
+  RunApiTriggeredHooks("RunApiTriggeredHooks"),
+
   // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse("UpgradeUniverse"),
 
@@ -354,7 +356,9 @@ public enum TaskType {
 
   MarkUniverseForHealthScriptReUpload("subtasks.MarkUniverseForHealthScriptReUpload"),
 
-  RebootServer("subtasks.RebootServer");
+  RebootServer("subtasks.RebootServer"),
+
+  RunHooks("subtasks.RunHooks");
 
   private String relativeClassPath;
 

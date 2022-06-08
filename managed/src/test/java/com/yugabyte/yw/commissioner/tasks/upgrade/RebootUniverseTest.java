@@ -32,6 +32,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_REBOOT_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.RunHooks,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl, // master
@@ -47,13 +48,14 @@ public class RebootUniverseTest extends UpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.WaitForFollowerLag, // master
           TaskType.WaitForFollowerLag, // tserver
+          TaskType.RunHooks,
           TaskType.SetNodeState);
 
   @Override
   @Before
   public void setUp() {
     super.setUp();
-
+    attachHooks("RebootUniverse");
     rebootUniverse.setUserTaskUUID(UUID.randomUUID());
   }
 
@@ -96,17 +98,19 @@ public class RebootUniverseTest extends UpgradeTaskTest {
   public void testRollingReboot() {
     UpgradeTaskParams taskParams = new UpgradeTaskParams();
     TaskInfo taskInfo = submitTask(taskParams);
-    verify(mockNodeManager, times(15)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(27)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     position = assertSequence(subTasksByPosition, position);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
-    assertEquals(54, position);
+    assertEquals(62, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

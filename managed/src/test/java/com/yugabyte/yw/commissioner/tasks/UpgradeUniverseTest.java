@@ -1163,6 +1163,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           Cluster primaryCluster = universeDetails.getPrimaryCluster();
           UserIntent userIntent = primaryCluster.userIntent;
           userIntent.regionList = ImmutableList.of(region.uuid, secondRegion.uuid);
+          userIntent.provider = defaultProvider.uuid.toString();
 
           PlacementInfo pi = primaryCluster.placementInfo;
           PlacementInfoUtil.addPlacementZone(az4.uuid, pi, 1, 2, false);

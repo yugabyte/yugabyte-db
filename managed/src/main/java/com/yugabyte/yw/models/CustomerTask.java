@@ -245,7 +245,10 @@ public class CustomerTask extends Model {
     RotateAccessKey,
 
     @EnumValue("CreateAndRotateAccessKey")
-    CreateAndRotateAccessKey;
+    CreateAndRotateAccessKey,
+
+    @EnumValue("RunApiTriggeredHooks")
+    RunApiTriggeredHooks;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -356,6 +359,8 @@ public class CustomerTask extends Model {
           return completed
               ? "Creating Access Key and Rotation Tasks"
               : "Created New Access Key and Rotation Tasks";
+        case RunApiTriggeredHooks:
+          return completed ? "Ran API Triggered Hooks" : "Running API Triggered Hooks";
         default:
           return null;
       }

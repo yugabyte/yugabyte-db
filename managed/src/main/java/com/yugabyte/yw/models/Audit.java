@@ -424,7 +424,13 @@ public class Audit extends Model {
     RotateAccessKey,
 
     @EnumValue("Create And Rotate Access Key")
-    CreateAndRotateAccessKey;
+    CreateAndRotateAccessKey,
+
+    @EnumValue("Run Hook")
+    RunHook,
+
+    @EnumValue("Run API Triggered Tasks")
+    RunApiTriggeredHooks;
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.
