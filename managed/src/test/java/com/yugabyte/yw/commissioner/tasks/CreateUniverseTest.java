@@ -44,7 +44,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks, // PreNodeProvision
           TaskType.AnsibleSetupServer,
+          TaskType.RunHooks, // PostNodeProvision
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
@@ -167,6 +169,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
               }
             });
     UniverseDefinitionTaskParams universeDetails = result.getUniverseDetails();
+    universeDetails.creatingUser = defaultUser;
     universeDetails.universeUUID = defaultUniverse.universeUUID;
     universeDetails.firstTry = true;
     universeDetails.previousTaskUUID = null;

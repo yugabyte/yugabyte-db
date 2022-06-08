@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.HookInserter;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -33,6 +34,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.TaskInfo;
@@ -878,6 +880,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createSetupServerTasks(
       Collection<NodeDetails> nodes, Consumer<AnsibleSetupServer.Params> paramsCustomizer) {
+    // Create preprovision hooks
+    HookInserter.addHookTrigger(TriggerType.PreNodeProvision, this, taskParams(), nodes);
+
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
@@ -894,6 +899,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       subTaskGroup.addSubTask(ansibleSetupServer);
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+
+    // Create postprovision hooks
+    HookInserter.addHookTrigger(TriggerType.PostNodeProvision, this, taskParams(), nodes);
+
     return subTaskGroup;
   }
 
