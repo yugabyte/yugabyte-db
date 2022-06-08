@@ -43,6 +43,7 @@
 #include "access/xact.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_publication.h"
+#include "commands/extension.h"
 #include "commands/matview.h"
 #include "commands/trigger.h"
 #include "executor/execdebug.h"
@@ -825,7 +826,10 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	/*
 	 * Do permissions checks
 	 */
-	ExecCheckRTPerms(rangeTable, true);
+	if (!(IsYbExtensionUser(GetUserId()) && creating_extension))
+	{
+		ExecCheckRTPerms(rangeTable, true);
+	}
 
 	/*
 	 * initialize the node's execution state
