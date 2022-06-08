@@ -1,20 +1,20 @@
 ---
-title: Verify migration
+title: Verify a migration from PostgreSQL
+headerTitle: Verify a migration
 linkTitle: Verify migration
-description: Run steps to ensure a successful migration.
+description: Steps for verifying that a migration from PostgreSQL to YugabyteDB was successful.
 menu:
   preview:
-    identifier: verify-migration
-    parent: perform-migration-1
-    weight: 504
+    identifier: migrate-postgresql-verify
+    parent: manual-import
+    weight: 206
+aliases:
+  - /preview/migrate/migrate-from-postgresql/verify-migration/
 isTocNested: true
 showAsideToc: true
 ---
 
-
-After the successful execution of the `yb-voyager import data` command, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
-
-The following steps can be performed to ensure that the migration was successful.
+Here are some things that can be verified to ensure that the migration was successful.
 
 ## Verify database objects
 
@@ -56,7 +56,7 @@ SELECT cnt_rows(table_schema, table_name)
 
 ### Example
 
-An example illustrating the output of running the above on the Northwind database is as follows:
+Below is an example illustrating the output of running the above on the Northwind database.
 
 ```output
 example=# SELECT cnt_rows(table_schema, table_name)

@@ -2,18 +2,19 @@
 title: Migration phases
 linkTitle: Migration phases
 description: Overview of the process for migrating data to YugabyteDB.
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     identifier: migration-phases
-    parent: overview
-    weight: 302
+    parent: yb-voyager
+    weight: 101
 isTocNested: true
 showAsideToc: true
 ---
 
 The page describes the general migration process from any source database to YugabyteDB (using YSQL API).
 
-### Step 1. Migrate DDL (schema)
+## Step 1. Migrate DDL (schema)
 
 Migrate the schema from the source database to YugabyteDB. The recommended path to migrate applications to YugabyteDB is as follows:
 
@@ -23,36 +24,36 @@ Migrate the schema from the source database to YugabyteDB. The recommended path 
 
 The set of modifications to a PostgreSQL schema in order to get it to run on YugabyteDB is outlined in the section on migrating your schema from PostgreSQL to YugabyteDB.
 
-### Step 2. Migrate DML statements
+## Step 2. Migrate DML statements
 
 The next step is to migrate the DML statements used by the application to YugabyteDB. The support for DML in YugabyteDB is very similar to what PostgreSQL supports with some exceptions. These are outlined in the section on migrating an app from PostgreSQL to YugabyteDB.
 
-### Step 3. Export data from source
+## Step 3. Export data from source
 
 The third step of the migration is to export the data from the various tables in the source database into a CSV format, which can subsequently be imported into YugabyteDB. Most databases support exporting data into a CSV format, which is the recommended option. For larger datasets, a parallel export is recommended.
 
 Migrating to another database is a good trigger event to modify applications (in order to improve performance or add features). In such scenarios, the schema is often modified which would in turn require the data set to be transformed before loading it into YugabyteDB. This data set transformation is often accomplished by programmatically loading the data into YugabyteDB.
 
-### Step 4. Prepare cluster for import
+## Step 4. Prepare cluster for import
 
 Suggestions to prepare the YugabyteDB cluster for an efficient data import.
 
-### Step 5. Import data
+## Step 5. Import data
 
 Import the data into YugabyteDB using the COPY command from CSV files, or programmatically.
 
-### Step 6. Finalize DDL (schema)
+## Step 6. Finalize DDL (schema)
 
 If any constraints and triggers were disabled to speed up data import, recreate those.
 
-### Step 7. Verify the migration
+## Step 7. Verify the migration
 
 Check that the list of tables, indexes, constraints, and triggers match between the source database and YugabyteDB.
 
 ## Learn more
 
-- Refer to [sources]() to learn more about the supported databases to migrate to YugabyteDB and steps to prepare your source database.
+- Refer to [Prerequisites](../../yb-voyager/prerequisites/), to learn about the requirements to install YB Voyager.
 
-- Refer to [targets]() to learn about the YugabyteDB products you can choose from as your target database, followed by the steps to setup a target YugabyteDB database.
+- Refer to [Install YB Voyager](../../yb-voyager/install-yb-voyager/), and get started with preparing your databases for migration.
 
-- Refer to [Perform migration](), for more information on the steps required to perform and verify a successful migration.
+- Refer to [Perform migration](../../yb-voyager/perform-migration/), for more information on the steps required to perform and verify a successful migration.

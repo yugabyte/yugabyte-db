@@ -1,41 +1,125 @@
 ---
 title: YB Voyager CLI
 linkTitle: YB Voyager CLI
-description: YB Voyager resources and CLI reference.
+description: YB Voyager CLI and SSL connectivity.
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     identifier: yb-voyager-cli
-    parent: overview
-    weight: 403
+    parent: yb-voyager
+    weight: 105
 isTocNested: true
 showAsideToc: true
 ---
 
-## Export directory
+yb-voyager is a command line executable program that supports migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database.
 
-Before starting migration, you should create the export directory on a file system that has enough space to keep the entire data dump. Next, you should provide the path of the export directory as a mandatory argument (`--export-dir`) to each invocation of the yb-voyager command.
+## Syntax
 
-The export directory has the following sub-directories and files:
+```sh
+yb_voyager [ <migration-phase>... ] [ <arguments> ... ]
+```
 
-- `reports` directory contains the generated Migration Assessment Report.
-- `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
-- `data` directory contains TSV (Tab Separated Values) files that are passed to the COPY command on the target database.
-- `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
-- `yb-voyager.log` contains log messages.
+- *migration-phase*: See [Migration phase](#migration-phase)
+- *arguments*: See [Arguments](#arguments)
 
-## Data modeling
+### Command line help
 
-Before performing migration from your source database to YugabyteDB,
+To display the available online help, run:
 
-### Review your sharding strategies
+```sh
+yb_voyager --help
+```
 
-YugabyteDB supports two primary ways of sharding: by HASH and RANGE. The default sharding method is set to HASH as we believe that this is the better option for most OLTP applications. You can read more about why in [Hash and range sharding](/preview/architecture/docdb-sharding/sharding/). When exporting out of a PostgreSQL database, be aware that if you want RANGE partitioning, you must call it out in the schema creation.
+### Migration phase
 
-For most workloads, it is recommended to use HASH partitioning because it efficiently partitions the data, and spreads it evenly across all nodes.
+The following command line options specify the migration phases.
 
-RANGE partitioning may be advantageous for particular use cases. Consider a use case which is time series specific; here you'll be querying data for specific time buckets. In this case, using RANGE partitioning to split buckets into the specific time buckets will help to improve the speed and efficiency of the query.
+- [export schema](/preview/migrate/yb-voyager/perform-migration/#export-schema)
 
-Additionally, you can use a combination of HASH and RANGE sharding for your primary key by choosing a HASH value as the partition key, and a RANGE value as the clustering key.
+- [analyze-schema](/preview/migrate/yb-voyager/perform-migration/#analyze-schema)
+
+- [export data](/preview/migrate/yb-voyager/perform-migration/#export-data)
+
+- [import schema](/preview/migrate/yb-voyager/perform-migration/#import-schema)
+
+- [import data](/preview/migrate/yb-voyager/perform-migration/#import-data)
+
+- [import data file](/preview/migrate/yb-voyager/perform-migration/#import-data-file)
+
+### Arguments
+
+#### --export-dir
+
+Specifies the path to the directory containing the data files to export.
+
+#### --source-db-type
+
+Specifies the source database type (PostrgreSQL, Mysql or Oracle).
+
+#### --source-db-host
+
+Specifies the host name of the machine on which the source database server is running.
+
+#### --source-db-user
+
+Specifies the username of the source database.
+
+#### --source-db-password
+
+Specifies the password of the source database.
+
+#### --source-db-name
+
+Specifies the name of the source database.
+
+#### --source-db-schema
+
+Specifies the schema of the source database.
+
+#### --output-format
+
+Specifies the format in which the report file is generated. It can be in `html`, `txt`, `json` or `xml`.
+
+#### --target-db-type
+
+Specifies the target YugabyteDB database between [YugabyteDB](https://www.yugabyte.com/yugabytedb/), [YugabyteDB Anywhere](https://www.yugabyte.com/anywhere/) or [YugabyteDB Managed](https://www.yugabyte.com/managed/).
+
+#### --target-db-host
+
+Specifies the host name of the machine on which target database server is running.
+
+#### --target-db-user
+
+Specifies the username of the source database.
+
+#### --target-db-password
+
+Specifies the password of the source database.
+
+#### --target-db-name
+
+Specifies the name of the source database.
+
+#### –-data-dir
+
+The path to the directory containing the data files to import.
+
+#### --file-table-map
+
+Comma-separated mapping between the file in data-dir to the corresponding table in the database. Default is to assume the file name in `table1_data.sql` format where `table1` name will be used as table name.
+
+#### --delimiter
+
+default is “\t” (tab), can be changed to comma(,), pipe(|) or anything
+
+#### --file-type
+
+default is csv (currently supported file types are csv and sql)
+
+#### –-has-header
+
+default is false, required in case the csv file contains column names as a header. (only valid for csv file-type)
 
 ## SSL Connectivity
 
@@ -62,13 +146,3 @@ The following table summarizes the arguments and options you can pass to the yb-
 - Include the primary key definition in the `CREATE TABLE` statement. Primary Key cannot be added to a partitioned table using the `ALTER TABLE` statement.
 
 {{< /note >}}
-
-## Unsupported features
-
-Currently, yb-voyager doesn't support the following features:
-
-| Feature | Description/Alternatives  | Issue tracker |
-| :-------| :---------- | :----------- |
-| BLOB and CLOB | yb-voyager currently ignores all columns of type BLOB/CLOB. <br>  Use another mechanism to load the attributes till this feature is supported.| https://github.com/yugabyte/yb-voyager/issues/43 |
-| Tablespaces |  Currently the YB migration engine cannot handle migration of tables associated with certain TABLESPACES automatically. <br> The workaround is to manually create the required tablespace in Yugabyte and then start the migration.<br> Alternatively if that tablespace is not relevant in the YugabyteDB distributed cluster then the user can remove the tablespace association of the table from the create table definition. | https://github.com/yugabyte/yb-voyager/issues/47 |
-| ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | https://github.com/yugabyte/yb-voyager/issues/48 |

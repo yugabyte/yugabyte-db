@@ -33,7 +33,7 @@ GRANT SHOW_ROUTINE  ON *.* TO 'ybvoyager'@'localhost';
 GRANT SELECT ON *.* TO 'ybvoyager'@'localhost';
 ```
 
-Now you can use the `ybvoyager` user for migration.
+The `ybvoyager` user can now be used for migration.
 
 - You'll need to provide the user and the source database details in the subsequent invocations of yb-voyager. For convenience, you can populate the information in the following environment variables:
 

@@ -6,8 +6,10 @@ description: Steps for exporting PostgreSQL data for importing into YugabyteDB.
 menu:
   preview:
     identifier: migrate-postgresql-export
-    parent: migrate-from-postgresql
-    weight: 750
+    parent: manual-import
+    weight: 203
+aliases:
+  - /preview/migrate/migrate-from-postgresql/export-data/
 isTocNested: false
 showAsideToc: true
 ---

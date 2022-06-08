@@ -6,8 +6,10 @@ description: Prepare a YugabyteDB cluster for importing PostgreSQL data.
 menu:
   preview:
     identifier: migrate-postgresql-prepare-cluster
-    parent: migrate-from-postgresql
-    weight: 760
+    parent: manual-import
+    weight: 204
+aliases:
+  - /preview/migrate/migrate-from-postgresql/prepare-cluster/
 isTocNested: false
 showAsideToc: true
 ---

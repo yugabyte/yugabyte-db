@@ -15,30 +15,6 @@ menu:
 
 <div class="row">
 
-  <!-- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="migration-process-overview/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Migration process</div>
-      </div>
-      <div class="body">
-        An overview of the migration process to YugabyteDB.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="migrate-from-postgresql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Migrate from PostgreSQL</div>
-      </div>
-      <div class="body">
-        Migrate your PostgreSQL data and applications to YugabyteDB.
-      </div>
-    </a>
-  </div> -->
-
 <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="yb-voyager/">
       <div class="head">
