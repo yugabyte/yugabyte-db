@@ -6,12 +6,19 @@ import org.apache.commons.io.IOUtils;
 import com.google.inject.Inject;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.RunApiTriggeredHooks;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.HookRequestData;
 import com.yugabyte.yw.models.Hook;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -37,8 +44,11 @@ public class HookController extends AuthenticatedController {
   public static final String ENABLE_CUSTOM_HOOKS_PATH =
       "yb.security.custom_hooks.enable_custom_hooks";
   public static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
+  public static final String ENABLE_API_HOOK_RUN_PATH =
+      "yb.security.custom_hooks.enable_api_triggered_hooks";
 
   @Inject RuntimeConfigFactory rConfigFactory;
+  @Inject Commissioner commissioner;
 
   @ApiOperation(
       value = "List all hooks",
@@ -141,6 +151,47 @@ public class HookController extends AuthenticatedController {
             Json.toJson(form),
             null);
     return PlatformResults.withData(hook);
+  }
+
+  @ApiOperation(value = "Run API Triggered hooks", nickname = "runHooks", response = YBPTask.class)
+  public Result run(UUID customerUUID, UUID universeUUID, Boolean isRolling) {
+    verifyAuth();
+    if (!rConfigFactory.staticApplicationConf().getBoolean(ENABLE_API_HOOK_RUN_PATH)) {
+      throw new PlatformServiceException(
+          UNAUTHORIZED,
+          "The execution of API Triggered custom hooks is not enabled on this Anywhere instance");
+    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+
+    RunApiTriggeredHooks.Params taskParams = new RunApiTriggeredHooks.Params();
+    taskParams.universeUUID = universe.universeUUID;
+    taskParams.creatingUser = CommonUtils.getUserFromContext(ctx());
+    taskParams.isRolling = isRolling.booleanValue();
+
+    log.info(
+        "Running API Triggered hooks for {} [ {} ] customer {}.",
+        universe.name,
+        universe.universeUUID,
+        customer.uuid);
+
+    UUID taskUUID = commissioner.submit(TaskType.RunApiTriggeredHooks, taskParams);
+    CustomerTask.create(
+        customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.RunApiTriggeredHooks,
+        universe.name);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universe.universeUUID.toString(),
+            Audit.ActionType.RunApiTriggeredHooks,
+            taskUUID);
+
+    return new YBPTask(taskUUID).asResult();
   }
 
   public String getHookTextFromFile(File hookFile) {

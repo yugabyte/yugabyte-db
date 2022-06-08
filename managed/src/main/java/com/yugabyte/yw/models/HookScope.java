@@ -14,6 +14,7 @@ import io.ebean.annotation.EnumValue;
 import java.util.UUID;
 import java.util.Set;
 import java.util.List;
+import java.util.Optional;
 import javax.persistence.Entity;
 import javax.persistence.Column;
 import javax.persistence.Id;
@@ -34,20 +35,71 @@ public class HookScope extends Model {
     @EnumValue("PostNodeProvision")
     PostNodeProvision,
 
-    @EnumValue("PreNodeUpgrade")
-    PreNodeUpgrade,
-
-    @EnumValue("PostNodeUpgrade")
-    PostNodeUpgrade,
-
-    @EnumValue("PreUpgradeUniverse")
-    PreUpgradeUniverse,
-
-    @EnumValue("PostUpgradeUniverse")
-    PostUpgradeUniverse,
-
     @EnumValue("ApiTriggered")
-    ApiTriggered;
+    ApiTriggered,
+
+    /*
+     * Hooks for Upgrade Tasks.
+     * If the upgrade task is FooBar, then the hooks should be:
+     * 1. PreFooBar (Before entire task)
+     * 2. PostFooBar (After entire task)
+     * 3. PreFooBarNodeUpgrade (Before node upgrade)
+     * 4. PostFooBarNodeUpgrade (After node upgrade)
+     */
+    @EnumValue("PreRestartUniverseNodeUpgrade")
+    PreRestartUniverseNodeUpgrade,
+
+    @EnumValue("PostRestartUniverseNodeUpgrade")
+    PostRestartUniverseNodeUpgrade,
+
+    @EnumValue("PreRestartUniverse")
+    PreRestartUniverse,
+
+    @EnumValue("PostRestartUniverse")
+    PostRestartUniverse,
+
+    @EnumValue("PreSoftwareUpgradeNodeUpgrade")
+    PreSoftwareUpgradeNodeUpgrade,
+
+    @EnumValue("PostSoftwareUpgradeNodeUpgrade")
+    PostSoftwareUpgradeNodeUpgrade,
+
+    @EnumValue("PreSoftwareUpgrade")
+    PreSoftwareUpgrade,
+
+    @EnumValue("PostSoftwareUpgrade")
+    PostSoftwareUpgrade,
+
+    @EnumValue("PreRebootUniverseNodeUpgrade")
+    PreRebootUniverseNodeUpgrade,
+
+    @EnumValue("PostRebootUniverseNodeUpgrade")
+    PostRebootUniverseNodeUpgrade,
+
+    @EnumValue("PreRebootUniverse")
+    PreRebootUniverse,
+
+    @EnumValue("PostRebootUniverse")
+    PostRebootUniverse,
+
+    @EnumValue("PreThirdpartySoftwareUpgradeNodeUpgrade")
+    PreThirdpartySoftwareUpgradeNodeUpgrade,
+
+    @EnumValue("PostThirdpartySoftwareUpgradeNodeUpgrade")
+    PostThirdpartySoftwareUpgradeNodeUpgrade,
+
+    @EnumValue("PreThirdpartySoftwareUpgrade")
+    PreThirdpartySoftwareUpgrade,
+
+    @EnumValue("PostThirdpartySoftwareUpgrade")
+    PostThirdpartySoftwareUpgrade;
+
+    public static Optional<TriggerType> maybeResolve(String triggerName) {
+      for (TriggerType triggerType : TriggerType.values()) {
+        if (triggerType.name().equals(triggerName)) return Optional.of(triggerType);
+      }
+      return Optional.empty();
+    }
   };
 
   @Id
@@ -73,6 +125,11 @@ public class HookScope extends Model {
 
   public Set<Hook> getHooks() {
     return hooks;
+  }
+
+  public void addHook(Hook hook) {
+    hook.hookScope = this;
+    hook.update();
   }
 
   public static HookScope create(UUID customerUUID, TriggerType triggerType) {

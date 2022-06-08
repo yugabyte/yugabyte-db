@@ -13,7 +13,8 @@ from ybops.cloud.common.command import InstanceCommand, AccessCommand
 from ybops.cloud.common.method import ConfigureInstancesMethod, ListInstancesMethod, \
     InitYSQLMethod, CronCheckMethod, TransferXClusterCerts, \
     VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, \
-    AccessEditVaultMethod, AccessCreateVaultMethod, AccessDeleteKeyMethod, RebootInstancesMethod
+    AccessEditVaultMethod, AccessCreateVaultMethod, AccessDeleteKeyMethod, RebootInstancesMethod, \
+    RunHooks
 from ybops.cloud.onprem.method import OnPremCreateInstancesMethod, OnPremDestroyInstancesMethod, \
     OnPremProvisionInstancesMethod, OnPremValidateMethod, \
     OnPremFillInstanceProvisionTemplateMethod, OnPremListInstancesMethod, \
@@ -43,6 +44,7 @@ class OnPremInstanceCommand(InstanceCommand):
         self.add_method(AddAuthorizedKey(self))
         self.add_method(RemoveAuthorizedKey(self))
         self.add_method(RebootInstancesMethod(self))
+        self.add_method(RunHooks(self))
 
 
 class OnPremAccessCommand(AccessCommand):
