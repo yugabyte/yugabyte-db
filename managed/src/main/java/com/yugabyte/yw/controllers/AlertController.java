@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
 import com.yugabyte.yw.forms.paging.AlertConfigurationPagedApiQuery;
 import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
+import com.yugabyte.yw.metrics.MetricUrlProvider;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertConfiguration;
@@ -42,12 +44,16 @@ import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.extended.AlertConfigurationTemplate;
+import com.yugabyte.yw.models.extended.AlertData;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.filters.AlertTemplateFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedResponse;
+import com.yugabyte.yw.models.paging.AlertDataPagedResponse;
 import com.yugabyte.yw.models.paging.AlertPagedQuery;
 import com.yugabyte.yw.models.paging.AlertPagedResponse;
 import io.swagger.annotations.Api;
@@ -56,10 +62,15 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.apache.commons.collections.CollectionUtils;
 import play.mvc.Result;
 
 @Api(value = "Alerts", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
@@ -69,6 +80,8 @@ public class AlertController extends AuthenticatedController {
 
   @Inject private AlertConfigurationService alertConfigurationService;
 
+  @Inject private AlertDefinitionService alertDefinitionService;
+
   @Inject private AlertService alertService;
 
   @Inject private AlertChannelService alertChannelService;
@@ -77,12 +90,14 @@ public class AlertController extends AuthenticatedController {
 
   @Inject private AlertManager alertManager;
 
+  @Inject private MetricUrlProvider metricUrlProvider;
+
   @ApiOperation(value = "Get details of an alert", response = Alert.class)
   public Result get(UUID customerUUID, UUID alertUUID) {
     Customer.getOrBadRequest(customerUUID);
 
     Alert alert = alertService.getOrBadRequest(alertUUID);
-    return PlatformResults.withData(alert);
+    return PlatformResults.withData(convert(alert));
   }
 
   /** Lists alerts for given customer. */
@@ -96,7 +111,8 @@ public class AlertController extends AuthenticatedController {
 
     AlertFilter filter = AlertFilter.builder().customerUuid(customerUUID).build();
     List<Alert> alerts = alertService.list(filter);
-    return PlatformResults.withData(alerts);
+
+    return PlatformResults.withData(convert(alerts));
   }
 
   @ApiOperation(value = "List active alerts", response = Alert.class, responseContainer = "List")
@@ -105,7 +121,8 @@ public class AlertController extends AuthenticatedController {
 
     AlertFilter filter = AlertFilter.builder().customerUuid(customerUUID).build();
     List<Alert> alerts = alertService.listNotResolved(filter);
-    return PlatformResults.withData(alerts);
+
+    return PlatformResults.withData(convert(alerts));
   }
 
   @ApiOperation(value = "Count alerts", response = Integer.class)
@@ -143,8 +160,11 @@ public class AlertController extends AuthenticatedController {
     AlertPagedQuery query = apiQuery.copyWithFilter(filter, AlertPagedQuery.class);
 
     AlertPagedResponse alerts = alertService.pagedList(query);
+    List<AlertData> alertDataList = convert(alerts.getEntities());
+    AlertDataPagedResponse alertDataPagedResponse =
+        alerts.setData(alertDataList, new AlertDataPagedResponse());
 
-    return PlatformResults.withData(alerts);
+    return PlatformResults.withData(alertDataPagedResponse);
   }
 
   @ApiOperation(value = "Acknowledge an alert", response = Alert.class)
@@ -158,7 +178,7 @@ public class AlertController extends AuthenticatedController {
     auditService()
         .createAuditEntryWithReqBody(
             ctx(), Audit.TargetType.Alert, alertUUID.toString(), Audit.ActionType.Acknowledge);
-    return PlatformResults.withData(alert);
+    return PlatformResults.withData(convert(alert));
   }
 
   @ApiOperation(
@@ -534,5 +554,81 @@ public class AlertController extends AuthenticatedController {
   public Result listAlertDestinations(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(alertDestinationService.listByCustomer(customerUUID));
+  }
+
+  private AlertData convert(Alert alert) {
+    return convert(Collections.singletonList(alert)).get(0);
+  }
+
+  private List<AlertData> convert(List<Alert> alerts) {
+    List<Alert> alertsWithoutExpressionLabel =
+        alerts
+            .stream()
+            .filter(alert -> alert.getLabelValue(KnownAlertLabels.ALERT_EXPRESSION) == null)
+            .collect(Collectors.toList());
+    List<UUID> alertsConfigurationUuids =
+        alertsWithoutExpressionLabel
+            .stream()
+            .map(Alert::getConfigurationUuid)
+            .collect(Collectors.toList());
+    List<UUID> alertDefinitionUuids =
+        alertsWithoutExpressionLabel
+            .stream()
+            .map(Alert::getDefinitionUuid)
+            .collect(Collectors.toList());
+    Map<UUID, AlertConfiguration> alertConfigurationMap =
+        CollectionUtils.isNotEmpty(alertsConfigurationUuids)
+            ? alertConfigurationService
+                .list(AlertConfigurationFilter.builder().uuids(alertsConfigurationUuids).build())
+                .stream()
+                .collect(Collectors.toMap(AlertConfiguration::getUuid, Function.identity()))
+            : Collections.emptyMap();
+    Map<UUID, AlertDefinition> alertDefinitionMap =
+        CollectionUtils.isNotEmpty(alertDefinitionUuids)
+            ? alertDefinitionService
+                .list(AlertDefinitionFilter.builder().uuids(alertDefinitionUuids).build())
+                .stream()
+                .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()))
+            : Collections.emptyMap();
+    return alerts
+        .stream()
+        .map(
+            alert ->
+                convertInternal(
+                    alert,
+                    alertConfigurationMap.get(alert.getConfigurationUuid()),
+                    alertDefinitionMap.get(alert.getDefinitionUuid())))
+        .collect(Collectors.toList());
+  }
+
+  private AlertData convertInternal(
+      Alert alert, AlertConfiguration alertConfiguration, AlertDefinition alertDefinition) {
+    return new AlertData()
+        .setAlert(alert)
+        .setAlertExpressionUrl(getAlertExpressionUrl(alert, alertConfiguration, alertDefinition));
+  }
+
+  private String getAlertExpressionUrl(
+      Alert alert, AlertConfiguration alertConfiguration, AlertDefinition alertDefinition) {
+    String expression = alert.getLabelValue(KnownAlertLabels.ALERT_EXPRESSION);
+    if (expression == null) {
+      // Old resolved alerts may not have alert expression.
+      // Will try to get from configuration and definition.
+      // Thresholds and even expression itself may already be changed - but that's best we can do.
+      if (alertConfiguration != null && alertDefinition != null) {
+        expression =
+            alertDefinition.getQueryWithThreshold(
+                alertConfiguration.getThresholds().get(alert.getSeverity()));
+      } else {
+        return null;
+      }
+    }
+    Long startUnixTime = TimeUnit.MILLISECONDS.toSeconds(alert.getCreateTime().getTime());
+    Long endUnixTime =
+        TimeUnit.MILLISECONDS.toSeconds(
+            alert.getResolvedTime() != null
+                ? alert.getResolvedTime().getTime()
+                : System.currentTimeMillis());
+    return metricUrlProvider.getExpressionUrl(expression, startUnixTime, endUnixTime);
   }
 }
