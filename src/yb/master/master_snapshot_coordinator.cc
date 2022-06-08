@@ -81,6 +81,10 @@ DEFINE_bool(skip_crash_on_duplicate_snapshot, false,
             "id as one of the previous snapshots.");
 TAG_FLAG(skip_crash_on_duplicate_snapshot, runtime);
 
+DEFINE_test_flag(int32, delay_sys_catalog_restore_on_followers_secs, 0,
+                 "Sleep for these many seconds on followers during sys catalog restore");
+TAG_FLAG(TEST_delay_sys_catalog_restore_on_followers_secs, runtime);
+
 DECLARE_bool(allow_consecutive_restore);
 
 namespace yb {
@@ -475,6 +479,10 @@ class MasterSnapshotCoordinator::Impl {
                              snapshot.schedule_id());
       }
       std::swap(restoration->schedules[0], restoration->schedules[this_idx]);
+    }
+    // Inject artificial delay on followers for tests.
+    if (leader_term < 0 && FLAGS_TEST_delay_sys_catalog_restore_on_followers_secs > 0) {
+      SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_delay_sys_catalog_restore_on_followers_secs));
     }
     // Disable concurrent RPCs to the master leader for the duration of sys catalog restore.
     if (leader_term >= 0) {
@@ -1418,7 +1426,9 @@ class MasterSnapshotCoordinator::Impl {
     SubmitWrite(std::move(write_batch), leader_term, &context_);
 
     // Enable tablet splitting again.
-    context_.EnableTabletSplitting("PITR");
+    if (restoration->schedule_id()) {
+      context_.EnableTabletSplitting("PITR");
+    }
   }
 
   void UpdateSchedule(const SnapshotState& snapshot) REQUIRES(mutex_) {
