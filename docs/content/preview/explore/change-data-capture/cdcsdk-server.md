@@ -107,7 +107,7 @@ Configuration using environment variables maybe useful when running in container
 The HTTP Client will stream changes to any HTTP Server for additional processing with the original design goal to make Debezium act as a native event source.
 
 | Property | Default | Description |
-| :----: | :----: | :----: |
+| :---- | :---- | :---- |
 | `debezium.sink.type` | | Must be set to `http` |
 | `debezium.sink.http.url` | | The HTTP Server URL to stream events to. This can also be set by defining the K_SINK environment variable, which is used by the Knative source framework. |
 | `debezium.sink.http.timeout.ms` | 60000 | The number of milli-seconds to wait for a response from the server before timing out. |
