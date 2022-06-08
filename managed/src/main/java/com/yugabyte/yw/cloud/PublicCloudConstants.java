@@ -43,8 +43,8 @@ public class PublicCloudConstants {
   }
 
   public enum Architecture {
-    x86_64("glob:**yugabyte*{alma,centos}*x86_64.tar.gz"),
-    arm64("glob:**yugabyte*{alma,centos}*aarch64.tar.gz");
+    x86_64("glob:**yugabyte*x86_64.tar.gz"),
+    arm64("glob:**yugabyte*aarch64.tar.gz");
 
     private final String glob;
 
