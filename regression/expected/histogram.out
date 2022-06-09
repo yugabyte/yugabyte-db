@@ -47,16 +47,17 @@ INFO:  Sleep 5 seconds
 SELECT substr(query, 0,50) as query, calls, resp_calls FROM pg_stat_monitor ORDER BY query COLLATE "C";
                        query                       | calls |      resp_calls       
 ---------------------------------------------------+-------+-----------------------
- SELECT pg_sleep(i)                                |     5 | {0,0,0,0,0,0,3,2,0,0}
+ SELECT pg_sleep(i)                                |     4 | {0,0,0,0,0,0,3,1,0,0}
+ SELECT pg_sleep(i)                                |     1 | {0,0,0,0,0,0,0,1,0,0}
  SELECT pg_stat_monitor_reset()                    |     1 | {1,0,0,0,0,0,0,0,0,0}
- SELECT substr(query, $1,$2) as query, calls, resp |     1 | {1,0,0,0,0,0,0,0,0,0}
+ SELECT substr(query, 0,50) as query, calls, resp_ |     1 | {1,0,0,0,0,0,0,0,0,0}
  Set pg_stat_monitor.pgsm_track='all'              |     1 | {1,0,0,0,0,0,0,0,0,0}
- select run_pg_sleep($1)                           |     1 | {0,0,0,0,0,0,0,0,1,0}
-(5 rows)
+ select run_pg_sleep(5)                            |     1 | {0,0,0,0,0,0,0,0,1,0}
+(6 rows)
 
 select * from generate_histogram();
-       range        | freq |                                            bar                                             
---------------------+------+--------------------------------------------------------------------------------------------
+       range        | freq |              bar               
+--------------------+------+--------------------------------
  (0 - 3)}           |    0 | 
   (3 - 10)}         |    0 | 
   (10 - 31)}        |    0 | 
@@ -64,7 +65,7 @@ select * from generate_histogram();
   (100 - 316)}      |    0 | 
   (316 - 1000)}     |    0 | 
   (1000 - 3162)}    |    3 | ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-  (3162 - 10000)}   |    2 | ■■■■■■■■■■■■■■■■■■■■
+  (3162 - 10000)}   |    1 | ■■■■■■■■■■
   (10000 - 31622)}  |    0 | 
   (31622 - 100000)} |    0 | 
 (10 rows)

@@ -14,7 +14,7 @@ SELECT 1 AS num;
 SELECT query FROM pg_stat_monitor ORDER BY query COLLATE "C";
                             query                             
 --------------------------------------------------------------
- SELECT $1 AS num
+ SELECT 1 AS num
  SELECT pg_stat_monitor_reset()
  SELECT query FROM pg_stat_monitor ORDER BY query COLLATE "C"
 (3 rows)

@@ -48,9 +48,9 @@ SELECT * from pg_stat_monitor_settings;
 SELECT query, calls, total_exec_time, min_exec_time, max_exec_time, mean_exec_time, stddev_exec_time from pg_stat_monitor;
                                                            query                                                           | calls | total_exec_time | min_exec_time | max_exec_time | mean_exec_time | stddev_exec_time 
 ---------------------------------------------------------------------------------------------------------------------------+-------+-----------------+---------------+---------------+----------------+------------------
- SELECT * from pg_stat_monitor_settings                                                                                    |     2 |          0.0736 |        0.0341 |        0.0396 |         0.0368 |           0.0028
  SELECT query, calls, total_exec_time, min_exec_time, max_exec_time, mean_exec_time, stddev_exec_time from pg_stat_monitor |     1 |               0 |             0 |             0 |              0 |                0
- SELECT pg_stat_monitor_reset()                                                                                            |     1 |            0.03 |          0.03 |          0.03 |           0.03 |                0
+ SELECT pg_stat_monitor_reset()                                                                                            |     1 |          0.0302 |        0.0302 |        0.0302 |         0.0302 |                0
+ SELECT * from pg_stat_monitor_settings                                                                                    |     2 |           0.069 |        0.0342 |        0.0349 |         0.0345 |           0.0004
 (3 rows)
 
 SELECT pg_stat_monitor_reset();
