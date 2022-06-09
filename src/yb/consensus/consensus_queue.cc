@@ -101,12 +101,6 @@ DEFINE_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
              "specified by cdc_checkpoint_opid_interval, then log cache does not consider that "
              "consumer while determining which op IDs to evict.");
 
-DEFINE_int64(cdc_intent_retention_ms, 4 * 3600 * 1000,
-             "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
-             "If we haven't received an updated checkpoint from CDC consumer within the interval "
-             "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
-             "consumer while determining which op IDs to delete from the intent.");
-
 DEFINE_bool(enable_consensus_exponential_backoff, true,
             "Whether exponential backoff based on number of retransmissions at tablet leader "
             "for number of entries to replicate to lagging follower is enabled.");
@@ -118,6 +112,14 @@ DEFINE_int32(consensus_lagging_follower_threshold, 10,
              "-1 disables the feature.");
 TAG_FLAG(consensus_lagging_follower_threshold, advanced);
 TAG_FLAG(consensus_lagging_follower_threshold, runtime);
+
+DEFINE_int64(cdc_intent_retention_ms, 4 * 3600 * 1000,
+             "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
+             "If we haven't received an updated checkpoint from CDC consumer within the interval "
+             "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
+             "consumer while determining which op IDs to delete from the intent.");
+TAG_FLAG(cdc_intent_retention_ms, advanced);
+TAG_FLAG(cdc_intent_retention_ms, runtime);
 
 DEFINE_test_flag(bool, disallow_lmp_failures, false,
                  "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");
