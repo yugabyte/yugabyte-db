@@ -149,7 +149,13 @@ DEFINE_int32(compaction_priority_step_size, 5,
 DEFINE_int32(small_compaction_extra_priority, 1,
              "Small compaction will get small_compaction_extra_priority extra priority.");
 
-DEFINE_int32(automatic_compaction_extra_priority, 50,
+// For performance purposes, it is recommended that `automatic_compaction_extra_priority` is set
+// to 0 when the `enable_automatic_tablet_splitting` gflag is `false` (GH #12844). When automatic
+// tablet splitting is enabled, a larger value is recommended to ensure smaller automatic
+// compactions get prioritized over post-split compactions.
+// Should be set to a higher default value if D17389 is reverted (enable auto tablet split by
+// default).
+DEFINE_int32(automatic_compaction_extra_priority, 0,
              "Assigns automatic compactions extra priority. This deprioritizes manual "
              "compactions including those induced by the tserver (e.g. post-split compactions). "
              "Suggested value between 0 and 50.");
