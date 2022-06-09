@@ -64,7 +64,6 @@ export const getReplicationStatus = (status = IReplicationStatus.INIT) => {
 
 const ALERT_NAME = 'Replication Lag';
 
-
 export const GetConfiguredThreshold = ({
   currentUniverseUUID
 }: {
@@ -96,7 +95,6 @@ export const GetCurrentLag = ({
   replicationUUID: string;
   sourceUniverseUUID: string;
 }) => {
-  
   const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
     ['universe', sourceUniverseUUID],
     () => getUniverseInfo(sourceUniverseUUID)
@@ -156,20 +154,20 @@ export const GetCurrentLag = ({
 
 export const GetCurrentLagForTable = ({
   replicationUUID,
-  tableName,
+  tableUUID,
   enabled,
   nodePrefix,
   sourceUniverseUUID
 }: {
   replicationUUID: string;
-  tableName: string;
+  tableUUID: string;
   enabled?: boolean;
   nodePrefix: string | undefined;
   sourceUniverseUUID: string;
 }) => {
   const { data: metricsData, isFetching } = useQuery(
-    ['xcluster-metric', replicationUUID, nodePrefix, tableName, 'metric'],
-    () => queryLagMetricsForTable(tableName, nodePrefix),
+    ['xcluster-metric', replicationUUID, nodePrefix, tableUUID, 'metric'],
+    () => queryLagMetricsForTable(tableUUID, nodePrefix),
     {
       enabled
     }
