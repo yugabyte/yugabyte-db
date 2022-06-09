@@ -19,7 +19,7 @@
 #include "parser/parse_node.h"
 #include "tcop/dest.h"
 
-#define DEFAULT_BATCH_ROWS_PER_TRANSACTION  1000
+#define DEFAULT_BATCH_ROWS_PER_TRANSACTION  20000
 
 /* CopyStateData is private in commands/copy.c */
 typedef struct CopyStateData *CopyState;
