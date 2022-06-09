@@ -6091,19 +6091,21 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     resp->mutable_schema()->CopyFrom(l->pb.schema());
   }
 
-  // Due to pgschema_name being added after 2.13, older tables may not have this field.
-  // So backfill pgschema_name for non-system YSQL table schema.
-  if (!table->is_system() && l->table_type() == TableType::PGSQL_TABLE_TYPE &&
-      !resp->schema().has_pgschema_name()) {
+  // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
+  // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
+  if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
+      !resp->schema().has_pgschema_name() &&
+      !table->is_system() &&
+      !IsSequencesSystemTable(*table) &&
+      !table->IsColocationParentTable()) {
     SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock for schema name lookup");
 
     auto pgschema_name = GetPgSchemaName(table);
     if (!pgschema_name.ok() || pgschema_name->empty()) {
-      Status s = STATUS_SUBSTITUTE(NotFound,
+      LOG(WARNING) << Format(
           "Unable to find schema name for YSQL table $0.$1 due to error: $2",
           table->namespace_name(), table->name(), pgschema_name.ToString());
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     } else {
       resp->mutable_schema()->set_pgschema_name(*pgschema_name);
     }
