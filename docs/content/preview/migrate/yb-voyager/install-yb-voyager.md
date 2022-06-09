@@ -12,11 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-yb-voyager is a command line executable program that supports migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database. yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*. For more information, refer to [Export directory](/preview/migrate/yb-voyager/yb-voyager-cli/#export-directory).
+yb-voyager is a command line executable program that supports migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database. yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*. For more information, refer to [Export directory](../../yb-voyager/reference/#export-directory).
 
 The following sections include steps to install yb-voyager, and preparing the source and target databases.
 
-Follow the steps to install YB Voyager on a machine which satisfies the [Prerequisites](/preview/migrate/yb-voyager/prerequisites/).
+Follow the steps to install YB Voyager on a machine which satisfies the [Prerequisites](../../yb-voyager/prerequisites/).
 
 - Clone the yb-voyager repository.
 
@@ -81,13 +81,13 @@ yb-voyager --help
 
 <div class="tab-content">
   <div id="postgresql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="postgresql-tab">
-    {{% includeMarkdown "/postgresql.md" %}}
+    {{% includeMarkdown "./postgresql.md" %}}
   </div>
   <div id="mysql" class="tab-pane fade" role="tabpanel" aria-labelledby="mysql-tab">
-    {{% includeMarkdown "/mysql.md" %}}
+    {{% includeMarkdown "./mysql.md" %}}
   </div>
   <div id="oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="oracle-tab">
-    {{% includeMarkdown "/oracle.md" %}}
+    {{% includeMarkdown "./oracle.md" %}}
   </div>
 </div>
 
@@ -119,9 +119,9 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 
 1. If you don't have a cluster setup yet, you can choose one of the following ways to deploy a cluster.
 
-   - Create a local YugabyteDB cluster using the steps under [Quick start](../../quick-start/).
-   - Follow the steps to [Create YugabyteDB universe deployments](../../yugabyte-platform/create-deployments/) using YugabyteDB Anywhere.
-   - Follow the steps to [Deploy clusters in YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/).
+   - Create a local YugabyteDB cluster using the steps under [Quick start](../../../quick-start/).
+   - Follow the steps to [Create YugabyteDB universe deployments](../../../yugabyte-platform/create-deployments/) using YugabyteDB Anywhere.
+   - Follow the steps to [Deploy clusters in YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/).
 
 1. Create a user.
 
