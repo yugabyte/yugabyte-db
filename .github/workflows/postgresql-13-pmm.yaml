@@ -1,5 +1,5 @@
 name: postgresql-13-pmm-integration
-on: pull_request
+on: push
 
 jobs:
   build:
@@ -18,7 +18,7 @@ jobs:
         run: echo 'The branch and Repo Name is' ${{ github.head_ref }} ${{ github.actor }}/pg_stat_monitor
 
       - name: Run PMM & PGSM Setup, E2E Tests
-        run: bash -xe ./pmm_pgsm_setup/pmm_pgsm_setup.sh --pgsql-version=13 --pgstat-monitor-branch=${{ github.head_ref }} --pgstat-monitor-repo=${{ github.actor }}/pg_stat_monitor
+        run: bash -xe ./pmm_pgsm_setup/pmm_pgsm_setup.sh --pgsql-version=13
 
       - name: Get PMM-Agent Logs from the Container
         if: success() || failure()    # run this step even if previous step failed
