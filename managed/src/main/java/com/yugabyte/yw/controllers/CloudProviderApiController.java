@@ -12,11 +12,6 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
@@ -34,12 +29,14 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.data.Form;
 import play.libs.Json;
@@ -106,12 +103,14 @@ public class CloudProviderApiController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.Provider",
           required = true,
           paramType = "body"))
-  public Result edit(UUID customerUUID, UUID providerUUID) throws IOException {
+  public Result edit(UUID customerUUID, UUID providerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Provider editProviderReq =
         formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
-    UUID taskUUID = cloudProviderHandler.editProvider(customer, provider, editProviderReq);
+    UUID taskUUID =
+        cloudProviderHandler.editProvider(
+            customer, provider, editProviderReq, getFirstRegionCode(provider));
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -122,6 +121,32 @@ public class CloudProviderApiController extends AuthenticatedController {
     return new YBPTask(taskUUID, providerUUID).asResult();
   }
 
+  @ApiOperation(value = "Patch a provider", response = YBPTask.class, nickname = "patchProvider")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          value = "patch provider form data",
+          name = "PatchProviderRequest",
+          dataType = "com.yugabyte.yw.models.Provider",
+          required = true,
+          paramType = "body"))
+  public Result patch(UUID customerUUID, UUID providerUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    Provider editProviderReq =
+        formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
+    cloudProviderHandler.mergeProviderConfig(provider, editProviderReq);
+    cloudProviderHandler.editProvider(
+        customer, provider, editProviderReq, getFirstRegionCode(provider));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CloudProvider,
+            providerUUID.toString(),
+            Audit.ActionType.Update,
+            Json.toJson(editProviderReq));
+    return YBPSuccess.withMessage("Patched provider: " + providerUUID);
+  }
+
   @ApiOperation(value = "Create a provider", response = YBPTask.class, nickname = "createProviders")
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -129,7 +154,7 @@ public class CloudProviderApiController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.Provider",
           required = true))
-  public Result create(UUID customerUUID) throws IOException {
+  public Result create(UUID customerUUID) {
     JsonNode requestBody = request().body().asJson();
     Provider reqProvider = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);

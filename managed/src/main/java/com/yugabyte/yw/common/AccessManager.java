@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -37,15 +38,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
-import org.slf4j.Logger;
-import org.apache.commons.lang3.ObjectUtils;
-import org.slf4j.LoggerFactory;
-
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ObjectUtils;
 
 @Singleton
+@Slf4j
 public class AccessManager extends DevopsBase {
-  public static final Logger LOG = LoggerFactory.getLogger(AccessManager.class);
 
   @Inject play.Configuration appConfig;
   @Inject Commissioner commissioner;
@@ -104,12 +102,10 @@ public class AccessManager extends DevopsBase {
             "Key path " + keyBasePathName.getAbsolutePath() + " doesn't exist.");
       }
     }
-
     File keyFilePath = new File(keyBasePathName.getAbsoluteFile(), path);
     if (keyFilePath.isDirectory() || keyFilePath.mkdirs()) {
       return keyFilePath.getAbsolutePath();
     }
-
     throw new RuntimeException("Unable to create key file path " + keyFilePath.getAbsolutePath());
   }
 
@@ -261,9 +257,9 @@ public class AccessManager extends DevopsBase {
                 showSetUpChrony);
       }
     } catch (NoSuchFileException ioe) {
-      LOG.error(ioe.getMessage(), ioe);
+      log.error(ioe.getMessage(), ioe);
     } catch (IOException ioe) {
-      LOG.error(ioe.getMessage(), ioe);
+      log.error(ioe.getMessage(), ioe);
       throw new RuntimeException("Could not create AccessKey", ioe);
     } finally {
       try {
@@ -271,7 +267,7 @@ public class AccessManager extends DevopsBase {
           Files.delete(tempFile);
         }
       } catch (IOException e) {
-        LOG.error(e.getMessage(), e);
+        log.error(e.getMessage(), e);
       }
     }
 
@@ -483,15 +479,28 @@ public class AccessManager extends DevopsBase {
     return response;
   }
 
-  public String createCredentialsFile(UUID providerUUID, JsonNode credentials) throws IOException {
-    ObjectMapper mapper = new ObjectMapper();
-    String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
-    mapper.writeValue(new File(credentialsFilePath), credentials);
-    return credentialsFilePath;
+  public String createCredentialsFile(UUID providerUUID, JsonNode credentials) {
+    try {
+      ObjectMapper mapper = new ObjectMapper();
+      String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
+      mapper.writeValue(new File(credentialsFilePath), credentials);
+      return credentialsFilePath;
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to create credentials file", e);
+    }
   }
 
-  public String createKubernetesConfig(String path, Map<String, String> config, boolean edit)
-      throws IOException {
+  public Map<String, String> readCredentialsFromFile(UUID providerUUID) {
+    try {
+      String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
+      byte[] bytes = Files.readAllBytes(Paths.get(credentialsFilePath));
+      return new ObjectMapper().readValue(bytes, new TypeReference<Map<String, String>>() {});
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to read credentials file", e);
+    }
+  }
+
+  public String createKubernetesConfig(String path, Map<String, String> config, boolean edit) {
     // Grab the kubernetes config file name and file content and create the physical file.
     String configFileName = config.remove("KUBECONFIG_NAME");
     String configFileContent = config.remove("KUBECONFIG_CONTENT");
@@ -511,13 +520,15 @@ public class AccessManager extends DevopsBase {
     if (!edit && Files.exists(configFile)) {
       throw new RuntimeException("File " + configFile.getFileName() + " already exists.");
     }
-    Files.write(configFile, configFileContent.getBytes());
-
-    return configFile.toAbsolutePath().toString();
+    try {
+      Files.write(configFile, configFileContent.getBytes());
+      return configFile.toAbsolutePath().toString();
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to create kubernetes config", e);
+    }
   }
 
-  public String createPullSecret(UUID providerUUID, Map<String, String> config, boolean edit)
-      throws IOException {
+  public String createPullSecret(UUID providerUUID, Map<String, String> config, boolean edit) {
     // Grab the kubernetes config file name and file content and create the physical file.
     String pullSecretFileName = config.remove("KUBECONFIG_PULL_SECRET_NAME");
     String pullSecretFileContent = config.remove("KUBECONFIG_PULL_SECRET_CONTENT");
@@ -533,9 +544,12 @@ public class AccessManager extends DevopsBase {
     if (!edit && Files.exists(pullSecretFile)) {
       throw new RuntimeException("File " + pullSecretFile.getFileName() + " already exists.");
     }
-    Files.write(pullSecretFile, pullSecretFileContent.getBytes());
-
-    return pullSecretFile.toAbsolutePath().toString();
+    try {
+      Files.write(pullSecretFile, pullSecretFileContent.getBytes());
+      return pullSecretFile.toAbsolutePath().toString();
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to create pull secret", e);
+    }
   }
 
   public void rotateAccessKey(

@@ -12,18 +12,12 @@ package com.yugabyte.yw.common.alerts;
 import com.yugabyte.yw.common.templates.PlaceholderSubstitutor;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinitionLabel;
-import java.text.DecimalFormat;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 
 public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
-
-  private static final String QUERY_THRESHOLD_PLACEHOLDER = "{{ query_threshold }}";
-  private static final String QUERY_CONDITION_PLACEHOLDER = "{{ query_condition }}";
-  private static final DecimalFormat THRESHOLD_FORMAT = new DecimalFormat("0.#");
   private static final String DEFINITION_NAME = "definition_name";
   private static final String DEFINITION_EXPR = "definition_expr";
   private static final String DURATION = "duration";
@@ -41,8 +35,7 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
             case DEFINITION_NAME:
               return configuration.getName();
             case DEFINITION_EXPR:
-              return getQueryWithThreshold(
-                  definition.getQuery(), configuration.getThresholds().get(severity));
+              return definition.getQueryWithThreshold(configuration.getThresholds().get(severity));
             case DURATION:
               return configuration.getDurationSec() + "s";
             case LABELS:
@@ -62,12 +55,6 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
                   "Unexpected placeholder " + key + " in rule template file");
           }
         });
-  }
-
-  public static String getQueryWithThreshold(String query, AlertConfigurationThreshold threshold) {
-    return query
-        .replace(QUERY_THRESHOLD_PLACEHOLDER, THRESHOLD_FORMAT.format(threshold.getThreshold()))
-        .replace(QUERY_CONDITION_PLACEHOLDER, threshold.getCondition().getValue());
   }
 
   @RequiredArgsConstructor

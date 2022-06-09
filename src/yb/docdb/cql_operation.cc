@@ -66,7 +66,11 @@ DEFINE_bool(ycql_disable_index_updating_optimization, false,
             "the index data.");
 TAG_FLAG(ycql_disable_index_updating_optimization, advanced);
 
-DECLARE_int32(max_packed_row_columns);
+DEFINE_bool(ycql_enable_packed_row, false, "Whether packed row is enabled for YCQL.");
+
+DEFINE_uint64(
+    ycql_packed_row_size_limit, 0,
+    "Packed row size limit for YCQL in bytes. 0 to make this equal to SSTable block size.");
 
 namespace yb {
 namespace docdb {
@@ -740,8 +744,9 @@ Status QLWriteOperation::InsertScalar(
     bfql::TSOpcode op_code,
     RowPacker* row_packer) {
   ValueRef value_ref(value, column_schema.sorting_type(), op_code);
-  if (row_packer && value_ref.IsTombstoneOrPrimitive()) {
-    return row_packer->AddValue(column_id, value);
+  if (row_packer && value_ref.IsTombstoneOrPrimitive() &&
+      VERIFY_RESULT(row_packer->AddValue(column_id, value))) {
+    return Status::OK();
   }
 
   return data.doc_write_batch->InsertSubDocument(
@@ -965,10 +970,11 @@ Status QLWriteOperation::ApplyUpsert(
   IntraTxnWriteId packed_row_write_id = 0;
 
   if (is_insert && encoded_pk_doc_key_) {
-    if (request_.column_values().size() <= FLAGS_max_packed_row_columns) {
+    if (FLAGS_ycql_enable_packed_row) {
       const SchemaPacking& schema_packing = VERIFY_RESULT(
           doc_read_context_->schema_packing_storage.GetPacking(request_.schema_version()));
-      row_packer.emplace(request_.schema_version(), schema_packing);
+      row_packer.emplace(
+          request_.schema_version(), schema_packing, FLAGS_ycql_packed_row_size_limit);
       packed_row_write_id = data.doc_write_batch->ReserveWriteId();
     } else {
       const DocPath sub_path(encoded_pk_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn);

@@ -27,7 +27,7 @@ GET     /session_info                                                          c
 GET     /customer_count                                                        com.yugabyte.yw.controllers.SessionController.customerCount()
 GET     /app_version                                                           com.yugabyte.yw.controllers.SessionController.appVersion()
 GET     /logs/:maxLines                                                        com.yugabyte.yw.controllers.SessionController.getLogs(maxLines: Integer)
-GET     /logs                                                                  com.yugabyte.yw.controllers.SessionController.getFilteredLogs(maxLines: Integer ?= 10000, universeName: String ?= null, queryRegex: String ?= null)
+GET     /logs                                                                  com.yugabyte.yw.controllers.SessionController.getFilteredLogs(maxLines: Integer ?= 10000, universeName: String ?= null, queryRegex: String ?= null, startDate: String ?= null, endDate: String ?= null)
 
 # --
 
@@ -50,6 +50,7 @@ DELETE  /customers/:cUUID/providers/:pUUID                                     c
 PUT     /customers/:cUUID/providers/:pUUID/edit                                com.yugabyte.yw.controllers.CloudProviderApiController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID)
 PUT     /customers/:cUUID/providers/:pUUID/refresh_pricing                     com.yugabyte.yw.controllers.CloudProviderApiController.refreshPricing(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/access_key_rotation                 com.yugabyte.yw.controllers.CloudProviderApiController.rotateAccessKeysManual(cUUID:java.util.UUID, pUUID: java.util.UUID)
+PATCH   /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderApiController.patch(cUUID: java.util.UUID, pUUID: java.util.UUID)
 
 # Start UI only
 POST    /customers/:cUUID/providers/ui                                         com.yugabyte.yw.controllers.CloudProviderUiOnlyController.create(cUUID: java.util.UUID)

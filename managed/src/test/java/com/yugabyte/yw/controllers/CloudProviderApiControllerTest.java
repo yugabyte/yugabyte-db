@@ -138,6 +138,14 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         bodyJson);
   }
 
+  private Result patchProvider(JsonNode bodyJson, UUID providerUUID) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "PATCH",
+        "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
+        user.createAuthToken(),
+        bodyJson);
+  }
+
   private Result bootstrapProviderXX(JsonNode bodyJson, Provider provider) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "POST",
@@ -563,7 +571,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
     Result result =
         assertPlatformException(() -> editProvider(Json.parse(jsonString), provider.uuid));
-    assertBadRequest(result, "Required field hosted zone id");
+    assertBadRequest(result, "No changes to be made for provider type: aws");
   }
 
   @Test
@@ -599,5 +607,52 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(() -> editProvider(Json.parse(jsonString), provider.uuid));
     assertBadRequest(result, "KeyCode not found: " + AccessKey.getDefaultKeyCode(provider));
+  }
+
+  @Test
+  public void testPatchProviderFailure() throws Exception {
+    when(mockAccessManager.createCredentialsFile(any(), any())).thenReturn("/test-path");
+    Provider provider = Provider.create(customer.uuid, Common.CloudType.gcp, "test");
+    AccessKey.create(provider.uuid, AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
+    String jsonString =
+        "{"
+            + "\"code\":\"aws\","
+            + "\"name\":\"test\","
+            + "\"config\": {"
+            + "\"project_id\": \"test-project\","
+            + "\"client_email\": \"test-email\""
+            + "}}";
+    Result result =
+        assertPlatformException(() -> patchProvider(Json.parse(jsonString), provider.uuid));
+    assertBadRequest(result, "Unknown keys found: [client_email, project_id]");
+  }
+
+  @Test
+  public void testPatchProviderSuccess() throws Exception {
+    when(mockAccessManager.createCredentialsFile(any(), any())).thenReturn("/test-path");
+    when(mockAccessManager.readCredentialsFromFile(any()))
+        .thenReturn(ImmutableMap.of("project_id", "test-project", "client_email", "test-email"));
+    Provider provider = Provider.create(customer.uuid, Common.CloudType.gcp, "test");
+    AccessKey.create(provider.uuid, AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
+    String jsonString =
+        "{"
+            + "\"code\":\"aws\","
+            + "\"name\":\"test\","
+            + "\"config\": {"
+            + "\"project_id\": \"test-project-updated\""
+            + "}}";
+    provider = Provider.get(customer.uuid, provider.uuid);
+    Result result = patchProvider(Json.parse(jsonString), provider.uuid);
+    assertOk(result);
+    provider = Provider.get(customer.uuid, provider.uuid);
+    Map<String, String> expectedConfig =
+        ImmutableMap.of(
+            "project_id", "test-project-updated",
+            "client_email", "test-email",
+            "GCE_PROJECT", "test-project-updated",
+            "GCE_EMAIL", "test-email",
+            "GOOGLE_APPLICATION_CREDENTIALS", "/test-path");
+    Map<String, String> config = provider.getUnmaskedConfig();
+    assertEquals(expectedConfig, config);
   }
 }

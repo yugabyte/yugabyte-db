@@ -51,6 +51,10 @@ struct PersistentCDCStreamInfo : public Persistent<
     return pb.state() == SysCDCStreamEntryPB::DELETED;
   }
 
+  bool is_deleting_metadata() const {
+    return pb.state() == SysCDCStreamEntryPB::DELETING_METADATA;
+  }
+
   const google::protobuf::RepeatedPtrField<CDCStreamOptionsPB> options() const {
     return pb.options();
   }

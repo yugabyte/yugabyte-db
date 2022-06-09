@@ -1,3 +1,5 @@
+import { isDefinedNotNull } from "./ObjectUtils";
+
 /**
  * Format the duration into _d _h _m _s _ms format.
  */
@@ -40,8 +42,10 @@ export const formatDuration = (milliseconds: number) => {
     }
   ];
 
+  if(!isDefinedNotNull(milliseconds)) return '-';
+
   if (milliseconds && !isFinite(milliseconds)) {
-    return milliseconds.toString();
+    return 0;
   }
 
   if (milliseconds === 0) {

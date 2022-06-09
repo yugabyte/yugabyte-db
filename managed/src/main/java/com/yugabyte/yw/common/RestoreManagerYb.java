@@ -26,9 +26,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class RestoreManagerYb extends DevopsBase {
 
   private static final int BACKUP_PREFIX_LENGTH = 8;
@@ -184,7 +186,7 @@ public class RestoreManagerYb extends DevopsBase {
     // credentials are used.
     extraVars.putAll(customerConfig.dataAsMap());
 
-    LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+    log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
     return shellProcessHandler.run(commandArgs, extraVars);
   }
 

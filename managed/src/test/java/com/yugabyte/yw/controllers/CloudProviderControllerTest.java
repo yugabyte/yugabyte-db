@@ -46,7 +46,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -75,7 +74,6 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Secret;
@@ -769,7 +767,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     Result result = assertPlatformException(() -> editProvider(bodyJson, p.uuid));
     verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
-    assertBadRequest(result, "Required field hosted zone id");
+    assertBadRequest(result, "No changes to be made for provider type: aws");
     assertAuditEntry(0, customer.uuid);
   }
 

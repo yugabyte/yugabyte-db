@@ -521,6 +521,9 @@ class Version {
   // Returns Status(Incomplete) if there are no SST files for this version.
   Result<std::string> GetMiddleKey();
 
+  // Returns a table reader for the largest SST file.
+  Result<TableReader*> TEST_GetLargestSstTableReader();
+
   ColumnFamilyData* cfd() const { return cfd_; }
 
   // Return the next Version in the linked list. Used for debug only
@@ -568,6 +571,8 @@ class Version {
   // record results in files_by_compaction_pri_. The largest files are listed
   // first.
   void UpdateFilesByCompactionPri();
+
+  Result<TableCache::TableReaderWithHandle> GetLargestSstTableReader();
 
   ColumnFamilyData* cfd_;  // ColumnFamilyData to which this Version belongs
   Logger* info_log_;

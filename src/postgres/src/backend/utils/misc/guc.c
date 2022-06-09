@@ -192,6 +192,7 @@ static const char *show_tcp_keepalives_idle(void);
 static const char *show_tcp_keepalives_interval(void);
 static const char *show_tcp_keepalives_count(void);
 static bool check_maxconnections(int *newval, void **extra, GucSource source);
+static const char *yb_show_maxconnections(void);
 static bool check_max_worker_processes(int *newval, void **extra, GucSource source);
 static bool check_autovacuum_max_workers(int *newval, void **extra, GucSource source);
 static bool check_autovacuum_work_mem(int *newval, void **extra, GucSource source);
@@ -2252,7 +2253,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&MaxConnections,
 		100, 1, MAX_BACKENDS,
-		check_maxconnections, NULL, NULL
+		check_maxconnections, NULL, yb_show_maxconnections
 	},
 
 	{
@@ -11562,6 +11563,27 @@ check_maxconnections(int *newval, void **extra, GucSource source)
 		max_worker_processes > MAX_BACKENDS)
 		return false;
 	return true;
+}
+
+/*
+ * For YB-managed (cloud), the cloud user won't be aware of superuser.
+ * When YB shows max_connections, the connections reserved for superusers (and 
+ * other backends) are hidden from cloud users.
+ * The reference of the relations can be found in postmaster.c.
+ */
+static const char *
+yb_show_maxconnections(void)
+{
+	static char buf[32];
+
+	int64 yb_adj_max_con = MaxConnections;
+	if (IsYugaByteEnabled() && !superuser())
+	{
+		yb_adj_max_con -= (ReservedBackends + max_wal_senders);
+	}
+
+	snprintf(buf, sizeof(buf), INT64_FORMAT, yb_adj_max_con);
+	return buf;
 }
 
 static bool
