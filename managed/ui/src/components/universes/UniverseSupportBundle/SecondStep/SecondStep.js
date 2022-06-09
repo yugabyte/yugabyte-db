@@ -68,11 +68,14 @@ export const SecondStep = ({ onOptionsChange }) => {
       </p>
       <div className="filters">
 
-        {isDateTypeCustom && (<CustomDateRangePicker onRangeChange={(startEnd) => {
-          const changedOptions = updateOptions('customWithValue', selectionOptionsValue, setIsDateTypeCustom, new moment(startEnd.start), new moment(startEnd.end));
-          onOptionsChange(changedOptions)
-
-        }} />)}
+        {isDateTypeCustom && (
+          <CustomDateRangePicker
+            onRangeChange={(startEnd) => {
+              const changedOptions = updateOptions('customWithValue', selectionOptionsValue, setIsDateTypeCustom, new moment(startEnd.start), new moment(startEnd.end));
+              onOptionsChange(changedOptions)
+            }}
+          />
+        )}
         <DropdownButton
           title={
             <span className="dropdown-text"><i className="fa fa-calendar" /> {filterTypes.find((type) => type.value === selectedFilterType).label}</span>
