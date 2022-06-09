@@ -83,7 +83,7 @@ Status PrometheusWriter::WriteSingleEntry(
   auto table_it = tables_.find(it->second);
   if (table_it == tables_.end()) {
     // If it's the first time we see this table, create the aggregate structures.
-    table_it = tables_.emplace(it->second, TableData { .attributes = attr }).first;
+    table_it = tables_.emplace(it->second, TableData { .attributes = attr, .values = {} }).first;
     table_it->second.values.emplace(name, value);
   } else {
     auto& stored_value = table_it->second.values[name];

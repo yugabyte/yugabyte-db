@@ -125,7 +125,10 @@ void YBTableTestBase::SetUp() {
         .num_tablet_servers = num_tablet_servers(),
         .num_drives = num_drives(),
         .master_rpc_ports = master_rpc_ports(),
-        .enable_ysql = enable_ysql()
+        .enable_ysql = enable_ysql(),
+        .extra_tserver_flags = {},
+        .extra_master_flags = {},
+        .cluster_id = {},
     };
     CustomizeExternalMiniCluster(&opts);
 

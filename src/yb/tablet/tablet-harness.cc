@@ -59,6 +59,7 @@ Status TabletHarness::Create(bool first_time) {
     .raft_group_id = options_.tablet_id,
     .partition = partition.second,
     .tablet_data_state = TABLET_DATA_READY,
+    .snapshot_schedules = {},
   }));
   if (options_.enable_metrics) {
     metrics_registry_.reset(new MetricRegistry());
@@ -101,7 +102,9 @@ TabletInitData TabletHarness::MakeTabletInitData(const RaftGroupMetadataPtr& met
     .txns_enabled = TransactionsEnabled::kFalse,
     .is_sys_catalog = IsSysCatalogTablet::kFalse,
     .snapshot_coordinator = nullptr,
-    .tablet_splitter = nullptr
+    .tablet_splitter = nullptr,
+    .allowed_history_cutoff_provider = {},
+    .transaction_manager_provider = nullptr,
   };
 }
 
