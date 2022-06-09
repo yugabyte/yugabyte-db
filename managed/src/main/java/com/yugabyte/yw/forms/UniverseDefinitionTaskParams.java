@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -268,6 +269,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public void validate() {
       checkDeviceInfo();
       checkStorageType();
+      GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
     }
 
     private void checkDeviceInfo() {

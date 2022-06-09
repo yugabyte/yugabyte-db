@@ -18,7 +18,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -1598,9 +1597,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       ServerType processType,
       UpgradeTaskType type,
       UpgradeTaskSubType taskSubType) {
+    return getAnsibleConfigureServerParams(
+        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent,
+        node,
+        processType,
+        type,
+        taskSubType);
+  }
+
+  public AnsibleConfigureServers.Params getAnsibleConfigureServerParams(
+      UserIntent userIntent,
+      NodeDetails node,
+      ServerType processType,
+      UpgradeTaskType type,
+      UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    UserIntent userIntent =
-        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     Map<String, String> gflags = getPrimaryClusterGFlags(processType, getUniverse());
     // Set the device information (numVolumes, volumeSize, etc.)
     params.deviceInfo = userIntent.deviceInfo;

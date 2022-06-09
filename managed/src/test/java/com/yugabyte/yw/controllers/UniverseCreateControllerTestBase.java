@@ -410,6 +410,53 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   }
 
   @Test
+  public void testUniverseCreateWithContradictoryGflags() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(
+            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i =
+        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", "SingleUserUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.uuid.toString())
+            .put("accessKeyCode", accessKeyCode)
+            .put("enableYSQL", "true");
+    userIntentJson
+        .putArray("masterGFlags")
+        .add(Json.newObject().put("name", "enable_ysql").put("value", "false"));
+
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
+    ArrayNode clustersJsonArray =
+        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(
+        result,
+        "G-Flag value 'false' for 'enable_ysql' is not compatible with intent value 'true'");
+  }
+
+  @Test
   public void testUniverseCreateWithBothEndPointsDisabled() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(

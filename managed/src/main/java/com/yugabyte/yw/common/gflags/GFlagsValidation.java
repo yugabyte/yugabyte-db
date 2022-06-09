@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.gflags;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -10,6 +10,7 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
