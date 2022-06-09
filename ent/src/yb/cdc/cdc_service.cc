@@ -290,7 +290,10 @@ class CDCServiceImpl::Impl {
     }
     CDCStateMetadataInfo info = CDCStateMetadataInfo {
       .producer_tablet_info = producer_tablet,
-      .current_schema = std::make_shared<Schema>()
+      .commit_timestamp = {},
+      .current_schema = std::make_shared<Schema>(),
+      .last_streamed_op_id = OpId(),
+      .mem_tracker = nullptr,
     };
     cdc_state_metadata_.emplace(info);
     return info.current_schema;
@@ -322,6 +325,7 @@ class CDCServiceImpl::Impl {
       .producer_tablet_info = producer_tablet,
       .cdc_state_checkpoint = {op_id, time, time},
       .sent_checkpoint = {op_id, time, time},
+      .mem_tracker = nullptr,
     });
   }
 
@@ -386,7 +390,8 @@ class CDCServiceImpl::Impl {
       tablet_checkpoints_.emplace(TabletCheckpointInfo{
         .producer_tablet_info = producer_tablet,
         .cdc_state_checkpoint = commit_checkpoint,
-        .sent_checkpoint = sent_checkpoint
+        .sent_checkpoint = sent_checkpoint,
+        .mem_tracker = nullptr,
       });
     }
 
@@ -467,11 +472,19 @@ class CDCServiceImpl::Impl {
         // Add every tablet in the stream.
         ProducerTabletInfo producer_info{info.universe_uuid, info.stream_id, tablet.tablet_id()};
         tablet_checkpoints_.emplace(TabletCheckpointInfo{
-            .producer_tablet_info = producer_info
+            .producer_tablet_info = producer_info,
+            .cdc_state_checkpoint =
+                TabletCheckpoint{.op_id = {}, .last_update_time = {}, .last_active_time = {}},
+            .sent_checkpoint =
+                TabletCheckpoint{.op_id = {}, .last_update_time = {}, .last_active_time = {}},
+            .mem_tracker = nullptr,
         });
         cdc_state_metadata_.emplace(CDCStateMetadataInfo{
             .producer_tablet_info = producer_info,
-            .current_schema = std::make_shared<Schema>()
+            .commit_timestamp = {},
+            .current_schema = std::make_shared<Schema>(),
+            .last_streamed_op_id = OpId(),
+            .mem_tracker = nullptr,
         });
         // If this is the tablet that the user requested.
         if (tablet.tablet_id() == info.tablet_id) {
@@ -532,7 +545,9 @@ class CDCServiceImpl::Impl {
       tablet_checkpoints_.emplace(TabletCheckpointInfo{
           .producer_tablet_info = producer_tablet,
           .cdc_state_checkpoint = commit_checkpoint,
-          .sent_checkpoint = sent_checkpoint});
+          .sent_checkpoint = sent_checkpoint,
+          .mem_tracker = nullptr,
+      });
     }
     it = tablet_checkpoints_.find(producer_tablet);
     return it->cdc_state_checkpoint.last_active_time;

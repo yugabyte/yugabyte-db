@@ -829,7 +829,10 @@ TEST_F(RaftConsensusQuorumTest, TestLeaderElectionWithQuiescedQuorum) {
     // This will force an election in which we expect to make the last
     // non-shutdown peer in the list become leader.
     LOG(INFO) << "Running election for future leader with index " << (current_config_size - 1);
-    ASSERT_OK(new_leader->StartElection({ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE}));
+    ASSERT_OK(new_leader->StartElection(LeaderElectionData{
+        .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+        .pending_commit = false,
+        .must_be_committed_opid = OpId()}));
     ASSERT_OK(new_leader->WaitUntilLeaderForTests(MonoDelta::FromSeconds(15)));
     LOG(INFO) << "Election won";
 
