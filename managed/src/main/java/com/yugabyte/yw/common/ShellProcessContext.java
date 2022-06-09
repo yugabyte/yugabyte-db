@@ -15,6 +15,8 @@ public class ShellProcessContext {
   Map<String, String> extraEnvVars;
   // Whether to log stdout&stderr to application.log or not
   boolean logCmdOutput;
+  // Executed command is logged with trace level, in case it's set to true. Otherwise info.
+  boolean traceLogging;
   // Human-readable description for logging
   String description;
   // Used to track this execution, can be null
