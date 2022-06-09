@@ -71,6 +71,8 @@ struct TabletCheckpoint {
   OpId op_id;
   // Timestamp at which the op ID was last updated.
   CoarseTimePoint last_update_time;
+  // Timestamp at which stream polling happen.
+  CoarseTimePoint last_active_time;
 
   bool ExpiredAt(std::chrono::milliseconds duration, std::chrono::time_point<CoarseMonoClock> now) {
     return (now - last_update_time) > duration;
@@ -82,6 +84,8 @@ struct TabletCheckpoint {
 struct TabletCDCCheckpointInfo {
   OpId cdc_op_id = OpId::Max();
   OpId cdc_sdk_op_id = OpId::Invalid();
+  MonoDelta cdc_sdk_op_id_expiration = MonoDelta::kZero;
+  CoarseTimePoint cdc_sdk_most_active_time = CoarseTimePoint::min();
 };
 
 using TabletOpIdMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
@@ -134,7 +138,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   CHECKED_STATUS UpdateCdcReplicatedIndexEntry(
       const string& tablet_id, int64 replicated_index, boost::optional<int64> replicated_term,
-      const OpId& cdc_sdk_replicated_op);
+      const OpId& cdc_sdk_replicated_op, const MonoDelta& cdc_sdk_op_id_expiration);
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
@@ -166,8 +170,6 @@ class CDCServiceImpl : public CDCServiceIf {
   // Returns true if this server has received a GetChanges call.
   bool CDCEnabled();
 
-  Status RetainIntents(
-      const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& cdc_sdk_op_id);
 
  private:
   FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);
@@ -225,7 +227,7 @@ class CDCServiceImpl : public CDCServiceIf {
                                  rpc::RpcContext* context,
                                  const std::shared_ptr<tablet::TabletPeer>& peer);
 
-  void UpdateTabletPeersWithMinReplicatedIndex(const TabletOpIdMap& tablet_min_checkpoint_map);
+  void UpdateTabletPeersWithMinReplicatedIndex(TabletOpIdMap* tablet_min_checkpoint_map);
 
   Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
 

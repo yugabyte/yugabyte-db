@@ -28,6 +28,8 @@ TAG_FLAG(cdc_snapshot_batch_size, runtime);
 DEFINE_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");
 TAG_FLAG(stream_truncate_record, runtime);
 
+DECLARE_int64(cdc_intent_retention_ms);
+
 namespace yb {
 namespace cdc {
 
@@ -607,7 +609,8 @@ Status GetChangesForCDCSDK(
         return STATUS_SUBSTITUTE(
             Corruption, "Cannot read data as the transaction participant context is null");
       }
-      txn_participant->SetRetainOpId(data.op_id);
+      txn_participant->SetIntentRetainOpIdAndTime(
+          data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
       txn_participant->context()->GetLastReplicatedData(&data);
       time = ReadHybridTime::SingleTime(data.log_ht);
 
