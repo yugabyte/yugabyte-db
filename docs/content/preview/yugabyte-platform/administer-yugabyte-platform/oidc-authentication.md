@@ -2,7 +2,7 @@
 title: Enable YugabyteDB Anywhere SSO authentication via OIDC
 headerTitle: Enable YugabyteDB Anywhere SSO authentication via OIDC
 description: Use OIDC to enable SSO login to YugabyteDB Anywhere.
-linkTitle: Authenticate with OIDC
+linkTitle: Configure authentication
 menu:
   preview:
     identifier: oidc-authentication
@@ -12,7 +12,23 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[OpenID Connect (OIDC)](https://openid.net/connect/) is an authentication protocol that allows client applications to confirm the user’s identity via authentication by an authorization server.
+
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../oidc-authentication/" class="nav-link active">
+      <i class="fas fa-cubes"></i>
+      OIDC
+    </a>
+  </li>
+  <li>
+    <a href="../ldap-authentication/" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      LDAP
+    </a>
+  </li>
+</ul>
+<br> OpenID Connect (OIDC) is an authentication protocol that allows client applications to confirm the user’s identity via authentication by an authorization server.
 
 YugabyteDB Anywhere uses OIDC to enable single sign-on (SSO) authentication.
 
@@ -35,5 +51,10 @@ You can create an OIDC configuration as follows:
 - Restart YugabyteDB Anywhere.
 
 For information on how to add users, see [Create, modify, and delete users](../../security/authorization-platform/#create-modify-and-delete-users). The email ID that you enter in the **Add User** dialog must be registered with the identity provider, and the role must reflect the user's role on YugabyteDB Anywhere.
+
+Once OIDC is enabled, the user is presented with the following login options:
+
+- **Login with SSO** redirects the user to the appropriate identity provider's login mechanism.
+- **Super Admin Login** allows the user to login into YugabyteDB Anywhere as a local super admin.
 
  
