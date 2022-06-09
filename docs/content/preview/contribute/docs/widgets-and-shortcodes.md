@@ -106,16 +106,16 @@ The corresponding code for this widget is shown below. Note that the actual cont
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-    {{%/* includeMarkdown "binary/explore-ysql.md" /*/%}}
+  {{%/* includeMarkdown "binary/explore-ysql.md" */%}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{%/* includeMarkdown "binary/explore-ysql.md" /*/%}}
+  {{%/* includeMarkdown "binary/explore-ysql.md" */%}}
   </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-    {{%/* includeMarkdown "docker/explore-ysql.md" /*/%}}
+  {{%/* includeMarkdown "docker/explore-ysql.md" */%}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{%/* includeMarkdown "kubernetes/explore-ysql.md" /*/%}}
+  {{%/* includeMarkdown "kubernetes/explore-ysql.md" */%}}
   </div>
 </div>
 ```

@@ -308,10 +308,10 @@ You must include this boilerplate text in `wants-to-include.md` at the location 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.grammar.md" /*/%}}
+  {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.grammar.md" */%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.diagram.md" /*/%}}
+  {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.diagram.md" */%}}
   </div>
 </div>
 ```
