@@ -728,7 +728,7 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
 
 	num_relations = 0;
 
-	foreach(lr, rt)
+    foreach(lr, rt)
     {
         RangeTblEntry *rte = lfirst(lr);
         if (rte->rtekind != RTE_RELATION)
@@ -1664,11 +1664,15 @@ pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 	*(uint64 *)pgss_qbuf = 0;
 
 #ifdef BENCHMARK
-	for (int i = STATS_START; i < STATS_END; ++i) {
-		pg_hook_stats[i].min_time = 0;
-		pg_hook_stats[i].max_time = 0;
-		pg_hook_stats[i].total_time = 0;
-		pg_hook_stats[i].ncalls = 0;
+	{
+		int i;
+		for (i = STATS_START; i < STATS_END; ++i)
+		{
+			pg_hook_stats[i].min_time = 0;
+			pg_hook_stats[i].max_time = 0;
+			pg_hook_stats[i].total_time = 0;
+			pg_hook_stats[i].ncalls = 0;
+		}
 	}
 #endif
 	LWLockRelease(pgss->lock);
@@ -3399,8 +3403,9 @@ pg_stat_monitor_settings(PG_FUNCTION_ARGS)
 
         if (conf->type == PGC_ENUM)
         {
+	    size_t i;
             strcat(options, conf->guc_options[0]);
-            for (size_t i = 1; i < conf->n_options; ++i)
+            for (i = 1; i < conf->n_options; ++i)
             {
                 strcat(options, ", ");
                 strcat(options, conf->guc_options[i]);
