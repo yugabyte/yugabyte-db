@@ -108,6 +108,8 @@ DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader 
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
+DECLARE_int64(cdc_intent_retention_ms);
+
 namespace yb {
 namespace tablet {
 
@@ -313,7 +315,9 @@ Status TabletPeer::InitTabletPeer(
 
   RETURN_NOT_OK(set_cdc_min_replicated_index(meta_->cdc_min_replicated_index()));
   if (tablet_->transaction_participant()) {
-    tablet_->transaction_participant()->SetRetainOpId(meta_->cdc_sdk_min_checkpoint_op_id());
+    tablet_->transaction_participant()->SetIntentRetainOpIdAndTime(
+        meta_->cdc_sdk_min_checkpoint_op_id(),
+        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
   }
 
   TRACE("TabletPeer::Init() finished");
@@ -1002,6 +1006,45 @@ Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_chec
 
 OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
   return meta_->cdc_sdk_min_checkpoint_op_id();
+}
+
+Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
+    const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
+  if (cdc_sdk_op_id == OpId::Invalid()) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
+  auto txn_participant = tablet()->transaction_participant();
+  if (txn_participant) {
+    txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+  }
+  return Status::OK();
+}
+
+Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(
+    const CoarseTimePoint& cdc_sdk_latest_active_time) {
+  MonoDelta cdc_sdk_intent_retention = MonoDelta::kZero;
+  // If cdc_sdk_latest_update_time is not updated to default CoarseTimePoint::min() value,
+  // It means that, no need to retain the intents. This can happen in below case:-
+  //      a. Only XCluster streams are defined for the tablet.
+  //      b. CDCSDK stream for the tablet is expired.
+  if (cdc_sdk_latest_active_time == CoarseTimePoint::min()) {
+    return cdc_sdk_intent_retention;
+  }
+
+  auto txn_participant = tablet()->transaction_participant();
+  if (txn_participant) {
+    // Get the current tablet LEADER's intent retention expiration time.
+    // check how many milliseconds time remaining w.r.t current time, update
+    // all the FOLLOWERs as their cdc_sdk_min_checkpoint_op_id_expiration_.
+    MonoDelta max_retain_time =
+        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+    MonoDelta lastest_active_time(CoarseMonoClock::Now() - cdc_sdk_latest_active_time);
+    if (max_retain_time >= lastest_active_time) {
+      cdc_sdk_intent_retention = max_retain_time - lastest_active_time;
+    }
+  }
+  return cdc_sdk_intent_retention;
 }
 
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {
