@@ -89,6 +89,9 @@ METRIC_DEFINE_gauge_int64(cdc, time_since_last_getchanges, "CDC Physical Time La
                           "Physical time ellapsed since the last GetChanges request received from "
                           "the consumer.",
                           {0, yb::AggregationFunction::kMax} /* optional_args */);
+METRIC_DEFINE_gauge_uint64(cdc, last_caughtup_physicaltime, "CDC Last Caught-up Physical Time.",
+                           yb::MetricUnit::kMicroseconds,
+                           "Physical Time till which consumer has caught-up with producer.");
 
 // CDC Server Metrics
 METRIC_DEFINE_counter(server, cdc_rpc_proxy_count, "CDC Rpc Proxy Count", yb::MetricUnit::kRequests,
@@ -116,6 +119,7 @@ CDCTabletMetrics::CDCTabletMetrics(const scoped_refptr<MetricEntity>& entity)
       GINIT(is_bootstrap_required),
       GINIT(last_getchanges_time),
       GINIT(time_since_last_getchanges),
+      GINIT(last_caughtup_physicaltime),
       entity_(entity) {}
 
 CDCServerMetrics::CDCServerMetrics(const scoped_refptr<MetricEntity>& entity)
