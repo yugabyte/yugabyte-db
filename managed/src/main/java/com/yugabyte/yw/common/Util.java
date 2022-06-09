@@ -452,39 +452,6 @@ public class Util {
     return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
   }
 
-  // This will help us in insertion of set of keys in locked synchronized way as no
-  // extraction/deletion action should be performed on RunTimeConfig object during the process.
-  // TODO: Fix this locking static method - this locks whole Util class with unrelated methods.
-  //  This should really be using database transactions since runtime config is persisted.
-  public static synchronized void setLockedMultiKeyConfig(
-      RuntimeConfig<Universe> config, Map<String, String> configKeysMap) {
-    configKeysMap.forEach(
-        (key, value) -> {
-          config.setValue(key, value);
-        });
-  }
-
-  // This will help us in extraction of set of keys in locked synchronized way as no
-  // insertion/deletion action should be performed on RunTimeConfig object during the process.
-  public static synchronized Map<String, String> getLockedMultiKeyConfig(
-      RuntimeConfig<Universe> config, List<String> configKeys) {
-    Map<String, String> configKeysMap = new HashMap<>();
-    configKeys.forEach((key) -> configKeysMap.put(key, config.getString(key)));
-    return configKeysMap;
-  }
-
-  // This will help us in deletion of set of keys in locked synchronized way as no
-  // insertion/extraction action should be performed on RunTimeConfig object during the process.
-  public static synchronized void deleteLockedMultiKeyConfig(
-      RuntimeConfig<Universe> config, List<String> configKeys) {
-    configKeys.forEach(
-        (key) -> {
-          if (config.hasPath(key)) {
-            config.deleteEntry(key);
-          }
-        });
-  }
-
   /**
    * Returns the Unix epoch timeStamp in microseconds provided the given timeStamp and it's format.
    */

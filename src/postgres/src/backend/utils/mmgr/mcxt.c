@@ -28,6 +28,53 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
+YbPgMemTracker PgMemTracker = PG_MEM_TRACKER_INIT;
+
+/*
+ * A helper function to take snapshot of current memory usage.
+ * It includes current PG memory usage plus current Tcmalloc usage by
+ * pggate.
+ */
+static Size
+SnapshotMemory()
+{
+	int64_t cur_tc_actual_sz = 0;
+	YBCGetPgggateHeapConsumption(&cur_tc_actual_sz);
+	return PgMemTracker.pg_cur_mem_bytes + cur_tc_actual_sz;
+}
+
+void
+YbPgMemUpdateMax()
+{
+	const Size snapshot_mem = SnapshotMemory();
+	PgMemTracker.backend_max_mem_bytes =
+		Max(PgMemTracker.backend_max_mem_bytes, snapshot_mem);
+	PgMemTracker.stmt_max_mem_bytes =
+		Max(PgMemTracker.stmt_max_mem_bytes,
+			snapshot_mem - PgMemTracker.stmt_max_mem_base_bytes);
+}
+
+void
+YbPgMemAddConsumption(const Size sz)
+{
+	PgMemTracker.pg_cur_mem_bytes += sz;
+	/* Only update max memory when memory is increasing */
+	YbPgMemUpdateMax();
+}
+
+void
+YbPgMemSubConsumption(const Size sz)
+{
+	PgMemTracker.pg_cur_mem_bytes -= sz;
+}
+
+void
+YbPgMemResetStmtConsumption()
+{
+	PgMemTracker.stmt_max_mem_base_bytes = SnapshotMemory();
+	PgMemTracker.stmt_max_mem_bytes = 0;
+}
+
 /*****************************************************************************
  *	  GLOBAL MEMORY															 *
  *****************************************************************************/
