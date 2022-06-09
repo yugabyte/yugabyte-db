@@ -33,8 +33,6 @@ The following section breaks down the quick start example to demonstrate how to 
 
 After completing these steps, you should have a working C# application that uses the Npgsql driver to connect to your cluster, set up tables, run a query, and print out results.
 
-The quick start example requires you to run the steps from the [Prerequisites](../../../quick-start/build-apps/csharp/ysql/#prerequisites) section before proceeding with building the C# application.
-
 ### Step 1: Add the Npgsql driver dependency
 
 If you are using Visual Studio, add the Npgsql package to your project as follows:

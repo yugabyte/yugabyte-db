@@ -66,7 +66,7 @@ The following table describes the connection parameters required to connect to t
 | user | User connecting to the database | yugabyte
 | password | Password for the user | yugabyte
 
-Example connection string parameter (connStringBuilder) for connecting to YugabyteDB is as follows:
+The following is an example connection string for connecting to YugabyteDB.
 
 ```csharp
 var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
@@ -152,7 +152,7 @@ For versions 6.0 or later, the client driver supports the following SSL modes:
 
 The `Require` SSL mode currently requires explicitly setting the `TrustServerCertificate=true` field.
 
-The following is an example connection string parameter (connStringBuilder) for connecting to a YugabyteDB cluster with the `Require` SSL mode.
+The following example shows how to build a connection string for connecting to a YugabyteDB cluster using the `Require` SSL mode.
 
 ```csharp
 var connStringBuilder = new NpgsqlConnectionStringBuilder();
@@ -166,7 +166,7 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     CRUD(connStringBuilder.ConnectionString);
 ```
 
-The following is an example connection string parameter (connStringBuilder) for connecting to a YugabyteDB cluster with the `VerifyCA` or `VerifyFull` SSL mode.
+The following example shows how to build a connection string for connecting to a YugabyteDB cluster using the `VerifyCA` and `VerifyFull` SSL modes.
 
 ```csharp
 var connStringBuilder = new NpgsqlConnectionStringBuilder();

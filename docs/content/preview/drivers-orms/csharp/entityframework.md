@@ -31,8 +31,6 @@ Learn how to establish a connection to a YugabyteDB database and begin basic CRU
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for C# application development using EntityFramework.
 
-The quick start example requires you to run the steps from the [Prerequisites](../../../quick-start/build-apps/csharp/ysql-entity-framework/#prerequisites) section before proceeding with building the C# application.
-
 ### Step 1: Add the ORM dependency
 
 If you are using Visual Studio, add the Npgsql package to the project as follows:
