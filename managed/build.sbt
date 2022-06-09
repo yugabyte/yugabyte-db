@@ -169,6 +169,8 @@ libraryDependencies ++= Seq(
   "com.jayway.jsonpath" % "json-path" % "2.6.0",
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15",
+  "com.google.apis" % "google-api-services-compute" % "v1-rev20220506-1.32.1",
+  "com.google.cloud" % "google-cloud-compute" % "1.9.1",
   "com.google.cloud" % "google-cloud-storage" % "2.2.1",
   "org.projectlombok" % "lombok" % "1.18.20",
   "com.squareup.okhttp3" % "okhttp" % "4.9.2",
