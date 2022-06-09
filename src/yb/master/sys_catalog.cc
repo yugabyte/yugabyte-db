@@ -341,6 +341,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
     .raft_group_id = kSysCatalogTabletId,
     .partition = partitions[0],
     .tablet_data_state = tablet::TABLET_DATA_READY,
+    .snapshot_schedules = {},
   }, data_root_dir));
 
   RaftConfigPB config;
@@ -599,6 +600,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .is_sys_catalog = tablet::IsSysCatalogTablet::kTrue,
       .snapshot_coordinator = &master_->catalog_manager()->snapshot_coordinator(),
       .tablet_splitter = nullptr,
+      .allowed_history_cutoff_provider = nullptr,
+      .transaction_manager_provider = nullptr,
   };
   tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,

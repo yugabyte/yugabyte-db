@@ -395,6 +395,11 @@ Status DocWriteBatch::SetPrimitive(
     std::unique_ptr<IntentAwareIterator> intent_iter) {
   LazyIterator iter = {
     .iterator = std::move(intent_iter),
+    .doc_db = nullptr,
+    .doc_path = nullptr,
+    .read_ht = nullptr,
+    .deadline = {},
+    .query_id = {},
   };
   return DoSetPrimitive(doc_path, control_fields, value, &iter, /* write_id= */ {});
 }
