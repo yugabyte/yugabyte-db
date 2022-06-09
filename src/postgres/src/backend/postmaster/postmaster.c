@@ -4246,13 +4246,18 @@ BackendStartup(Port *port)
 	 * high oom_score_adj value for the postgres connection.
 	 */
 	if(fPtr == NULL)
+	{
+		int saved_errno = errno;
 		ereport(LOG,
 			(errcode_for_file_access(),
-				errmsg("unable to open file %s", file_name)));
+				errmsg("error %d: %s, unable to open file %s", saved_errno,
+				strerror(saved_errno), file_name)));
+	}
 	else
+	{
 		fputs(YbBackendOomScoreAdj, fPtr);
-
-	fclose(fPtr);
+		fclose(fPtr);
+	}
 #endif
 
 	return STATUS_OK;
