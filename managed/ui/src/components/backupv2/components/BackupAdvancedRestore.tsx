@@ -141,6 +141,12 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
     : [];
 
   const groupedStorageConfigs = useMemo(() => {
+    // if user has only one storage config, select it by default
+    if (storageConfigs.data.length === 1) {
+      const { configUUID, configName, name } = storageConfigs.data[0];
+      initialValues['storage_config'] = { value: configUUID, label: configName, name: name };
+    }
+
     const configs = storageConfigs.data
       .filter((c: IStorageConfig) => c.type === 'STORAGE')
       .map((c: IStorageConfig) => {
