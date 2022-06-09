@@ -1397,6 +1397,12 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to reassign objects")));
+
+		if (superuser_arg(roleid) && !superuser())
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("non-superuser cannot reassign objects "
+					 		"from superuser")));
 	}
 
 	/* Must have privileges on the receiving side too */
