@@ -78,6 +78,9 @@ public class CertificateHelper {
 
   public static final String SIGNATURE_ALGO = "SHA256withRSA";
 
+  private static final String CERTS_NODE_SUBDIR = "/yugabyte-tls-config";
+  private static final String CERT_CLIENT_NODE_SUBDIR = "/yugabyte-client-tls-config";
+
   public enum CertificateType {
     @EnumValue("ROOT_CA_CERT")
     ROOT_CA_CERT,
@@ -699,6 +702,14 @@ public class CertificateHelper {
     KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
     keypairGen.initialize(2048);
     return keypairGen.generateKeyPair();
+  }
+
+  public static String getCertsNodeDir(String ybHomeDir) {
+    return ybHomeDir + CERTS_NODE_SUBDIR;
+  }
+
+  public static String getCertsForClientDir(String ybHomeDir) {
+    return ybHomeDir + CERT_CLIENT_NODE_SUBDIR;
   }
 
   private static boolean verifySignature(X509Certificate cert, String key) {
