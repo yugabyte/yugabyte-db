@@ -51,6 +51,7 @@
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb_pgapi.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
@@ -96,6 +97,8 @@
 #include "yb/util/trace.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
+
+#include "ybgate/ybgate_api.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -2732,17 +2735,16 @@ Status CatalogManager::BackfillMetadataForCDC(
     SharedLock lock(mutex_);
     auto l = table->LockForRead();
     if (table->GetTableType() == PGSQL_TABLE_TYPE) {
-      if (!table->has_pgschema_name()) {
-        LOG_WITH_FUNC(INFO) << "backfilling pgschema_name";
-        string pgschema_name = VERIFY_RESULT(GetPgSchemaName(table));
-        VLOG(1) << "For table: " << table->name() << " found pgschema_name: " << pgschema_name;
-        alter_table_req_pg_type.set_pgschema_name(pgschema_name);
-        backfill_required = true;
-      }
-
       if (!table->has_pg_type_oid()) {
         LOG_WITH_FUNC(INFO) << "backfilling pg_type_oid";
-        for (const auto& entry : VERIFY_RESULT(GetPgTypeOid(table))) {
+        auto const att_name_typid_map = VERIFY_RESULT(GetPgAttNameTypidMap(table));
+        vector<uint32_t> type_oids;
+        for (const auto& entry : att_name_typid_map) {
+          type_oids.push_back(entry.second);
+        }
+        auto ns = VERIFY_RESULT(FindNamespaceByIdUnlocked(table->namespace_id()));
+        auto const type_oid_info_map = VERIFY_RESULT(GetPgTypeInfo(ns, &type_oids));
+        for (const auto& entry : att_name_typid_map) {
           VLOG(1) << "For table:" << table->name() << " column:" << entry.first
                   << ", pg_type_oid: " << entry.second;
           auto* step = alter_table_req_pg_type.add_alter_schema_steps();
@@ -2750,8 +2752,33 @@ Status CatalogManager::BackfillMetadataForCDC(
                              AlterTableRequestPB_StepType_SET_COLUMN_PG_TYPE);
           auto set_column_pg_type = step->mutable_set_column_pg_type();
           set_column_pg_type->set_name(entry.first);
-          set_column_pg_type->set_pg_type_oid(entry.second);
+          uint32_t pg_type_oid = entry.second;
+
+          const YBCPgTypeEntity* type_entity =
+              docdb::DocPgGetTypeEntity({(int32_t)pg_type_oid, -1});
+
+          if (type_entity == nullptr &&
+              type_oid_info_map.find(pg_type_oid) != type_oid_info_map.end()) {
+            VLOG(1) << "Looking up primitive type for: " << pg_type_oid;
+            PgTypeInfo pg_type_info = type_oid_info_map.at(pg_type_oid);
+            YbgGetPrimitiveTypeOid(
+                pg_type_oid, pg_type_info.typtype, pg_type_info.typbasetype, &pg_type_oid);
+            VLOG(1) << "Found primitive type oid: " << pg_type_oid;
+          }
+          set_column_pg_type->set_pg_type_oid(pg_type_oid);
         }
+        backfill_required = true;
+      }
+
+      // If pg_type_oid has to be backfilled, we backfill the pgschema_name irrespective of whether
+      // it is present or not. It is a safeguard against
+      // https://phabricator.dev.yugabyte.com/D17099 which fills the pgschema_name in memory if it
+      // is not present without backfilling it to master's disk or tservers.
+      if (backfill_required || !table->has_pgschema_name()) {
+        LOG_WITH_FUNC(INFO) << "backfilling pgschema_name";
+        string pgschema_name = VERIFY_RESULT(GetPgSchemaName(table));
+        VLOG(1) << "For table: " << table->name() << " found pgschema_name: " << pgschema_name;
+        alter_table_req_pg_type.set_pgschema_name(pgschema_name);
         backfill_required = true;
       }
     }
@@ -2775,7 +2802,6 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
                                        CreateCDCStreamResponsePB* resp,
                                        rpc::RpcContext* rpc) {
   LOG(INFO) << "CreateCDCStream from " << RequestorString(rpc) << ": " << req->ShortDebugString();
-
   std::string id_type_option_value(cdc::kTableId);
 
   for (auto option : req->options()) {
