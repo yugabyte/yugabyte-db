@@ -212,8 +212,9 @@ Time: 337.154 ms
 ```
 
 ## Leader preference
+Leader preference helps improve performance of workloads that require distribution of data over multiple zones for zone   level fault tolerance, but its clients are running in a subset of these zones. The default behavior is to spread the tablet leaders across all requested zones. Since the leader handles all [reads](../../../../architecture/core-functions/read-path/) and [writes](../../../../architecture/core-functions/write-path/), having leaders reside closer to the client reduces the number of network hops, which reduces latency and increases performance. Leader preference allows you to specify the zones where you want the leaders to be placed when the system is stable and fallback zones during an outage of the preferred zones. You can specify non-zero contiguous integer values for each zone. When multiple zones have the same preference, the leaders will be evenly balanced between them. Zones without any values are least preferred.
 
-Having all tablet leaders reside closer to the user reduces the number of network hops, which reduces latency and increases performance. Leader preference allows you to specify the zones where you want the leaders to be placed when the system is stable and during outage of the preferred zones. You can specify non-zero contiguous integer values for each zone. When multiple zones have the same preference, the leaders will be evenly balanced between them.
+![Multi Region Table](/images/explore/tablespaces/multi_zone_latency.png)
 
 ```sql
 CREATE TABLESPACE us_east_region_tablespace
@@ -222,6 +223,7 @@ CREATE TABLESPACE us_east_region_tablespace
     {"cloud":"aws","region":"us-east-1","zone":"us-east-1b","min_num_replicas":1,"leader_preference":2},
     {"cloud":"aws","region":"us-east-1","zone":"us-east-1c","min_num_replicas":1}]}');
 ```
+Any table or index associated with this tablespace will have all its tablet leaders placed in nodes of us-east-1a. If all nodes of this zone are unavailable, then the leaders are placed in nodes of the next zone in the hierarchy, us-east-1b.
 
 ## Indexes
 
