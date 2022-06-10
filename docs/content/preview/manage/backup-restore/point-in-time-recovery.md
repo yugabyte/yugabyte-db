@@ -143,7 +143,7 @@ $ ./bin/yb_admin list-snapshot-schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 
 ## Restore to a point in time
 
-{{< warning >}}
+{{< warning title="Warning!" >}}
 
 Before initiating restoration to a point in time, it's recommended that you stop all the application workloads. Transactions running concurrently with the restore operation can lead to data inconsistency.
 
@@ -160,7 +160,7 @@ To restore, use the [`restore-snapshot-schedule`](../../../admin/yb-admin/#resto
 
 For the second parameter, you have two options. You can either restore to an absolute time, providing a specific timestamp, or to a time that is relative to the current (for example, to 10 minutes ago from now).
 
-### restoring to an absolute time
+### Restore to an absolute time
 
 To restore to an absolute time you need to provide a timestamp you want to restore to. The following formats are supported:
 
