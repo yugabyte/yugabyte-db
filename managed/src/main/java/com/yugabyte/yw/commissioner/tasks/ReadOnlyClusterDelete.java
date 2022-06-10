@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -84,7 +83,8 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.
-      createDeleteClusterFromUniverseTask(params().clusterUUID);
+      createDeleteClusterFromUniverseTask(params().clusterUUID)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the async_replicas in the cluster config on master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
@@ -113,27 +113,5 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
-  }
-
-  /**
-   * Creates a task to delete a read only cluster info from the universe and adds the task to the
-   * task queue.
-   *
-   * @param clusterUUID uuid of the read-only cluster to be removed.
-   */
-  public void createDeleteClusterFromUniverseTask(UUID clusterUUID) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("DeleteClusterFromUniverse", executor);
-    DeleteClusterFromUniverse.Params params = new DeleteClusterFromUniverse.Params();
-    // Add the universe uuid.
-    params.universeUUID = taskParams().universeUUID;
-    params.clusterUUID = clusterUUID;
-    // Create the task to delete cluster ifo.
-    DeleteClusterFromUniverse task = createTask(DeleteClusterFromUniverse.class);
-    task.initialize(params);
-    // Add it to the task list.
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 }

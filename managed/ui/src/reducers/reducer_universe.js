@@ -63,7 +63,9 @@ import {
   UPDATE_BACKUP_STATE,
   UPDATE_BACKUP_STATE_RESPONSE,
   SET_ALERTS_CONFIG,
-  SET_ALERTS_CONFIG_RESPONSE
+  SET_ALERTS_CONFIG_RESPONSE,
+  FETCH_SUPPORTED_RELEASES,
+  FETCH_SUPPORTED_RELEASES_RESPONSE
 } from '../actions/universe';
 import _ from 'lodash';
 import {
@@ -109,7 +111,8 @@ const INITIAL_STATE = {
   healthCheck: getInitialState({}),
   universeImport: getInitialState({}),
   alertsConfig: getInitialState({}),
-  backupState: getInitialState({})
+  backupState: getInitialState({}),
+  supportedReleases: getInitialState({})
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -163,6 +166,10 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'currentUniverse', {});
     case FETCH_UNIVERSE_INFO_RESPONSE:
       return setPromiseResponse(state, 'currentUniverse', action);
+    case FETCH_SUPPORTED_RELEASES:
+      return setLoadingState(state, 'supportedReleases', {});
+    case FETCH_SUPPORTED_RELEASES_RESPONSE:
+      return setPromiseResponse(state, 'supportedReleases', action);
     case RESET_UNIVERSE_INFO:
       return { ...state, currentUniverse: getInitialState({}) };
     case FETCH_UNIVERSE_LIST:

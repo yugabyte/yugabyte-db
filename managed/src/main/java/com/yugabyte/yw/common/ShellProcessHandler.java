@@ -14,9 +14,10 @@ import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_EXECUTION_CANCELLE
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_GENERIC_ERROR;
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -33,21 +34,23 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.text.StringSubstitutor;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
+import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class ShellProcessHandler {
-  public static final Logger LOG = LoggerFactory.getLogger(ShellProcessHandler.class);
 
   private static final Duration DESTROY_GRACE_TIMEOUT = Duration.ofMinutes(5);
 
   private final play.Configuration appConfig;
   private final boolean cloudLoggingEnabled;
-
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  private final ShellLogsManager shellLogsManager;
 
   static final Pattern ANSIBLE_FAIL_PAT =
       Pattern.compile(
@@ -55,14 +58,16 @@ public class ShellProcessHandler {
               + "Playbook run.* )with args.* (failed with.*? [0-9]+)");
   static final Pattern ANSIBLE_FAILED_TASK_PAT =
       Pattern.compile("TASK.*?fatal.*?FAILED.*", Pattern.DOTALL);
+  static final Pattern PYTHON_ERROR_PAT =
+      Pattern.compile("(<yb-python-error>)(.*?)(</yb-python-error>)", Pattern.DOTALL);
   static final String ANSIBLE_IGNORING = "ignoring";
-  static final String COMMAND_OUTPUT_LOGS_DELETE = "yb.logs.cmdOutputDelete";
   static final String YB_LOGS_MAX_MSG_SIZE = "yb.logs.max_msg_size";
 
   @Inject
-  public ShellProcessHandler(play.Configuration appConfig) {
+  public ShellProcessHandler(play.Configuration appConfig, ShellLogsManager shellLogsManager) {
     this.appConfig = appConfig;
     this.cloudLoggingEnabled = appConfig.getBoolean("yb.cloud.enabled");
+    this.shellLogsManager = shellLogsManager;
   }
 
   public ShellResponse run(
@@ -75,47 +80,44 @@ public class ShellProcessHandler {
       Map<String, String> extraEnvVars,
       boolean logCmdOutput,
       String description) {
-    return run(command, extraEnvVars, logCmdOutput, description, null, null, 0 /*timeoutSecs*/);
+    return run(
+        command,
+        ShellProcessContext.builder()
+            .extraEnvVars(extraEnvVars)
+            .logCmdOutput(logCmdOutput)
+            .description(description)
+            .build());
   }
 
   /**
    * *
    *
    * @param command - command to run with list of args
-   * @param extraEnvVars - env vars for this command
-   * @param logCmdOutput - whether to log stdout&stderr to application.log or not
-   * @param description - human readable description for logging
-   * @param uuid - used to track this execution, can be null
-   * @param sensitiveData - Args that will be added to the cmd but will be redacted in logs
-   * @param timeoutSecs - Abort the command forcibly if it takes longer than this
-   * @return
+   * @param context - command context
+   * @return shell response
    */
-  public ShellResponse run(
-      List<String> command,
-      Map<String, String> extraEnvVars,
-      boolean logCmdOutput,
-      String description,
-      UUID uuid,
-      Map<String, String> sensitiveData,
-      int timeoutSecs) {
+  public ShellResponse run(List<String> command, ShellProcessContext context) {
 
     List<String> redactedCommand = new ArrayList<>(command);
 
     // Redacting the sensitive data in the command which is used for logging.
-    if (sensitiveData != null) {
-      sensitiveData.forEach(
-          (key, value) -> {
-            redactedCommand.add(key);
-            command.add(key);
-            command.add(value);
-            redactedCommand.add(Util.redactString(value));
-          });
+    if (context.getSensitiveData() != null) {
+      context
+          .getSensitiveData()
+          .forEach(
+              (key, value) -> {
+                redactedCommand.add(key);
+                command.add(key);
+                command.add(value);
+                redactedCommand.add(Util.redactString(value));
+              });
     }
 
     ProcessBuilder pb = new ProcessBuilder(command);
     Map<String, String> envVars = pb.environment();
-    if (extraEnvVars != null && !extraEnvVars.isEmpty()) {
-      envVars.putAll(extraEnvVars);
+    Map<String, String> extraEnvVars = context.getExtraEnvVars();
+    if (MapUtils.isNotEmpty(extraEnvVars)) {
+      envVars.putAll(context.getExtraEnvVars());
     }
     String devopsHome = appConfig.getString("yb.devops.home");
     if (devopsHome != null) {
@@ -124,48 +126,61 @@ public class ShellProcessHandler {
 
     ShellResponse response = new ShellResponse();
     response.code = ERROR_CODE_GENERIC_ERROR;
-    if (description == null) {
+    if (context.getDescription() == null) {
       response.setDescription(redactedCommand);
     } else {
-      response.description = description;
+      response.description = context.getDescription();
     }
 
     File tempOutputFile = null;
     File tempErrorFile = null;
     long startMs = 0;
     Process process = null;
+    UUID processUUID = context.getUuid() != null ? context.getUuid() : UUID.randomUUID();
     try {
-      tempOutputFile = File.createTempFile("shell_process_out", "tmp");
-      tempErrorFile = File.createTempFile("shell_process_err", "tmp");
+      Pair<File, File> logFiles = shellLogsManager.createFilesForProcess(processUUID);
+      tempOutputFile = logFiles.getLeft();
+      tempErrorFile = logFiles.getRight();
       pb.redirectOutput(tempOutputFile);
       pb.redirectError(tempErrorFile);
       startMs = System.currentTimeMillis();
-      LOG.info("Starting proc (abbrev cmd) - {}", response.description);
+      String logMsg = String.format("Starting proc (abbrev cmd) - %s", response.description);
+      if (context.isTraceLogging()) {
+        log.trace(logMsg);
+      } else {
+        log.info(logMsg);
+      }
       String fullCommand = "'" + String.join("' '", redactedCommand) + "'";
       if (appConfig.getBoolean("yb.log.logEnvVars", false) && extraEnvVars != null) {
         fullCommand = Joiner.on(" ").withKeyValueSeparator("=").join(extraEnvVars) + fullCommand;
       }
-      LOG.debug(
-          "Starting proc (full cmd) - {} - logging stdout={}, stderr={}",
-          fullCommand,
-          tempOutputFile.getAbsolutePath(),
-          tempErrorFile.getAbsolutePath());
+      logMsg =
+          String.format(
+              "Starting proc (full cmd) - %s - logging stdout=%s, stderr=%s",
+              fullCommand, tempOutputFile.getAbsolutePath(), tempErrorFile.getAbsolutePath());
+      if (context.isTraceLogging()) {
+        log.trace(logMsg);
+      } else {
+        log.info(logMsg);
+      }
 
       long endTimeSecs = 0;
-      if (timeoutSecs > 0) {
-        endTimeSecs = (System.currentTimeMillis() / 1000) + timeoutSecs;
+      if (context.getTimeoutSecs() > 0) {
+        endTimeSecs = (System.currentTimeMillis() / 1000) + context.getTimeoutSecs();
       }
       process = pb.start();
-      if (uuid != null) {
-        Util.setPID(uuid, process);
+      if (context.getUuid() != null) {
+        Util.setPID(context.getUuid(), process);
       }
-      waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeSecs);
+      waitForProcessExit(
+          process, context.getDescription(), tempOutputFile, tempErrorFile, endTimeSecs);
       // We will only read last 20MB of process stderr file.
       // stdout has `data` so we wont limit that.
+      boolean logCmdOutput = context.isLogCmdOutput();
       try (BufferedReader outputStream = getLastNReader(tempOutputFile, Long.MAX_VALUE);
           BufferedReader errorStream = getLastNReader(tempErrorFile, getMaxLogMsgSize())) {
         if (logCmdOutput) {
-          LOG.debug("Proc stdout for '{}' :", response.description);
+          log.debug("Proc stdout for '{}' :", response.description);
         }
         String processOutput = getOutputLines(outputStream, logCmdOutput);
         String processError = getOutputLines(errorStream, logCmdOutput);
@@ -173,15 +188,18 @@ public class ShellProcessHandler {
           response.code = process.exitValue();
         } catch (IllegalThreadStateException itse) {
           response.code = ERROR_CODE_GENERIC_ERROR;
-          LOG.warn(
+          log.warn(
               "Expected process to be shut down, marking this process as failed '{}'",
               response.description,
               itse);
         }
         response.message = (response.code == ERROR_CODE_SUCCESS) ? processOutput : processError;
-        String ansibleErrMsg = getAnsibleErrMsg(response.code, processOutput, processError);
-        if (ansibleErrMsg != null) {
-          response.message = ansibleErrMsg;
+        String specificErrMsg = getAnsibleErrMsg(response.code, processOutput, processError);
+        if (specificErrMsg == null) {
+          specificErrMsg = getPythonErrMsg(response.code, processOutput);
+        }
+        if (specificErrMsg != null) {
+          response.message = specificErrMsg;
         }
       }
     } catch (IOException | InterruptedException e) {
@@ -189,7 +207,7 @@ public class ShellProcessHandler {
       if (e instanceof InterruptedException) {
         response.code = ERROR_CODE_EXECUTION_CANCELLED;
       }
-      LOG.error("Exception running command '{}'", response.description, e);
+      log.error("Exception running command '{}'", response.description, e);
       response.message = e.getMessage();
       // Send a kill signal to ensure process is cleaned up in case of any failure.
       if (process != null && process.isAlive()) {
@@ -198,7 +216,7 @@ public class ShellProcessHandler {
         try {
           process.waitFor(DESTROY_GRACE_TIMEOUT.getSeconds(), TimeUnit.SECONDS);
         } catch (InterruptedException e1) {
-          LOG.error(
+          log.error(
               "Process could not be destroyed gracefully within the specified time '{}'",
               response.description);
           destroyForcibly(process, response.description);
@@ -210,21 +228,21 @@ public class ShellProcessHandler {
       }
       String status =
           (ERROR_CODE_SUCCESS == response.code) ? "success" : ("failure code=" + response.code);
-      LOG.info(
-          "Completed proc '{}' status={} [ {} ms ]",
-          response.description,
-          status,
-          response.durationMs);
-      if (runtimeConfigFactory.globalRuntimeConf().getBoolean(COMMAND_OUTPUT_LOGS_DELETE)) {
-        if (tempOutputFile != null && tempOutputFile.exists()) {
-          tempOutputFile.delete();
-        }
-        if (tempErrorFile != null && tempErrorFile.exists()) {
-          tempErrorFile.delete();
-        }
+      String logMsg =
+          String.format(
+              "Completed proc '%s' status=%s [ %d ms ]",
+              response.description, status, response.durationMs);
+      if (context.isTraceLogging()) {
+        log.trace(logMsg);
+      } else {
+        log.info(logMsg);
+      }
+      shellLogsManager.onProcessStop(processUUID);
+      if (context.getUuid() != null) {
+        // TODO revisit this leak fix for backup for a cleaner approach.
+        Util.removeProcess(context.getUuid());
       }
     }
-
     return response;
   }
 
@@ -237,13 +255,13 @@ public class ShellProcessHandler {
             .peek(
                 line -> {
                   if (logOutput) {
-                    LOG.debug(fileMarker, line);
+                    log.debug(fileMarker, line);
                   }
                 })
             .collect(Collectors.joining("\n"))
             .trim();
     if (logOutput && cloudLoggingEnabled && lines.length() > 0) {
-      LOG.debug(consoleMarker, lines);
+      log.debug(consoleMarker, lines);
     }
     return lines;
   }
@@ -260,9 +278,9 @@ public class ShellProcessHandler {
     long skip = file.length() - lastNBytes;
     if (skip > 0) {
       try {
-        LOG.warn("Skipped first {} bytes because max_msg_size= {}", reader.skip(skip), lastNBytes);
+        log.warn("Skipped first {} bytes because max_msg_size= {}", reader.skip(skip), lastNBytes);
       } catch (IOException e) {
-        LOG.warn("Unexpected exception when skipping large file", e);
+        log.warn("Unexpected exception when skipping large file", e);
       }
     }
     return reader;
@@ -274,7 +292,12 @@ public class ShellProcessHandler {
 
   public ShellResponse run(List<String> command, Map<String, String> extraEnvVars, UUID uuid) {
     return run(
-        command, extraEnvVars, true /*logCommandOutput*/, null, uuid, null, 0 /*timeoutSecs*/);
+        command,
+        ShellProcessContext.builder()
+            .extraEnvVars(extraEnvVars)
+            .logCmdOutput(true)
+            .uuid(uuid)
+            .build());
   }
 
   public ShellResponse run(
@@ -289,12 +312,12 @@ public class ShellProcessHandler {
       Map<String, String> sensitiveData) {
     return run(
         command,
-        extraEnvVars,
-        true /*logCommandOutput*/,
-        description,
-        null,
-        sensitiveData,
-        0 /*timeoutSecs*/);
+        ShellProcessContext.builder()
+            .extraEnvVars(extraEnvVars)
+            .logCmdOutput(true)
+            .description(description)
+            .sensitiveData(sensitiveData)
+            .build());
   }
 
   private static void waitForProcessExit(
@@ -312,7 +335,7 @@ public class ShellProcessHandler {
         tailStream(outputStream, 10000 /*maxLines*/);
         tailStream(errorStream, 10000 /*maxLines*/);
         if (endTimeSecs > 0 && ((System.currentTimeMillis() / 1000) >= endTimeSecs)) {
-          LOG.warn("Aborting command {} forcibly because it took too long", description);
+          log.warn("Aborting command {} forcibly because it took too long", description);
           destroyForcibly(process, description);
           break;
         }
@@ -336,7 +359,7 @@ public class ShellProcessHandler {
     // of logging, it is ok to log partial lines.
     while ((line = br.readLine()) != null) {
       if (line.contains("[app]")) {
-        LOG.info(line);
+        log.info(line);
       }
       count++;
       if (maxLines > 0 && count >= maxLines) {
@@ -349,9 +372,9 @@ public class ShellProcessHandler {
     process.destroyForcibly();
     try {
       process.waitFor(DESTROY_GRACE_TIMEOUT.getSeconds(), TimeUnit.SECONDS);
-      LOG.info("Process was succesfully forcibly terminated '{}'", description);
+      log.info("Process was succesfully forcibly terminated '{}'", description);
     } catch (InterruptedException ie) {
-      LOG.warn("Ignoring problem with forcible process termination '{}'", description, ie);
+      log.warn("Ignoring problem with forcible process termination '{}'", description, ie);
     }
   }
 
@@ -379,5 +402,26 @@ public class ShellProcessHandler {
       }
     }
     return result;
+  }
+
+  @VisibleForTesting
+  static String getPythonErrMsg(int code, String stdout) {
+    if (stdout == null || code == ERROR_CODE_SUCCESS) return null;
+
+    try {
+      Matcher matcher = PYTHON_ERROR_PAT.matcher(stdout);
+      if (matcher.find()) {
+        Map<String, String> values =
+            Json.mapper()
+                .readValue(matcher.group(2).trim(), new TypeReference<Map<String, String>>() {});
+        StringSubstitutor substitutor =
+            new StringSubstitutor(values).setEnableUndefinedVariableException(true);
+        // Flexible template to add more fields or change format.
+        return substitutor.replace("${type}: ${message}");
+      }
+    } catch (Exception e) {
+      log.error("Error occurred in processing command output", e);
+    }
+    return null;
   }
 }

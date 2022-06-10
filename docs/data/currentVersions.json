@@ -4,17 +4,17 @@
     {
       "series": "v2.13",
       "display": "v2.13 (Preview)",
-      "version": "2.13.1.0",
-      "versionShort": "2.13.1",
-      "appVersion": "2.13.1.0-b112",
+      "version": "2.13.2.0",
+      "versionShort": "2.13.2",
+      "appVersion": "2.13.2.0-b135",
       "alias": "preview"
     },
     {
       "series": "v2.12",
       "display": "v2.12 (Stable)",
-      "version": "2.12.5.0",
-      "versionShort": "2.12.5",
-      "appVersion": "2.12.5.0-b24",
+      "version": "2.12.6.0",
+      "versionShort": "2.12.6",
+      "appVersion": "2.12.6.0-b26",
       "alias": "stable"
     },
     {

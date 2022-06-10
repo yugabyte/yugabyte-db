@@ -19,9 +19,13 @@ public enum TaskType {
 
   ReadOnlyClusterCreate("ReadOnlyClusterCreate"),
 
+  ReadOnlyKubernetesClusterDelete("ReadOnlyKubernetesClusterDelete"),
+
   ReadOnlyClusterDelete("ReadOnlyClusterDelete"),
 
   CreateKubernetesUniverse("CreateKubernetesUniverse"),
+
+  ReadOnlyKubernetesClusterCreate("ReadOnlyKubernetesClusterCreate"),
 
   DestroyUniverse("DestroyUniverse"),
 
@@ -101,6 +105,8 @@ public enum TaskType {
 
   ReleaseInstanceFromUniverse("ReleaseInstanceFromUniverse"),
 
+  RotateAccessKey("RotateAccessKey"),
+
   SetUniverseKey("SetUniverseKey"),
 
   @Deprecated
@@ -127,6 +133,8 @@ public enum TaskType {
   CreateSupportBundle("CreateSupportBundle"),
 
   // Tasks belonging to subtasks classpath
+  AddAuthorizedKey("subtasks.AddAuthorizedKey"),
+
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
   AnsibleConfigureServers("subtasks.AnsibleConfigureServers"),
@@ -169,6 +177,8 @@ public enum TaskType {
 
   DeleteTableFromUniverse("subtasks.DeleteTableFromUniverse"),
 
+  DeleteTablesFromUniverse("subtasks.DeleteTablesFromUniverse"),
+
   LoadBalancerStateChange("subtasks.LoadBalancerStateChange"),
 
   ModifyBlackList("subtasks.ModifyBlackList"),
@@ -190,6 +200,8 @@ public enum TaskType {
   UpdatePlacementInfo("subtasks.UpdatePlacementInfo"),
 
   UpdateSoftwareVersion("subtasks.UpdateSoftwareVersion"),
+
+  VerifyNodeSSHAccess("subtasks.VerifyNodeSSHAccess"),
 
   WaitForDataMove("subtasks.WaitForDataMove"),
 
@@ -213,7 +225,23 @@ public enum TaskType {
 
   RunExternalScript("subtasks.RunExternalScript"),
 
+  RemoveAuthorizedKey("subtasks.RemoveAuthorizedKey"),
+
+  UpdateUniverseAccessKey("subtasks.UpdateUniverseAccessKey"),
+
   // Tasks belonging to subtasks.xcluster classpath
+  BootstrapProducer("subtasks.xcluster.BootstrapProducer"),
+
+  CheckBootstrapRequired("subtasks.xcluster.CheckBootstrapRequired"),
+
+  DeleteBootstrapIds("subtasks.xcluster.DeleteBootstrapIds"),
+
+  DeleteReplication("subtasks.xcluster.DeleteReplication"),
+
+  DeleteXClusterConfigFromDb("subtasks.xcluster.DeleteXClusterConfigFromDb"),
+
+  SetRestoreTime("subtasks.xcluster.SetRestoreTime"),
+
   XClusterConfigSetup("subtasks.xcluster.XClusterConfigSetup"),
 
   XClusterConfigSetStatus("subtasks.xcluster.XClusterConfigSetStatus"),
@@ -221,8 +249,6 @@ public enum TaskType {
   XClusterConfigModifyTables("subtasks.xcluster.XClusterConfigModifyTables"),
 
   XClusterConfigRename("subtasks.xcluster.XClusterConfigRename"),
-
-  XClusterConfigDelete("subtasks.xcluster.XClusterConfigDelete"),
 
   XClusterConfigSync("subtasks.xcluster.XClusterConfigSync"),
 
@@ -318,7 +344,9 @@ public enum TaskType {
 
   CreateTableSpaces("subtasks.CreateTableSpaces"),
 
-  ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade");
+  ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade"),
+
+  MarkUniverseForHealthScriptReUpload("subtasks.MarkUniverseForHealthScriptReUpload");
 
   private String relativeClassPath;
 

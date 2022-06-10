@@ -70,6 +70,8 @@ YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key);
 // Get access to callbacks.
 const YBCPgCallbacks* YBCGetPgCallbacks();
 
+YBCStatus YBCGetPgggateHeapConsumption(int64_t *consumption);
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
 //--------------------------------------------------------------------------------------------------
@@ -177,6 +179,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               YBCPgOid tablegroup_oid,
                               YBCPgOid colocation_id,
                               YBCPgOid tablespace_oid,
+                              bool is_matview,
                               YBCPgOid matview_pg_table_oid,
                               YBCPgStatement *handle);
 
@@ -581,6 +584,8 @@ void YBCStopSysTablePrefetching();
 
 void YBCRegisterSysTableForPrefetching(
     YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid);
+
+YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
 #ifdef __cplusplus
 }  // extern "C"

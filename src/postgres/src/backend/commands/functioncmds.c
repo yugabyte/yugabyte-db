@@ -959,8 +959,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 		 * yb_extension role in the midst of creating an extension.
 		 */
 		if (!(IsYbExtensionUser(GetUserId()) && creating_extension) &&
-			!superuser() &&
-			!IsYbDbAdminUser(GetUserId()))
+			!superuser())
 			aclcheck_error(ACLCHECK_NO_PRIV, OBJECT_LANGUAGE,
 						   NameStr(languageStruct->lanname));
 	}
@@ -1565,7 +1564,7 @@ CreateCast(CreateCastStmt *stmt)
 		 * Must be superuser to create binary-compatible casts, since
 		 * erroneous casts can easily crash the backend.
 		 */
-		if (!superuser())
+		if (!superuser() && !(IsYbExtensionUser(GetUserId()) && creating_extension))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("must be superuser to create a cast WITHOUT FUNCTION")));

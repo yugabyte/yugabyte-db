@@ -49,6 +49,7 @@
 #include <cassert>
 #include <deque>
 #include <functional>
+#include <optional>
 #include <set>
 #include <vector>
 
@@ -1005,6 +1006,16 @@ void MakeAtMost(const Key& key, const Value& value, Map* map) {
   } else {
     it->second = std::min(it->second, value);
   }
+}
+
+template <class T>
+const T* OptionalToPointer(const std::optional<T>& opt) {
+  return opt ? &*opt : nullptr;
+}
+
+template <class T>
+T* OptionalToPointer(std::optional<T>* opt) {
+  return *opt ? &**opt : nullptr;
 }
 
 } // namespace yb

@@ -45,11 +45,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class TableManager extends DevopsBase {
 
   public enum CommandSubType {
@@ -82,7 +84,7 @@ public class TableManager extends DevopsBase {
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = region.provider.getUnmaskedConfig();
-    Map<String, String> namespaceToConfig = new HashMap<>();
+    Map<String, String> podFQDNToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
     Map<String, String> ipToSshKeyPath = new HashMap<>();
 
@@ -90,15 +92,16 @@ public class TableManager extends DevopsBase {
 
     if (region.provider.code.equals("kubernetes")) {
       PlacementInfo pi = primaryCluster.placementInfo;
-      namespaceToConfig =
-          PlacementInfoUtil.getConfigPerNamespace(
-              pi, universe.getUniverseDetails().nodePrefix, provider);
+      podFQDNToConfig =
+          PlacementInfoUtil.getKubernetesConfigPerPod(
+              pi, universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid));
     } else {
       // Populate the map so that we use the correct SSH Keys for the different
       // nodes in different clusters.
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         UserIntent clusterUserIntent = cluster.userIntent;
-        Provider clusterProvider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+        Provider clusterProvider =
+            Provider.getOrBadRequest(UUID.fromString(clusterUserIntent.provider));
         AccessKey accessKeyForCluster =
             AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
@@ -269,7 +272,7 @@ public class TableManager extends DevopsBase {
             region,
             customerConfig,
             provider,
-            namespaceToConfig,
+            podFQDNToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
             commandArgs);
@@ -277,7 +280,7 @@ public class TableManager extends DevopsBase {
         // credentials are used.
         extraVars.putAll(customerConfig.dataAsMap());
 
-        LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+        log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
         return shellProcessHandler.run(commandArgs, extraVars, backupTableParams.backupUuid);
         // TODO: Add support for TLS connections for bulk-loading.
         // Tracked by issue: https://github.com/YugaByte/yugabyte-db/issues/1864
@@ -320,14 +323,14 @@ public class TableManager extends DevopsBase {
         commandArgs.add(universe.getTserverHTTPAddresses());
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
-        LOG.info("Deleting backup at location {}", backupTableParams.storageLocation);
+        log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
             backupTableParams,
             accessKey,
             region,
             customerConfig,
             provider,
-            namespaceToConfig,
+            podFQDNToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
             commandArgs);
@@ -335,7 +338,7 @@ public class TableManager extends DevopsBase {
         break;
     }
 
-    LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+    log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
     return shellProcessHandler.run(commandArgs, extraVars);
   }
 
@@ -388,13 +391,13 @@ public class TableManager extends DevopsBase {
       Region region,
       CustomerConfig customerConfig,
       Provider provider,
-      Map<String, String> namespaceToConfig,
+      Map<String, String> podFQDNToConfig,
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
       List<String> commandArgs) {
     if (region.provider.code.equals("kubernetes")) {
       commandArgs.add("--k8s_config");
-      commandArgs.add(Json.stringify(Json.toJson(namespaceToConfig)));
+      commandArgs.add(Json.stringify(Json.toJson(podFQDNToConfig)));
     } else {
       commandArgs.add("--ssh_port");
       commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
@@ -427,6 +430,9 @@ public class TableManager extends DevopsBase {
     }
     if (backupTableParams.disableChecksum) {
       commandArgs.add("--disable_checksums");
+    }
+    if (backupTableParams.disableParallelism) {
+      commandArgs.add("--disable_parallelism");
     }
   }
 

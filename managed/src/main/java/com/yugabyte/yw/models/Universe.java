@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -386,6 +387,17 @@ public class Universe extends Model {
   }
 
   /**
+   * Checks if all nodes in universe have the node state 'Live'
+   *
+   * @return true if all nodes are in LIVE state
+   */
+  public boolean allNodesLive() {
+    return getNodes()
+        .stream()
+        .allMatch(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live));
+  }
+
+  /**
    * Checks if there is any node in a transit state across the universe.
    *
    * @return true if there is any such node.
@@ -597,6 +609,16 @@ public class Universe extends Model {
   }
 
   /**
+   * It returns a comma separated list of <privateIp:tserverHTTPPort> for all tservers in the
+   * primary cluster of this universe.
+   *
+   * @return A comma separated string of 'host:port'
+   */
+  public String getTserverAddresses() {
+    return getHostPortsString(getTServersInPrimaryCluster(), ServerType.TSERVER, PortType.RPC);
+  }
+
+  /**
    * Returns the certificate path in case node to node TLS is enabled.
    *
    * @return path to the certfile.
@@ -755,6 +777,21 @@ public class Universe extends Model {
    */
   public Collection<NodeDetails> getNodesInCluster(UUID clusterUUID) {
     return getUniverseDetails().getNodesInCluster(clusterUUID);
+  }
+
+  /**
+   * Get deployment mode of node (on-prem/kubernetes/cloud provider)
+   *
+   * @param node - node to get info on
+   * @return Get deployment details
+   */
+  public Common.CloudType getNodeDeploymentMode(NodeDetails node) {
+    if (node == null) {
+      throw new RuntimeException("node must be nonnull");
+    }
+    UniverseDefinitionTaskParams.Cluster cluster =
+        getUniverseDetails().getClusterByUuid(node.placementUuid);
+    return cluster.userIntent.providerType;
   }
 
   /**

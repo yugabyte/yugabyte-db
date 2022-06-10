@@ -364,7 +364,6 @@ void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_
 
 Status WaitAllReplicasSynchronizedWithLeader(
     MiniCluster* cluster, CoarseTimePoint deadline);
-
 }  // namespace yb
 
 #endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H_ */

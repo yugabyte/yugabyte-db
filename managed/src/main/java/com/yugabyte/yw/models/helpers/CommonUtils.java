@@ -55,6 +55,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.security.crypto.encrypt.Encryptors;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
@@ -190,41 +191,45 @@ public class CommonUtils {
 
   public static Map<String, String> encryptProviderConfig(
       Map<String, String> config, UUID customerUUID, String providerCode) {
-    if (config.isEmpty()) return new HashMap<>();
-    try {
-      final ObjectMapper mapper = new ObjectMapper();
-      final String salt = generateSalt(customerUUID, providerCode);
-      final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
-      final String encryptedConfig = encryptor.encrypt(mapper.writeValueAsString(config));
-      Map<String, String> encryptMap = new HashMap<>();
-      encryptMap.put("encrypted", encryptedConfig);
-      return encryptMap;
-    } catch (Exception e) {
-      final String errMsg =
-          String.format(
-              "Could not encrypt provider configuration for customer %s", customerUUID.toString());
-      log.error(errMsg, e);
-      return null;
+    if (MapUtils.isNotEmpty(config)) {
+      try {
+        final ObjectMapper mapper = new ObjectMapper();
+        final String salt = generateSalt(customerUUID, providerCode);
+        final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
+        final String encryptedConfig = encryptor.encrypt(mapper.writeValueAsString(config));
+        Map<String, String> encryptMap = new HashMap<>();
+        encryptMap.put("encrypted", encryptedConfig);
+        return encryptMap;
+      } catch (Exception e) {
+        final String errMsg =
+            String.format(
+                "Could not encrypt provider configuration for customer %s",
+                customerUUID.toString());
+        log.error(errMsg, e);
+      }
     }
+    return new HashMap<>();
   }
 
   public static Map<String, String> decryptProviderConfig(
       Map<String, String> config, UUID customerUUID, String providerCode) {
-    if (config.isEmpty()) return config;
-    try {
-      final ObjectMapper mapper = new ObjectMapper();
-      final String encryptedConfig = config.get("encrypted");
-      final String salt = generateSalt(customerUUID, providerCode);
-      final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
-      final String decryptedConfig = encryptor.decrypt(encryptedConfig);
-      return mapper.readValue(decryptedConfig, new TypeReference<Map<String, String>>() {});
-    } catch (Exception e) {
-      final String errMsg =
-          String.format(
-              "Could not decrypt provider configuration for customer %s", customerUUID.toString());
-      log.error(errMsg, e);
-      return null;
+    if (MapUtils.isNotEmpty(config)) {
+      try {
+        final ObjectMapper mapper = new ObjectMapper();
+        final String encryptedConfig = config.get("encrypted");
+        final String salt = generateSalt(customerUUID, providerCode);
+        final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
+        final String decryptedConfig = encryptor.decrypt(encryptedConfig);
+        return mapper.readValue(decryptedConfig, new TypeReference<Map<String, String>>() {});
+      } catch (Exception e) {
+        final String errMsg =
+            String.format(
+                "Could not decrypt provider configuration for customer %s",
+                customerUUID.toString());
+        log.error(errMsg, e);
+      }
     }
+    return new HashMap<>();
   }
 
   public static String generateSalt(UUID customerUUID, String providerCode) {
@@ -676,5 +681,19 @@ public class CommonUtils {
     }
 
     return ImmutableMultiset.copyOf(x).equals(ImmutableMultiset.copyOf(y));
+  }
+
+  /**
+   * Generates log message containing state information of universe and running status of scheduler.
+   */
+  public static String generateStateLogMsg(Universe universe, boolean alreadyRunning) {
+    String stateLogMsg =
+        String.format(
+            "alreadyRunning={} backupInProgress={} updateInProgress={} universePaused={}",
+            alreadyRunning,
+            universe.getUniverseDetails().backupInProgress,
+            universe.getUniverseDetails().updateInProgress,
+            universe.getUniverseDetails().universePaused);
+    return stateLogMsg;
   }
 }

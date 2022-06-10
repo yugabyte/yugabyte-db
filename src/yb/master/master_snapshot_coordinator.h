@@ -53,7 +53,8 @@ struct SnapshotScheduleRestoration {
 // Class that coordinates transaction aware snapshots at master.
 class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
  public:
-  explicit MasterSnapshotCoordinator(SnapshotCoordinatorContext* context);
+  explicit MasterSnapshotCoordinator(
+      SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm);
   ~MasterSnapshotCoordinator();
 
   Result<TxnSnapshotId> Create(
@@ -117,6 +118,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       SysRowEntryType type);
 
   Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info);
+
+  // Returns true if there are one or more non-deleted
+  // snapshot schedules present.
+  bool IsPitrActive();
 
   void Start();
 

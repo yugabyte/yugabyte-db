@@ -25,13 +25,15 @@ class UniverseKeyRegistryPB;
 namespace master {
 namespace enterprise {
 
+struct KeyRange;
+
 YB_DEFINE_ENUM(CreateObjects, (kOnlyTables)(kOnlyIndexes));
 
 class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorContext {
   typedef yb::master::CatalogManager super;
  public:
   explicit CatalogManager(yb::master::Master* master)
-      : super(master), snapshot_coordinator_(this) {}
+      : super(master), snapshot_coordinator_(this, this) {}
 
   virtual ~CatalogManager();
   void CompleteShutdown();
@@ -106,15 +108,18 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
                                      IsEncryptionEnabledResponsePB* resp);
 
+  // Backfills pg_type_oid and pgschema_name in tablet metadata if not present.
+  Status BackfillMetadataForCDC(scoped_refptr<TableInfo> table, rpc::RpcContext* rpc);
+
   // Create a new CDC stream with the specified attributes.
   Status CreateCDCStream(const CreateCDCStreamRequestPB* req,
                                  CreateCDCStreamResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
   // Delete the specified CDCStream.
-      Status DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
-                                 DeleteCDCStreamResponsePB* resp,
-                                 rpc::RpcContext* rpc);
+  Status DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
+                         DeleteCDCStreamResponsePB* resp,
+                         rpc::RpcContext* rpc);
 
   // List CDC streams (optionally, for a given table).
   Status ListCDCStreams(const ListCDCStreamsRequestPB* req,
@@ -142,6 +147,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Delete CDC streams for a table.
   Status DeleteCDCStreamsForTable(const TableId& table_id) override;
   Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids) override;
+
+  // Clean CDC streams for a table.
+  Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) override;
+  Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) override;
 
   // Setup Universe Replication to consume data from another YB universe.
   Status SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
@@ -187,8 +196,25 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Find all the CDC streams that have been marked as DELETED.
   Status FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
+  // Find all the CDC streams that have been marked as provided state.
+  Status FindCDCStreamsMarkedForMetadataDeletion(
+      std::vector<scoped_refptr<CDCStreamInfo>>* streams, SysCDCStreamEntryPB::State state);
+
   // Delete specified CDC streams.
   Status CleanUpDeletedCDCStreams(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
+
+  void GetTabletsWithStreams(
+      const scoped_refptr<CDCStreamInfo> stream, std::set<TabletId>* tablets_with_streams);
+
+  Result<std::shared_ptr<client::TableHandle>> GetCDCStateTable();
+
+  void DeleteFromCDCStateTable(
+      std::shared_ptr<yb::client::TableHandle> cdc_state_table_result,
+      std::shared_ptr<client::YBSession> session, const TabletId& tablet_id,
+      const CDCStreamId& stream_id);
+
+  // Delete specified CDC streams metadata.
+  Status CleanUpCDCStreamsMetadata(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
 
   bool IsCdcEnabled(const TableInfo& table_info) const override;
 
@@ -199,6 +225,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Result<size_t> GetNumLiveTServersForActiveCluster() override;
 
   Status ClearFailedUniverse();
+
+  void SetCDCServiceEnabled();
+
+  void PrepareRestore() override;
+
+  void EnableTabletSplitting(const std::string& feature) override;
 
  private:
   friend class SnapshotLoader;
@@ -279,6 +311,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
 
+  Result<std::map<std::string, KeyRange>> GetTableKeyRanges(const TableId& table_id);
+
   Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
       CollectFlags flags);
@@ -327,6 +361,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntryType type) override;
 
+  bool IsPitrActive() override;
+
   static void SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                       SysSnapshotEntryPB* snapshot_pb);
 
@@ -341,11 +377,17 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Return all CDC streams.
   void GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
-  // Mark specified CDC streams as DELETING so they can be removed later.
-  Status MarkCDCStreamsAsDeleting(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
+  // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
+  Status MarkCDCStreamsForMetadataCleanup(
+      const std::vector<scoped_refptr<CDCStreamInfo>>& streams, SysCDCStreamEntryPB::State state);
 
   // Find CDC streams for a table.
-  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTable(const TableId& table_id) const;
+  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableUnlocked(const TableId& table_id)
+      const REQUIRES_SHARED(mutex_);
+
+  // Find CDC streams for a table to clean its metadata.
+  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableToDeleteMetadata(
+      const TableId& table_id) const;
 
   bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override REQUIRES_SHARED(mutex_);
 
@@ -398,7 +440,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void MergeUniverseReplication(scoped_refptr<UniverseReplicationInfo> info,
                                 std::string original_id);
+
   Status DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
+  Status DeleteUniverseReplication(const std::string& producer_id,
+                                   bool ignore_errors,
+                                   DeleteUniverseReplicationResponsePB* resp);
+
   void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe,
                                      const Status& failure_status);
 
@@ -427,6 +474,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTable(const TableId& table_id)
       const;
 
+  XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTableUnlocked(
+      const TableId& table_id) const REQUIRES_SHARED(mutex_);
+
   Status CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc);
 
@@ -442,6 +492,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   void SysCatalogLoaded(int64_t term) override;
 
   Result<SysRowEntries> CollectEntriesForSequencesDataTable();
+
+  Result<scoped_refptr<UniverseReplicationInfo>> CreateUniverseReplicationInfoForProducer(
+    const std::string& producer_id,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
+    const google::protobuf::RepeatedPtrField<std::string>& table_ids);
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;
@@ -479,6 +534,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   GUARDED_BY(should_send_consumer_registry_mutex_);
 
   MasterSnapshotCoordinator snapshot_coordinator_;
+
+  // True when the cluster is a producer of a valid replication stream.
+  std::atomic<bool> cdc_enabled_{false};
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

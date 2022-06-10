@@ -78,6 +78,10 @@ const TypeInfo* ColumnSchema::type_info() const {
   return type_->type_info();
 }
 
+bool ColumnSchema::is_collection() const {
+  return type_info()->is_collection();
+}
+
 bool ColumnSchema::CompTypeInfo(const ColumnSchema &a, const ColumnSchema &b) {
   return a.type_info()->type == b.type_info()->type;
 }
@@ -785,6 +789,16 @@ Status SchemaBuilder::RenameColumn(const string& old_name, const string& new_nam
 
   LOG(FATAL) << "Should not reach here";
   return STATUS(IllegalState, "Unable to rename existing column");
+}
+
+Status SchemaBuilder::SetColumnPGType(const string& name, const uint32_t pg_type_oid) {
+  for (ColumnSchema& col_schema : cols_) {
+    if (name == col_schema.name()) {
+      col_schema.set_pg_type_oid(pg_type_oid);
+      return Status::OK();
+    }
+  }
+  return STATUS(NotFound, "The specified column does not exist", name);
 }
 
 Status SchemaBuilder::AddColumn(const ColumnSchema& column, bool is_key) {

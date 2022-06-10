@@ -703,9 +703,17 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, char relpersistence,
 	if (IsYugaByteEnabled() && relpersistence != RELPERSISTENCE_TEMP)
 	{
 		CreateStmt *dummyStmt = makeNode(CreateStmt);
-		dummyStmt->relation = makeRangeVar(NULL, NewHeapName, -1);
-		YBCCreateTable(dummyStmt, RELKIND_RELATION, OldHeapDesc, OIDNewHeap, namespaceid,
-					   InvalidOid, InvalidOid, NewTableSpace, OIDOldHeap);
+		dummyStmt->relation   = makeRangeVar(NULL, NewHeapName, -1);
+		char relkind          = RELKIND_RELATION;
+		Oid matviewPgTableId  = InvalidOid;
+
+		if (OldHeap->rd_rel->relkind == RELKIND_MATVIEW) {
+			relkind = RELKIND_MATVIEW;
+			matviewPgTableId = OIDOldHeap;
+		}
+
+		YBCCreateTable(dummyStmt, relkind, OldHeapDesc, OIDNewHeap, namespaceid,
+					   InvalidOid, InvalidOid, NewTableSpace, matviewPgTableId);
 	}
 
 	ReleaseSysCache(tuple);

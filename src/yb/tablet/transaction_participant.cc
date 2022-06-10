@@ -220,15 +220,15 @@ class TransactionParticipant::Impl
     return (**it).local_commit_time();
   }
 
-  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) {
+  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = transactions_.find(id);
     if (it == transactions_.end()) {
       return boost::none;
     }
-    return boost::make_optional<CommitMetadata>({
+    return boost::make_optional<TransactionLocalState>({
       .commit_ht = (**it).local_commit_time(),
-      .aborted_subtxn_set = (**it).local_commit_aborted_subtxn_set(),
+      .aborted_subtxn_set = (**it).last_known_aborted_subtxn_set(),
     });
   }
 
@@ -353,14 +353,10 @@ class TransactionParticipant::Impl
   }
 
   // Cleans the intents those are consumed by consumers.
-  void SetRetainOpId(const OpId& op_id) {
+  void SetIntentRetainOpIdAndTime(const OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
-    if (cdc_sdk_min_checkpoint_op_id_ != op_id) {
-      cdc_sdk_min_checkpoint_op_id_expiration_ =
-          CoarseMonoClock::now() +
-          MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
-    }
+    cdc_sdk_min_checkpoint_op_id_expiration_ = CoarseMonoClock::now() + cdc_sdk_op_id_expiration;
     cdc_sdk_min_checkpoint_op_id_ = op_id;
 
     // If new op_id same as  cdc_sdk_min_checkpoint_op_id_ it means already intent before it are
@@ -1655,8 +1651,9 @@ HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
   return impl_->LocalCommitTime(id);
 }
 
-boost::optional<CommitMetadata> TransactionParticipant::LocalCommitData(const TransactionId& id) {
-  return impl_->LocalCommitData(id);
+boost::optional<TransactionLocalState> TransactionParticipant::LocalTxnData(
+    const TransactionId& id) {
+  return impl_->LocalTxnData(id);
 }
 
 std::pair<size_t, size_t> TransactionParticipant::TEST_CountIntents() const {
@@ -1789,13 +1786,14 @@ HybridTime TransactionParticipantContext::Now() {
   return clock_ptr()->Now();
 }
 
-void TransactionParticipant::SetRetainOpId(const yb::OpId& op_id) const {
-  impl_->SetRetainOpId(op_id);
+void TransactionParticipant::SetIntentRetainOpIdAndTime(
+    const yb::OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
+  impl_->SetIntentRetainOpIdAndTime(op_id, cdc_sdk_op_id_expiration);
 }
 
-OpId TransactionParticipant::GetRetainOpId() const {
+OpId TransactionParticipant::TEST_GetRetainOpId() const {
   return impl_->GetRetainOpId();
 }
 
-} // namespace tablet
-} // namespace yb
+}  // namespace tablet
+}  // namespace yb

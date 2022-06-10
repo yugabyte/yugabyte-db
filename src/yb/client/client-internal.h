@@ -240,11 +240,16 @@ class YBClient::Data {
                                 CoarseTimePoint deadline,
                                 YBTableInfo* info,
                                 master::GetTableSchemaResponsePB* resp = nullptr);
+  Status GetTableSchema(YBClient* client,
+                        const YBTableName& table_name,
+                        CoarseTimePoint deadline,
+                        std::shared_ptr<YBTableInfo> info,
+                        StatusCallback callback);
   Status GetTableSchemaById(YBClient* client,
-                                    const TableId& table_id,
-                                    CoarseTimePoint deadline,
-                                    std::shared_ptr<YBTableInfo> info,
-                                    StatusCallback callback);
+                            const TableId& table_id,
+                            CoarseTimePoint deadline,
+                            std::shared_ptr<YBTableInfo> info,
+                            StatusCallback callback);
   Status GetTablegroupSchemaById(YBClient* client,
                                          const TablegroupId& tablegroup_id,
                                          CoarseTimePoint deadline,
@@ -394,6 +399,8 @@ class YBClient::Data {
   // Validate replication info as satisfiable for the cluster data.
   Status ValidateReplicationInfo(
         const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline);
+
+  Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 
   template <class ProxyClass, class ReqClass, class RespClass>
   using SyncLeaderMasterFunc = void (ProxyClass::*)(

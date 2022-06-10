@@ -614,7 +614,10 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 
 	if (IsYBRelation(myState->rel))
 	{
-		YBCExecuteInsert(myState->rel, RelationGetDescr(myState->rel), tuple);
+		YBCExecuteInsert(myState->rel,
+						 RelationGetDescr(myState->rel),
+						 tuple,
+						 ONCONFLICT_NONE);
 	}
 	else
 	{

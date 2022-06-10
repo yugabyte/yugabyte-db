@@ -363,6 +363,11 @@ public class AlertTest extends FakeDBApplication {
             alert,
             KnownAlertLabels.UNIVERSE_NAME.labelName(),
             definition.getLabelValue(KnownAlertLabels.UNIVERSE_NAME));
+    AlertLabel nodePrefixLabel =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.NODE_PREFIX.labelName(),
+            definition.getLabelValue(KnownAlertLabels.NODE_PREFIX));
     AlertLabel targetUuidLabel =
         new AlertLabel(
             alert,
@@ -393,6 +398,8 @@ public class AlertTest extends FakeDBApplication {
             alert,
             KnownAlertLabels.SEVERITY.labelName(),
             AlertConfiguration.Severity.SEVERE.name());
+    AlertLabel expressionLabel =
+        new AlertLabel(alert, KnownAlertLabels.ALERT_EXPRESSION.labelName(), "query > 1");
     AlertLabel thresholdLabel = new AlertLabel(alert, KnownAlertLabels.THRESHOLD.labelName(), "1");
     AlertLabel definitionUuidLabel =
         new AlertLabel(
@@ -414,6 +421,7 @@ public class AlertTest extends FakeDBApplication {
             customerUuidLabel,
             universeUuidLabel,
             universeNameLabel,
+            nodePrefixLabel,
             targetUuidLabel,
             targetNameLabel,
             targetTypeLabel,
@@ -422,7 +430,8 @@ public class AlertTest extends FakeDBApplication {
             severityLabel,
             thresholdLabel,
             definitionUuidLabel,
-            definitionNameLabel));
+            definitionNameLabel,
+            expressionLabel));
   }
 
   @Test

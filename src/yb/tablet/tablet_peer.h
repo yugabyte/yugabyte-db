@@ -384,6 +384,11 @@ class TabletPeer : public consensus::ConsensusContext,
 
   OpId cdc_sdk_min_checkpoint_op_id();
 
+  Status SetCDCSDKRetainOpIdAndTime(
+      const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration);
+
+  Result<MonoDelta> GetCDCSDKIntentRetainTime(const CoarseTimePoint& cdc_sdk_latest_active_time);
+
   TableType table_type();
 
   // Returns the number of segments in log_.

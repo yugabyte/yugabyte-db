@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
+import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -54,11 +55,13 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -343,6 +346,12 @@ public class UniverseCRUDHandler {
           throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
         }
         checkHelmChartExists(c.userIntent.ybSoftwareVersion);
+        // TODO(bhavin192): there should be some validation on the
+        // universe_name when creating the universe, because we cannot
+        // have more than 43 characters for universe_name + az_name
+        // when using new naming style. The length of longest AZ name
+        // should be picked up for that provider and then checked
+        // against the give universe_name.
       }
 
       // Set the node exporter config based on the provider
@@ -425,6 +434,16 @@ public class UniverseCRUDHandler {
         taskType = TaskType.CreateKubernetesUniverse;
         universe.updateConfig(
             ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+        // TODO(bhavin192): remove the flag once the new naming style
+        // is stable enough.
+        if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.use_new_helm_naming")) {
+          if (Util.compareYbVersions(primaryIntent.ybSoftwareVersion, "2.8.0.0") >= 0) {
+            taskParams.useNewHelmNamingStyle = true;
+          }
+          // TODO(bhavin192): check if
+          // taskParams.useNewHelmNamingStyle is set to true for
+          // ybSoftwareVersion < 2.8.0.0? If so, respond with error.
+        }
       } else {
         if (primaryCluster.userIntent.enableIPV6) {
           throw new PlatformServiceException(
@@ -746,6 +765,8 @@ public class UniverseCRUDHandler {
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    validateConsistency(primaryCluster, cluster);
 
     // Set the provider code.
     Cluster c = taskParams.clusters.get(0);
@@ -753,9 +774,11 @@ public class UniverseCRUDHandler {
     c.userIntent.providerType = Common.CloudType.valueOf(provider.code);
     c.validate();
 
+    TaskType taskType = TaskType.ReadOnlyClusterCreate;
     if (c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       try {
         checkK8sProviderAvailability(provider, customer);
+        taskType = TaskType.ReadOnlyKubernetesClusterCreate;
       } catch (IllegalArgumentException e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
       }
@@ -764,7 +787,7 @@ public class UniverseCRUDHandler {
     PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
 
     // Submit the task to create the cluster.
-    UUID taskUUID = commissioner.submit(TaskType.ReadOnlyClusterCreate, taskParams);
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
         "Submitted create cluster for {}:{}, task uuid = {}.",
         universe.universeUUID,
@@ -787,6 +810,43 @@ public class UniverseCRUDHandler {
     return taskUUID;
   }
 
+  static void validateConsistency(Cluster primaryCluster, Cluster cluster) {
+    checkEquals(c -> c.userIntent.enableYSQL, primaryCluster, cluster, "Ysql setting");
+    checkEquals(c -> c.userIntent.enableYSQLAuth, primaryCluster, cluster, "Ysql auth setting");
+    checkEquals(c -> c.userIntent.enableYCQL, primaryCluster, cluster, "Ycql setting");
+    checkEquals(c -> c.userIntent.enableYCQLAuth, primaryCluster, cluster, "Ycql auth setting");
+    checkEquals(c -> c.userIntent.enableYEDIS, primaryCluster, cluster, "Yedis setting");
+    checkEquals(
+        c -> c.userIntent.enableClientToNodeEncrypt,
+        primaryCluster,
+        cluster,
+        "Client to node encrypt setting");
+    checkEquals(
+        c -> c.userIntent.enableNodeToNodeEncrypt,
+        primaryCluster,
+        cluster,
+        "Node to node encrypt setting");
+    checkEquals(
+        c -> c.userIntent.assignPublicIP, primaryCluster, cluster, "Assign public IP setting");
+  }
+
+  private static void checkEquals(
+      Function<Cluster, Object> extractor,
+      Cluster primaryCluster,
+      Cluster readonlyCluster,
+      String errorPrefix) {
+    if (!Objects.equals(extractor.apply(primaryCluster), extractor.apply(readonlyCluster))) {
+      String error =
+          errorPrefix
+              + " should be the same for primary and readonly replica "
+              + extractor.apply(primaryCluster)
+              + " vs "
+              + extractor.apply(readonlyCluster);
+      LOG.error(error);
+      throw new PlatformServiceException(BAD_REQUEST, error);
+    }
+  }
+
   public UUID clusterDelete(
       Customer customer, Universe universe, UUID clusterUUID, Boolean isForceDelete) {
     List<Cluster> existingReadOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
@@ -801,14 +861,25 @@ public class UniverseCRUDHandler {
     }
 
     // Create the Commissioner task to destroy the universe.
-    ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
-    taskParams.universeUUID = universe.universeUUID;
-    taskParams.clusterUUID = clusterUUID;
-    taskParams.isForceDelete = isForceDelete;
-    taskParams.expectedUniverseVersion = universe.version;
+    UUID taskUUID;
+    if (cluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+      ReadOnlyKubernetesClusterDelete.Params taskParams =
+          new ReadOnlyKubernetesClusterDelete.Params();
+      taskParams.universeUUID = universe.universeUUID;
+      taskParams.clusterUUID = clusterUUID;
+      taskParams.isForceDelete = isForceDelete;
+      taskParams.expectedUniverseVersion = universe.version;
+      taskUUID = commissioner.submit(TaskType.ReadOnlyKubernetesClusterDelete, taskParams);
+    } else {
+      ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
+      taskParams.universeUUID = universe.universeUUID;
+      taskParams.clusterUUID = clusterUUID;
+      taskParams.isForceDelete = isForceDelete;
+      taskParams.expectedUniverseVersion = universe.version;
+      // Submit the task to delete the cluster.
+      taskUUID = commissioner.submit(TaskType.ReadOnlyClusterDelete, taskParams);
+    }
 
-    // Submit the task to delete the cluster.
-    UUID taskUUID = commissioner.submit(TaskType.ReadOnlyClusterDelete, taskParams);
     LOG.info(
         "Submitted delete cluster for {} in {}, task uuid = {}.",
         clusterUUID,
@@ -1311,6 +1382,15 @@ public class UniverseCRUDHandler {
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
+    if (existingNode.cloudInfo != null
+        && !Objects.equals(inputNode.cloudInfo.private_ip, existingNode.cloudInfo.private_ip)) {
+      String errMsg =
+          String.format(
+              "Illegal attempt to change private ip to %s for node %s",
+              inputNode.cloudInfo.private_ip, inputNode.nodeName);
+      LOG.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
     // TODO compare other node fields here.
   }
 
@@ -1319,6 +1399,11 @@ public class UniverseCRUDHandler {
   private void checkNodesInClusterForUpdate(
       Cluster cluster, Set<NodeDetails> existingNodes, Set<NodeDetails> inputNodes) {
     AtomicInteger inputNodesInToBeRemoved = new AtomicInteger();
+    Set<String> forbiddenIps =
+        Arrays.stream(appConfig.getString("yb.security.forbidden_ips", "").split("[, ]"))
+            .filter(StringUtils::isNotBlank)
+            .collect(Collectors.toSet());
+
     // Collect all the nodes which are not in ToBeAdded state and validate.
     Map<String, NodeDetails> inputNodesMap =
         inputNodes
@@ -1334,6 +1419,14 @@ public class UniverseCRUDHandler {
                   // Nodes in ToBeAdded must not have names.
                   if (StringUtils.isNotBlank(node.nodeName)) {
                     String errMsg = String.format("Node name %s cannot be present", node.nodeName);
+                    LOG.error(errMsg);
+                    throw new PlatformServiceException(BAD_REQUEST, errMsg);
+                  }
+                  if (node.cloudInfo != null
+                      && node.cloudInfo.private_ip != null
+                      && forbiddenIps.contains(node.cloudInfo.private_ip)) {
+                    String errMsg =
+                        String.format("Forbidden ip %s for node", node.cloudInfo.private_ip);
                     LOG.error(errMsg);
                     throw new PlatformServiceException(BAD_REQUEST, errMsg);
                   }

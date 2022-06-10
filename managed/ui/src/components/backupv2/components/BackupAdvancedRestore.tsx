@@ -29,7 +29,7 @@ import * as Yup from 'yup';
 import { getKMSConfigs, restoreEntireBackup } from '../common/BackupAPI';
 import { BACKUP_API_TYPES, IBackup, IStorageConfig, TableType } from '../common/IBackup';
 
-import { KEYSPACE_VALIDATION_REGEX } from '../common/BackupUtils';
+import { KEYSPACE_VALIDATION_REGEX, PARALLEL_THREADS_RANGE } from '../common/BackupUtils';
 
 import { toast } from 'react-toastify';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
@@ -123,6 +123,16 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
     }
   );
 
+  const universeDetails = useSelector(
+    (state: any) => state.universe?.currentUniverse?.data?.universeDetails
+  );
+
+  const primaryCluster = find(universeDetails?.clusters, { clusterType: 'PRIMARY' });
+
+  initialValues['parallelThreads'] =
+    Math.min(primaryCluster?.userIntent?.numNodes, PARALLEL_THREADS_RANGE.MAX) ||
+    PARALLEL_THREADS_RANGE.MIN;
+
   const kmsConfigList = kmsConfigs
     ? kmsConfigs.map((config: any) => {
         const labelName = config.metadata.provider + ' - ' + config.metadata.name;
@@ -131,6 +141,12 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
     : [];
 
   const groupedStorageConfigs = useMemo(() => {
+    // if user has only one storage config, select it by default
+    if (storageConfigs.data.length === 1) {
+      const { configUUID, configName, name } = storageConfigs.data[0];
+      initialValues['storage_config'] = { value: configUUID, label: configName, name: name };
+    }
+
     const configs = storageConfigs.data
       .filter((c: IStorageConfig) => c.type === 'STORAGE')
       .map((c: IStorageConfig) => {
@@ -161,8 +177,14 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
           )
         : Yup.array(Yup.string()),
     parallelThreads: Yup.number()
-      .min(1, 'Parallel threads should be greater than or equal to 1')
-      .max(100, 'Parallel threads should be less than or equal to 100'),
+      .min(
+        PARALLEL_THREADS_RANGE.MIN,
+        `Parallel threads should be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`
+      )
+      .max(
+        PARALLEL_THREADS_RANGE.MAX,
+        `Parallel threads should be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`
+      ),
     new_keyspace_name: Yup.string().when('should_rename_keyspace', {
       is: (should_rename_keyspace) => currentStep === STEPS.length - 1 && should_rename_keyspace,
       then: Yup.string().notOneOf([Yup.ref('keyspace_name')], 'Duplicate name')

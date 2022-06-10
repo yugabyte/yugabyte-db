@@ -468,6 +468,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 	ListCell       *listptr;
 	bool           is_shared_relation = tablespaceId == GLOBALTABLESPACE_OID;
 	Oid            databaseId         = YBCGetDatabaseOidFromShared(is_shared_relation);
+	bool           is_matview         = relkind == RELKIND_MATVIEW;
 
 	char *db_name = get_database_name(databaseId);
 	char *schema_name = stmt->relation->schemaname;
@@ -611,6 +612,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 									   tablegroupId,
 									   colocationId,
 									   tablespaceId,
+									   is_matview,
 									   matviewPgTableId,
 									   &handle));
 
@@ -641,8 +643,8 @@ YBCDropTable(Oid relationId)
 	YBCPgStatement handle = NULL;
 	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
 	/* Whether the table is colocated (via DB or tablegroup) */
-	bool		colocated = YbIsUserTableColocated(databaseId, relationId);
 	Relation	relation = relation_open(relationId, AccessExclusiveLock);
+	bool		colocated = YbIsUserTableColocated(databaseId, YbGetStorageRelid(relation));
 
 	/* Create table-level tombstone for colocated/tablegroup tables */
 	if (colocated)

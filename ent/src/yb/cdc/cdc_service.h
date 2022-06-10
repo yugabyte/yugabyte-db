@@ -71,6 +71,8 @@ struct TabletCheckpoint {
   OpId op_id;
   // Timestamp at which the op ID was last updated.
   CoarseTimePoint last_update_time;
+  // Timestamp at which stream polling happen.
+  CoarseTimePoint last_active_time;
 
   bool ExpiredAt(std::chrono::milliseconds duration, std::chrono::time_point<CoarseMonoClock> now) {
     return (now - last_update_time) > duration;
@@ -82,9 +84,12 @@ struct TabletCheckpoint {
 struct TabletCDCCheckpointInfo {
   OpId cdc_op_id = OpId::Max();
   OpId cdc_sdk_op_id = OpId::Invalid();
+  MonoDelta cdc_sdk_op_id_expiration = MonoDelta::kZero;
+  CoarseTimePoint cdc_sdk_most_active_time = CoarseTimePoint::min();
 };
 
 using TabletOpIdMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
+using TabletIdStreamIdSet = std::set<pair<TabletId, CDCStreamId>>;
 
 class CDCServiceImpl : public CDCServiceIf {
  public:
@@ -133,7 +138,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Status UpdateCdcReplicatedIndexEntry(
       const string& tablet_id, int64 replicated_index, boost::optional<int64> replicated_term,
-      const OpId& cdc_sdk_replicated_op);
+      const OpId& cdc_sdk_replicated_op, const MonoDelta& cdc_sdk_op_id_expiration);
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
@@ -166,11 +171,12 @@ class CDCServiceImpl : public CDCServiceIf {
     return server_metrics_;
   }
 
-  // Returns true if this server has received a GetChanges call.
+  // Returns true if this server is a producer of a valid replication stream.
   bool CDCEnabled();
 
-  Status RetainIntents(
-      const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& cdc_sdk_op_id);
+
+  // Marks the CDC enable flag as true.
+  void SetCDCServiceEnabled();
 
  private:
   FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);
@@ -228,7 +234,7 @@ class CDCServiceImpl : public CDCServiceIf {
                                  rpc::RpcContext* context,
                                  const std::shared_ptr<tablet::TabletPeer>& peer);
 
-  void UpdateTabletPeersWithMinReplicatedIndex(const TabletOpIdMap& tablet_min_checkpoint_map);
+  void UpdateTabletPeersWithMinReplicatedIndex(TabletOpIdMap* tablet_min_checkpoint_map);
 
   Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
 
@@ -289,6 +295,9 @@ class CDCServiceImpl : public CDCServiceIf {
   // tablet and then update the peers' log objects. Also used to update lag metrics.
   void UpdatePeersAndMetrics();
 
+  // This method deletes entries from the cdc_state table that are contained in the set.
+  Status DeleteCDCStateTableMetadata(const TabletIdStreamIdSet& cdc_state_entries_to_delete);
+
   MicrosTime GetLastReplicatedTime(const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
   bool ShouldUpdateLagMetrics(MonoTime time_since_update_metrics);
@@ -314,11 +323,19 @@ class CDCServiceImpl : public CDCServiceIf {
       CreateCDCStreamResponsePB* resp,
       CoarseTimePoint deadline);
 
-  Result<TabletOpIdMap> PopulateTabletCheckPointInfo(const TabletId& input_tablet_id = "");
+  Result<TabletOpIdMap> PopulateTabletCheckPointInfo(
+      const TabletId& input_tablet_id = "",
+      TabletIdStreamIdSet* tablet_stream_to_be_deleted = nullptr);
 
   Status SetInitialCheckPoint(
       const OpId& checkpoint, const string& tablet_id,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
+
+  Status UpdateChildrenTabletsOnSplitOp(
+      const std::string& stream_id,
+      const std::string& tablet_id,
+      std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
+      const client::YBSessionPtr& session);
 
   rpc::Rpcs rpcs_;
 
@@ -361,7 +378,7 @@ class CDCServiceImpl : public CDCServiceIf {
   // get_minimum_checkpoints_and_update_peers_thread_ that it should exit.
   bool cdc_service_stopped_ GUARDED_BY(mutex_){false};
 
-  // True when this service has received a GetChanges request on a valid replication stream.
+  // True when the server is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
 };
 

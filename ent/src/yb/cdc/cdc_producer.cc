@@ -14,6 +14,9 @@
 #include "yb/cdc/cdc_common_util.h"
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/client/session.h"
+#include "yb/client/yb_op.h"
+#include "yb/client/table_handle.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
@@ -27,6 +30,8 @@
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 
+#include "yb/master/master_defaults.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
@@ -37,6 +42,8 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 DEFINE_int32(cdc_transaction_timeout_ms, 0,
   "Don't check for an aborted transaction unless its original write is lagging by this duration.");
@@ -401,8 +408,6 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
 }
 
 Status PopulateSplitOpRecord(const ReplicateMsgPtr& msg, CDCRecordPB* record) {
-  SCHECK(msg->has_split_request(), InvalidArgument,
-         Format("Split op message requires split_request: $0", msg->ShortDebugString()));
   record->set_operation(CDCRecordPB::SPLIT_OP);
   record->set_time(msg->hybrid_time());
   record->mutable_split_tablet_request()->CopyFrom(msg->split_request());
@@ -423,6 +428,8 @@ Status GetChangesForXCluster(const std::string& stream_id,
                              const OpId& from_op_id,
                              const StreamMetadata& stream_metadata,
                              const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                             const client::YBSessionPtr& session,
+                             UpdateOnSplitOpFunc update_on_split_op_func,
                              const MemTrackerPtr& mem_tracker,
                              consensus::ReplicateMsgsHolder* msgs_holder,
                              GetChangesResponsePB* resp,
@@ -453,7 +460,10 @@ Status GetChangesForXCluster(const std::string& stream_id,
   ReplicateMsgs messages = VERIFY_RESULT(FilterAndSortWrites(
       read_ops.messages, txn_map, replicate_intents, &checkpoint));
 
-  for (const auto& msg : messages) {
+  auto first_unreplicated_index = messages.size();
+  bool exit_early = false;
+  for (size_t i = 0; i < messages.size(); ++i) {
+    const auto msg = messages[i];
     switch (msg->op_type()) {
       case consensus::OperationType::UPDATE_TRANSACTION_OP:
         if (!replicate_intents) {
@@ -474,22 +484,47 @@ Status GetChangesForXCluster(const std::string& stream_id,
                                           replicate_intents, resp));
         break;
       case consensus::OperationType::SPLIT_OP:
-        RETURN_NOT_OK(PopulateSplitOpRecord(msg, resp->add_records()));
+        SCHECK(msg->has_split_request(), InvalidArgument,
+            Format("Split op message requires split_request: $0", msg->ShortDebugString()));
+        if (msg->split_request().tablet_id() == tablet_id) {
+          // Only send split if it is our split, and if we can update the children tablet entries
+          // in cdc_state table correctly (the reason for this check is that it is possible to
+          // read our parent tablet splits).
+          auto s = update_on_split_op_func(msg);
+          if (s.ok()) {
+            RETURN_NOT_OK(PopulateSplitOpRecord(msg, resp->add_records()));
+          } else {
+            LOG(INFO) << "Not replicating SPLIT_OP yet for tablet: " << tablet_id << ", stream: "
+                      << stream_id << " : " << s;
+            // Can still process all previous records, but stop processing anything from here on.
+            if (i > 0) {
+              checkpoint = OpId::FromPB(messages[i-1]->id());
+            } else {
+              checkpoint = from_op_id;
+            }
+            first_unreplicated_index = i;
+            exit_early = true;
+          }
+        }
         break;
 
       default:
         // Nothing to do for other operation types.
         break;
     }
+    if (exit_early) {
+      break;
+    }
   }
 
   if (consumption) {
     consumption.Add(resp->SpaceUsedLong());
   }
-  auto ht_of_last_returned_message = messages.empty() ?
-      HybridTime::kInvalid : HybridTime(messages.back()->hybrid_time());
-  auto have_more_messages = PREDICT_FALSE(FLAGS_TEST_xcluster_simulate_have_more_records) ?
-      HaveMoreMessages::kTrue : read_ops.have_more_messages;
+  auto ht_of_last_returned_message = first_unreplicated_index == 0 ?
+      HybridTime::kInvalid : HybridTime(messages[first_unreplicated_index - 1]->hybrid_time());
+  auto have_more_messages =
+      exit_early || PREDICT_FALSE(FLAGS_TEST_xcluster_simulate_have_more_records) ?
+          HaveMoreMessages::kTrue : read_ops.have_more_messages;
   auto safe_time_result = GetSafeTimeForTarget(
       tablet_peer, ht_of_last_returned_message, have_more_messages);
   if (safe_time_result.ok()) {

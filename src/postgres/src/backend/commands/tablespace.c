@@ -377,7 +377,8 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to create tablespace \"%s\"",
 						stmt->tablespacename),
-				 errhint("Must be superuser or yb_db_admin role to create a tablespace.")));
+				 errhint("Must be superuser or yb_db_admin role member to "
+				 		 "create a tablespace.")));
 
 	/* However, the eventual owner of the tablespace need not be */
 	if (stmt->owner)
@@ -616,6 +617,22 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 						tablespacename),
 				 errdetail_internal("%s", detail),
 				 errdetail_log("%s", detail_log)));
+	}
+
+  /* Check if there are snapshot schedules, disallow dropping in such cases */
+	if (IsYugaByteEnabled())
+	{
+		bool is_active;
+    HandleYBStatus(YBCPgCheckIfPitrActive(&is_active));
+    if (is_active)
+    {
+      ereport(ERROR,
+			    (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+				   errmsg("tablespace \"%s\" cannot be dropped. "
+					   "Dropping tablespaces is not allowed on clusters "
+						 "with Point in Time Restore activated.",
+             tablespacename)));
+    }
 	}
 
 	/* DROP hook for the tablespace being removed */

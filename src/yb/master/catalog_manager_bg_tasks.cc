@@ -184,11 +184,13 @@ void CatalogManagerBgTasks::Run() {
       }
 
       TableInfoMap table_info_map;
+      TabletInfoMap tablet_info_map;
       {
         CatalogManager::SharedLock lock(catalog_manager_->mutex_);
         table_info_map = *catalog_manager_->table_ids_map_;
+        tablet_info_map = *catalog_manager_->tablet_map_;
       }
-      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(table_info_map);
+      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(table_info_map, tablet_info_map);
 
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables();
@@ -202,6 +204,12 @@ void CatalogManagerBgTasks::Run() {
       // Do a failed universe clean up
       if (s.ok()) {
         s = catalog_manager_->ClearFailedUniverse();
+      }
+      std::vector<scoped_refptr<CDCStreamInfo>> cdcsdk_streams;
+      auto status_delete_metadata = catalog_manager_->FindCDCStreamsMarkedForMetadataDeletion(
+          &cdcsdk_streams, SysCDCStreamEntryPB::DELETING_METADATA);
+      if (status_delete_metadata.ok() && !cdcsdk_streams.empty()) {
+        status_delete_metadata = catalog_manager_->CleanUpCDCStreamsMetadata(cdcsdk_streams);
       }
 
       // Ensure the master sys catalog tablet follows the cluster's affinity specification.

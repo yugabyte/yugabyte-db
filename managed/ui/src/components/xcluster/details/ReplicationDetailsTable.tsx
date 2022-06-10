@@ -145,7 +145,7 @@ export function ReplicationDetailsTable({ replication }: props) {
                   <span className="lag-text">
                     <GetCurrentLagForTable
                       replicationUUID={replication.uuid}
-                      tableName={row.tableName}
+                      tableUUID={row.tableUUID}
                       nodePrefix={universeInfo?.data.universeDetails.nodePrefix}
                       enabled={isActiveTab}
                       sourceUniverseUUID={replication.sourceUniverseUUID}
@@ -153,7 +153,7 @@ export function ReplicationDetailsTable({ replication }: props) {
                   </span>
                 )}
               >
-                Current lag (ms)
+                Current lag
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="action"

@@ -20,7 +20,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Logger;
 
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.junit.After;
@@ -29,6 +28,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.Ignore;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisCluster;
@@ -69,7 +70,7 @@ public class JedisClusterTest extends BaseYBClassForJedis {
   private HostAndPort nodeInfo3 = HostAndPortUtil.getClusterServers().get(2);
   private HostAndPort nodeInfo4 = HostAndPortUtil.getClusterServers().get(3);
   private HostAndPort nodeInfoSlave2 = HostAndPortUtil.getClusterServers().get(4);
-  protected Logger log = Logger.getLogger(getClass().getName());
+  protected Logger log = LoggerFactory.getLogger(getClass().getName());
 
   @Before
   public void setUp() throws InterruptedException {

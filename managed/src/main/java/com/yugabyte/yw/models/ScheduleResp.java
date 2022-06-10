@@ -29,6 +29,7 @@ public class ScheduleResp {
   boolean runningState;
   BackupInfo backupInfo;
   JsonNode taskParams;
+  boolean backlogStatus;
 
   @Value
   @Builder

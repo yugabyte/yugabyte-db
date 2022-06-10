@@ -24,7 +24,6 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/tablet_split_complete_handler.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
@@ -1404,10 +1403,8 @@ void AsyncGetTabletSplitKey::Finished(const Status& status) {
 AsyncSplitTablet::AsyncSplitTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
-    const std::string& split_encoded_key, const std::string& split_partition_key,
-    TabletSplitCompleteHandlerIf* tablet_split_complete_handler)
-    : AsyncTabletLeaderTask(master, callback_pool, tablet),
-      tablet_split_complete_handler_(tablet_split_complete_handler) {
+    const std::string& split_encoded_key, const std::string& split_partition_key)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet) {
   req_.set_tablet_id(tablet_id());
   req_.set_new_tablet1_id(new_tablet_ids[0]);
   req_.set_new_tablet2_id(new_tablet_ids[1]);
@@ -1444,21 +1441,6 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
       << "Sent split tablet request to " << permanent_uuid() << " (attempt " << attempt << "):\n"
       << req_.DebugString();
   return true;
-}
-
-void AsyncSplitTablet::Finished(const Status& status) {
-  // Also treat AlreadyPresent errors as an error, since we only want to run these post split
-  // operations once.
-  if (tablet_split_complete_handler_ && status.ok() && !resp_.has_error()) {
-    SplitTabletIds split_tablet_ids {
-      .source = req_.tablet_id(),
-      .children = {req_.new_tablet1_id(), req_.new_tablet2_id()}
-    };
-    tablet_split_complete_handler_->ProcessSplitTabletResult(table_->id(), split_tablet_ids);
-  } else {
-    VLOG_WITH_PREFIX(1) << "Skipping processing of AsyncSplitTablet result for table "
-                        << table_->id() << ", tablet " << req_.tablet_id() << ".";
-  }
 }
 
 AsyncTestRetry::AsyncTestRetry(

@@ -67,6 +67,7 @@ TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
 FALSE_CHOICES = ["false", "False", "f", "F", "no", "No", "n", "N", "0"]
 BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
 FAULT_TOLERANCE_CHOICES = ["zone", "region", "cloud"]
+START_FAULT_TOLERANCE_CHOICES = ["none", "zone", "region", "cloud"]
 SLACK_LINK = "https://www.yugabyte.com/slack"
 COMMUNITY_REWARDS_LINK = "https://www.yugabyte.com/community-rewards/"
 HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
@@ -74,6 +75,7 @@ YUGABYTED_LINK = "https://docs.yugabyte.com/preview/reference/configuration/yuga
 YUGABYTED_START = "https://docs.yugabyte.com/preview/reference/configuration/yugabyted/#start"
 DEFAULT_DEMO_DATABASE = "northwind"
 DEFAULT_FAULT_TOLERANCE = "zone"
+DEFAULT_START_FAULT_TOLERANCE = "none"
 SAMPLE_DATA_LINKS = {
     "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
     "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
@@ -547,8 +549,6 @@ class ControlScript(object):
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
         if fault_tolerance == "cloud":
             Output.log_error_and_exit("Cloud based fault tolerance is not supported yet.")
-        elif fault_tolerance == "region":
-            Output.log_error_and_exit("Region based Fault tolerance is not supported yet.")
 
         join_ip = self.configs.saved_data.get("join")
         advertise_ip = self.advertise_ip()
@@ -788,6 +788,7 @@ class ControlScript(object):
         advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
+        fault_tolerance = self.configs.saved_data.get("fault_tolerance")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
         if join_ip:
             master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
@@ -811,6 +812,8 @@ class ControlScript(object):
             common_gflags.append("--cluster_uuid={}".format(
                 self.configs.saved_data.get("universe_uuid")))
 
+        if fault_tolerance == "region":
+            common_gflags.append("--leader_failure_max_missed_heartbeat_periods=10")
 
         yb_master_cmd = [find_binary_location("yb-master")] + \
             common_gflags + \
@@ -1854,6 +1857,16 @@ class ControlScript(object):
                     self.configs.saved_data["cloud_zone"] = cloud_location[2]
                 else:
                     has_errors = True
+
+            if args.fault_tolerance is not None:
+                if args.fault_tolerance.lower() in START_FAULT_TOLERANCE_CHOICES:
+                    self.configs.saved_data["fault_tolerance"] = args.fault_tolerance.lower()
+                else:
+                    has_errors = True
+                    Output.print_out(
+                        "Incorrect fault_tolerance value specified. " +
+                        "Please specify one of the following - zone, region or cloud ".format(
+                            args.fault_tolerance.lower()))
                     
             if args.listen is not None:
                 if args.advertise_address is not None and args.listen != args.advertise_address:
@@ -1871,6 +1884,9 @@ class ControlScript(object):
                         "are same. --daemon is depricated. Can't have different values for them.")
                     has_errors = True
                 args.background = args.daemon
+
+            if args.background is None:
+                args.background = "True"
 
             args.ui = self.parse_bool(args.ui)
             args.background = self.parse_bool(args.background)
@@ -2059,9 +2075,9 @@ class ControlScript(object):
                 "--join", help="IP address to which this process will join".format(SCRIPT_NAME),
                 metavar="")
             cur_parser.add_argument(
-                "--daemon", choices=BOOL_CHOICES, default="true", help=argparse.SUPPRESS)
+                "--daemon", choices=BOOL_CHOICES, help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--background", choices=BOOL_CHOICES, default="true", metavar="",
+                "--background", choices=BOOL_CHOICES, metavar="",
                 help="Runs {} in the background as a daemon. Does not persist on restart. "
                      "Default true.".format(SCRIPT_NAME))
             cur_parser.add_argument(
@@ -2080,8 +2096,10 @@ class ControlScript(object):
                 "--initial_scripts_dir", help=argparse.SUPPRESS)
             cur_parser.add_argument(
                 "--cloud_location", metavar="",
-                help="Cloud location of the node in form of cloudprovider.region.zone"
-            )
+                help="Cloud location of the node in form of cloudprovider.region.zone")
+            cur_parser.add_argument(
+                "--fault_tolerance", metavar="",
+                help="Determines the type of deployment of the cluster. Default is None.")
 
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -2213,6 +2231,7 @@ class Configs(object):
             "cloud_provider": DEFAULT_CLOUD_PROVIDER,
             "cloud_region": DEFAULT_CLOUD_REGION,
             "cloud_zone": DEFAULT_CLOUD_ZONE,
+            "fault_tolerance": DEFAULT_START_FAULT_TOLERANCE,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {

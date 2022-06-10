@@ -64,6 +64,15 @@ import java.util.stream.Stream;
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
 
+  /** Corresponds to the original value of YB_MIN_UNUSED_OID. */
+  protected final long FIRST_YB_OID = 8000;
+
+  /** Matches Postgres' FirstBootstrapObjectId */
+  protected final long FIRST_BOOTSTRAP_OID = 10000;
+
+  /** Matches Postgres' FirstNormalObjectId */
+  protected final long FIRST_NORMAL_OID = 16384;
+
   // Postgres settings.
   protected static final String DEFAULT_PG_DATABASE = "yugabyte";
   protected static final String DEFAULT_PG_USER = "yugabyte";
@@ -417,21 +426,41 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     try (Statement stmt = connection.createStatement()) {
       for (int i = 0; i < 2; i++) {
         try {
-        List<String> roles = getRowList(stmt, "SELECT rolname FROM pg_roles"
-            + " WHERE rolname <> 'postgres'"
-            + " AND rolname NOT LIKE 'pg_%'"
-            + " AND rolname NOT LIKE 'yb_%'").stream()
-                .map(r -> r.getString(0))
-                .collect(Collectors.toList());
+          List<String> roles = getRowList(stmt, "SELECT rolname FROM pg_roles"
+              + " WHERE rolname <> 'postgres'"
+              + " AND rolname NOT LIKE 'pg_%'"
+              + " AND rolname NOT LIKE 'yb_%'").stream()
+                  .map(r -> r.getString(0))
+                  .collect(Collectors.toList());
 
-        for (String role : roles) {
-          boolean isPersistent = persistentUsers.contains(role);
-          LOG.info("Cleaning up role {} (persistent? {})", role, isPersistent);
-          stmt.execute("DROP OWNED BY " + role + " CASCADE");
-          if (!isPersistent) {
-            stmt.execute("DROP ROLE " + role);
+          for (String role : roles) {
+            boolean isPersistent = persistentUsers.contains(role);
+            LOG.info("Cleaning up role {} (persistent? {})", role, isPersistent);
+            stmt.execute("DROP OWNED BY " + role + " CASCADE");
           }
-        }
+
+          // Documentation for DROP OWNED BY explicitly states that databases and tablespaces
+          // are not removed, so we do this ourself.
+          // Ref: https://www.postgresql.org/docs/11/sql-drop-owned.html
+          List<String> tablespaces = getRowList(stmt, "SELECT spcname FROM pg_tablespace"
+              + " WHERE spcowner NOT IN ("
+              + "   SELECT oid FROM pg_roles "
+              + "   WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%'"
+              + ")").stream()
+                  .map(r -> r.getString(0))
+                  .collect(Collectors.toList());
+
+          for (String tablespace : tablespaces) {
+            stmt.execute("DROP TABLESPACE " + tablespace);
+          }
+
+          for (String role : roles) {
+            boolean isPersistent = persistentUsers.contains(role);
+            if (!isPersistent) {
+              LOG.info("Dropping role {}", role);
+              stmt.execute("DROP ROLE " + role);
+            }
+          }
         } catch (Exception e) {
           if (e.toString().contains("Catalog Version Mismatch: A DDL occurred while processing")) {
             continue;

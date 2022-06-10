@@ -251,7 +251,13 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
                             uint64_t read_time) {
   // Group the items by the table ID.
   std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
+    // TODO(dmitry): By design it is only necessary to group ybctids by table, sorting of ybctids
+    // itself is not required. But due to problem described in #12648 unsorted ybctids may produce
+    // incomplete result. Remove ybctid comparision once #12648 is fixed.
+    if (a.table_id != b.table_id) {
       return a.table_id < b.table_id;
+    }
+    return a.ybctid < b.ybctid;
   });
 
   auto arena = std::make_shared<Arena>();
@@ -319,28 +325,15 @@ using client::YBSession;
 
 //--------------------------------------------------------------------------------------------------
 
-PggateOptions::PggateOptions() : ServerBaseOptions(kDefaultPort) {
-  server_type = "tserver";
-  rpc_opts.connection_keepalive_time_ms = FLAGS_pgsql_rpc_keepalive_time_ms;
-
-  if (FLAGS_pggate_proxy_bind_address.empty()) {
-    HostPort host_port;
-    CHECK_OK(host_port.ParseString(FLAGS_rpc_bind_addresses, 0));
-    host_port.set_port(PggateOptions::kDefaultPort);
-    FLAGS_pggate_proxy_bind_address = host_port.ToString();
-    LOG(INFO) << "Reset YSQL bind address to " << FLAGS_pggate_proxy_bind_address;
-  }
-  rpc_opts.rpc_bind_addresses = FLAGS_pggate_proxy_bind_address;
-  master_addresses_flag = FLAGS_pggate_master_addresses;
-
-  server::MasterAddresses master_addresses;
-  // TODO: we might have to allow setting master_replication_factor similarly to how it is done
-  // in tserver to support master auto-discovery on Kubernetes.
-  CHECK_OK(server::DetermineMasterAddresses(
-      "pggate_master_addresses", master_addresses_flag, /* master_replication_factor */ 0,
-      &master_addresses, &master_addresses_flag));
-  SetMasterAddresses(make_shared<server::MasterAddresses>(std::move(master_addresses)));
+size_t PgMemctxHasher::operator()(const std::unique_ptr<PgMemctx>& value) const {
+  return (*this)(value.get());
 }
+
+size_t PgMemctxHasher::operator()(PgMemctx* value) const {
+  return std::hash<PgMemctx*>()(value);
+}
+
+//--------------------------------------------------------------------------------------------------
 
 PgApiContext::MessengerHolder::MessengerHolder(
     std::unique_ptr<rpc::SecureContext> security_context_,
@@ -387,6 +380,10 @@ PgApiImpl::PgApiImpl(
       pg_txn_manager_(
           new PgTxnManager(
               &pg_client_, clock_, tserver_shared_object_.get(), pg_callbacks_)) {
+  if (pg_callbacks_.YbPgMemUpdateMax) {
+    mem_tracker_->AssignUpdateMaxMemFunctor(pg_callbacks_.YbPgMemUpdateMax);
+  }
+
   CHECK_OK(clock_->Init());
 
   // Setup type mapping.
@@ -401,6 +398,8 @@ PgApiImpl::PgApiImpl(
 }
 
 PgApiImpl::~PgApiImpl() {
+  mem_contexts_.clear();
+  pg_session_.reset();
   messenger_holder_.messenger->Shutdown();
   pg_txn_manager_.reset();
   pg_client_.Shutdown();
@@ -458,17 +457,23 @@ bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
 
 PgMemctx *PgApiImpl::CreateMemctx() {
   // Postgres will create YB Memctx when it first use the Memctx to allocate YugaByte object.
-  return PgMemctx::Create();
+  return mem_contexts_.insert(std::make_unique<PgMemctx>()).first->get();
 }
 
 Status PgApiImpl::DestroyMemctx(PgMemctx *memctx) {
   // Postgres will destroy YB Memctx by releasing the pointer.
-  return PgMemctx::Destroy(memctx);
+  auto it = mem_contexts_.find(memctx);
+  SCHECK(it != mem_contexts_.end(), InternalError, "Invalid memory context handle");
+  mem_contexts_.erase(it);
+  return Status::OK();
 }
 
 Status PgApiImpl::ResetMemctx(PgMemctx *memctx) {
   // Postgres reset YB Memctx when clearing a context content without clearing its nested context.
-  return PgMemctx::Reset(memctx);
+  auto it = mem_contexts_.find(memctx);
+  SCHECK(it != mem_contexts_.end(), InternalError, "Invalid memory context handle");
+  (**it).Clear();
+  return Status::OK();
 }
 
 // TODO(neil) Use Arena in the future.
@@ -727,12 +732,13 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  const PgObjectId& tablegroup_oid,
                                  const ColocationId colocation_id,
                                  const PgObjectId& tablespace_oid,
+                                 bool is_matview,
                                  const PgObjectId& matview_pg_table_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, is_colocated_via_database,
-      tablegroup_oid, colocation_id, tablespace_oid, matview_pg_table_oid);
+      tablegroup_oid, colocation_id, tablespace_oid, is_matview, matview_pg_table_oid);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }
@@ -962,7 +968,7 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
       if_not_exist, false /* add_primary_key */,
       tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid, colocation_id,
-      tablespace_oid, PgObjectId() /* matview_pg_table_id */);
+      tablespace_oid, false /* is_matview */, PgObjectId() /* matview_pg_table_id */);
   stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {
       stmt->UseTransaction();
@@ -1729,6 +1735,10 @@ void PgApiImpl::RegisterSysTableForPrefetching(
   } else {
     pg_sys_table_prefetcher_->Register(table_id, index_id);
   }
+}
+
+Result<bool> PgApiImpl::CheckIfPitrActive() {
+  return pg_session_->CheckIfPitrActive();
 }
 
 } // namespace pggate

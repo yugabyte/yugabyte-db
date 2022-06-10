@@ -73,6 +73,8 @@ class SnapshotCoordinatorContext {
 
   virtual void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) = 0;
 
+  virtual void PrepareRestore() = 0;
+
   virtual rpc::Scheduler& Scheduler() = 0;
 
   virtual int64_t LeaderTerm() = 0;
@@ -80,6 +82,8 @@ class SnapshotCoordinatorContext {
   virtual server::Clock* Clock() = 0;
 
   virtual Result<size_t> GetNumLiveTServersForActiveCluster() = 0;
+
+  virtual void EnableTabletSplitting(const std::string& feature) = 0;
 
   virtual ~SnapshotCoordinatorContext() = default;
 };

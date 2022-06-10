@@ -9,7 +9,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
-import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -61,6 +60,9 @@ public class Util {
   public static final String REDACT = "REDACTED";
   public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
   public static final String SYSTEM_PLATFORM_DB = "system_platform";
+  public static final int YB_SCHEDULER_INTERVAL = 2;
+  public static final String DEFAULT_YB_SSH_USER = "yugabyte";
+  public static final String DEFAULT_SUDO_SSH_USER = "centos";
 
   public static final String AZ = "AZ";
   public static final String GCS = "GCS";
@@ -369,6 +371,9 @@ public class Util {
     return details;
   }
 
+  // Compare v1 and v2 Strings. Returns 0 if the versions are equal, a
+  // positive integer if v1 is newer than v2, a negative integer if v1
+  // is older than v2.
   public static int compareYbVersions(String v1, String v2) {
     Pattern versionPattern = Pattern.compile("^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$");
     Matcher v1Matcher = versionPattern.matcher(v1);
@@ -446,39 +451,6 @@ public class Util {
     return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
   }
 
-  // This will help us in insertion of set of keys in locked synchronized way as no
-  // extraction/deletion action should be performed on RunTimeConfig object during the process.
-  // TODO: Fix this locking static method - this locks whole Util class with unrelated methods.
-  //  This should really be using database transactions since runtime config is persisted.
-  public static synchronized void setLockedMultiKeyConfig(
-      RuntimeConfig<Universe> config, Map<String, String> configKeysMap) {
-    configKeysMap.forEach(
-        (key, value) -> {
-          config.setValue(key, value, false);
-        });
-  }
-
-  // This will help us in extraction of set of keys in locked synchronized way as no
-  // insertion/deletion action should be performed on RunTimeConfig object during the process.
-  public static synchronized Map<String, String> getLockedMultiKeyConfig(
-      RuntimeConfig<Universe> config, List<String> configKeys) {
-    Map<String, String> configKeysMap = new HashMap<>();
-    configKeys.forEach((key) -> configKeysMap.put(key, config.getString(key)));
-    return configKeysMap;
-  }
-
-  // This will help us in deletion of set of keys in locked synchronized way as no
-  // insertion/extraction action should be performed on RunTimeConfig object during the process.
-  public static synchronized void deleteLockedMultiKeyConfig(
-      RuntimeConfig<Universe> config, List<String> configKeys) {
-    configKeys.forEach(
-        (key) -> {
-          if (config.hasPath(key)) {
-            config.deleteEntry(key);
-          }
-        });
-  }
-
   /**
    * Returns the Unix epoch timeStamp in microseconds provided the given timeStamp and it's format.
    */
@@ -546,6 +518,8 @@ public class Util {
     return Hex.encodeHexString(bytes);
   }
 
+  // TODO(bhavin192): Helm allows the release name to be 53 characters
+  // long, and with new naming style this becomes 43 for our case.
   // Sanitize helm release name.
   public static String sanitizeHelmReleaseName(String name) {
     return sanitizeKubernetesNamespace(name, 0);

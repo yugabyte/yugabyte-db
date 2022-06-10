@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import axios from 'axios';
-import { IN_DEVELOPMENT_MODE, ROOT_URL, USE_SSO } from '../config';
+import { IN_DEVELOPMENT_MODE, isSSOLogin, ROOT_URL } from '../config';
 import Cookies from 'js-cookie';
 import { getCustomerEndpoint } from './common';
 
@@ -179,7 +179,7 @@ export function validateToken() {
   }
 
   // in single sign-on mode authentication happens via PLAY_SESSION cookie and not via headers
-  if (!USE_SSO) {
+  if (!isSSOLogin()) {
     axios.defaults.headers.common['X-AUTH-TOKEN'] =
       Cookies.get('authToken') || localStorage.getItem('authToken');
   }
@@ -272,7 +272,7 @@ export function insecureLoginResponse(response) {
 }
 
 export function logout() {
-  const url = USE_SSO ? `${ROOT_URL}/third_party_logout` : `${ROOT_URL}/logout`;
+  const url = isSSOLogin() ? `${ROOT_URL}/third_party_logout` : `${ROOT_URL}/logout`;
   const request = axios.get(url);
   return {
     type: LOGOUT,
@@ -892,9 +892,14 @@ export function fetchCustomerConfigsResponse(response) {
   };
 }
 
-export function fetchRunTimeConfigs(scope = '00000000-0000-0000-0000-000000000000', includeInherited = false) {
+export function fetchRunTimeConfigs(
+  scope = '00000000-0000-0000-0000-000000000000',
+  includeInherited = false
+) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}?includeInherited=${includeInherited}`);
+  const request = axios.get(
+    `${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}?includeInherited=${includeInherited}`
+  );
   return {
     type: FETCH_RUNTIME_CONFIGS,
     payload: request
@@ -987,12 +992,14 @@ export function setLogsLoading() {
   };
 }
 
-export function getLogs(maxLines, regex, universe) {
+export function getLogs(maxLines, regex, universe, startDate, endDate) {
   const request = axios.get(`${ROOT_URL}/logs`, {
     params: {
       maxLines,
       queryRegex: regex,
-      universeName: universe
+      universeName: universe,
+      startDate,
+      endDate
     }
   });
   return {

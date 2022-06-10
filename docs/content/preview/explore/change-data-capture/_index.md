@@ -14,15 +14,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Change data capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications or other databases.
+Change data capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications, or other databases.
 
 ### On this page
 
 * [Prerequisites](#prerequisites)
 * [Process architecture](#process-architecture)
 * [Debezium connector for YugabyteDB](#debezium-connector-for-yugabytedb)
-* [Java console client](#cdc-java-console-client)
-* [Tserver configuration](#tserver-configuration)
+* [Java console client](#java-cdc-console-client)
+* [TServer configuration](#tserver-configuration)
 * [Consistency semantics](#consistency-semantics)
 * [Performance impact](#performance-impact)
 * [yb-admin commands](#yb-admin-commands)
@@ -30,13 +30,9 @@ Change data capture (CDC) is a process to capture changes made to data in the da
 * [Snapshot support](#snapshot-support)
 * [Limitations](#limitations)
 
-## What is CDC?
+## Prerequisites
 
-The core primitive of CDC is the _stream_. Streams can be enabled/disabled on databases. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
-
-### Prerequisites
-
-* YugabyteDB version 2.13.0 or higher.
+* The database and its tables must be created using YugabyteDB version 2.13 or later.
 * There should be a primary key on the table you want to stream the changes from.
 
 Be aware of the following:
@@ -52,11 +48,13 @@ The current YugabyteDB CDC implementation supports only Debezium and Kafka.
 
 {{< warning title="Warning" >}}
 
-YugabyteDB doesn't yet support the DROP TABLE and TRUNCATE TABLE commands. The behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands). See the [limitations](#limitations) section, as well.
+YugabyteDB doesn't yet support the DROP TABLE and TRUNCATE TABLE commands. The behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands). See also [Limitations](#limitations).
 
 {{< /warning >}}
 
-### Process Architecture
+## Process architecture
+
+The core primitive of CDC is the _stream_. Streams can be enabled and disabled on databases. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
 ```goat
                         .-------------------------------------------.
@@ -84,15 +82,15 @@ YugabyteDB doesn't yet support the DROP TABLE and TRUNCATE TABLE commands. The b
 '-------------------------------------------'    '-------------------------------------------'
 ```
 
-#### CDC Streams
+### CDC streams
 
-Streams are the YugabyteDB endpoints for fetching DB changes by applications, processes and systems. Streams can be enabled or disabled [on a per namespace basis]. Every change to a database table (for which the data is being streamed) is emitted as a record to the stream, which is then propagated further for consumption by applications, in our case to Debezium, and then ultimately to Kafka.
+Streams are the YugabyteDB endpoints for fetching database changes by applications, processes, and systems. Streams can be enabled or disabled (on a per namespace basis). Every change to a database table (for which the data is being streamed) is emitted as a record to the stream, which is then propagated further for consumption by applications, in this case to Debezium, and then ultimately to Kafka.
 
-#### DB Stream
+### DB stream
 
-In order to facilitate the streaming of data, we have to create a DB Stream. This stream is created at the database level, and can access the data in all of that database's tables.
+To facilitate the streaming of data, you have to create a DB Stream. This stream is created at the database level, and can access the data in all of that database's tables.
 
-### Debezium connector for YugabyteDB
+## Debezium connector for YugabyteDB
 
 The Debezium connector for YugabyteDB pulls data from YugabyteDB and publishes it to Kafka. The following illustration explains the pipeline:
 
@@ -100,54 +98,55 @@ The Debezium connector for YugabyteDB pulls data from YugabyteDB and publishes i
 
 See [Debezium connector for YugabyteDB](./debezium-connector-yugabytedb/) to learn more, and [Running Debezium with YugabyteDB](../../integrations/cdc/debezium/) to get started with the Debezium connector for YugabyteDB.
 
-### CDC Java console client
+## Java CDC console client
 
-There is a [Java console client](./cdc-java-console-client/) for Change data capture and is strictly meant for testing purposes only, it will help in building an understanding what all change records are emitted by YugabyteDB.
+The [Java console client](./cdc-java-console-client/) for CDC is strictly for testing purposes only. It can help in building an understanding what change records are emitted by YugabyteDB.
 
-### TServer configuration
+## TServer configuration
 
 There are several GFlags you can use to fine-tune YugabyteDB's CDC behavior. These flags are documented in the [Change data capture flags](../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags) section of the yb-tserver reference page.
 
-### Consistency Semantics
+## Consistency semantics
 
-#### Per-Tablet Ordered Delivery Guarantee
+### Per-tablet ordered delivery guarantee
 
-All changes for a row (or rows in the same tablet) will be received in the order in which they happened. However, due to the distributed nature of the problem, there is no guarantee of the order across tablets.
+All changes for a row (or rows in the same tablet) are received in the order in which they happened. However, due to the distributed nature of the problem, there is no guarantee of the order across tablets.
 
-#### At least Once Delivery
+### At least once delivery
 
-Updates for rows will be streamed at least once. This can happen in the case of Kafka Connect Node failure. If the Kafka Connect Node pushes the records to Kafka and crashes before committing the offset, on the restart, it will again get the same set of records.
+Updates for rows are streamed at least once. This can happen in the case of Kafka Connect Node failure. If the Kafka Connect Node pushes the records to Kafka and crashes before committing the offset, on restart, it will again get the same set of records.
 
-#### No Gaps in Change Stream
+### No gaps in change stream
 
 Note that after you have received a change for a row for some timestamp `t`, you won't receive a previously unseen change for that row at a lower timestamp. Receiving any change implies that you have received _all older changes_ for that row.
 
-### Performance Impact
+## Performance impact
 
-The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the stream-id and garbage collects the WAL entries if those have been streamed to cdc clients. <br/>
+The change records for CDC are read from the WAL. The CDC module maintains checkpoints internally for each of the stream-ids and garbage collects the WAL entries if those have been streamed to CDC clients.
 
-In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [Gflag](../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
+In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage-collected. This is configurable using a [Gflag](../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
 
-### yb-admin commands
+## yb-admin commands
 
-The commands used to manipulate CDC DB streams can be found in the [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands) reference documentation.
+The commands used to manipulate CDC DB streams are described in the [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands) reference documentation.
 
-### DDL command support
+## DDL command support
 
-Change data capture supports schema changes (for example, adding a default value to column, adding a new column, or adding constraints to column) for tables as well. When you run a DDL command, the schema is altered, and YugabyteDB emits a DDL record with the new schema values; after that, further records will use the new schema format.
+CDC supports schema changes (for example, adding a default value to column, adding a new column, or adding constraints to column) for tables as well. When you run a DDL command, the schema is altered, and YugabyteDB emits a DDL record with the new schema values; after that, further records will use the new schema format.
 
-### Snapshot support
+## Snapshot support
 
 Initially, if you create a stream for a particular table that already contains some records, the stream takes a snapshot of the table, and streams all the data that resides in the table. After the snapshot of the whole table is completed, YugabyteDB starts streaming the changes that happen in the table.
 
 The snapshot feature uses the `cdc_snapshot_batch_size` GFlag. This flag's default value is 250 records included per batch in response to an internal call to get the snapshot. If the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot. You can also choose not to take a snapshot by modifying the [Debezium](../change-data-capture/debezium-connector-yugabytedb/) configuration.
 
-### Limitations
+## Limitations
 
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
 * DROP and TRUNCATE commands aren't supported. If a user tries to issue these commands on a table while a stream ID is there for the table, the server might crash, the behaviour is unstable. Issues for TRUNCATE [10010](https://github.com/yugabyte/yugabyte-db/issues/10010) and DROP [10069](https://github.com/yugabyte/yugabyte-db/issues/10069).
 * If a stream ID is created, and after that a new table is created, the existing stream ID is not able to stream data from the newly created table. The user needs to create a new stream ID. Issue [10921](https://github.com/yugabyte/yugabyte-db/issues/10921).
 * A single stream can only be used to stream data from one namespace only.
+* Enabling CDC on tables created using previous versions of YugabyteDB is not supported, even after YugabyteDB is upgraded to version 2.13 or higher.
 
 In addition, CDC support for the following features will be added in upcoming releases:
 

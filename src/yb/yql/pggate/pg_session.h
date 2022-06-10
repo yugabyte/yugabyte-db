@@ -317,6 +317,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   void ResetHasWriteOperationsInDdlMode();
   bool HasWriteOperationsInDdlMode() const;
 
+  Result<bool> CheckIfPitrActive();
+
  private:
   Result<PerformFuture> FlushOperations(
       BufferableOperations ops, bool transactional);

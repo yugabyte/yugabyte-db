@@ -69,7 +69,7 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return HybridTime::kInvalid;
   }
 
-  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override {
+  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override {
     Fail();
     return boost::none;
   }
@@ -255,7 +255,7 @@ PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
   if (value_ref.custom_value_type() != ValueEntryType::kInvalid) {
     return PrimitiveValue(value_ref.custom_value_type());
   }
-  return PrimitiveValue::FromQLValuePB(value_holder, CheckIsCollate::kFalse);
+  return PrimitiveValue::FromQLValuePB(value_holder);
 }
 
 KeyEntryValue GenRandomKeyEntryValue(RandomNumberGenerator* rng) {
@@ -437,7 +437,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
                     current_iteration, doc_path.ToString(), value.ToString());
     auto pv = value.custom_value_type() != ValueEntryType::kInvalid
         ? PrimitiveValue(value.custom_value_type())
-        : PrimitiveValue::FromQLValuePB(value_holder, CheckIsCollate::kFalse);
+        : PrimitiveValue::FromQLValuePB(value_holder);
     ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, pv));
     const auto set_primitive_status = dwb.SetPrimitive(doc_path, value);
     if (!set_primitive_status.ok()) {

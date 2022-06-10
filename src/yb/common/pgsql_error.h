@@ -85,6 +85,21 @@ struct RelationOidTag : IntegralErrorTag<unsigned int> {
 
 typedef StatusErrorCodeImpl<RelationOidTag> RelationOid;
 
+struct AuxilaryMessageTag : StringBackedErrorTag {
+  // It is part of the wire protocol and should not be changed once released.
+  static constexpr uint8_t kCategory = 21;
+
+  static std::string ToMessage(const Value& value) {
+    return value;
+  }
+
+  static std::string DecodeToString(const uint8_t* source) {
+    return ToMessage(Decode(source));
+  }
+};
+
+typedef StatusErrorCodeImpl<AuxilaryMessageTag> AuxilaryMessage;
+
 } // namespace yb
 
 #endif // YB_COMMON_PGSQL_ERROR_H

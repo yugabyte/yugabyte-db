@@ -19,7 +19,6 @@
 DECLARE_int32(pgsql_rpc_keepalive_time_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(pggate_ybclient_reactor_threads);
-DECLARE_string(pggate_proxy_bind_address);
 DECLARE_string(pggate_master_addresses);
 DECLARE_int32(pggate_tserver_shm_fd);
 DECLARE_bool(TEST_pggate_ignore_tserver_shm);

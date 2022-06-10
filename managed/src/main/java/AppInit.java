@@ -5,7 +5,7 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ShellLogsManager;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
@@ -24,7 +25,6 @@ import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
-import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
@@ -68,6 +68,7 @@ public class AppInit {
       Scheduler scheduler,
       CallHome callHome,
       HealthChecker healthChecker,
+      ShellLogsManager shellLogsManager,
       Config config,
       SupportBundleCleanup supportBundleCleanup)
       throws ReflectiveOperationException {
@@ -169,6 +170,7 @@ public class AppInit {
       callHome.start();
       queryAlerts.start();
       healthChecker.initialize();
+      shellLogsManager.startLogsGC();
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();

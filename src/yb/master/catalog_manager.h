@@ -72,6 +72,7 @@
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
 #include "yb/master/xcluster_split_driver.h"
+#include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
@@ -480,6 +481,8 @@ class CatalogManager :
       const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  void DisableTabletSplittingInternal(const MonoDelta& duration, const std::string& feature);
+
   // Returns true if there are no outstanding tablets and the tablet split manager is not currently
   // processing tablet splits.
   Status IsTabletSplittingComplete(
@@ -489,6 +492,11 @@ class CatalogManager :
   // Delete CDC streams for a table.
   virtual Status DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
   virtual Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
+      EXCLUDES(mutex_);
+
+  // Delete CDC streams metadata for a table.
+  virtual Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) EXCLUDES(mutex_);
+  virtual Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids)
       EXCLUDES(mutex_);
 
   virtual Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
@@ -594,6 +602,9 @@ class CatalogManager :
   // Is the table a special sequences system table?
   bool IsSequencesSystemTable(const TableInfo& table) const;
 
+  // Is the table a materialized view?
+  bool IsMatviewTable(const TableInfo& table) const;
+
   // Is the table created by user?
   // Note that table can be regular table or index in this case.
   bool IsUserCreatedTable(const TableInfo& table) const override;
@@ -614,7 +625,8 @@ class CatalogManager :
   //
   // If all conditions are met, returns a locked write lock on this table.
   // Otherwise lock is default constructed, i.e. not locked.
-  TableInfo::WriteLock MaybeTransitionTableToDeleted(const TableInfoPtr& table);
+  TableInfo::WriteLock PrepareTableDeletion(const TableInfoPtr& table);
+  bool ShouldDeleteTable(const TableInfoPtr& table);
 
   // Used by ConsensusService to retrieve the TabletPeer for a system
   // table specified by 'tablet_id'.
@@ -782,6 +794,12 @@ class CatalogManager :
 
   Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
 
+  Result<std::unordered_map<std::string, uint32_t>> GetPgAttNameTypidMap(
+      const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
+
+  Result<std::unordered_map<uint32_t, PgTypeInfo>> GetPgTypeInfo(
+      const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids);
+
   void AssertLeaderLockAcquiredForReading() const override {
     leader_lock_.AssertAcquiredForReading();
   }
@@ -894,6 +912,11 @@ class CatalogManager :
   Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const override;
 
   std::vector<std::string> GetMasterAddresses();
+
+  // Returns true if there is at-least one snapshot schedule on any database/keyspace
+  // in the cluster.
+  Status CheckIfPitrActive(
+    const CheckIfPitrActiveRequestPB* req, CheckIfPitrActiveResponsePB* resp);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -1405,6 +1428,10 @@ class CatalogManager :
     return SnapshotSchedulesToObjectIdsMap();
   }
 
+  virtual bool IsPitrActive() {
+    return false;
+  }
+
   Result<SnapshotScheduleId> FindCoveringScheduleForObject(
       SysRowEntryType type, const std::string& object_id);
 
@@ -1523,6 +1550,20 @@ class CatalogManager :
   // that depend on the in-memory state until this master can respond
   // correctly.
   int64_t leader_ready_term_ GUARDED_BY(state_lock_);
+
+  // This field is set to true when the leader master has completed loading
+  // metadata into in-memory structures. This can happen in two cases presently:
+  // 1. When a new leader is elected
+  // 2. When an existing leader executes a restore_snapshot_schedule
+  // In case (1), the above leader_ready_term_ is sufficient to indicate
+  // the completion of this stage since the new term is only set after load.
+  // However, in case (2), since the before/after term is the same, the above
+  // check will succeed even when load is not complete i.e. there's a small
+  // window when there's a possibility that the master_service sends RPCs
+  // to the leader. This window is after the sys catalog has been restored and
+  // all records have been updated on disk and before it starts loading them
+  // into the in-memory structures.
+  bool is_catalog_loaded_ GUARDED_BY(state_lock_) = false;
 
   // Lock used to fence operations and leader elections. All logical operations
   // (i.e. create table, alter table, etc.) should acquire this lock for

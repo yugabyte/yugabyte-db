@@ -125,3 +125,5 @@ DROP SEQUENCE
 - [`currval()`](../../../exprs/func_currval)
 - [`lastval()`](../../../exprs/func_lastval)
 - [`nextval()`](../../../exprs/func_nextval)
+- [`setval()`](../../../exprs/func_setval)
+- 

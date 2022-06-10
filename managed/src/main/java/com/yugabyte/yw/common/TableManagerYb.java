@@ -38,11 +38,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class TableManagerYb extends DevopsBase {
 
   public enum CommandSubType {
@@ -76,7 +78,7 @@ public class TableManagerYb extends DevopsBase {
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = region.provider.getUnmaskedConfig();
-    Map<String, String> namespaceToConfig = new HashMap<>();
+    Map<String, String> podFQDNToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
     Map<String, String> ipToSshKeyPath = new HashMap<>();
 
@@ -84,15 +86,16 @@ public class TableManagerYb extends DevopsBase {
 
     if (region.provider.code.equals("kubernetes")) {
       PlacementInfo pi = primaryCluster.placementInfo;
-      namespaceToConfig =
-          PlacementInfoUtil.getConfigPerNamespace(
-              pi, universe.getUniverseDetails().nodePrefix, provider);
+      podFQDNToConfig =
+          PlacementInfoUtil.getKubernetesConfigPerPod(
+              pi, universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid));
     } else {
       // Populate the map so that we use the correct SSH Keys for the different
       // nodes in different clusters.
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         UserIntent clusterUserIntent = cluster.userIntent;
-        Provider clusterProvider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+        Provider clusterProvider =
+            Provider.getOrBadRequest(UUID.fromString(clusterUserIntent.provider));
         AccessKey accessKeyForCluster =
             AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
@@ -188,14 +191,14 @@ public class TableManagerYb extends DevopsBase {
             region,
             customerConfig,
             provider,
-            namespaceToConfig,
+            podFQDNToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
             commandArgs);
         commandArgs.add("create");
         extraVars.putAll(customerConfig.dataAsMap());
 
-        LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+        log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
         return shellProcessHandler.run(commandArgs, extraVars, backupTableParams.backupUuid);
 
       case BULK_IMPORT:
@@ -237,14 +240,14 @@ public class TableManagerYb extends DevopsBase {
         backupTableParams = (BackupTableParams) taskParams;
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
-        LOG.info("Deleting backup at location {}", backupTableParams.storageLocation);
+        log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
             backupTableParams,
             accessKey,
             region,
             customerConfig,
             provider,
-            namespaceToConfig,
+            podFQDNToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
             commandArgs);
@@ -253,7 +256,7 @@ public class TableManagerYb extends DevopsBase {
         break;
     }
 
-    LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+    log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
     return shellProcessHandler.run(commandArgs, extraVars);
   }
 
@@ -269,13 +272,13 @@ public class TableManagerYb extends DevopsBase {
       Region region,
       CustomerConfig customerConfig,
       Provider provider,
-      Map<String, String> namespaceToConfig,
+      Map<String, String> podFQDNToConfig,
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
       List<String> commandArgs) {
     if (region.provider.code.equals("kubernetes")) {
       commandArgs.add("--k8s_config");
-      commandArgs.add(Json.stringify(Json.toJson(namespaceToConfig)));
+      commandArgs.add(Json.stringify(Json.toJson(podFQDNToConfig)));
     } else {
       commandArgs.add("--ssh_port");
       commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
@@ -306,6 +309,9 @@ public class TableManagerYb extends DevopsBase {
     }
     if (backupTableParams.disableChecksum) {
       commandArgs.add("--disable_checksums");
+    }
+    if (backupTableParams.disableParallelism) {
+      commandArgs.add("--disable_parallelism");
     }
   }
 

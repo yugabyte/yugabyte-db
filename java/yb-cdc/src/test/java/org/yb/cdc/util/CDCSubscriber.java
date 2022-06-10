@@ -13,7 +13,8 @@
 
 package org.yb.cdc.util;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.client.*;
 import org.yb.master.MasterDdlOuterClass;
@@ -27,7 +28,7 @@ import java.util.Objects;
 import static org.yb.AssertionWrappers.fail;
 
 public class CDCSubscriber {
-  private final static Logger LOG = Logger.getLogger(CDCSubscriber.class);
+  private final static Logger LOG = LoggerFactory.getLogger(CDCSubscriber.class);
 
   private String namespaceName = "yugabyte";
   private String tableName;

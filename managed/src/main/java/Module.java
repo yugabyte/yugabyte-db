@@ -2,8 +2,8 @@
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
-import com.yugabyte.yw.cloud.AWSInitializer;
-import com.yugabyte.yw.cloud.aws.AWSCloudModule;
+import com.yugabyte.yw.cloud.CloudModules;
+import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
@@ -19,11 +19,9 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.GFlagsValidation;
-import com.yugabyte.yw.common.HealthManager;
 import com.yugabyte.yw.common.NativeKubernetesManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.PlatformInstanceClientFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
@@ -38,6 +36,7 @@ import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.ha.PlatformInstanceClientFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -89,8 +88,7 @@ public class Module extends AbstractModule {
     }
 
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
-    // TODO: other clouds
-    install(new AWSCloudModule());
+    install(new CloudModules());
 
     // Bind Application Initializer
     bind(AppInit.class).asEagerSingleton();
@@ -104,7 +102,6 @@ public class Module extends AbstractModule {
     // We only needed to bind below ones for Platform mode.
     if (config.getString("yb.mode", "PLATFORM").equals("PLATFORM")) {
       bind(SwamperHelper.class).asEagerSingleton();
-      bind(HealthManager.class).asEagerSingleton();
       bind(NodeManager.class).asEagerSingleton();
       bind(MetricQueryHelper.class).asEagerSingleton();
       bind(QueryHelper.class).asEagerSingleton();

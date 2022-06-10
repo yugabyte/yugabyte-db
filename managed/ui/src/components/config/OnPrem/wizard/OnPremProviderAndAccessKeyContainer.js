@@ -105,9 +105,9 @@ const mapStateToProps = (state, ownProps) => {
             .join(', ')
         };
       }),
-      ntp_option: access_keys_of_provider.keyInfo?.setUpChrony ? NTP_TYPES.MANUAL : NTP_TYPES.NO_NTP,
-      ntpServers: access_keys_of_provider.keyInfo?.ntpServers ?? [],
-      setUpChrony: access_keys_of_provider.keyInfo?.setUpChrony
+      ntp_option: access_keys_of_provider?.keyInfo?.setUpChrony ? NTP_TYPES.MANUAL : NTP_TYPES.NO_NTP,
+      ntpServers: access_keys_of_provider?.keyInfo?.ntpServers ?? [],
+      setUpChrony: access_keys_of_provider?.keyInfo?.setUpChrony
     };
   }
   return {

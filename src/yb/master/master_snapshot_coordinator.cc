@@ -33,6 +33,7 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/restoration_state.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_schedule_state.h"
 #include "yb/master/snapshot_state.h"
@@ -79,6 +80,10 @@ DEFINE_bool(skip_crash_on_duplicate_snapshot, false,
             "Should we not crash when we get a create snapshot request with the same "
             "id as one of the previous snapshots.");
 TAG_FLAG(skip_crash_on_duplicate_snapshot, runtime);
+
+DEFINE_test_flag(int32, delay_sys_catalog_restore_on_followers_secs, 0,
+                 "Sleep for these many seconds on followers during sys catalog restore");
+TAG_FLAG(TEST_delay_sys_catalog_restore_on_followers_secs, runtime);
 
 DECLARE_bool(allow_consecutive_restore);
 
@@ -163,8 +168,8 @@ auto MakeDoneCallback(
 
 class MasterSnapshotCoordinator::Impl {
  public:
-  explicit Impl(SnapshotCoordinatorContext* context)
-      : context_(*context), poller_(std::bind(&Impl::Poll, this)) {}
+  explicit Impl(SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm)
+      : context_(*context), cm_(cm), poller_(std::bind(&Impl::Poll, this)) {}
 
   Result<TxnSnapshotId> Create(
       const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline) {
@@ -475,6 +480,14 @@ class MasterSnapshotCoordinator::Impl {
       }
       std::swap(restoration->schedules[0], restoration->schedules[this_idx]);
     }
+    // Inject artificial delay on followers for tests.
+    if (leader_term < 0 && FLAGS_TEST_delay_sys_catalog_restore_on_followers_secs > 0) {
+      SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_delay_sys_catalog_restore_on_followers_secs));
+    }
+    // Disable concurrent RPCs to the master leader for the duration of sys catalog restore.
+    if (leader_term >= 0) {
+      context_.PrepareRestore();
+    }
     LOG_SLOW_EXECUTION(INFO, 1000, "Restore sys catalog took") {
       RETURN_NOT_OK_PREPEND(
           context_.RestoreSysCatalog(restoration.get(), operation.tablet(), complete_status),
@@ -739,6 +752,16 @@ class MasterSnapshotCoordinator::Impl {
     return false;
   }
 
+  bool IsPitrActive() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& schedule : schedules_) {
+      if (!schedule->deleted()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Result<docdb::KeyValuePairPB> UpdateRestorationAndGetWritePair(
       SnapshotScheduleRestoration* restoration) {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
@@ -969,6 +992,10 @@ class MasterSnapshotCoordinator::Impl {
   void Poll() {
     auto leader_term = context_.LeaderTerm();
     if (leader_term < 0) {
+      return;
+    }
+    SCOPED_LEADER_SHARED_LOCK(l, cm_);
+    if (!l.catalog_status().ok() || !l.leader_status().ok()) {
       return;
     }
     VLOG(4) << __func__ << "()";
@@ -1397,6 +1424,11 @@ class MasterSnapshotCoordinator::Impl {
       return;
     }
     SubmitWrite(std::move(write_batch), leader_term, &context_);
+
+    // Enable tablet splitting again.
+    if (restoration->schedule_id()) {
+      context_.EnableTabletSplitting("PITR");
+    }
   }
 
   void UpdateSchedule(const SnapshotState& snapshot) REQUIRES(mutex_) {
@@ -1584,6 +1616,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   SnapshotCoordinatorContext& context_;
+  enterprise::CatalogManager* cm_;
   std::mutex mutex_;
   class ScheduleTag;
   using Snapshots = boost::multi_index_container<
@@ -1636,8 +1669,9 @@ class MasterSnapshotCoordinator::Impl {
   rpc::Poller poller_;
 };
 
-MasterSnapshotCoordinator::MasterSnapshotCoordinator(SnapshotCoordinatorContext* context)
-    : impl_(new Impl(context)) {}
+MasterSnapshotCoordinator::MasterSnapshotCoordinator(
+    SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm)
+    : impl_(new Impl(context, cm)) {}
 
 MasterSnapshotCoordinator::~MasterSnapshotCoordinator() {}
 
@@ -1740,6 +1774,10 @@ Result<TxnSnapshotId> MasterSnapshotCoordinator::CreateForSchedule(
 Result<docdb::KeyValuePairPB> MasterSnapshotCoordinator::UpdateRestorationAndGetWritePair(
     SnapshotScheduleRestoration* restoration) {
   return impl_->UpdateRestorationAndGetWritePair(restoration);
+}
+
+bool MasterSnapshotCoordinator::IsPitrActive() {
+  return impl_->IsPitrActive();
 }
 
 } // namespace master

@@ -13,6 +13,8 @@
 
 #include "yb/docdb/doc_read_context.h"
 
+#include "yb/integration-tests/packed_row_test_base.h"
+
 #include "yb/master/mini_master.h"
 
 #include "yb/rocksdb/db/db_impl.h"
@@ -25,22 +27,16 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+DECLARE_bool(ysql_enable_packed_row);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
-DECLARE_int32(max_packed_row_columns);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_uint64(ysql_packed_row_size_limit);
 
 namespace yb {
 namespace pgwrapper {
 
-class PgPackedRowTest : public PgMiniTestBase {
+class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase> {
  protected:
-  void SetUp() override {
-    FLAGS_max_packed_row_columns = 10;
-    FLAGS_timestamp_history_retention_interval_sec = 0;
-    FLAGS_history_cutoff_propagation_interval_ms = 1;
-    PgMiniTestBase::SetUp();
-  }
-
   void TestCompaction(const std::string& expr_suffix);
 };
 
@@ -313,6 +309,91 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Colocated)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
   TestCompaction("WITH (colocated = true)");
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Serial)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE sbtest1(id SERIAL, PRIMARY KEY (id))"));
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackDuringCompaction)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+
+  const auto kNumKeys = 10;
+  const auto kKeys = Range(1, kNumKeys + 1);
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 INT NOT NULL) SPLIT INTO 1 TABLETS"));
+
+  std::string all_rows;
+  for (auto i : kKeys) {
+    auto expr = Format("$0, $0, -$0", i);
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, v1, v2) VALUES ($0)", expr));
+    if (!all_rows.empty()) {
+      all_rows += "; ";
+    }
+    all_rows += expr;
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  ASSERT_NO_FATALS(CheckNumRecords(cluster_.get(), kNumKeys));
+
+  auto fetched_rows = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY key"));
+  ASSERT_EQ(fetched_rows, all_rows);
+}
+
+// Check that we correctly interpret packed row size limit.
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(BigValue)) {
+  constexpr size_t kValueLimit = 512;
+  const std::string kBigValue(kValueLimit, 'B');
+  const std::string kHalfBigValue(kValueLimit / 2, 'H');
+  const std::string kSmallValue(kValueLimit / 4, 'S');
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = kValueLimit;
+
+  auto conn = ASSERT_RESULT(Connect());
+  std::array<std::string, 2> values = {kBigValue, kHalfBigValue};
+
+  auto check_state = [this, &conn, &values](size_t expected_num_records) -> Status {
+    RETURN_NOT_OK(cluster_->CompactTablets());
+    auto fetched_rows = VERIFY_RESULT(conn.FetchAllAsString("SELECT v1, v2 FROM t"));
+    SCHECK_EQ(
+        fetched_rows, Format("$0, $1", values[0], values[1]), IllegalState, "Wrong DB content");
+    CheckNumRecords(cluster_.get(), expected_num_records);
+    return Status::OK();
+  };
+
+  auto update_value = [&conn, &values, &check_state](
+      size_t idx, const std::string& new_value, size_t expected_num_records) -> Status {
+    RETURN_NOT_OK(conn.ExecuteFormat("UPDATE t SET v$0 = '$1' WHERE key = 1", idx + 1, new_value));
+    values[idx] = new_value;
+    return check_state(expected_num_records);
+  };
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT) SPLIT INTO 1 TABLETS"));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t (key, v1, v2) VALUES (1, '$0', '$1')", values[0], values[1]));
+
+  ASSERT_OK(check_state(2));
+  ASSERT_OK(update_value(1, kBigValue, 3));
+  ASSERT_OK(update_value(0, kHalfBigValue, 2));
+
+  ASSERT_OK(conn.Execute("DELETE FROM t WHERE key = 1"));
+
+  values[0] = kSmallValue;
+  values[1] = kHalfBigValue;
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t (key, v1, v2) VALUES (1, '$0', '$1')", values[0], values[1]));
+
+  ASSERT_OK(update_value(0, kHalfBigValue, 2));
 }
 
 } // namespace pgwrapper
