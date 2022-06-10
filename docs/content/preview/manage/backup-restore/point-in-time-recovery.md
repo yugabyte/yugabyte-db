@@ -64,7 +64,7 @@ Let's say the snapshots are taken daily at 11:00 PM, current time is 5:00 PM on 
 
 YugabyteDB exposes the PITR functionality through a set of [snapshot schedule](../../../admin/yb-admin/#backup-and-snapshot-commands) CLI commands. A schedule is an entity that automatically manages periodic snapshots for a YSQL database or a YCQL keyspace, and enables PITR for the same database or keyspace.
 
-{{< note title="Note" >}}
+{{< note >}}
 
 Creating a snapshot schedule for a database or a keyspace effectively enables PITR for that database/keyspace. You can't recover to point in time unless you create a schedule.
 
@@ -143,6 +143,14 @@ $ ./bin/yb_admin list-snapshot-schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 
 ## Restore to a point in time
 
+{{< warning >}}
+
+Before initiating restoration to a point in time, it's recommended that you stop all the application workloads. Transactions running concurrently with the restore operation can lead to data inconsistency.
+
+This requirement will be removed in the future releases. Tracking issue: [12853](https://github.com/yugabyte/yugabyte-db/issues/12853)
+
+{{< /warning >}}
+
 If a database or a keyspace has an associated snapshot schedule, you can use that schedule to restore the database or keyspace to a particular point in time.
 
 To restore, use the [`restore-snapshot-schedule`](../../../admin/yb-admin/#restore-snapshot-schedule) command. This command takes two parameters:
@@ -214,7 +222,7 @@ xCluster does not replicate any commands related to PITR, so if you have two clu
 1. Restore to the same time on both clusters.
 1. Resume the application workloads.
 
-Tracking issue: [#10820](https://github.com/yugabyte/yugabyte-db/issues/10820)
+Tracking issue: [10820](https://github.com/yugabyte/yugabyte-db/issues/10820)
 
 ### Tablegroups
 
@@ -227,12 +235,24 @@ Tracking issue: [11924](https://github.com/yugabyte/yugabyte-db/issues/11924)
 Global objects, such as [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/), roles and permissions are not currently backed up by the distributed snapshots, and therefore are not supported by PITR. If you alter or drop a global object, and then try to restore to a point in time before the change, the object will **not** be restored.
 
 Tracking issue for YSQL tablespaces: [10257](https://github.com/yugabyte/yugabyte-db/issues/10257)
+
 Tracking issue for YSQL roles and permissions: [10349](https://github.com/yugabyte/yugabyte-db/issues/10349)
+
 Tracking issue for YCQL: [8453](https://github.com/yugabyte/yugabyte-db/issues/8453)
 
 {{< note title="Special case for tablespaces" >}}
 
 Tablespaces are crucial for geo-partitioned deployments. Trying to restore a database that relies on a tablespace that had been removed can lead to unexpected behavior, so `DROP TABLESPACE` command is currently disallowed if a schedule exists on **any** of the databases within the cluster.
+
+{{< /note >}}
+
+### YSQL system catalog upgrade
+
+PITR can't be used to restore to a state before the latest [YSQL system catalog upgrade](../../../admin/yb-admin/#upgrade-ysql-system-catalog). Trying to do so will produce an error. You can still use [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/) to restore in such scenarios.
+
+{{< note >}}
+
+This limitation is only applicable to YSQL databases. YCQL is not affected.
 
 {{< /note >}}
 
