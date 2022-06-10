@@ -196,4 +196,4 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin"
     Permissions-Policy = "disabled"
-    X-XSS-Protection = "1"
+    X-XSS-Protection = "0"
