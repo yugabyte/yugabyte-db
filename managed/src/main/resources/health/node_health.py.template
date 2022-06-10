@@ -44,7 +44,6 @@ try:
 except Exception as e:
     from exceptions import RuntimeError
 from datetime import datetime, timedelta
-from dateutil import tz
 
 NODE_INFO = '{{NODE_INFO}}'
 
@@ -1273,7 +1272,7 @@ def seconds_to_human_readable_time(seconds):
 
 
 def local_time():
-    return datetime.utcnow().replace(tzinfo=tz.tzutc())
+    return datetime.utcnow()
 
 
 def parse_release_build(release_build):
