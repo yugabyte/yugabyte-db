@@ -1,4 +1,0 @@
-
-{{ range where (readDir (relURL "content/")) ".IsDir" "ne" false}}
-  <a href="/{{.Name}}/">{{ .Name }} version</a><br/>
-{{ end }}

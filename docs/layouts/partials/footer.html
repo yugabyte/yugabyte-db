@@ -1,51 +1,62 @@
-<footer class="footer">
+{{ $links := .Site.Params.links }}
+<footer class="row d-print-none">
   <div class="container">
-    <div class="row justify-content-center">
-      <div class="col-12 col-lg-12 col-xl-10">
-        <div class="flexy">
-          <div>
-            <img alt="Yugabyte" src="/images/ybdocs-white.png" class="nav-logo not-scrolled"/>
-          </div>
-          <div>
-            <div class="social-icons">
-              <a class="social" href="https://github.com/yugabyte/yugabyte-db">
-                <i class="fab fa-github"></i>
+    <div class="row">
+      <div class="footer_top">
+        <div class="col-6 col-sm-4 text-xs-center order-sm-2">
+          {{- if .Site.Params.yb.footer_logo.path }}
+            {{ if .Site.Params.yb.footer_logo.url }}
+              <a href="{{ .Site.Params.yb.footer_logo.url }}"{{- if .Site.Params.yb.footer_logo.title }} title="{{ .Site.Params.yb.footer_logo.title }}"{{- end }}{{- if .Site.Params.yb.footer_logo.newTab }} target="_blank" rel="noopener"{{- end }}>
+            {{- end}}
+
+            <img src="{{ .Site.Params.yb.footer_logo.path }}" alt="Yugabyte logo" title="Yugabyte logo" class="nav-logo">
+
+            {{ if .Site.Params.yb.footer_logo.url }}
               </a>
-              <a class="social" href="{{ partialCached "slack-link" . }}">
-                <i class="fab fa-slack"></i>
-              </a>
-              <a class="social" href="https://www.twitter.com/yugabyte">
-                <i class="fab fa-twitter-square"></i>
-              </a>
-              <a class="social" href="https://www.linkedin.com/company/yugabyte">
-                <i class="fab fa-linkedin"></i>
-              </a>
-              <a class="social" href="https://www.facebook.com/yugabyte">
-                <i class="fab fa-facebook-square"></i>
-              </a>
-              <a class="social" href="https://www.youtube.com/channel/UCL9BhSLRowqQ1TyBndhiCEw">
-                <i class="fab fa-youtube"></i>
-              </a>
-            </div>
-          </div>
+            {{- end}}
+          {{- end}}
+
+          {{ with $links }}
+          {{ with index . "user"}}
+          {{ template "footer-links-block"  . }}
+          {{ end }}
+          {{ end }}
         </div>
-        <div class="flexy">
-          <div>
-            <div class="menu">
-              <a href="https://www.yugabyte.com/contact/">Contact us</a>
-              <!-- <a href="/terms/">Terms of Use</a>
-              <a href="/privacy/">Privacy Policy</a> -->
-            </div>
-            <p class="copyright">
-              Copyright &copy; 2017-2022 Yugabyte, Inc. <span style="white-space: nowrap">All rights reserved.</span>
-            </p>
-          </div>
-          <div>
-            <p class="disclaimers">
-            </p>
-          </div>
+
+        <div class="text-right text-xs-center order-sm-3">
+          {{ with $links }}
+          {{ with index . "developer"}}
+          {{ template "footer-links-block"  . }}
+          {{ end }}
+          {{ end }}
         </div>
+      </div>
+      <div class="col-12 py-2 order-sm-2 footer-bottom">
+        {{ with .Site.Params.copyright }}
+          <small>&copy; {{ now.Year}} {{ .}} {{ T "footer_all_rights_reserved" }}</small>
+        {{ end }}
+        {{ with .Site.Params.privacy_policy }}
+          <small class="ml-1"><a href="{{ . }}" target="_blank" rel="noopener" class="text-white">{{ T "footer_privacy_policy" }}</a></small>
+        {{ end }}
+        {{ with .Site.Params.yb.terms_of_service }}
+          <small class="ml-1"><a href="{{ . }}" target="_blank" rel="noopener" class="text-white">Terms of Service</a></small>
+        {{ end }}
+
+        {{ if not .Site.Params.ui.footer_about_disable }}
+          {{ with .Site.GetPage "about" }}<p class="mt-2"><a href="{{ .RelPermalink }}">{{ .Title }}</a></p>{{ end }}
+        {{ end }}
       </div>
     </div>
   </div>
 </footer>
+{{ define "footer-links-block" }}
+<ul class="list-inline mb-0 social-icons">
+  {{ range . }}
+  <li class="list-inline-item h3" data-toggle="tooltip" data-placement="top" title="{{ .name }}" aria-label="{{ .name }}">
+    <a class="social text-white" target="_blank" rel="noopener" href="{{ .url }}" aria-label="{{ .name }}">
+      <i class="{{ .icon }}"></i>
+    </a>
+  </li>
+  {{ end }}
+</ul>
+{{ end }}
