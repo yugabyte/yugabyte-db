@@ -418,7 +418,13 @@ public class Audit extends Model {
     AddHook,
 
     @EnumValue("Remove Hook from Hook Scope")
-    RemoveHook
+    RemoveHook,
+
+    @EnumValue("Rotate AccessKey")
+    RotateAccessKey,
+
+    @EnumValue("Create And Rotate Access Key")
+    CreateAndRotateAccessKey;
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

@@ -49,8 +49,11 @@ GET     /customers/:cUUID/providers                                            c
 DELETE  /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderApiController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID)
 PUT     /customers/:cUUID/providers/:pUUID/edit                                com.yugabyte.yw.controllers.CloudProviderApiController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID)
 PUT     /customers/:cUUID/providers/:pUUID/refresh_pricing                     com.yugabyte.yw.controllers.CloudProviderApiController.refreshPricing(cUUID: java.util.UUID, pUUID: java.util.UUID)
-POST    /customers/:cUUID/providers/:pUUID/access_key_rotation                 com.yugabyte.yw.controllers.CloudProviderApiController.rotateAccessKeysManual(cUUID:java.util.UUID, pUUID: java.util.UUID)
 PATCH   /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderApiController.patch(cUUID: java.util.UUID, pUUID: java.util.UUID)
+POST    /customers/:cUUID/providers/:pUUID/access_key_rotation                 com.yugabyte.yw.controllers.CloudProviderApiController.accessKeysRotation(cUUID:java.util.UUID, pUUID: java.util.UUID)
+POST    /customers/:cUUID/providers/:pUUID/access_key_rotation/schedule        com.yugabyte.yw.controllers.CloudProviderApiController.scheduledAccessKeysRotation(cUUID:java.util.UUID, pUUID: java.util.UUID)
+GET     /customers/:cUUID/providers/:pUUID/access_key_rotation/schedule        com.yugabyte.yw.controllers.CloudProviderApiController.listAccessKeyRotationSchedules(cUUID:java.util.UUID, pUUID: java.util.UUID)
+PUT     /customers/:cUUID/providers/:pUUID/access_key_rotation/schedule/:sUUID com.yugabyte.yw.controllers.CloudProviderApiController.editAccessKeyRotationSchedule(cUUID: java.util.UUID, pUUID: java.util.UUID, sUUID: java.util.UUID)
 
 # Start UI only
 POST    /customers/:cUUID/providers/ui                                         com.yugabyte.yw.controllers.CloudProviderUiOnlyController.create(cUUID: java.util.UUID)

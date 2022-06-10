@@ -111,6 +111,8 @@ public enum TaskType {
 
   SetUniverseKey("SetUniverseKey"),
 
+  CreateAndRotateAccessKey("CreateAndRotateAccessKey"),
+
   @Deprecated
   SetKubernetesUniverseKey("SetKubernetesUniverseKey"),
 
