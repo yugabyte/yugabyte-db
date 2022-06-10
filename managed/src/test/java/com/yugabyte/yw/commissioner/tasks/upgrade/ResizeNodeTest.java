@@ -107,25 +107,24 @@ public class ResizeNodeTest extends UpgradeTaskTest {
               userIntent.deviceInfo.numVolumes = 1;
               userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
               userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
+              userIntent.provider = defaultProvider.uuid.toString();
               universe
                   .getNodes()
                   .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE);
             });
-    InstanceType.upsert(
-        defaultProvider.uuid, NEW_INSTANCE_TYPE, 2.0, 8.0, new InstanceType.InstanceTypeDetails());
-    InstanceType.upsert(
-        defaultProvider.uuid,
-        NEW_READ_ONLY_INSTANCE_TYPE,
-        2.0,
-        8.0,
-        new InstanceType.InstanceTypeDetails());
     try {
       when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      when(mockConfigHelper.getAWSInstancePrefixesSupported())
+          .thenReturn(Arrays.asList("c5.", "c5d.", "c4.", "c3."));
     } catch (Exception ignored) {
     }
+
+    createInstanceType(defaultProvider.uuid, DEFAULT_INSTANCE_TYPE);
+    createInstanceType(defaultProvider.uuid, NEW_INSTANCE_TYPE);
+    createInstanceType(defaultProvider.uuid, NEW_READ_ONLY_INSTANCE_TYPE);
   }
 
   @Override
@@ -258,6 +257,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
     userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
     userIntent.providerType = curIntent.providerType;
+    userIntent.provider = curIntent.provider;
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, false);
@@ -340,7 +340,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     taskParams.getReadOnlyClusters().get(0).userIntent.providerType = Common.CloudType.aws;
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
-    assertUniverseDataForReadReplicaClusters(true, true, true, true, 250, "c3.small");
+    assertUniverseDataForReadReplicaClusters(
+        true, true, true, true, 250, NEW_READ_ONLY_INSTANCE_TYPE);
   }
 
   @Test
@@ -653,5 +654,15 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     RuntimeConfigEntry.upsertGlobal("yb.internal.allow_unsupported_instances", "true");
     taskParams.universeUUID = defaultUniverse.universeUUID;
     return taskParams;
+  }
+
+  private void createInstanceType(UUID providerId, String type) {
+    InstanceType.InstanceTypeDetails instanceTypeDetails = new InstanceType.InstanceTypeDetails();
+    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+    volumeDetails.volumeType = InstanceType.VolumeType.SSD;
+    volumeDetails.volumeSizeGB = 100;
+    volumeDetails.mountPath = "/";
+    instanceTypeDetails.volumeDetailsList = Collections.singletonList(volumeDetails);
+    InstanceType.upsert(providerId, type, 1, 100d, instanceTypeDetails);
   }
 }
