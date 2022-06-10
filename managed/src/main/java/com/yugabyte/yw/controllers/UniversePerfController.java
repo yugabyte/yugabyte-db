@@ -10,6 +10,7 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.controllers.handlers.HashedTimestampColumnFinder;
 import com.yugabyte.yw.controllers.handlers.UniversePerfHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
@@ -20,18 +21,25 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import play.mvc.Result;
 
+import java.util.List;
 import java.util.UUID;
+
+import static com.yugabyte.yw.common.TableSpaceStructures.HashedTimestampColumnFinderResponse;
 
 @Api(
     value = "Universe performance suggestions",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UniversePerfController extends AuthenticatedController {
 
+  private HashedTimestampColumnFinder hashedTimestampColumnFinder;
   private UniversePerfHandler universePerfHandler;
 
   @Inject
-  public UniversePerfController(UniversePerfHandler universePerfHandler) {
+  public UniversePerfController(
+      UniversePerfHandler universePerfHandler,
+      HashedTimestampColumnFinder hashedTimestampColumnFinder) {
     this.universePerfHandler = universePerfHandler;
+    this.hashedTimestampColumnFinder = hashedTimestampColumnFinder;
   }
 
   @ApiOperation(
@@ -43,5 +51,27 @@ public class UniversePerfController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     return PlatformResults.withData(
         universePerfHandler.universeQueryDistributionSuggestion(universe));
+  }
+
+  /**
+   * API that returns the list of hash indexes on timestamp columns.
+   *
+   * @param customerUUID ID of customer
+   * @param universeUUID ID of universe
+   * @return list of serialized HashedTimestampColumnFinderResponse entries.
+   */
+  @ApiOperation(
+      value = "Return list of hash indexes",
+      notes = "Returns list of hash indexes on timestamp columns.",
+      nickname = "getRangeHash",
+      response = HashedTimestampColumnFinderResponse.class)
+  public Result getRangeHash(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+
+    List<HashedTimestampColumnFinderResponse> result =
+        hashedTimestampColumnFinder.getHashedTimestampColumns(universe);
+
+    return PlatformResults.withData(result);
   }
 }
