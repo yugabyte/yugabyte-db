@@ -108,24 +108,24 @@ class GcpCloud(AbstractCloud):
         return output
 
     def mount_disk(self, args, body):
-        self.get_admin().mount_disk(args.zone, args.search_pattern, body)
+        self.get_admin().mount_disk(args['zone'], args['search_pattern'], body)
 
     def unmount_disk(self, args, name):
-        self.get_admin().unmount_disk(args.zone, args.search_pattern, name)
+        self.get_admin().unmount_disk(args['zone'], args['search_pattern'], name)
 
     def stop_instance(self, args):
-        instance = self.get_admin().get_instances(args.zone, args.search_pattern,
+        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'],
                                                   filters="(status = \"RUNNING\")")
         if not instance:
-            logging.error("Host {} does not exist or not running".format(args.search_pattern))
+            logging.error("Host {} does not exist or not running".format(args['search_pattern']))
             return
         self.admin.stop_instance(instance['zone'], instance['name'])
 
     def start_instance(self, args, ssh_ports):
-        instance = self.get_admin().get_instances(args.zone, args.search_pattern,
+        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'],
                                                   filters="(status = \"TERMINATED\")")
         if not instance:
-            logging.error("Host {} does not exist or not stopped".format(args.search_pattern))
+            logging.error("Host {} does not exist or not stopped".format(args['search_pattern']))
             return
         self.admin.start_instance(instance['zone'], instance['name'])
         self.wait_for_ssh_ports(instance['private_ip'], instance['name'], ssh_ports)
@@ -334,7 +334,7 @@ class GcpCloud(AbstractCloud):
         self.get_admin().update_disk(args, instance['id'])
 
     def change_instance_type(self, args, newInstanceType):
-        self.get_admin().change_instance_type(args.zone, args.search_pattern, newInstanceType)
+        self.get_admin().change_instance_type(args['zone'], args['search_pattern'], newInstanceType)
 
     def get_per_region_meta(self, args):
         if hasattr(args, "custom_payload") and args.custom_payload:
