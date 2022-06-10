@@ -74,6 +74,12 @@ class MasterOptions;
 class VisitorBase;
 class SysCatalogWriter;
 
+struct PgTypeInfo {
+  char typtype;
+  uint32_t typbasetype;
+  PgTypeInfo(char typtype_, uint32_t typbasetype_) : typtype(typtype_), typbasetype(typbasetype_) {}
+};
+
 // SysCatalogTable is a YB table that keeps track of table and
 // tablet metadata.
 // - SysCatalogTable has only one tablet.
@@ -177,8 +183,12 @@ class SysCatalogTable {
                                              const uint32_t relnamespace_oid);
 
   // Read attname and atttypid from pg_attribute catalog table.
-  Result<std::unordered_map<string, uint32_t>> ReadPgTypeOid(
+  Result<std::unordered_map<string, uint32_t>> ReadPgAttributeInfo(
       const uint32_t database_oid, const uint32_t table_oid);
+
+  // Read oid, typtype and typbasetype from pg_type catalog table.
+  Result<std::unordered_map<uint32_t, PgTypeInfo>> ReadPgTypeInfo(
+      const uint32_t database_oid, vector<uint32_t>* type_oids);
 
   // Read the pg_tablespace catalog table and return a map with all the tablespaces and their
   // respective placement information.
