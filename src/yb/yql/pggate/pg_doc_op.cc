@@ -96,9 +96,8 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
   }
 
  private:
-  Result<std::list<PgDocResult>> ProcessResponseImpl(
-      const rpc::CallResponsePtr& response) override {
-    return STATUS(InternalError, "ProcessResponseImpl is not defined for PgDocReadOpCached");
+  Status CompleteProcessResponse() override {
+    return STATUS(InternalError, "CompleteProcessResponse is not defined for PgDocReadOpCached");
   }
 
   PrefetchedDataHolder data_;
@@ -197,24 +196,26 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocResponse::PgDocResponse(PerformFuture future)
-    : holder_(std::move(future)) {}
+PgDocResponse::PgDocResponse(PerformFuture future, uint64_t used_read_time)
+    : holder_(PerformInfo{.future = std::move(future), .used_read_time = used_read_time}) {}
 
 PgDocResponse::PgDocResponse(ProviderPtr provider)
     : holder_(std::move(provider)) {}
 
 bool PgDocResponse::Valid() const {
-  return std::holds_alternative<PerformFuture>(holder_)
-      ? std::get<PerformFuture>(holder_).Valid()
+  return std::holds_alternative<PerformInfo>(holder_)
+      ? std::get<PerformInfo>(holder_).future.Valid()
       : static_cast<bool>(std::get<ProviderPtr>(holder_));
 }
 
-Result<rpc::CallResponsePtr> PgDocResponse::Get() {
-  if (std::holds_alternative<PerformFuture>(holder_)) {
-    return std::get<PerformFuture>(holder_).Get();
+Result<PgDocResponse::Data> PgDocResponse::Get() {
+  if (std::holds_alternative<PerformInfo>(holder_)) {
+    auto& info = std::get<PerformInfo>(holder_);
+    return Data(VERIFY_RESULT(info.future.Get()), info.used_read_time);
   }
   // Detach provider pointer after first usage to make PgDocResponse::Valid return false.
-  auto provider = std::move(std::get<ProviderPtr>(holder_));
+  ProviderPtr provider;
+  std::get<ProviderPtr>(holder_).swap(provider);
   return provider->Get();
 }
 
@@ -356,30 +357,36 @@ Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
   size_t send_count = std::min(parallelism_level_, active_op_count_);
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), pgsql_ops_.data(), send_count,
-      *table_, &GetReadTime(), force_non_bufferable));
+      *table_, GetReadTime(), force_non_bufferable));
   return Status::OK();
 }
 
 Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(
-    const Result<rpc::CallResponsePtr>& response) {
+    const Result<PgDocResponse::Data>& response) {
+  VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
   // Check operation status.
   DCHECK(exec_status_.ok());
-  if (response.ok()) {
-    auto result = ProcessResponseImpl(*response);
-    if (result.ok()) {
-      return result;
-    }
-    exec_status_ = result.status();
-  } else {
-    exec_status_ = response.status();
+  auto result = ProcessResponseImpl(response);
+  if (result.ok()) {
+    return result;
   }
+  exec_status_ = result.status();
   return exec_status_;
 }
 
-Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult(
-    const rpc::CallResponsePtr& response) {
-  VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
+Result<std::list<PgDocResult>> PgDocOp::ProcessResponseImpl(
+    const Result<PgDocResponse::Data>& response) {
+  if (!response.ok()) {
+    return response.status();
+  }
+  const auto& data = *response;
+  auto result = VERIFY_RESULT(ProcessCallResponse(*data.response));
+  GetReadTime() = data.used_read_time;
+  RETURN_NOT_OK(CompleteProcessResponse());
+  return result;
+}
 
+Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
   // Process data coming from tablet server.
   std::list<PgDocResult> result;
   bool no_sorting_order = batch_row_orders_.empty();
@@ -421,7 +428,7 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult(
     if (!op_response->has_rows_data_sidecar()) {
       continue;
     }
-    auto rows_data = VERIFY_RESULT(response->GetSidecarHolder(op_response->rows_data_sidecar()));
+    auto rows_data = VERIFY_RESULT(response.GetSidecarHolder(op_response->rows_data_sidecar()));
     if (no_sorting_order) {
       result.emplace_back(std::move(rows_data));
     } else {
@@ -467,9 +474,10 @@ Status PgDocOp::CompleteRequests() {
 
 Result<PgDocResponse> PgDocOp::DefaultSender(
     PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-    uint64_t* read_time, bool force_non_bufferable) {
-  return PgDocResponse(VERIFY_RESULT(
-      session->RunAsync(ops, ops_count, table, read_time, force_non_bufferable)));
+    uint64_t read_time, bool force_non_bufferable) {
+  auto result = VERIFY_RESULT(session->RunAsync(
+      ops, ops_count, table, &read_time, force_non_bufferable));
+  return PgDocResponse(std::move(result), read_time);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -503,16 +511,6 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   SetRowMark();
   SetReadTime();
   return Status::OK();
-}
-
-Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl(
-    const rpc::CallResponsePtr& response) {
-  // Process result from tablet server and check result status.
-  auto result = VERIFY_RESULT(ProcessResponseResult(response));
-
-  // Process paging state and check status.
-  RETURN_NOT_OK(ProcessResponseReadStates());
-  return result;
 }
 
 Result<bool> PgDocReadOp::DoCreateRequests() {
@@ -552,8 +550,6 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
 }
 
 Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
-  // This function is called only when ybctids were returned from INDEX.
-  //
   // NOTE on a typical process.
   // 1- Statement:
   //    SELECT xxx FROM <table> WHERE ybctid IN (SELECT ybctid FROM INDEX);
@@ -878,7 +874,7 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
   return Status::OK();
 }
 
-Status PgDocReadOp::ProcessResponseReadStates() {
+Status PgDocReadOp::CompleteProcessResponse() {
   // For each read_op, set up its request for the next batch of data or make it in-active.
   bool has_more_data = false;
   auto send_count = std::min(parallelism_level_, active_op_count_);
@@ -1097,15 +1093,9 @@ PgDocWriteOp::PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
     : PgDocOp(pg_session, table), write_op_(std::move(write_op)) {
 }
 
-Result<std::list<PgDocResult>> PgDocWriteOp::ProcessResponseImpl(
-    const rpc::CallResponsePtr& response) {
-  // Process result from tablet server and check result status.
-  auto result = VERIFY_RESULT(ProcessResponseResult(response));
-
-  // End execution and return result.
+Status PgDocWriteOp::CompleteProcessResponse() {
   end_of_data_ = true;
-  VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
-  return result;
+  return Status::OK();
 }
 
 Result<bool> PgDocWriteOp::DoCreateRequests() {
