@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.controllers.handlers.HashedTimestampColumnFinder;
 import com.yugabyte.yw.controllers.handlers.UniversePerfHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -59,18 +60,22 @@ public class UniversePerfControllerTest extends FakeDBApplication {
 
   private UniversePerfController universePerfController;
   private UniversePerfHandler universePerfHandler;
+  private HashedTimestampColumnFinder hashedTimestampColumnFinder;
   private AuditService auditService;
   private NodeUniverseManager mockNodeUniverseManager = mock(NodeUniverseManager.class);
   private Customer customer;
   private Universe universe;
   private OffsetDateTime mockedTime = OffsetDateTime.now();
   private List<ShellResponse> shellResponses = new ArrayList<>();
+  private List<ShellResponse> shellResponsesHashTimestamp = new ArrayList<>();
 
   @Override
   protected Application provideApplication() {
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
+    hashedTimestampColumnFinder = spy(new HashedTimestampColumnFinder(mockNodeUniverseManager));
     universePerfHandler = spy(new TestUniversePerfHandler(mockNodeUniverseManager));
-    universePerfController = spy(new UniversePerfController(universePerfHandler));
+    universePerfController =
+        spy(new UniversePerfController(universePerfHandler, hashedTimestampColumnFinder));
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -97,6 +102,20 @@ public class UniversePerfControllerTest extends FakeDBApplication {
                       + ".txt"));
       shellResponses.add(shellResponse);
     }
+
+    // Parse different shell responses and populate in shellResponsesHashTimestamp list
+    for (int i = 0; i <= 4; i++) {
+      ShellResponse shellResponse =
+          ShellResponse.create(
+              ShellResponse.ERROR_CODE_SUCCESS,
+              TestUtils.readResource(
+                  "com/yugabyte/yw/controllers/universe_performance_advisor/"
+                      + "range_hash_shell_response_"
+                      + i
+                      + ".txt"));
+      shellResponsesHashTimestamp.add(shellResponse);
+    }
+
     customer = ModelFactory.testCustomer();
     universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
@@ -368,6 +387,105 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     assertTrue(json.get("description").asText().contains(nodeWithHeavyQueryLoad));
     assertEquals(
         json.get("suggestion").asText(), "Redistribute queries to other nodes in the cluster");
+  }
+
+  @Test
+  public void testHashedTimestampColumnFinder1() {
+    // Base case, no hashed timestamp indexes exist and getRangeHash returns an empty list.
+    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+        .thenReturn(shellResponsesHashTimestamp.get(0), shellResponsesHashTimestamp.get(1));
+
+    Result hashedTimestampResponse =
+        universePerfController.getRangeHash(customer.uuid, universe.universeUUID);
+    JsonNode json = Json.parse(contentAsString(hashedTimestampResponse));
+
+    assertEquals(OK, hashedTimestampResponse.status());
+    assertTrue(json.isArray());
+    assertEquals(json.size(), 0);
+  }
+
+  @Test
+  public void testHashedTimestampColumnFinder2() {
+    // Simplest case, one DB and one timestamp hash index.
+    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+        .thenReturn(shellResponsesHashTimestamp.get(0), shellResponsesHashTimestamp.get(2));
+
+    Result hashedTimestampResponse =
+        universePerfController.getRangeHash(customer.uuid, universe.universeUUID);
+    JsonNode json = Json.parse(contentAsString(hashedTimestampResponse));
+
+    assertEquals(OK, hashedTimestampResponse.status());
+    assertTrue(json.isArray());
+    assertEquals(1, json.size());
+
+    assertEquals(json.get(0).get("current_database").asText(), "yugabyte");
+    assertEquals(json.get(0).get("table_name").asText(), "ts_test");
+    assertEquals(json.get(0).get("index_name").asText(), "ts_test_pkey");
+    assertEquals(
+        json.get(0).get("index_command").asText(),
+        "CREATE UNIQUE INDEX ts_test_pkey ON public.ts_test USING lsm (ts1 HASH)");
+  }
+
+  @Test
+  public void testHashedTimestampColumnFinder3() {
+    // 2 DBs and 3 timestamp hash indexes
+    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+        .thenReturn(
+            shellResponsesHashTimestamp.get(4),
+            shellResponsesHashTimestamp.get(2),
+            shellResponsesHashTimestamp.get(3));
+
+    Result hashedTimestampResponse =
+        universePerfController.getRangeHash(customer.uuid, universe.universeUUID);
+    JsonNode json = Json.parse(contentAsString(hashedTimestampResponse));
+
+    assertEquals(OK, hashedTimestampResponse.status());
+    assertTrue(json.isArray());
+    assertEquals(3, json.size());
+
+    assertEquals(json.get(0).get("current_database").asText(), "yugabyte");
+    assertEquals(json.get(0).get("table_name").asText(), "ts_test");
+    assertEquals(json.get(0).get("index_name").asText(), "ts_test_pkey");
+    assertEquals(
+        json.get(0).get("index_command").asText(),
+        "CREATE UNIQUE INDEX ts_test_pkey ON public.ts_test USING lsm (ts1 HASH)");
+    assertEquals(json.get(1).get("current_database").asText(), "yb_test");
+    assertEquals(json.get(1).get("table_name").asText(), "ts_test");
+    assertEquals(json.get(1).get("index_name").asText(), "ts_test_pkey");
+    assertEquals(
+        json.get(1).get("index_command").asText(),
+        "CREATE UNIQUE INDEX ts_test_pkey ON public.ts_test USING lsm (ts1 HASH)");
+    assertEquals(json.get(2).get("current_database").asText(), "yb_test");
+    assertEquals(json.get(2).get("table_name").asText(), "ts_test");
+    assertEquals(json.get(2).get("index_name").asText(), "ts_test_ts2_idx");
+    assertEquals(
+        json.get(2).get("index_command").asText(),
+        "CREATE INDEX ts_test_ts2_idx ON public.ts_test USING lsm (ts2 HASH)");
+  }
+
+  @Test
+  public void testHashedTimestampColumnFinder4() {
+    // 2 DBs and 1 timestamp hash index, second DB lacks hashed timestamp columns
+    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+        .thenReturn(
+            shellResponsesHashTimestamp.get(4),
+            shellResponsesHashTimestamp.get(2),
+            shellResponsesHashTimestamp.get(1));
+
+    Result hashedTimestampResponse =
+        universePerfController.getRangeHash(customer.uuid, universe.universeUUID);
+    JsonNode json = Json.parse(contentAsString(hashedTimestampResponse));
+
+    assertEquals(OK, hashedTimestampResponse.status());
+    assertTrue(json.isArray());
+    assertEquals(1, json.size());
+
+    assertEquals(json.get(0).get("current_database").asText(), "yugabyte");
+    assertEquals(json.get(0).get("table_name").asText(), "ts_test");
+    assertEquals(json.get(0).get("index_name").asText(), "ts_test_pkey");
+    assertEquals(
+        json.get(0).get("index_command").asText(),
+        "CREATE UNIQUE INDEX ts_test_pkey ON public.ts_test USING lsm (ts1 HASH)");
   }
 
   private class TestUniversePerfHandler extends UniversePerfHandler {

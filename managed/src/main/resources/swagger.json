@@ -3292,6 +3292,26 @@
       "required" : [ "clusters", "kubernetesUpgradeSupported", "masterGFlags", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
       "type" : "object"
     },
+    "HashedTimestampColumnFinderResponse" : {
+      "properties" : {
+        "current_database" : {
+          "type" : "string"
+        },
+        "description" : {
+          "type" : "string"
+        },
+        "index_command" : {
+          "type" : "string"
+        },
+        "index_name" : {
+          "type" : "string"
+        },
+        "table_name" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "HashicorpVaultConfigParams" : {
       "properties" : {
         "engine" : {
@@ -13118,6 +13138,38 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Get query distribution improvement suggestion for a universe",
+        "tags" : [ "Universe performance suggestions" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/range_hash" : {
+      "get" : {
+        "description" : "Returns list of hash indexes on timestamp columns.",
+        "operationId" : "getRangeHash",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/HashedTimestampColumnFinderResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Return list of hash indexes",
         "tags" : [ "Universe performance suggestions" ]
       }
     },
