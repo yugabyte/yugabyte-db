@@ -1274,9 +1274,9 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
   return name;
 }
 
-Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgTypeOid(
+Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttributeInfo(
     const uint32_t database_oid, const uint32_t table_oid) {
-  TRACE_EVENT0("master", "ReadPgTypeOid");
+  TRACE_EVENT0("master", "ReadPgAttributeInfo");
 
   const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
 
@@ -1332,8 +1332,9 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgTypeOid(
     if (!attname_col || !atttypid_col) {
       std::string corrupted_col = !attname_col ? "attname" : "atttypid";
       return STATUS_FORMAT(
-          Corruption, "Could not read $0 column from pg_attribute for attrelid $1:", corrupted_col,
-          table_oid);
+          Corruption,
+          "Could not read $0 column from pg_attribute for attrelid: $1 database_oid: $2",
+          corrupted_col, table_oid, database_oid);
     }
     string attname = attname_col->string_value();
     uint32_t atttypid = atttypid_col->uint32_value();
@@ -1349,6 +1350,77 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgTypeOid(
     VLOG(1) << "attrelid: " << table_oid << " attname: " << attname << " atttypid: " << atttypid;
   }
   return type_oid_map;
+}
+
+Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo(
+    const uint32_t database_oid, vector<uint32_t>* type_oids) {
+  TRACE_EVENT0("master", "ReadPgTypeInfo");
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+
+  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgTypeTableOid);
+  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
+  const Schema& schema = table_info->schema();
+
+  Schema projection;
+  RETURN_NOT_OK(schema.CreateProjectionByNames(
+      {"oid", "typtype", "typbasetype"}, &projection, schema.num_key_columns()));
+  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
+  const auto typtype_col_id = VERIFY_RESULT(projection.ColumnIdByName("typtype")).rep();
+  const auto typbasetype_col_id = VERIFY_RESULT(projection.ColumnIdByName("typbasetype")).rep();
+
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  {
+    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(oid_col_id);
+    cond.set_op(QL_OP_IN);
+    std::sort(type_oids->begin(), type_oids->end());
+    auto seq_value = cond.add_operands()->mutable_value()->mutable_list_value();
+    for (auto const type_oid : *type_oids) {
+      seq_value->add_elems()->set_uint32_value(type_oid);
+    }
+
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
+        boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+    RETURN_NOT_OK(doc_iter->Init(spec));
+  }
+
+  std::unordered_map<uint32_t, PgTypeInfo> type_oid_info_map;
+  while (VERIFY_RESULT(iter->HasNext())) {
+    QLTableRow row;
+    RETURN_NOT_OK(iter->NextRow(&row));
+
+    const auto& oid_col = row.GetValue(oid_col_id);
+    const auto& typtype_col = row.GetValue(typtype_col_id);
+    const auto& typbasetype_col = row.GetValue(typbasetype_col_id);
+
+    if (!oid_col || !typtype_col || !typbasetype_col) {
+      std::string corrupted_col;
+      if (!oid_col) {
+        corrupted_col = "oid";
+      } else if (!typtype_col) {
+        corrupted_col = "typtype";
+      } else {
+        corrupted_col = "typbasetype";
+      }
+      return STATUS_FORMAT(
+          Corruption,
+          "Could not read $0 column from pg_attribute for databaseoid: $1:", corrupted_col,
+          database_oid);
+    }
+
+    const uint32_t oid = oid_col->uint32_value();
+    const char typtype = typtype_col->int8_value();
+    const uint32_t typbasetype = typbasetype_col->uint32_value();
+
+    type_oid_info_map.insert({oid, PgTypeInfo(typtype, typbasetype)});
+
+    VLOG(1) << "oid: " << oid << " typtype: " << typtype << " typbasetype: " << typbasetype;
+  }
+  return type_oid_info_map;
 }
 
 Status SysCatalogTable::CopyPgsqlTables(
