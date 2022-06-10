@@ -3,7 +3,6 @@
 package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -485,9 +484,10 @@ public class Universe extends Model {
   }
 
   /**
-   * Return the list of live TServers in the primary cluster.
+   * Return the list of live TServers in the primary cluster. TODO: junit tests for this
+   * functionality (UniverseTest.java)
    *
-   * @return a list of TServer node
+   * @return a list of TServer nodes
    */
   public List<NodeDetails> getLiveTServersInPrimaryCluster() {
     List<NodeDetails> servers = getTServersInPrimaryCluster();
